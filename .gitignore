@@ -1,0 +1,14 @@
+# Laravel / PHP
+/vendor/
+/bootstrap/cache/
+/storage/*.key
+.env
+.env.*.local
+
+# Node / Vite
+/node_modules/
+/public/hot
+/public/build
+
+# Docker
+docker/mysql_data/
