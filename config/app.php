@@ -123,4 +123,8 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    // config/app.php
+    'facturacion' => [
+        'url' => env('FACTURACION_URL', 'http://siat-app:8000'),
+    ],
 ];

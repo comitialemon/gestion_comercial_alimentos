@@ -1,81 +1,85 @@
 ﻿services:
-  app:
+  # ✅ NUEVO: MySQL propio para Gestión Comercial
+  mysql-gestion:
+    image: mysql:8.0
+    container_name: mysql-gestion-comercio
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: gestion_comercialalimentos
+      MYSQL_USER: cacho
+      MYSQL_PASSWORD: alemon1
+    ports:
+      - "33061:3306"  # Puerto diferente al de facturación (3306)
+    volumes:
+      - mysql_gestion_data:/var/lib/mysql
+    networks:
+      - siatnet
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-ucacho", "-palemon1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app-gestion:
     build:
       context: .
       dockerfile: docker/apache-php/Dockerfile
-    container_name: siat-app
+    container_name: gac-app
     ports:
-      - "8081:80"
+      - "8082:80"
     volumes:
       - ./:/var/www/html
     environment:
       APP_ENV: local
       APP_DEBUG: 1
       COMPOSER_ALLOW_SUPERUSER: 1
+      # ✅ CAMBIADO: ahora usa su propio MySQL
       DB_CONNECTION: mysql
-      DB_HOST: mysql
+      DB_HOST: mysql-gestion  # ← antes: siat-mysql
       DB_PORT: 3306
-      DB_DATABASE: facturacion
+      DB_DATABASE: gestion_comercialalimentos
       DB_USERNAME: cacho
       DB_PASSWORD: alemon1
-      REDIS_HOST: redis
+      REDIS_HOST: redis-gestion
       REDIS_PORT: 6379
+      # ✅ Facturación sigue igual (solo API)
+      FACTURACION_API_URL: http://siat-app:80
+    networks:
+      - siatnet
     depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks: [siatnet]
+      - mysql-gestion
+      - redis-gestion
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost || exit 1"]
-      interval: 20s
-      timeout: 5s
-      retries: 5
 
-  worker:
+  worker-gestion:
     build:
       context: .
       dockerfile: docker/apache-php/Dockerfile
-    container_name: siat-worker
+    container_name: gac-worker
     depends_on:
-      app:
-        condition: service_started
-      redis:
-        condition: service_healthy
+      - app-gestion
+      - mysql-gestion
     volumes:
       - ./:/var/www/html
-    command: bash -lc "php artisan queue:work --tries=3 --backoff=5"
-    networks: [siatnet]
-    restart: unless-stopped
-
-  mysql:
-    image: mysql:8.0
-    container_name: siat-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: facturacion
-      MYSQL_USER: cacho
-      MYSQL_PASSWORD: alemon1
-    ports:
-      - "${MYSQL_PORT_HOST:-3306}:3306"
-    volumes:
-      - ./docker/mysql_data:/var/lib/mysql
-    networks: [siatnet]
+      DB_HOST: mysql-gestion
+      DB_PORT: 3306
+      DB_DATABASE: gestion_comercialalimentos
+      DB_USERNAME: cacho
+      DB_PASSWORD: alemon1
+    command: bash -lc "php artisan queue:work --tries=3 --backoff=5"
+    networks:
+      - siatnet
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ucacho -palemon1 || exit 1"]
-      interval: 15s
-      timeout: 5s
-      retries: 15
-      start_period: 25s
 
-  redis:
+  redis-gestion:
     image: redis:7-alpine
-    container_name: siat-redis
+    container_name: gac-redis
     ports:
-      - "6380:6379"
-    networks: [siatnet]
+      - "6381:6379"
+    networks:
+      - siatnet
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -83,20 +87,25 @@
       timeout: 3s
       retries: 10
 
-  vite:                      # ⬅️ AQUÍ, DENTRO DE services
+  vite-gestion:
     image: node:20
-    container_name: siat-vite
+    container_name: gac-vite
     working_dir: /var/www/html
-    command: sh -lc "npm ci && npm run dev -- --host"
+    command: sh -c "npm run dev -- --host --port 5175"
     ports:
-      - "5173:5173"
+      - "5175:5175"
     volumes:
       - ./:/var/www/html
-    networks: [siatnet]
+    networks:
+      - siatnet
     depends_on:
-      - app
+      - app-gestion
     restart: unless-stopped
 
 networks:
   siatnet:
-    driver: bridge
+    external: true
+    name: facturacion-siat-service_siatnet
+
+volumes:
+  mysql_gestion_data:

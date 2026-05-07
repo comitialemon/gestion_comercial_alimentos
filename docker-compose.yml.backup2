@@ -1,0 +1,102 @@
+﻿services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/apache-php/Dockerfile
+    container_name: siat-app
+    ports:
+      - "8081:80"
+    volumes:
+      - ./:/var/www/html
+    environment:
+      APP_ENV: local
+      APP_DEBUG: 1
+      COMPOSER_ALLOW_SUPERUSER: 1
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: facturacion
+      DB_USERNAME: cacho
+      DB_PASSWORD: alemon1
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [siatnet]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/apache-php/Dockerfile
+    container_name: siat-worker
+    depends_on:
+      app:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/var/www/html
+    command: bash -lc "php artisan queue:work --tries=3 --backoff=5"
+    networks: [siatnet]
+    restart: unless-stopped
+
+  mysql:
+    image: mysql:8.0
+    container_name: siat-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: facturacion
+      MYSQL_USER: cacho
+      MYSQL_PASSWORD: alemon1
+    ports:
+      - "${MYSQL_PORT_HOST:-3306}:3306"
+    volumes:
+      - ./docker/mysql_data:/var/lib/mysql
+    networks: [siatnet]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -ucacho -palemon1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 15
+      start_period: 25s
+
+  redis:
+    image: redis:7-alpine
+    container_name: siat-redis
+    ports:
+      - "6380:6379"
+    networks: [siatnet]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  vite:                      # ⬅️ AQUÍ, DENTRO DE services
+    image: node:20
+    container_name: siat-vite
+    working_dir: /var/www/html
+    command: sh -lc "npm ci && npm run dev -- --host"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./:/var/www/html
+    networks: [siatnet]
+    depends_on:
+      - app
+    restart: unless-stopped
+
+networks:
+  siatnet:
+    driver: bridge

@@ -19,36 +19,35 @@ return [
             'synchronous' => null,
         ],
 
-        'mysql' => [
-        'driver' => 'mysql',
-        'host' => env('DB_HOST', '127.0.0.1'),
-        'port' => env('DB_PORT', '3306'),
-        'database' => env('DB_DATABASE', 'facturacion'),
-        'username' => env('DB_USERNAME', 'cacho'),
-        'password' => env('DB_PASSWORD', 'alemon1'),
-        'charset' => 'utf8mb4',
-        'collation' => 'utf8mb4_unicode_ci',
-        'prefix' => '',
-        'strict' => true,
-        'engine' => null,
-    ],
-
-     'mysql_gestion_comercial_alimentos' => [
-        'driver' => 'mysql',
-        'host' => env('GESTION_DB_HOST', 'mysql'),
-        'port' => env('GESTION_DB_PORT', '3306'),
-        'database' => env('GESTION_DB_DATABASE', 'gestion_comercialalimentos'),
-        'username' => env('GESTION_DB_USERNAME', 'cacho'),
-        'password' => env('GESTION_DB_PASSWORD', 'alemon1'),
-        'charset' => 'utf8mb4',
-        'collation' => 'utf8mb4_unicode_ci',
-        'prefix' => '',
-        'prefix_indexes' => true,
-        'strict' => false,
-        'engine' => null,
+        // ✅ Base de datos propia de Gestión Comercial
+        'mysql_gestion_comercial_alimentos' => [
+            'driver' => 'mysql',
+            'host' => env('DB_HOST', 'mysql-gestion'),
+            'port' => env('DB_PORT', '3306'),
+            'database' => env('DB_DATABASE', 'gestion_comercialalimentos'),
+            'username' => env('DB_USERNAME', 'cacho'),
+            'password' => env('DB_PASSWORD', 'alemon1'),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
         ],
 
-        // Por si los usas más adelante
+        // ✅ Conexión a la base de datos de FACTURACIÓN (solo lectura de catálogos)
+        'facturacion' => [
+            'driver' => 'mysql',
+            'host' => env('FACTURACION_DB_HOST', 'siat-mysql'),
+            'port' => env('FACTURACION_DB_PORT', '3306'),
+            'database' => env('FACTURACION_DB_DATABASE', 'facturacion'),
+            'username' => env('FACTURACION_DB_USERNAME', 'cacho'),
+            'password' => env('FACTURACION_DB_PASSWORD', 'alemon1'),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => false,
+        ],
+
         'pgsql' => [
             'driver' => 'pgsql',
             'url' => env('PG_URL'),
@@ -90,25 +89,24 @@ return [
 
         'options' => [
             'cluster' => env('REDIS_CLUSTER', 'redis'),
-            'prefix'  => env('REDIS_PREFIX', Str::slug((string) env('APP_NAME', 'laravel')).'-database-'),
-            'persistent' => env('REDIS_PERSISTENT', false),
+            'prefix' => env('REDIS_PREFIX', Str::slug(env('APP_NAME', 'laravel'), '_').'_database_'),
         ],
 
         'default' => [
-            'url'      => env('REDIS_URL'),
-            'host'     => env('REDIS_HOST', 'redis'),
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
-            'port'     => env('REDIS_PORT', '6379'),
+            'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_DB', '0'),
         ],
 
         'cache' => [
-            'url'      => env('REDIS_URL'),
-            'host'     => env('REDIS_HOST', 'redis'),
+            'url' => env('REDIS_URL'),
+            'host' => env('REDIS_HOST', '127.0.0.1'),
             'username' => env('REDIS_USERNAME'),
             'password' => env('REDIS_PASSWORD'),
-            'port'     => env('REDIS_PORT', '6379'),
+            'port' => env('REDIS_PORT', '6379'),
             'database' => env('REDIS_CACHE_DB', '1'),
         ],
 

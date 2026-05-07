@@ -1,0 +1,23 @@
+<?php
+
+namespace App\Models\Gestion\Inventario;
+
+use Illuminate\Database\Eloquent\Model;
+
+class RelacionVentaDetalle extends Model
+{
+    protected $connection = 'mysql_gestion_comercial_alimentos';
+    protected $table = 'inventario_relacion_ventainventario_detalle';
+    protected $primaryKey = 'IdDetalleProductoPorcion';
+    public $timestamps = false;
+
+    protected $fillable = [
+        'IdDetalleProducto',
+        'IdProducto',
+        'Porcion',
+        'IdOperadorInserta',
+        'FechaInserta',
+        'IdOperadorActualiza',
+        'FechaActualiza',
+    ];
+}

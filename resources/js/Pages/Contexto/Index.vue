@@ -59,6 +59,8 @@ const guardar = () => {
               <option value="" disabled>Selecciona empresa</option>
               <option v-for="e in props.empresas" :key="e.id" :value="e.id">
                 {{ e.nombre }} — NIT {{ e.nit }}
+                <span v-if="e.facturacion_habilitada" class="text-green-600 ml-2">(con facturación)</span>
+                <span v-else class="text-gray-400 ml-2">(sin facturación)</span>
               </option>
             </select>
           </div>
@@ -70,6 +72,8 @@ const guardar = () => {
               <option value="" disabled>Selecciona sucursal</option>
               <option v-for="s in sucursales" :key="s.id" :value="s.id">
                 {{ s.nombre }} ({{ s.numero }})
+                <span v-if="s.facturacion_habilitada" class="text-green-600 ml-2">(con facturación)</span>
+                <span v-else class="text-gray-400 ml-2">(sin facturación)</span>
               </option>
             </select>
           </div>
