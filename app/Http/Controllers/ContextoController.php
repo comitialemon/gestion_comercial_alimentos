@@ -1,4 +1,5 @@
 <?php
+// app/Http/Controllers/ContextoController.php
 
 namespace App\Http\Controllers;
 
@@ -8,17 +9,13 @@ use Inertia\Inertia;
 
 class ContextoController extends Controller
 {
-    // ✅ Conexión a gestión
     private function g() { return DB::connection('mysql_gestion_comercial_alimentos'); }
-    
-    // ✅ Conexión a facturación (nueva)
     private function f() { return DB::connection('facturacion'); }
 
     public function index(Request $request)
     {
         $operadorId = (int) $request->session()->get('operador_id');
 
-        // Incluir facturacion_habilitada en la consulta
         $empresas = $this->g()
             ->table('todos_cliente as c')
             ->join('todos_operador_sucursaldb as os', 'os.IdCliente', '=', 'c.IdCliente')
@@ -42,7 +39,6 @@ class ContextoController extends Controller
     {
         $operadorId = (int) $request->session()->get('operador_id');
 
-        // Incluir facturacion_habilitada en las sucursales
         $sucursales = $this->g()
             ->table('todos_cliente_sucursal as s')
             ->join('todos_operador_sucursaldb as os', function ($j) {
@@ -67,7 +63,6 @@ class ContextoController extends Controller
 
         $operadorId = (int) $request->session()->get('operador_id');
 
-        // 1. Validar asignación
         $asignada = $this->g()->table('todos_operador_sucursaldb')
             ->where('IdOperador', $operadorId)
             ->where('IdCliente',  $data['empresa_id'])
@@ -78,7 +73,6 @@ class ContextoController extends Controller
             return back()->withErrors(['contexto' => 'No tienes asignada esa empresa/sucursal.']);
         }
 
-        // 2. Obtener datos de empresa y sucursal
         $empresa = $this->g()->table('todos_cliente')
             ->where('IdCliente', $data['empresa_id'])
             ->select('IdCliente','Nombre','NIT', 'facturacion_habilitada')
@@ -89,7 +83,7 @@ class ContextoController extends Controller
             ->select('IdClienteSucursal','Nombre','NumeroSucursal', 'facturacion_habilitada')
             ->first();
 
-        // 3. Guardar datos de gestión SIEMPRE
+        // Guardar datos de gestión (SIEMPRE)
         session([
             'cliente_id'             => (int)$empresa?->IdCliente,
             'cliente_nombre'         => $empresa?->Nombre,
@@ -97,19 +91,17 @@ class ContextoController extends Controller
             'cliente_sucursal_id'    => (int)$sucursal?->IdClienteSucursal,
             'cliente_sucursal_nombre'=> $sucursal?->Nombre,
             'cliente_sucursal_numero'=> $sucursal?->NumeroSucursal,
-            'tiene_facturacion'       => (bool)$sucursal?->facturacion_habilitada,
+            'tiene_facturacion'      => (bool)$sucursal?->facturacion_habilitada,
         ]);
 
-        // 4. Limpiar cache del menú
+        // Limpiar cache del menú
         foreach (array_keys(session()->all()) as $k) {
             if (str_starts_with($k, 'menu_tree_')) session()->forget($k);
         }
 
-        // 5. Si TIENE facturación, buscar en FACTURACIÓN
         $tieneFacturacion = (bool)$sucursal?->facturacion_habilitada;
 
         if ($tieneFacturacion) {
-            // ✅ BUSCAR EN FACTURACIÓN
             $mapEmp = $this->f()->table('map_cliente_empresa')
                 ->where('idClienteGestion', (int)$empresa?->IdCliente)
                 ->first();
@@ -119,36 +111,39 @@ class ContextoController extends Controller
                 ->first();
 
             if ($mapEmp && $mapSuc) {
-                // Guardar datos de facturación
+                // ✅ OBTENER DATOS DE FACTURACIÓN CORRECTAMENTE
+                $empresaFact = $this->f()->table('empresa')
+                    ->where('idEmpresa', $mapEmp->idEmpresa)
+                    ->first();
+
+                $sucursalFact = $this->f()->table('sucursal')
+                    ->where('idSucursal', $mapSuc->idSucursal)
+                    ->first();
+
+                // ✅ GUARDAR TODOS LOS DATOS DE FACTURACIÓN
                 session([
                     'empresa_id_facturacion'  => (int)$mapEmp->idEmpresa,
                     'sucursal_id_facturacion' => (int)$mapSuc->idSucursal,
+                    'sucursal_nombre'         => $sucursalFact?->nombre ?? $sucursal?->Nombre,
+                    'sucursal_numero'         => $sucursalFact?->codigo ?? $sucursal?->NumeroSucursal,
+                    'ambiente_facturacion'    => $empresaFact?->ambiente,
+                    'modalidad_facturacion'   => $empresaFact?->modalidad,
                 ]);
                 
-                // ✅ REDIRIGIR A SELECCIÓN DE PUNTO DE VENTA
+                // Limpiar PDV anterior
+                session()->forget(['punto_venta_id', 'punto_venta_codigo', 'punto_venta_nombre']);
+                
                 $intended = $request->session()->pull('url.intended', route('contexto.pdv.index'));
                 return redirect()->to($intended)->with('success', 'Selecciona punto de venta');
             } else {
-                // Tiene facturación pero no hay mapeo
                 session(['error_facturacion' => 'Facturación habilitada sin mapeo']);
                 $intended = $request->session()->pull('url.intended', route('oficial.index'));
                 return redirect()->to($intended)->with('warning', 'Facturación no configurada');
             }
         }
 
-        // 6. NO TIENE FACTURACIÓN - Directo al dashboard
-        session()->forget(['empresa_id_facturacion', 'sucursal_id_facturacion', 'punto_venta_id']);
-        
+        session()->forget(['empresa_id_facturacion', 'sucursal_id_facturacion', 'punto_venta_id', 'punto_venta_codigo', 'punto_venta_nombre']);
         $intended = $request->session()->pull('url.intended', route('oficial.index'));
         return redirect()->to($intended)->with('success', 'Contexto actualizado');
-    }
-
-    private function forgetMenuCache(Request $request): void
-    {
-        foreach (array_keys($request->session()->all()) as $key) {
-            if (str_starts_with($key, 'menu_tree_')) {
-                $request->session()->forget($key);
-            }
-        }
     }
 }

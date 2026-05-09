@@ -13,6 +13,13 @@ use App\Http\Controllers\PuntoVenta\FormularioVentaController;
 use App\Http\Controllers\PuntoVenta\PagoVentaController;
 use App\Http\Controllers\Facturacion\MetodoPagoMapeoController;
 use App\Http\Controllers\Gestion\Impuestos\LugarVenta;
+use App\Http\Controllers\Facturacion\EmpresasHomeController;
+use App\Http\Controllers\Facturacion\EmpresaController;           // ← AGREGAR ESTE
+use App\Http\Controllers\Facturacion\ImportarEmpresaController;    // ← AGREGAR ESTE
+use App\Http\Controllers\ContextoPdvController;                   // ← AGREGAR ESTE
+use App\Http\Controllers\Facturacion\SiatCuisController;          // ← AGREGAR ESTE
+use App\Http\Controllers\Facturacion\SiatCufdController;          // ← AGREGAR ESTE
+use App\Http\Controllers\Facturacion\SiatCatalogoController;      // ← AGREGAR ESTE
 // ============================================
 // RUTAS PÚBLICAS
 // ============================================
@@ -151,29 +158,55 @@ Route::middleware(['auth.operador'])->group(function () {
         
         return response()->json($resultado);
     });
-    
-    // Limpiar sesión de venta
-    Route::post('/venta-factura/limpiar-sesion', function () {
-        session()->forget('venta_actual_id');
-        return response()->json(['success' => true]);
-    });
-    
-    // Debug
-    Route::get('/debug/mapeo-codigos', function () {
-        $mapeos = App\Models\Gestion\Contabilidad\MetodoPagoMapeo::where('idCliente', session('cliente_id'))
-            ->where('idSucursal', session('cliente_sucursal_id'))
-            ->where('activo', 1)
-            ->pluck('codigo_siat')
-            ->unique()
-            ->values();
+
+    // ==================== FACTURACIÓN - SIAT ====================
+    Route::prefix('facturacion/siat')->group(function () {
+        // CUIS
+        Route::get('/cuis/vigente', [\App\Http\Controllers\Facturacion\SiatCuisController::class, 'vigente'])->name('facturacion.siat.cuis.vigente');
+        Route::post('/cuis/solicitar', [\App\Http\Controllers\Facturacion\SiatCuisController::class, 'solicitar'])->name('facturacion.siat.cuis.solicitar');
         
-        return response()->json([
-            'codigos_en_mapeo' => $mapeos,
-            'cliente_id' => session('cliente_id'),
-            'sucursal_id' => session('cliente_sucursal_id')
-        ]);
+        // CUFD
+        Route::get('/cufd/vigente', [\App\Http\Controllers\Facturacion\SiatCufdController::class, 'vigente'])->name('facturacion.siat.cufd.vigente');
+        Route::post('/cufd/solicitar', [\App\Http\Controllers\Facturacion\SiatCufdController::class, 'solicitar'])->name('facturacion.siat.cufd.solicitar');
+        
+        // Catálogos
+        Route::get('/catalogos', [\App\Http\Controllers\Facturacion\SiatCatalogoController::class, 'index'])->name('facturacion.siat.catalogos.index');
+        Route::post('/catalogos/sync', [\App\Http\Controllers\Facturacion\SiatCatalogoController::class, 'syncAll'])->name('facturacion.siat.catalogos.sync');
+        Route::post('/catalogos/sync/{key}', [\App\Http\Controllers\Facturacion\SiatCatalogoController::class, 'syncOne'])->name('facturacion.siat.catalogos.syncOne');
+        Route::post('/catalogos/ping', [\App\Http\Controllers\Facturacion\SiatCatalogoController::class, 'pingFechaHora'])->name('facturacion.siat.catalogos.ping');
     });
-    // ==================== LUGARES DE VENTA ====================
+    // ==================== FACTURACIÓN - EMPRESAS ====================
+    Route::prefix('facturacion/empresas')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Facturacion\EmpresasHomeController::class, 'index'])->name('facturacion.empresas.home');
+        Route::get('/crear', [\App\Http\Controllers\Facturacion\EmpresaController::class, 'create'])->name('facturacion.empresas.create');
+        Route::post('/crear', [\App\Http\Controllers\Facturacion\EmpresaController::class, 'store'])->name('facturacion.empresas.store');
+        Route::get('/importar', [\App\Http\Controllers\Facturacion\ImportarEmpresaController::class, 'index'])->name('facturacion.empresas.importar');
+        Route::post('/importar', [\App\Http\Controllers\Facturacion\ImportarEmpresaController::class, 'store'])->name('facturacion.empresas.importar.store');
+        Route::get('/clientes', [\App\Http\Controllers\Facturacion\ImportarEmpresaController::class, 'clientes'])->name('facturacion.empresas.clientes');
+        Route::get('/ultimo-id-fecha', [\App\Http\Controllers\Facturacion\EmpresaController::class, 'ultimoIdFecha'])->name('facturacion.empresas.ultimo-id-fecha');
+    });
+    // ==================== FACTURACIÓN - SUCURSALES ====================
+    Route::prefix('facturacion/sucursales')->group(function () {
+        Route::get('/', [App\Http\Controllers\Facturacion\SucursalesHomeController::class, 'index'])->name('facturacion.sucursales.home');
+        Route::get('/create', [App\Http\Controllers\Facturacion\SucursalController::class, 'create'])->name('facturacion.sucursales.create');
+        Route::post('/', [App\Http\Controllers\Facturacion\SucursalController::class, 'store'])->name('facturacion.sucursales.store');
+        
+        // AJAX
+        Route::get('/clientes', [App\Http\Controllers\Facturacion\SucursalController::class, 'clientes'])->name('facturacion.sucursales.clientes');
+        Route::get('/plazas', [App\Http\Controllers\Facturacion\SucursalController::class, 'plazas'])->name('facturacion.sucursales.plazas');
+        Route::get('/empresa-por-cliente', [App\Http\Controllers\Facturacion\SucursalController::class, 'empresaPorCliente'])->name('facturacion.sucursales.empresaPorCliente');
+    });
+
+// Importar sucursales
+Route::prefix('facturacion/importar/sucursales')->group(function () {
+    Route::get('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'index'])->name('facturacion.importar.sucursales.index');
+    Route::post('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'store'])->name('facturacion.importar.sucursales.store');
+    
+    // AJAX
+    Route::get('/clientes', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'clientes'])->name('facturacion.importar.sucursales.clientes');
+    Route::get('/sucursales', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'sucursales'])->name('facturacion.importar.sucursales.lista');
+});
+        // ==================== LUGARES DE VENTA ====================
     Route::prefix('gestion/lugar-venta')->group(function () {
         Route::get('/', [\App\Http\Controllers\Gestion\Impuestos\LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
         Route::get('/create', [\App\Http\Controllers\Gestion\Impuestos\LugarVentaController::class, 'create'])->name('gestion.lugar-venta.create');
@@ -216,5 +249,5 @@ Route::middleware(['auth.operador'])->group(function () {
         
         // Almacenes
         Route::resource('almacen', \App\Http\Controllers\Gestion\Inventario\AlmacenController::class)->except(['show', 'create', 'edit']);
-});
+    });
 });

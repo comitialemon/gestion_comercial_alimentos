@@ -9,7 +9,7 @@ use Inertia\Inertia;
 
 class ContextoPdvController extends Controller
 {
-    private function f() { return DB::connection('facturacion'); } // Conexión a facturación
+    private function f() { return DB::connection('facturacion'); }
 
     public function index(Request $request)
     {
@@ -21,22 +21,23 @@ class ContextoPdvController extends Controller
                 ->with('error', 'No hay mapeo a facturación para esta empresa/sucursal.');
         }
 
-        // Obtener datos de la empresa desde facturación
         $empresa = $this->f()->table('empresa')
-            ->select('idEmpresa', 'nombre', 'nit')
+            ->select('idEmpresa', 'nombre', 'nit', 'ambiente', 'modalidad')
             ->where('idEmpresa', $empresaId)
+            ->first();
+
+        $sucursal = $this->f()->table('sucursal')
+            ->select('idSucursal', 'nombre', 'codigo')
+            ->where('idSucursal', $sucursalId)
             ->first();
 
         return Inertia::render('Contexto/PuntoVenta', [
             'empresa' => $empresa,
-            'sucursal_id' => $sucursalId,
+            'sucursal' => $sucursal,
             'selected' => ['punto_venta_id' => (int)(session('punto_venta_id') ?? 0)],
         ]);
     }
 
-    /**
-     * Lista de puntos de venta para la sucursal seleccionada
-     */
     public function lista(Request $request)
     {
         $sucursalId = (int) session('sucursal_id_facturacion');
@@ -55,16 +56,12 @@ class ContextoPdvController extends Controller
         return response()->json($pdvs);
     }
 
-    /**
-     * Guardar punto de venta seleccionado
-     */
     public function store(Request $request)
     {
         $request->validate(['punto_venta_id' => 'required|integer']);
 
         $sucursalId = (int) session('sucursal_id_facturacion');
         
-        // Validar que el PDV pertenezca a la sucursal
         $pdv = $this->f()->table('punto_venta')
             ->where('idPuntoVenta', $request->punto_venta_id)
             ->where('idSucursal', $sucursalId)
@@ -75,7 +72,11 @@ class ContextoPdvController extends Controller
             return back()->withErrors(['punto_venta_id' => 'Punto de venta inválido para esta sucursal.']);
         }
 
-        session(['punto_venta_id' => (int) $request->punto_venta_id]);
+        session([
+            'punto_venta_id' => (int) $pdv->idPuntoVenta,
+            'punto_venta_codigo' => $pdv->codigo,
+            'punto_venta_nombre' => $pdv->nombre,
+        ]);
 
         return redirect()->route('oficial.index')->with('success', 'Punto de venta seleccionado.');
     }

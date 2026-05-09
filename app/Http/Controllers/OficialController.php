@@ -28,4 +28,15 @@ class OficialController extends Controller
             ],
         ]);
     }
+    public function debug()
+    {
+        return response()->json([
+            'cliente_nit' => session('cliente_nit'),
+            'cliente_nombre' => session('cliente_nombre'),
+            'empresa_id_facturacion' => session('empresa_id_facturacion'),
+            'sucursal_id_facturacion' => session('sucursal_id_facturacion'),
+            'punto_venta_id' => session('punto_venta_id'),
+            'tiene_facturacion' => session('tiene_facturacion'),
+        ]);
+    }
 }
