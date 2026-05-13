@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Facturacion;
 use App\Http\Controllers\Controller;
 use App\Services\Facturacion\FacturacionApiService;
 use Inertia\Inertia;
+use Illuminate\Http\Request;
 
 class SiatCuisController extends Controller
 {
@@ -18,7 +19,6 @@ class SiatCuisController extends Controller
 
     public function vigente()
     {
-        // Obtener datos de contexto desde sesión
         $ctx = [
             'cliente_nombre' => session('cliente_nombre'),
             'cliente_nit' => session('cliente_nit'),
@@ -26,6 +26,7 @@ class SiatCuisController extends Controller
             'sucursal_numero' => session('sucursal_numero'),
             'punto_venta_nombre' => session('punto_venta_nombre'),
             'punto_venta_codigo' => session('punto_venta_codigo'),
+            'punto_venta_id' => session('punto_venta_id'),  // ← AGREGAR ESTO
             'ambiente' => session('ambiente_facturacion'),
             'modalidad' => session('modalidad_facturacion'),
         ];

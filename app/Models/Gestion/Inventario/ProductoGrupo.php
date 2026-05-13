@@ -22,4 +22,12 @@ class ProductoGrupo extends Model
     {
         return $this->belongsTo(ProductoLinea::class, 'IdLinea', 'IdLinea');
     }
+
+    /**
+     * Relación con productos (ProductoDetalle)
+     */
+    public function productos()
+    {
+        return $this->hasMany(ProductoDetalle::class, 'IdGrupoProducto', 'IdProductoGrupo');
+    }
 }

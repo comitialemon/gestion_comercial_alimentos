@@ -72,9 +72,10 @@ class ContextoPdvController extends Controller
             return back()->withErrors(['punto_venta_id' => 'Punto de venta inválido para esta sucursal.']);
         }
 
+        // ✅ GUARDAR EL ID DEL PUNTO DE VENTA EN SESIÓN
         session([
-            'punto_venta_id' => (int) $pdv->idPuntoVenta,
-            'punto_venta_codigo' => $pdv->codigo,
+            'punto_venta_id' => (int) $pdv->idPuntoVenta,      // ← ESTO ES CRÍTICO
+            'punto_venta_codigo' => (int) $pdv->codigo,
             'punto_venta_nombre' => $pdv->nombre,
         ]);
 

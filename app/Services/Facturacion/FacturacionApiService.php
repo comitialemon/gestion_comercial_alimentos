@@ -39,13 +39,11 @@ class FacturacionApiService
             'nit_emisor' => session('cliente_nit'),
             'empresa_id' => $empresaId,
             'sucursal_id' => session('sucursal_id_facturacion'),
-            'punto_venta_id' => session('punto_venta_id'),
+            'punto_venta_id' => (int) session('punto_venta_id'),  // ← Asegurar que sea int
             'token' => $empresa->token ?? null,
             'codigo_sistema' => $empresa->codigo_sistema ?? null,
             'ambiente' => $empresa->ambiente ?? null,
             'modalidad' => $empresa->modalidad ?? null,
-            'nombre' => $empresa->nombre ?? null,
-            'razon_social' => $empresa->razon_social ?? null,
         ]);
     }
     //==== METODOS PAGO ======
@@ -75,36 +73,26 @@ class FacturacionApiService
     {
         try {
             $nitEmisor = session('cliente_nit');
+            $puntoVentaId = session('punto_venta_id');  // ← AGREGAR ESTO
             
             if (!$nitEmisor) {
-                return [
-                    'success' => false,
-                    'message' => 'No hay empresa seleccionada',
-                    'data' => null
-                ];
+                return ['success' => false, 'message' => 'No hay empresa seleccionada', 'data' => null];
             }
             
             $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/siat/cuis/vigente', [
-                'nit_emisor' => $nitEmisor
+                'nit_emisor' => $nitEmisor,
+                'punto_venta_id' => $puntoVentaId  // ← ENVIAR ESTO
             ]);
             
             if ($response->successful()) {
                 return $response->json();
             }
             
-            return [
-                'success' => false,
-                'message' => 'Error al obtener CUIS: ' . $response->status(),
-                'data' => null
-            ];
+            return ['success' => false, 'message' => 'Error al obtener CUIS: ' . $response->status(), 'data' => null];
             
         } catch (\Exception $e) {
             Log::error('Error obteniendo CUIS vigente', ['error' => $e->getMessage()]);
-            return [
-                'success' => false,
-                'message' => $e->getMessage(),
-                'data' => null
-            ];
+            return ['success' => false, 'message' => $e->getMessage(), 'data' => null];
         }
     }
 
@@ -141,38 +129,30 @@ class FacturacionApiService
             ];
         }
     }
-
     public function getCuisHistorial()
     {
         try {
             $nitEmisor = session('cliente_nit');
+            $puntoVentaId = session('punto_venta_id');  // ← AGREGAR
             
             if (!$nitEmisor) {
-                return [
-                    'success' => false,
-                    'data' => []
-                ];
+                return ['success' => false, 'data' => []];
             }
             
             $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/siat/cuis/historial', [
-                'nit_emisor' => $nitEmisor
+                'nit_emisor' => $nitEmisor,
+                'punto_venta_id' => $puntoVentaId  // ← ENVIAR
             ]);
             
             if ($response->successful()) {
                 return $response->json();
             }
             
-            return [
-                'success' => false,
-                'data' => []
-            ];
+            return ['success' => false, 'data' => []];
             
         } catch (\Exception $e) {
             Log::error('Error obteniendo historial CUIS', ['error' => $e->getMessage()]);
-            return [
-                'success' => false,
-                'data' => []
-            ];
+            return ['success' => false, 'data' => []];
         }
     }
 
@@ -624,6 +604,174 @@ class FacturacionApiService
                 DB::connection('mysql_gestion_comercial_alimentos')->statement("USE `gestion_comercialalimentos`");
             } catch (\Exception $ignore) {}
             
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+    // ==================== PUNTOS DE VENTA ====================
+
+    public function getPuntosVenta($sucursalId)
+    {
+        try {
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/facturacion/puntos-venta', [
+                'idSucursal' => $sucursalId
+            ]);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'message' => 'Error al obtener puntos de venta', 'data' => []];
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo puntos de venta', ['error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage(), 'data' => []];
+        }
+    }
+
+    public function getTiposPuntoVenta()
+    {
+        try {
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/facturacion/tipos-punto-venta');
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'message' => 'Error al obtener tipos de punto de venta', 'data' => []];
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo tipos punto de venta', ['error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage(), 'data' => []];
+        }
+    }
+
+    public function getTipoPuntoVenta($id)
+    {
+        try {
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/facturacion/tipos-punto-venta/' . $id);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'message' => 'Error al obtener tipo de punto de venta'];
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo tipo punto de venta', ['error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+
+    public function getSucursal($id)
+    {
+        try {
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/facturacion/sucursales/' . $id);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'message' => 'Error al obtener sucursal'];
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo sucursal', ['error' => $e->getMessage()]);
+            return ['success' => false, 'message' => $e->getMessage()];
+        }
+    }
+    public function registrarPuntoVenta($data)
+    {
+        try {
+            // 🔥 AGREGAR ESTA LÍNEA - Convertir nit_emisor a string
+            if (isset($data['nit_emisor'])) {
+                $data['nit_emisor'] = (string) $data['nit_emisor'];
+            }
+            
+            // ✅ CORREGIDO
+            Log::info('📤 Enviando a facturación', [
+                'url' => $this->baseUrl . '/api/v1/facturacion/puntos-venta/registrar',
+                'data' => $data
+            ]);
+            
+            $response = Http::timeout(60)->post($this->baseUrl . '/api/v1/facturacion/puntos-venta/registrar', $data);
+            
+            // ✅ CORREGIDO
+            Log::info('📥 Respuesta de facturación - PUNTO VENTA', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+            
+            if ($response->successful()) {
+                $json = $response->json();
+                Log::info('✅ Punto de venta registrado exitosamente', ['response' => $json]);
+                return $json;
+            }
+            
+            Log::error('❌ Error en siat-app', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+            
+            return [
+                'success' => false,
+                'message' => 'Error HTTP: ' . $response->status() . ' - ' . $response->body()
+            ];
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Excepción en registrarPuntoVenta', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return [
+                'success' => false,
+                'message' => $e->getMessage()
+            ];
+        }
+    }
+    public function cerrarOperaciones(): array
+    {
+        try {
+            $params = $this->getSiatParams();
+            
+            $response = Http::timeout(60)->post($this->baseUrl . '/api/v1/siat/cierre', $params);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['ok' => false, 'mensaje' => 'HTTP ' . $response->status()];
+        } catch (\Exception $e) {
+            return ['ok' => false, 'mensaje' => $e->getMessage()];
+        }
+    }
+    public function getCuisActual()
+    {
+        try {
+            $params = $this->getSiatParams();
+            
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/siat/operaciones/cuis-actual', $params);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'data' => null];
+        } catch (\Exception $e) {
+            return ['success' => false, 'data' => null];
+        }
+    }
+
+    public function getCuisParaCufd($puntoVentaId)
+    {
+        try {
+            $nitEmisor = session('cliente_nit');
+            
+            $response = Http::timeout(30)->get($this->baseUrl . '/api/v1/facturacion/cufd/cuis-info', [
+                'nit_emisor' => $nitEmisor,
+                'punto_venta_id' => $puntoVentaId
+            ]);
+            
+            if ($response->successful()) {
+                return $response->json();
+            }
+            
+            return ['success' => false, 'message' => 'Error HTTP: ' . $response->status()];
+        } catch (\Exception $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
     }

@@ -16,15 +16,20 @@ class VentaLiquidacion extends Model
         'IdDiario',
         'IdIdentificador',
         'IdCuenta',
-        'Bolivianos',
-        'EfectivoRecibido',
+        'Bolivianos'
     ];
 
+    /**
+     * Relación con la venta
+     */
     public function venta()
     {
         return $this->belongsTo(Venta::class, 'IdVentas', 'IdVentas');
     }
 
+    /**
+     * Relación con el concepto de liquidación
+     */
     public function concepto()
     {
         return $this->belongsTo(VentaLiquidacionConcepto::class, 'IdCuenta', 'IdConceptoLiquidacion');

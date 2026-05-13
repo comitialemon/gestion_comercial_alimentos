@@ -1,14 +1,27 @@
 <script setup>
 import AppNavbar from '@/Components/Nav/AppNavbar.vue'
 import Sidebar from '@/Components/Menu/Sidebar.vue'
+import SimpleToast from '@/Components/SimpleToast.vue'  // 👈 IMPORTAR TOAST
 import { usePage } from '@inertiajs/vue3'
 import { useUiStore } from '@/stores/ui'
-import { computed } from 'vue'
-
+import { computed, ref, provide } from 'vue'  // 👈 AGREGAR ref y provide
+  
 const page = usePage()
 const ui   = useUiStore()
 
 const ctxReady = computed(() => page.props?.ctx?.ready === true)
+
+// 👇 AGREGAR ESTO PARA EL TOAST
+const toastRef = ref(null)
+
+provide('toast', {
+  success: (title, message) => toastRef.value?.success(title, message),
+  error: (title, message) => toastRef.value?.error(title, message),
+  warning: (title, message) => toastRef.value?.warning(title, message),
+  info: (title, message) => toastRef.value?.info(title, message)
+})
+// 👆 HASTA AQUÍ
+
 </script>
 
 <template>
@@ -23,14 +36,15 @@ const ctxReady = computed(() => page.props?.ctx?.ready === true)
     <div
       :class="[
         'transition-all',
-        // 👇 en desktop, solo deja margen cuando el sidebar está abierto
         ctxReady && ui.sidebarOpen ? 'lg:ml-72' : 'lg:ml-0',
       ]"
     >
-      <!-- Asegura que el contenido arranca debajo de la barra (56px) -->
       <main class="p-4">
         <slot />
       </main>
     </div>
+
+    <!-- 👇 AGREGAR EL TOAST AQUÍ (al final, fuera del main) -->
+    <SimpleToast ref="toastRef" />
   </div>
 </template>

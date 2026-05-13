@@ -26,6 +26,7 @@ class SiatCufdController extends Controller
             'sucursal_numero' => session('sucursal_numero'),
             'punto_venta_nombre' => session('punto_venta_nombre'),
             'punto_venta_codigo' => session('punto_venta_codigo'),
+            'punto_venta_id' => session('punto_venta_id'),  // ← ESTA LÍNEA FALTABA
             'ambiente' => session('ambiente_facturacion'),
             'modalidad' => session('modalidad_facturacion'),
         ];

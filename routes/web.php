@@ -20,6 +20,29 @@ use App\Http\Controllers\ContextoPdvController;                   // ← AGREGAR
 use App\Http\Controllers\Facturacion\SiatCuisController;          // ← AGREGAR ESTE
 use App\Http\Controllers\Facturacion\SiatCufdController;          // ← AGREGAR ESTE
 use App\Http\Controllers\Facturacion\SiatCatalogoController;      // ← AGREGAR ESTE
+// ========== NUEVOS CONTROLADORES PARA MENÚ TÁCTIL ==========
+use App\Http\Controllers\Gestion\Inventario\CategoriaProductoController;
+use App\Http\Controllers\Gestion\Inventario\AsignarProductoCategoriaController;
+use App\Http\Controllers\PuntoVenta\MenuTactilController;
+use App\Http\Controllers\PuntoVenta\NuevaVentaTactilController;
+use App\Http\Controllers\PuntoVenta\CarritoTactilController;
+use App\Http\Controllers\Facturacion\SucursalesHomeController;
+use App\Http\Controllers\Facturacion\SucursalController;
+use App\Http\Controllers\Facturacion\ImportarSucursalController;
+use App\Http\Controllers\Facturacion\PuntoVentaHomeController;
+use App\Http\Controllers\Facturacion\PuntoVentaController;
+use App\Http\Controllers\Facturacion\SiatOperacionesController;
+use App\Http\Controllers\Gestion\Impuestos\ComisionistaController;
+use App\Http\Controllers\Gestion\Inventario\ProductoEstadoController;
+use App\Http\Controllers\Gestion\Inventario\ProductoLineaController;
+use App\Http\Controllers\Gestion\Inventario\ProductoGrupoController;
+use App\Http\Controllers\Gestion\Inventario\ProductoGrupoAnalisisController;
+use App\Http\Controllers\Gestion\Inventario\TipoOperacionController;
+use App\Http\Controllers\Gestion\Inventario\UnidadMedidaController;
+use App\Http\Controllers\Gestion\Inventario\AlmacenController;      
+use App\Http\Controllers\Gestion\Impuestos\LugarVentaController;
+use App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController;
+use App\Http\Controllers\Gestion\Inventario\InventarioActualController;
 // ============================================
 // RUTAS PÚBLICAS
 // ============================================
@@ -35,8 +58,14 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // ============================================
 Route::middleware(['auth.operador'])->group(function () {
 
-    Route::get('/', fn() => redirect()->route('contexto.index'))->name('home');
-
+    // Agrega una ruta que verifique el contexto
+    Route::get('/', function () {
+        // Si ya tiene contexto, ir a venta táctil
+        if (session('cliente_id') && session('cliente_sucursal_id')) {
+            return redirect()->route('venta-tactil.nueva');
+        }
+        return redirect()->route('contexto.index');
+    })->name('home');
     // CONTEXTO
     Route::get('/contexto', [ContextoController::class, 'index'])->name('contexto.index');
     Route::get('/contexto/sucursales/{empresa}', [ContextoController::class, 'sucursales'])->name('contexto.sucursales');
@@ -197,15 +226,26 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/empresa-por-cliente', [App\Http\Controllers\Facturacion\SucursalController::class, 'empresaPorCliente'])->name('facturacion.sucursales.empresaPorCliente');
     });
 
-// Importar sucursales
-Route::prefix('facturacion/importar/sucursales')->group(function () {
-    Route::get('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'index'])->name('facturacion.importar.sucursales.index');
-    Route::post('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'store'])->name('facturacion.importar.sucursales.store');
-    
-    // AJAX
-    Route::get('/clientes', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'clientes'])->name('facturacion.importar.sucursales.clientes');
-    Route::get('/sucursales', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'sucursales'])->name('facturacion.importar.sucursales.lista');
-});
+    // Importar sucursales
+    Route::prefix('facturacion/importar/sucursales')->group(function () {
+        Route::get('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'index'])->name('facturacion.importar.sucursales.index');
+        Route::post('/', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'store'])->name('facturacion.importar.sucursales.store');
+        
+        // AJAX
+        Route::get('/clientes', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'clientes'])->name('facturacion.importar.sucursales.clientes');
+        Route::get('/sucursales', [App\Http\Controllers\Facturacion\ImportarSucursalController::class, 'sucursales'])->name('facturacion.importar.sucursales.lista');
+    });
+
+
+    // ==================== FACTURACIÓN - PUNTOS DE VENTA ====================
+    Route::prefix('facturacion/puntos-venta')->group(function () {
+        Route::get('/', [App\Http\Controllers\Facturacion\PuntoVentaHomeController::class, 'index'])->name('facturacion.puntos-venta.home');
+        Route::get('/crear', [App\Http\Controllers\Facturacion\PuntoVentaController::class, 'create'])->name('facturacion.puntos-venta.create');
+        Route::post('/', [App\Http\Controllers\Facturacion\PuntoVentaController::class, 'store'])->name('facturacion.puntos-venta.store');
+        
+        // AJAX
+        Route::get('/sucursales', [App\Http\Controllers\Facturacion\PuntoVentaController::class, 'sucursales'])->name('facturacion.puntos-venta.sucursales');
+    });
         // ==================== LUGARES DE VENTA ====================
     Route::prefix('gestion/lugar-venta')->group(function () {
         Route::get('/', [\App\Http\Controllers\Gestion\Impuestos\LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
@@ -250,4 +290,73 @@ Route::prefix('facturacion/importar/sucursales')->group(function () {
         // Almacenes
         Route::resource('almacen', \App\Http\Controllers\Gestion\Inventario\AlmacenController::class)->except(['show', 'create', 'edit']);
     });
+    // ==================== SIAT - OPERACIONES ====================
+    Route::prefix('facturacion/siat/operaciones')->group(function () {
+        Route::get('/cierre', [App\Http\Controllers\Facturacion\SiatOperacionesController::class, 'showCierre'])->name('facturacion.siat.operaciones.cierre');
+        Route::post('/cierre', [App\Http\Controllers\Facturacion\SiatOperacionesController::class, 'cierre'])->name('facturacion.siat.operaciones.cierre.post');
+    });
+    // CRUD Categorías de productos (menú táctil)
+    Route::prefix('gestion/inventario/categorias-producto')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Inventario\CategoriaProductoController::class, 'index'])
+            ->name('gestion.inventario.categorias-producto.index');
+        Route::post('/', [App\Http\Controllers\Gestion\Inventario\CategoriaProductoController::class, 'store'])
+            ->name('gestion.inventario.categorias-producto.store');
+        Route::put('/{id}', [App\Http\Controllers\Gestion\Inventario\CategoriaProductoController::class, 'update'])
+            ->name('gestion.inventario.categorias-producto.update');
+        Route::delete('/{id}', [App\Http\Controllers\Gestion\Inventario\CategoriaProductoController::class, 'destroy'])
+            ->name('gestion.inventario.categorias-producto.destroy');
+    });
+    // Asignar productos a categorías (menú táctil)
+    Route::get('/gestion/inventario/asignar-productos-categoria', 
+        [App\Http\Controllers\Gestion\Inventario\AsignarProductoCategoriaController::class, 'index'])
+        ->name('gestion.inventario.asignar-productos-categoria.index');
+
+    Route::post('/gestion/inventario/asignar-productos-categoria', 
+        [App\Http\Controllers\Gestion\Inventario\AsignarProductoCategoriaController::class, 'store'])
+        ->name('gestion.inventario.asignar-productos-categoria.store');
+    // Menú Táctil (para vendedores)
+    Route::prefix('venta-tactil')->group(function () {
+        Route::get('/', [App\Http\Controllers\PuntoVenta\MenuTactilController::class, 'index'])
+            ->name('venta-tactil.index');
+        Route::get('/categoria/{id}', [App\Http\Controllers\PuntoVenta\MenuTactilController::class, 'verCategoria'])
+            ->name('venta-tactil.categoria');
+    });
+    // Venta Táctil - Formulario de inicio
+    Route::get('/venta-tactil/nueva', [App\Http\Controllers\PuntoVenta\NuevaVentaTactilController::class, 'create'])
+        ->name('venta-tactil.nueva');
+    Route::post('/venta-tactil/nueva', [App\Http\Controllers\PuntoVenta\NuevaVentaTactilController::class, 'store'])
+        ->name('venta-tactil.nueva.store');
+
+    // Venta Táctil - Menú de productos
+    Route::prefix('venta-tactil')->group(function () {
+        Route::get('/', [App\Http\Controllers\PuntoVenta\MenuTactilController::class, 'index'])
+            ->name('venta-tactil.index');
+        Route::get('/categoria/{id}', [App\Http\Controllers\PuntoVenta\MenuTactilController::class, 'verCategoria'])
+            ->name('venta-tactil.categoria');
+    });
+
+    // Venta Táctil - Carrito
+    Route::get('/venta-tactil/carrito', [App\Http\Controllers\PuntoVenta\CarritoTactilController::class, 'index'])
+        ->name('venta-tactil.carrito');
+    // Venta Táctil - Pago
+    Route::get('/venta-tactil/pago', [PagoVentaController::class, 'createTactil'])
+        ->name('venta-tactil.pago');
+
+    // CRUD Conceptos de Liquidación (sin facturación)
+    Route::prefix('gestion/impuestos/liquidacion-concepto')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'index'])
+            ->name('gestion.impuestos.liquidacion-concepto.index');
+        Route::post('/', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'store'])
+            ->name('gestion.impuestos.liquidacion-concepto.store');
+        Route::put('/{id}', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'update'])
+            ->name('gestion.impuestos.liquidacion-concepto.update');  // 👈 Asegurar que es PUT
+        Route::delete('/{id}', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'destroy'])
+            ->name('gestion.impuestos.liquidacion-concepto.destroy');
+    });
+    // Inventario Actual
+    Route::get('/gestion/inventario/inventario-actual', [App\Http\Controllers\Gestion\Inventario\InventarioActualController::class, 'index'])
+        ->name('gestion.inventario.inventario-actual.index');
+    // Reporte de Inventario
+    Route::get('/gestion/inventario/reporte-inventario', [App\Http\Controllers\Gestion\Inventario\ReporteInventarioController::class, 'index'])
+        ->name('gestion.inventario.reporte-inventario.index');
 });

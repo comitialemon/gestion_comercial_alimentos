@@ -12,7 +12,7 @@ class ProductoLinea extends Model
 
     protected $fillable = ['IdEstado', 'Linea', 'IdCliente', 'IdSucursal', 'IdOperador'];
 
-    // ✅ CORREGIDO: Solo filtrar por IdCliente (NO por sucursal)
+    // Scope para filtrar por empresa
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
@@ -21,5 +21,13 @@ class ProductoLinea extends Model
     public function estado()
     {
         return $this->belongsTo(ProductoEstado::class, 'IdEstado', 'IdEstado');
+    }
+
+    /**
+     * Relación con productos (ProductoDetalle)
+     */
+    public function productos()
+    {
+        return $this->hasMany(ProductoDetalle::class, 'IdLineaProducto', 'IdLinea');
     }
 }
