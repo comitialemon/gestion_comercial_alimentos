@@ -45,6 +45,7 @@ use App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController;
 use App\Http\Controllers\Gestion\Inventario\InventarioActualController;
 use App\Http\Controllers\Gestion\Impuestos\CompraController;
 use App\Http\Controllers\Gestion\Inventario\AjusteInventarioController;
+use App\Http\Controllers\Gestion\Contabilidad\EgresoController;
 
 // ============================================
 // RUTAS PÚBLICAS
@@ -387,4 +388,26 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
         Route::post('/gestion/inventario/ajustes/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
     });
+
+    // ==================== EGRESOS ====================
+    Route::prefix('gestion/egresos')->group(function () {
+        Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');
+        Route::get('/create', [EgresoController::class, 'create'])->name('egresos.create');
+        Route::post('/', [EgresoController::class, 'store'])->name('egresos.store');
+        Route::get('/{id}/edit', [EgresoController::class, 'edit'])->name('egresos.edit');
+        Route::put('/{id}', [EgresoController::class, 'update'])->name('egresos.update');
+        Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])->name('egresos.pdf');
+    });
+
+    Route::get('/debug-session', function () {
+    return response()->json([
+        // Variables que deberían estar en sesión
+        'global_empresa_nombre' => session('global_empresa_nombre'),
+        'global_sucursal_nombre' => session('global_sucursal_nombre'),
+        'cliente_id' => session('cliente_id'),
+        'cliente_sucursal_id' => session('cliente_sucursal_id'),
+        'operador_nombre' => session('operador_nombre'),
+        'tiene_facturacion' => session('tiene_facturacion'),
+    ]);
+});
 });

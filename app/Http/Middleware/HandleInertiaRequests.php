@@ -15,13 +15,48 @@ class HandleInertiaRequests extends Middleware
 
     /** Conexión Gestión */
     private function g() { return DB::connection('mysql_gestion_comercial_alimentos'); }
-
+    
     public function share(Request $request): array
     {
+        // Obtener el nombre completo del operador
+        $operadorNombre = session('operador_nombre');
+        
+        if (!$operadorNombre && session('operador_id')) {
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as o')
+                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('o.IdOperador', session('operador_id'))
+                ->first();
+            $operadorNombre = $operador->Nombre ?? session('operador_nombre');
+        }
+
+        // 🔥 CARGAR EMPRESA Y SUCURSAL DESDE BD SI NO ESTÁN EN SESIÓN 🔥
+        $empresaNombre = session('global_empresa_nombre');
+        $sucursalNombre = session('global_sucursal_nombre');
+        
+        if (!$empresaNombre && session('cliente_id')) {
+            $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente')
+                ->where('IdCliente', session('cliente_id'))
+                ->first();
+            $empresaNombre = $empresa->Nombre ?? null;
+            // Guardar en sesión para futuras peticiones
+            if ($empresaNombre) session(['global_empresa_nombre' => $empresaNombre]);
+        }
+        
+        if (!$sucursalNombre && session('cliente_sucursal_id')) {
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+                ->first();
+            $sucursalNombre = $sucursal->Nombre ?? null;
+            if ($sucursalNombre) session(['global_sucursal_nombre' => $sucursalNombre]);
+        }
+
         $auth = [
             'operador' => [
                 'id'      => (int) session('operador_id'),
-                'nombre'  => (string) session('operador_nombre'),
+                'nombre'  => (string) $operadorNombre,
                 'tipo_id' => (int) session('operador_tipo_id'),
             ],
         ];
@@ -35,17 +70,13 @@ class HandleInertiaRequests extends Middleware
             'ready' => (bool) (session()->has('cliente_id') && session()->has('cliente_sucursal_id')),
         ];
 
-        $empresaNombre  = $ctx['global_empresa_nombre']  ?? null;
-        $sucursalNombre = $ctx['global_sucursal_nombre'] ?? null;
-        $operadorNombre = $auth['operador']['nombre']    ?? null;
-
         // Menú
         $menu = [];
         if ($ctx['ready'] && !empty($auth['operador']['tipo_id'])) {
             $menu = $this->menuTreeFor(
                 (int)$auth['operador']['tipo_id'],
                 (int)$auth['operador']['id'],
-                (int)$ctx['cliente_id']   // <- importante para menu_operador
+                (int)$ctx['cliente_id']
             );
         }
 
@@ -61,19 +92,13 @@ class HandleInertiaRequests extends Middleware
 
     /* ====================== MENÚ ====================== */
 
-    /**
-     * 1) Si hay filas en gestion.menu_operador para (operador, cliente) => usar esas (por operador)
-     * 2) Si no, usar columna según tipo (todos_operador_tipo.Detalle => columna de menu_administrador)
-     */
     private function menuTreeFor(int $tipoId, int $operadorId, int $clienteId): array
     {
-        // ¿Tiene menú asignado por operador para este cliente?
         $idsOp = $this->idsMenuPorOperador($operadorId, $clienteId);
 
         $modo = 'por_columna';
         if (!empty($idsOp)) $modo = 'por_operador';
 
-        // Resolver columna (por si no hay asignaciones por operador)
         $columna = $modo === 'por_columna'
             ? $this->resolverColumnaMenu($tipoId)
             : '__POR_OPERADOR__';
@@ -90,7 +115,6 @@ class HandleInertiaRequests extends Middleware
             return [];
         }
 
-        // Cache key
         $cacheKey = $modo === 'por_operador'
             ? "menu_tree_op_{$operadorId}_cli_{$clienteId}"
             : "menu_tree_tipo_{$tipoId}_{$columna}";
@@ -99,7 +123,6 @@ class HandleInertiaRequests extends Middleware
             return session($cacheKey);
         }
 
-        // Items
         $items = $modo === 'por_operador'
             ? $this->itemsPorOperadorIds($idsOp)
             : $this->itemsPorColumna($columna);
@@ -122,10 +145,6 @@ class HandleInertiaRequests extends Middleware
         return $tree;
     }
 
-    /**
-     * Mapea Detalle -> columna real de menu_administrador.
-     * Normaliza y aplica excepciones (según tus tablas).
-     */
     private function resolverColumnaMenu(int $tipoId): string
     {
         $detalle = $this->g()->table('todos_operador_tipo')
@@ -134,18 +153,15 @@ class HandleInertiaRequests extends Middleware
 
         $detalle = is_string($detalle) ? trim($detalle) : '';
 
-        // columnas reales (excluyendo estructurales)
         $colsReal = $this->columnasMenu();
         $mapNorm  = [];
         foreach ($colsReal as $c) $mapNorm[$this->norm($c)] = $c;
 
-        // EXCEPCIONES según tus capturas
         $exc = [
             $this->norm('SuperUsuario')         => 'Administrador',
             $this->norm('MenuPorOperador')      => '__POR_OPERADOR__',
             $this->norm('VentaMayoristas')      => 'VentaMayorista',
             $this->norm('VentaMonitorCocina')   => 'MonitorCocina',
-            // si no habrá columna propia para entregas de momento, reusamos monitor cocina:
             $this->norm('VentaMonitorEntregas') => 'MonitorCocina',
         ];
 
@@ -174,7 +190,6 @@ class HandleInertiaRequests extends Middleware
         return $col;
     }
 
-    /** Preferencia de fallback: ajusta el orden a tu gusto */
     private function fallbackPreferible(array $colsReal): string
     {
         $normCols = [];
@@ -187,13 +202,11 @@ class HandleInertiaRequests extends Middleware
         return $colsReal[0] ?? '__NONE__';
     }
 
-    /** Normaliza para comparar: ascii+lower+sin símbolos */
     private function norm(string $s): string
     {
         return Str::of($s)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', '')->value();
     }
 
-    /** Devuelve columnas booleanas de permisos (excluye estructurales) */
     private function columnasMenu(): array
     {
         $all = Schema::connection('mysql_gestion_comercial_alimentos')
@@ -210,9 +223,6 @@ class HandleInertiaRequests extends Middleware
         return array_values(array_filter($all, fn($c) => !in_array($c, $excluir, true)));
     }
 
-    /* ---------- POR OPERADOR (menu_operador) ---------- */
-
-    /** Ids de menú asignados a un operador para un cliente concreto */
     private function idsMenuPorOperador(int $operadorId, int $clienteId): array
     {
         $schema = Schema::connection('mysql_gestion_comercial_alimentos');
@@ -226,7 +236,6 @@ class HandleInertiaRequests extends Middleware
             ->all();
     }
 
-    /** Carga items por lista de IDs (para modo operador) */
     private function itemsPorOperadorIds(array $ids): array
     {
         if (empty($ids)) return [];
@@ -246,8 +255,6 @@ class HandleInertiaRequests extends Middleware
         return $rows->map(fn($r) => (array)$r)->all();
     }
 
-    /* ---------- POR COLUMNA (tipo -> columna) ---------- */
-
     private function itemsPorColumna(string $col): array
     {
         $rows = $this->g()->table('menu_administrador')
@@ -265,9 +272,6 @@ class HandleInertiaRequests extends Middleware
         return $rows->map(fn($r) => (array)$r)->all();
     }
 
-    /* ---------- utilidades ---------- */
-
-    /** Asegura que todos los padres estén presentes */
     private function asegurarPadres(array $items): array
     {
         $byId = collect($items)->keyBy('id');
@@ -306,7 +310,6 @@ class HandleInertiaRequests extends Middleware
         return $byId->values()->sortBy(['parent','node_order'])->values()->all();
     }
 
-    /** Convierte plano -> árbol (Parent=0 raíz) */
     private function aArbol(array $items): array
     {
         $group = collect($items)->groupBy('parent');

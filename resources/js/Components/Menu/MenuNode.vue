@@ -1,4 +1,3 @@
-<!-- resources/js/Components/Menu/MenuNode.vue -->
 <script setup name="MenuNode">
 import { computed, ref } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
@@ -13,18 +12,16 @@ const props = defineProps({
 const page = usePage()
 const open = ref(false)
 
-// Helpers
 const rawHref = computed(() =>
   props.node?.href ?? props.node?.link ?? props.node?.Link ?? ''
 )
 
 const isExternal = computed(() =>
   /^https?:\/\//i.test(rawHref.value || '') ||
-  (rawHref.value || '').startsWith('mailto:') ||
-  (rawHref.value || '').startsWith('#')
+  rawHref.value?.startsWith('mailto:') ||
+  rawHref.value?.startsWith('#')
 )
 
-// Normaliza: si es interno, asegura "/" inicial y quita duplicados
 const href = computed(() => {
   const h = String(rawHref.value || '').trim()
   if (!h) return ''
@@ -70,19 +67,23 @@ const toggle = () => {
       :href="href || undefined"
       :target="isExternal ? '_blank' : undefined"
       :rel="isExternal ? 'noopener' : undefined"
-      class="group flex w-full items-center justify-between rounded px-2 py-1.5 hover:bg-slate-100 text-[13px] leading-4"
-      :class="{ 'bg-slate-100 font-medium': isActive(href) }"
+      class="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] leading-4 transition-colors"
+      :class="[
+        isActive(href) 
+          ? 'bg-guindo-100 text-guindo-800 font-medium' 
+          : 'text-gray-700 hover:bg-guindo-50 hover:text-guindo-700'
+      ]"
       @click="toggle"
     >
       <span class="truncate" :title="label">
         <span v-if="!collapsed">{{ label }}</span>
         <span v-else class="font-semibold">{{ String(label || '').slice(0,1) }}</span>
       </span>
-      <span v-if="children.length" class="ml-2 text-[18px] opacity-60">▸</span>
+      <span v-if="children.length" class="ml-2 text-sm opacity-60 transition-transform" :class="{ 'rotate-90': open }">▶</span>
     </component>
 
     <transition name="fade">
-      <ul v-if="children.length && open" class="ml-2 border-l pl-2">
+      <ul v-if="children.length && open" class="ml-3 border-l border-guindo-200 pl-2">
         <MenuNode
           v-for="c in children"
           :key="c.id ?? c.Id"
@@ -96,7 +97,7 @@ const toggle = () => {
   </li>
 </template>
 
-<style>
-.fade-enter-active, .fade-leave-active { transition: all .15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-2px); }
+<style scoped>
+.fade-enter-active, .fade-leave-active { transition: all 0.15s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-4px); }
 </style>

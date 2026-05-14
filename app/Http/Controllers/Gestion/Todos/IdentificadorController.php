@@ -57,7 +57,15 @@ class IdentificadorController extends Controller
             'FechaEdita' => now(),
         ]);
 
-        return redirect()->back()->with('success', 'Identificador creado correctamente.');
+        return response()->json([
+            'success' => true,
+            'message' => 'Identificador creado correctamente',
+            'identificador' => [
+                'IdIdentificador' => $identificador->IdIdentificador,
+                'CI_NIT' => $identificador->CI_NIT,
+                'Nombre' => $identificador->Nombre,
+            ]
+        ]);
     }
 
     /**

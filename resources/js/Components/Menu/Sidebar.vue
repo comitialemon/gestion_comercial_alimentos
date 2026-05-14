@@ -1,4 +1,3 @@
-<!-- resources/js/Components/Menu/Sidebar.vue -->
 <script setup>
 import { computed } from 'vue'
 import { usePage } from '@inertiajs/vue3'
@@ -18,21 +17,24 @@ const menuItems = computed(() => props.items.length ? props.items : (page.props?
 
 <template>
   <template v-if="ctxReady">
+    <!-- Overlay móvil -->
     <div
       v-if="ui.sidebarMobileOpen"
-      class="fixed inset-0 z-40 bg-black/30 lg:hidden"
+      class="fixed inset-0 z-40 bg-black/50 lg:hidden"
       @click="ui.closeMobile()"
     />
+    
+    <!-- Sidebar -->
     <aside
-      class="fixed top-[56px] z-50 h-[calc(100vh-56px)] w-64 overflow-y-auto bg-white shadow
+      class="fixed top-[56px] z-50 h-[calc(100vh-56px)] w-64 overflow-y-auto bg-white shadow-lg
              transition-transform duration-200 ease-out
-             lg:top-[56px] lg:h-[calc(100vh-56px)] lg:w-64 lg:shadow"
+             lg:top-[56px] lg:h-[calc(100vh-56px)] lg:w-64"
       :class="[
         ui.sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full',
         ui.sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full',
       ]"
     >
-      <nav class="p-1.5">
+      <nav class="p-2">
         <ul class="space-y-0.5">
           <MenuNode
             v-for="it in menuItems"

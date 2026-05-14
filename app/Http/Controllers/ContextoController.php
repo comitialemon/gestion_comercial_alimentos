@@ -83,8 +83,9 @@ class ContextoController extends Controller
             ->select('IdClienteSucursal','Nombre','NumeroSucursal', 'facturacion_habilitada')
             ->first();
 
-        // Guardar datos de gestión (SIEMPRE)
+        // 🔥 GUARDAR DATOS DE GESTIÓN CON VARIABLES GLOBALES 🔥
         session([
+            // Variables para el contexto (usadas internamente)
             'cliente_id'             => (int)$empresa?->IdCliente,
             'cliente_nombre'         => $empresa?->Nombre,
             'cliente_nit'            => $empresa?->NIT,
@@ -92,6 +93,11 @@ class ContextoController extends Controller
             'cliente_sucursal_nombre'=> $sucursal?->Nombre,
             'cliente_sucursal_numero'=> $sucursal?->NumeroSucursal,
             'tiene_facturacion'      => (bool)$sucursal?->facturacion_habilitada,
+            
+            // 🔥 VARIABLES GLOBALES PARA EL NAVBAR 🔥
+            'global_empresa_nombre'  => $empresa?->Nombre,
+            'global_sucursal_nombre' => $sucursal?->Nombre,
+            'global_sucursal_numero' => $sucursal?->NumeroSucursal,
         ]);
 
         // Limpiar cache del menú
@@ -111,7 +117,6 @@ class ContextoController extends Controller
                 ->first();
 
             if ($mapEmp && $mapSuc) {
-                // ✅ OBTENER DATOS DE FACTURACIÓN CORRECTAMENTE
                 $empresaFact = $this->f()->table('empresa')
                     ->where('idEmpresa', $mapEmp->idEmpresa)
                     ->first();
@@ -120,7 +125,6 @@ class ContextoController extends Controller
                     ->where('idSucursal', $mapSuc->idSucursal)
                     ->first();
 
-                // ✅ GUARDAR TODOS LOS DATOS DE FACTURACIÓN
                 session([
                     'empresa_id_facturacion'  => (int)$mapEmp->idEmpresa,
                     'sucursal_id_facturacion' => (int)$mapSuc->idSucursal,
@@ -130,7 +134,6 @@ class ContextoController extends Controller
                     'modalidad_facturacion'   => $empresaFact?->modalidad,
                 ]);
                 
-                // Limpiar PDV anterior
                 session()->forget(['punto_venta_id', 'punto_venta_codigo', 'punto_venta_nombre']);
                 
                 $intended = $request->session()->pull('url.intended', route('contexto.pdv.index'));

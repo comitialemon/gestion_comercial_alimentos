@@ -31,9 +31,16 @@ class ContextoPdvController extends Controller
             ->where('idSucursal', $sucursalId)
             ->first();
 
+        // También obtener la sucursal de gestión para mostrar el nombre
+        $sucursalGestion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+            ->first();
+
         return Inertia::render('Contexto/PuntoVenta', [
             'empresa' => $empresa,
             'sucursal' => $sucursal,
+            'sucursalGestion' => $sucursalGestion,
             'selected' => ['punto_venta_id' => (int)(session('punto_venta_id') ?? 0)],
         ]);
     }
@@ -72,9 +79,8 @@ class ContextoPdvController extends Controller
             return back()->withErrors(['punto_venta_id' => 'Punto de venta inválido para esta sucursal.']);
         }
 
-        // ✅ GUARDAR EL ID DEL PUNTO DE VENTA EN SESIÓN
         session([
-            'punto_venta_id' => (int) $pdv->idPuntoVenta,      // ← ESTO ES CRÍTICO
+            'punto_venta_id' => (int) $pdv->idPuntoVenta,
             'punto_venta_codigo' => (int) $pdv->codigo,
             'punto_venta_nombre' => $pdv->nombre,
         ]);

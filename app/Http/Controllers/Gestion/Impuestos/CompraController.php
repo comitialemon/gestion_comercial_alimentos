@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use TCPDF;
 
 class CompraController extends Controller
 {
@@ -79,7 +80,6 @@ class CompraController extends Controller
             'productos' => $productos,
         ]);
     }
-
     /**
      * Crear una nueva compra (primera vez que se guarda cabecera)
      */

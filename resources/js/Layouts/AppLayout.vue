@@ -1,17 +1,27 @@
 <script setup>
 import AppNavbar from '@/Components/Nav/AppNavbar.vue'
 import Sidebar from '@/Components/Menu/Sidebar.vue'
-import SimpleToast from '@/Components/SimpleToast.vue'  // 👈 IMPORTAR TOAST
+import SimpleToast from '@/Components/SimpleToast.vue'
 import { usePage } from '@inertiajs/vue3'
 import { useUiStore } from '@/stores/ui'
-import { computed, ref, provide } from 'vue'  // 👈 AGREGAR ref y provide
-  
+import { computed, ref, provide } from 'vue'
+
 const page = usePage()
-const ui   = useUiStore()
+const ui = useUiStore()
 
-const ctxReady = computed(() => page.props?.ctx?.ready === true)
+// Verificar si la ruta actual es de contexto o login
+const rutaActual = computed(() => page.component)
+const rutasSinMenu = [
+  'Contexto/Index',
+  'Contexto/PuntoVenta',
+  'Gestion/Todos/Operador/Login'
+]
 
-// 👇 AGREGAR ESTO PARA EL TOAST
+const mostrarMenu = computed(() => {
+  return page.props?.ctx?.ready === true && !rutasSinMenu.includes(rutaActual.value)
+})
+
+// Toast
 const toastRef = ref(null)
 
 provide('toast', {
@@ -20,8 +30,6 @@ provide('toast', {
   warning: (title, message) => toastRef.value?.warning(title, message),
   info: (title, message) => toastRef.value?.info(title, message)
 })
-// 👆 HASTA AQUÍ
-
 </script>
 
 <template>
@@ -29,14 +37,14 @@ provide('toast', {
     <!-- Barra superior fija -->
     <AppNavbar />
 
-    <!-- Sidebar -->
-    <Sidebar v-if="ctxReady" />
+    <!-- Sidebar (solo en páginas con contexto) -->
+    <Sidebar v-if="mostrarMenu" />
 
     <!-- Contenido -->
     <div
       :class="[
         'transition-all',
-        ctxReady && ui.sidebarOpen ? 'lg:ml-72' : 'lg:ml-0',
+        mostrarMenu && ui.sidebarOpen ? 'lg:ml-72' : 'lg:ml-0',
       ]"
     >
       <main class="p-4">
@@ -44,7 +52,7 @@ provide('toast', {
       </main>
     </div>
 
-    <!-- 👇 AGREGAR EL TOAST AQUÍ (al final, fuera del main) -->
+    <!-- Toast -->
     <SimpleToast ref="toastRef" />
   </div>
 </template>

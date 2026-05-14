@@ -22,7 +22,8 @@ class LoginController extends Controller
 
         $operador = Operador::query()
             ->where('NombreAcceso', $request->usuario)
-            ->where('Clave', $request->clave) // sin hash según tu tabla
+            ->where('Clave', $request->clave)
+            ->with('identificador')  // ← Cargar el identificador
             ->first();
 
         if (! $operador) {
@@ -32,10 +33,10 @@ class LoginController extends Controller
         // 🔒 evita session fixation
         $request->session()->regenerate();
 
-        // Guardar datos del operador
+        // Guardar datos del operador (usando el nombre del identificador)
         session([
             'operador_id'      => (int) $operador->IdOperador,
-            'operador_nombre'  => (string) $operador->NombreAcceso,
+            'operador_nombre'  => $operador->identificador->Nombre ?? $operador->NombreAcceso,
             'operador_tipo_id' => (int) $operador->IdOperadorTipo,
         ]);
 
@@ -59,11 +60,10 @@ class LoginController extends Controller
             }
         }
 
-        // Limpia todo lo demás de ser necesario…
+        // Limpia todo lo demás
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
         return redirect()->route('login.show');
     }
-
 }
