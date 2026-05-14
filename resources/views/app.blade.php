@@ -24,6 +24,15 @@
             // Función para cerrar sesión
             function forzarLogout() {
                 const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                
+                // Evitar múltiples redirecciones
+                if (window._logoutEnProgreso) return;
+                window._logoutEnProgreso = true;
+                
+                // Limpiar localStorage y sessionStorage
+                localStorage.clear();
+                sessionStorage.clear();
+                
                 if (token) {
                     fetch('/logout', {
                         method: 'POST',
@@ -36,50 +45,88 @@
                 }
             }
             
-            // 🔥 Si NO está en login, verificar la sesión
-            if (!esLogin) {
-                // Verificar sesión cada vez que se carga la página
-                fetch('/check-session')
-                    .then(res => res.json())
-                    .then(data => {
-                        // Si no hay sesión y no está en contexto, redirigir a login
-                        if (!data.has_session && !esContexto) {
-                            forzarLogout();
-                        }
-                    })
-                    .catch(() => {
-                        if (!esContexto) forzarLogout();
-                    });
+            // 🔥 Verificar sesión activa
+            function verificarSesion(redirigirSiNoHay = true) {
+                return fetch('/check-session', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' },
+                    cache: 'no-store' // No usar caché
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.has_session && redirigirSiNoHay && !esLogin) {
+                        forzarLogout();
+                        return false;
+                    }
+                    return data.has_session;
+                })
+                .catch(() => {
+                    if (redirigirSiNoHay && !esLogin) {
+                        forzarLogout();
+                        return false;
+                    }
+                    return false;
+                });
             }
             
-            // 🔥 Detectar cuando se usa el botón "adelante"
+            // 🔥 Verificar al cargar la página (sin caché)
+            verificarSesion(true);
+            
+            // 🔥 Detectar cuando la página se carga desde caché (botón atrás/adelante)
             let paginaCargadaDesdeCache = false;
             
             window.addEventListener('pageshow', function(event) {
                 if (event.persisted) {
                     paginaCargadaDesdeCache = true;
-                    // Si la página vino de caché, verificar sesión
-                    fetch('/check-session')
-                        .then(res => res.json())
-                        .then(data => {
-                            if (!data.has_session) {
-                                forzarLogout();
-                            }
-                        })
-                        .catch(() => forzarLogout());
+                    // Forzar verificación (sin caché)
+                    fetch('/check-session', {
+                        headers: { 'Cache-Control': 'no-cache' }
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.has_session && !esLogin) {
+                            forzarLogout();
+                        }
+                    })
+                    .catch(() => {
+                        if (!esLogin) forzarLogout();
+                    });
                 }
             });
             
-            // 🔥 También prevenir que el usuario pueda volver con el ratón (popstate)
-            window.addEventListener('popstate', function() {
-                if (!esContexto) {
-                    fetch('/check-session')
-                        .then(res => res.json())
-                        .then(data => {
-                            if (!data.has_session) {
+            // 🔥 Prevenir que el usuario navegue con atrás/adelante si no hay sesión
+            let ultimoEstado = true;
+            
+            setInterval(() => {
+                fetch('/check-session', { cache: 'no-store' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (ultimoEstado !== data.has_session) {
+                            ultimoEstado = data.has_session;
+                            if (!data.has_session && !esLogin) {
                                 forzarLogout();
                             }
-                        });
+                        }
+                    })
+                    .catch(() => {
+                        if (!esLogin) forzarLogout();
+                    });
+            }, 2000); // Verificar cada 2 segundos
+            
+            // 🔥 Manejar evento popstate (navegación atrás/adelante)
+            window.addEventListener('popstate', function() {
+                verificarSesion(true);
+            });
+            
+            // 🔥 Prevenir que la página se almacene en bfcache (back-forward cache)
+            window.addEventListener('beforeunload', function() {
+                // No hacer nada, solo asegurar que la verificación funcione
+            });
+            
+            // 🔥 Detectar si la página ya no tiene sesión visiblemente
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    verificarSesion(true);
                 }
             });
         })();
@@ -89,7 +136,6 @@
             const originalFetch = window.fetch;
             window.fetch = function(...args) {
                 return originalFetch.apply(this, args).then(response => {
-                    // Si la respuesta tiene un nuevo token en los headers, actualizar el meta tag
                     const newToken = response.headers.get('X-CSRF-TOKEN');
                     if (newToken) {
                         const meta = document.querySelector('meta[name="csrf-token"]');
