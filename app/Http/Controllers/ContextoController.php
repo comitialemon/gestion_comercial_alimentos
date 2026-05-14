@@ -53,13 +53,20 @@ class ContextoController extends Controller
 
         return response()->json($sucursales);
     }
-
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'empresa_id'  => ['required','integer'],
-            'sucursal_id' => ['required','integer'],
-        ]);
+        // 🔥 RECIBIR DATOS DE FORM DATA O JSON
+        $empresaId = $request->input('empresa_id');
+        $sucursalId = $request->input('sucursal_id');
+        
+        if (!$empresaId || !$sucursalId) {
+            return response()->json(['error' => 'Faltan datos'], 422);
+        }
+        
+        $data = [
+            'empresa_id' => $empresaId,
+            'sucursal_id' => $sucursalId
+        ];
 
         $operadorId = (int) $request->session()->get('operador_id');
 
@@ -70,7 +77,7 @@ class ContextoController extends Controller
             ->exists();
 
         if (! $asignada) {
-            return back()->withErrors(['contexto' => 'No tienes asignada esa empresa/sucursal.']);
+            return response()->json(['error' => 'No tienes asignada esa empresa/sucursal.'], 422);
         }
 
         $empresa = $this->g()->table('todos_cliente')
@@ -83,9 +90,7 @@ class ContextoController extends Controller
             ->select('IdClienteSucursal','Nombre','NumeroSucursal', 'facturacion_habilitada')
             ->first();
 
-        // 🔥 GUARDAR DATOS DE GESTIÓN CON VARIABLES GLOBALES 🔥
         session([
-            // Variables para el contexto (usadas internamente)
             'cliente_id'             => (int)$empresa?->IdCliente,
             'cliente_nombre'         => $empresa?->Nombre,
             'cliente_nit'            => $empresa?->NIT,
@@ -93,14 +98,11 @@ class ContextoController extends Controller
             'cliente_sucursal_nombre'=> $sucursal?->Nombre,
             'cliente_sucursal_numero'=> $sucursal?->NumeroSucursal,
             'tiene_facturacion'      => (bool)$sucursal?->facturacion_habilitada,
-            
-            // 🔥 VARIABLES GLOBALES PARA EL NAVBAR 🔥
             'global_empresa_nombre'  => $empresa?->Nombre,
             'global_sucursal_nombre' => $sucursal?->Nombre,
             'global_sucursal_numero' => $sucursal?->NumeroSucursal,
         ]);
 
-        // Limpiar cache del menú
         foreach (array_keys(session()->all()) as $k) {
             if (str_starts_with($k, 'menu_tree_')) session()->forget($k);
         }
@@ -136,17 +138,25 @@ class ContextoController extends Controller
                 
                 session()->forget(['punto_venta_id', 'punto_venta_codigo', 'punto_venta_nombre']);
                 
-                $intended = $request->session()->pull('url.intended', route('contexto.pdv.index'));
-                return redirect()->to($intended)->with('success', 'Selecciona punto de venta');
+                return response()->json([
+                    'success' => true,
+                    'redirect' => route('contexto.pdv.index')
+                ]);
             } else {
                 session(['error_facturacion' => 'Facturación habilitada sin mapeo']);
-                $intended = $request->session()->pull('url.intended', route('oficial.index'));
-                return redirect()->to($intended)->with('warning', 'Facturación no configurada');
+                return response()->json([
+                    'success' => true,
+                    'redirect' => route('oficial.index'),
+                    'warning' => 'Facturación no configurada'
+                ]);
             }
         }
 
         session()->forget(['empresa_id_facturacion', 'sucursal_id_facturacion', 'punto_venta_id', 'punto_venta_codigo', 'punto_venta_nombre']);
-        $intended = $request->session()->pull('url.intended', route('oficial.index'));
-        return redirect()->to($intended)->with('success', 'Contexto actualizado');
+        
+        return response()->json([
+            'success' => true,
+            'redirect' => route('oficial.index')
+        ]);
     }
 }

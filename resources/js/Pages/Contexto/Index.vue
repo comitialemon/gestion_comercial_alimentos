@@ -1,6 +1,5 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
-import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 
 const props = defineProps({
@@ -12,35 +11,80 @@ const props = defineProps({
 const empresaId  = ref(props.selected?.empresa_id  ?? '')
 const sucursalId = ref(props.selected?.sucursal_id ?? '')
 const sucursales = ref([])
+const guardando = ref(false)
 
 const cargarSucursales = async (idEmpresa) => {
   sucursales.value = []
   if (!idEmpresa) return
-  const { data } = await axios.get(`/contexto/sucursales/${idEmpresa}`)
-  sucursales.value = Array.isArray(data) ? data : []
+  try {
+    const { data } = await axios.get(`/contexto/sucursales/${idEmpresa}`)
+    sucursales.value = Array.isArray(data) ? data : []
+  } catch (error) {
+    console.error('Error cargando sucursales:', error)
+  }
 }
 
 watch(empresaId, async (val) => {
   sucursalId.value = ''
-  await cargarSucursales(val)
+  if (val) {
+    await cargarSucursales(val)
+  }
 })
 
+// 🔥 Forzar recarga después del login
 onMounted(async () => {
-  if (empresaId.value) await cargarSucursales(empresaId.value)
+  // Si venimos del login con el parámetro reload, forzar recarga real
+  if (window.location.search.includes('reload=1')) {
+    window.location.href = '/contexto'
+    return
+  }
+  
+  if (empresaId.value) {
+    await cargarSucursales(empresaId.value)
+  }
 })
 
-const guardar = () => {
-  router.post('/contexto', {
-    empresa_id:  empresaId.value,
-    sucursal_id: sucursalId.value,
-  })
+const guardar = async () => {
+  if (!empresaId.value || !sucursalId.value) {
+    alert('Selecciona empresa y sucursal')
+    return
+  }
+  
+  if (guardando.value) return
+  guardando.value = true
+  
+  try {
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    
+    const response = await axios.post('/contexto', {
+      _token: token,
+      empresa_id: empresaId.value,
+      sucursal_id: sucursalId.value
+    })
+    
+    if (response.data.redirect) {
+      window.location.href = response.data.redirect
+    } else {
+      alert(response.data.message || 'Error al guardar')
+      guardando.value = false
+    }
+  } catch (error) {
+    console.error('Error:', error)
+    
+    if (error.response?.status === 419) {
+      // 🔥 FORZAR RECARGA COMPLETA Y LIMPIAR CACHÉ
+      window.location.reload(true)
+    } else {
+      alert(error.response?.data?.message || 'Error al guardar el contexto')
+      guardando.value = false
+    }
+  }
 }
 </script>
 
 <template>
   <div class="min-h-screen bg-gray-50 p-4">
     <div class="bg-white rounded-2xl shadow-xl max-w-2xl mx-auto overflow-hidden">
-      <!-- Header con color guindo -->
       <div class="bg-guindo-900 text-white px-6 py-5">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-guindo-800 rounded-xl flex items-center justify-center">
@@ -54,7 +98,6 @@ const guardar = () => {
       </div>
 
       <div class="px-6 py-6 bg-gray-50">
-        <!-- Empresa (arriba) -->
         <div class="mb-6">
           <label class="block text-sm font-medium text-gray-700 mb-2">
             <i class="fas fa-building mr-2 text-guindo-600"></i> Empresa
@@ -70,12 +113,11 @@ const guardar = () => {
           </select>
         </div>
 
-        <!-- Sucursal (abajo) -->
         <div class="mb-8">
           <label class="block text-sm font-medium text-gray-700 mb-2">
             <i class="fas fa-store mr-2 text-guindo-600"></i> Sucursal
           </label>
-          <select v-model="sucursalId" :disabled="!empresaId"
+          <select v-model="sucursalId" :disabled="!empresaId || guardando"
             class="w-full rounded-lg border-gray-300 focus:ring-guindo-500 focus:border-guindo-500 disabled:bg-gray-100 py-2.5 px-3">
             <option value="" disabled>Selecciona una sucursal</option>
             <option v-for="s in sucursales" :key="s.id" :value="s.id">
@@ -89,17 +131,16 @@ const guardar = () => {
           </p>
         </div>
 
-        <!-- Botón Guardar -->
         <div class="flex justify-end">
-          <button @click="guardar" :disabled="!empresaId || !sucursalId"
+          <button @click="guardar" :disabled="!empresaId || !sucursalId || guardando"
             class="px-6 py-2.5 rounded-lg bg-guindo-700 hover:bg-guindo-800 text-white font-medium shadow-md transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
-            <i class="fas fa-save"></i>
-            Guardar contexto
+            <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
+            <i v-else class="fas fa-save"></i>
+            {{ guardando ? 'Guardando...' : 'Guardar contexto' }}
           </button>
         </div>
       </div>
 
-      <!-- Footer informativo -->
       <div class="px-6 py-3 bg-gray-100 border-t border-gray-200 text-xs text-gray-500 flex justify-between items-center">
         <span><i class="fas fa-info-circle mr-1"></i> Solo verás las empresas y sucursales asignadas a tu usuario</span>
         <span v-if="isSuper" class="text-guindo-600 font-medium">

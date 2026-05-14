@@ -12,17 +12,26 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // Grupo web
+        // 🔥 AGREGAR CSRF EXPLÍCITAMENTE
+        $middleware->web(prepend: [
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class, // 👈 CSRF activo
+        ]);
+        
+        // Grupo web (append)
         $middleware->web(append: [
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        // 👇 Alias de middlewares (Laravel 11 reemplaza al viejo Kernel)
+        // Alias de middlewares
         $middleware->alias([
-            'auth.operador'         => \App\Http\Middleware\AuthOperador::class,              // tu alias existente
-            'contexto.requerido'    => \App\Http\Middleware\EnsureContextSelected::class,     // contexto de Gestión
-            'facturacion.requerida' => \App\Http\Middleware\EnsureFacturacionMapped::class,   // exige mapeo (opcional)
+            'auth.operador'         => \App\Http\Middleware\AuthOperador::class,
+            'contexto.requerido'    => \App\Http\Middleware\EnsureContextSelected::class,
+            'facturacion.requerida' => \App\Http\Middleware\EnsureFacturacionMapped::class,
+            'verificar.contexto'    => \App\Http\Middleware\VerificarContexto::class,
+            'evitar.contexto.duplicado' => \App\Http\Middleware\EvitarContextoDuplicado::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

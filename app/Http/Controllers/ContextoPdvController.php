@@ -76,7 +76,7 @@ class ContextoPdvController extends Controller
             ->first();
 
         if (!$pdv) {
-            return back()->withErrors(['punto_venta_id' => 'Punto de venta inválido para esta sucursal.']);
+            return response()->json(['error' => 'Punto de venta inválido para esta sucursal.'], 422);
         }
 
         session([
@@ -85,6 +85,10 @@ class ContextoPdvController extends Controller
             'punto_venta_nombre' => $pdv->nombre,
         ]);
 
-        return redirect()->route('oficial.index')->with('success', 'Punto de venta seleccionado.');
+        // 🔥 Devolver JSON con redirect
+        return response()->json([
+            'success' => true,
+            'redirect' => route('oficial.index')
+        ]);
     }
 }

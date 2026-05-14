@@ -1,6 +1,5 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { router } from '@inertiajs/vue3'
 
 const props = defineProps({
   empresa: Object,
@@ -28,9 +27,34 @@ const cargarPdvs = async () => {
   }
 }
 
-const guardar = () => {
+// 🔥 Usar fetch + window.location.replace
+const guardar = async () => {
   if (!puntoVentaId.value) return
-  router.post('/contexto/pdv', { punto_venta_id: Number(puntoVentaId.value) }, { preserveScroll: true })
+  
+  try {
+    const response = await fetch('/contexto/pdv', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+      },
+      body: JSON.stringify({
+        punto_venta_id: puntoVentaId.value
+      })
+    })
+    
+    const data = await response.json()
+    
+    if (data.redirect) {
+      // 🔥 Reemplazar la URL actual, no guardar en historial
+      window.location.replace(data.redirect)
+    } else if (data.error) {
+      alert(data.error)
+    }
+  } catch (error) {
+    console.error('Error:', error)
+    alert('Error al guardar')
+  }
 }
 
 onMounted(cargarPdvs)
@@ -39,7 +63,6 @@ onMounted(cargarPdvs)
 <template>
   <div class="min-h-screen bg-gray-50 p-4">
     <div class="bg-white rounded-2xl shadow-xl max-w-2xl mx-auto overflow-hidden">
-      <!-- Header con color guindo -->
       <div class="bg-guindo-900 text-white px-6 py-5">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-guindo-800 rounded-xl flex items-center justify-center">
@@ -53,7 +76,6 @@ onMounted(cargarPdvs)
       </div>
 
       <div class="px-6 py-6 bg-gray-50">
-        <!-- Info empresa y sucursal -->
         <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6">
           <div class="flex items-center gap-3 mb-3">
             <i class="fas fa-building text-guindo-600"></i>
@@ -78,7 +100,6 @@ onMounted(cargarPdvs)
           </div>
         </div>
 
-        <!-- Selector PDV -->
         <div class="bg-white rounded-xl border border-gray-200 p-4">
           <label class="block text-sm font-medium text-gray-700 mb-2">
             <i class="fas fa-qrcode mr-2 text-guindo-600"></i> Punto de Venta
@@ -117,7 +138,6 @@ onMounted(cargarPdvs)
         </div>
       </div>
 
-      <!-- Footer -->
       <div class="px-6 py-3 bg-gray-100 border-t border-gray-200 text-xs text-gray-500 flex justify-between items-center">
         <span><i class="fas fa-info-circle mr-1"></i> Selecciona el punto de venta para continuar</span>
         <span class="text-guindo-600">

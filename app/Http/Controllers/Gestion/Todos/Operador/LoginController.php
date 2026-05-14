@@ -12,7 +12,6 @@ class LoginController extends Controller
     {
         return inertia('Gestion/Todos/Operador/Login');
     }
-
     public function do(Request $request)
     {
         $request->validate([
@@ -23,24 +22,21 @@ class LoginController extends Controller
         $operador = Operador::query()
             ->where('NombreAcceso', $request->usuario)
             ->where('Clave', $request->clave)
-            ->with('identificador')  // ← Cargar el identificador
+            ->with('identificador')
             ->first();
 
         if (! $operador) {
             return back()->withErrors(['usuario' => 'Usuario o contraseña incorrectos.']);
         }
 
-        // 🔒 evita session fixation
         $request->session()->regenerate();
-
-        // Guardar datos del operador (usando el nombre del identificador)
+        
         session([
             'operador_id'      => (int) $operador->IdOperador,
             'operador_nombre'  => $operador->identificador->Nombre ?? $operador->NombreAcceso,
             'operador_tipo_id' => (int) $operador->IdOperadorTipo,
         ]);
 
-        // Limpiar contexto previo (empresa/sucursal)
         session()->forget([
             'cliente_id', 'cliente_sucursal_id',
             'global_empresa_id', 'global_empresa_nombre',
@@ -48,8 +44,10 @@ class LoginController extends Controller
             'empresa_id', 'sucursal_id'
         ]);
 
-        return redirect()->route('contexto.index');
+        // Redirigir a contexto con un parámetro para forzar recarga
+        return redirect()->route('contexto.index', ['reload' => 1]);
     }
+    
 
     public function logout(Request $request)
     {
@@ -60,7 +58,8 @@ class LoginController extends Controller
             }
         }
 
-        // Limpia todo lo demás
+        // 🔥 DESTRUIR SESIÓN COMPLETAMENTE
+        $request->session()->flush();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
