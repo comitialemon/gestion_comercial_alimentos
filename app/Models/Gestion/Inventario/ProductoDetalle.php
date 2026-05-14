@@ -37,8 +37,8 @@ class ProductoDetalle extends Model
      */
     public function scopePorContexto($query)
     {
-        return $query->where('IdCliente', session('cliente_id'))
-                     ->where('IdSucursal', session('cliente_sucursal_id'));
+        return $query->where('IdCliente', session('cliente_id'));
+                     //->where('IdSucursal', session('cliente_sucursal_id'));
     }
 
     /**

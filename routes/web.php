@@ -43,6 +43,9 @@ use App\Http\Controllers\Gestion\Inventario\AlmacenController;
 use App\Http\Controllers\Gestion\Impuestos\LugarVentaController;
 use App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController;
 use App\Http\Controllers\Gestion\Inventario\InventarioActualController;
+use App\Http\Controllers\Gestion\Impuestos\CompraController;
+use App\Http\Controllers\Gestion\Inventario\AjusteInventarioController;
+
 // ============================================
 // RUTAS PÚBLICAS
 // ============================================
@@ -359,4 +362,29 @@ Route::middleware(['auth.operador'])->group(function () {
     // Reporte de Inventario
     Route::get('/gestion/inventario/reporte-inventario', [App\Http\Controllers\Gestion\Inventario\ReporteInventarioController::class, 'index'])
         ->name('gestion.inventario.reporte-inventario.index');
+
+    // ==================== COMPRAS ====================
+    Route::prefix('gestion/compras')->group(function () {
+        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
+        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
+        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
+        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
+        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
+        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
+        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
+        Route::post('/gestion/compras/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+    });
+    // ==================== AJUSTES DE INVENTARIO ====================
+    Route::prefix('gestion/inventario/ajustes')->group(function () {
+        Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
+        Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
+        Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
+        Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
+        Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
+        Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
+        Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
+        Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
+        Route::post('/gestion/inventario/ajustes/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
+    });
 });
