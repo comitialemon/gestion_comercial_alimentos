@@ -29,6 +29,49 @@ const href = computed(() => {
   return '/' + h.replace(/^\/+/, '')
 })
 
+// 🔥 DETECTAR SI ES UN ENLACE NO MIGRADO (Scriptcase)
+const isNoMigrado = computed(() => {
+  if (!href.value || isExternal.value) return false
+  
+  const h = href.value.toLowerCase()
+  
+  // Excluir rutas que ya migramos
+  const rutasMigradas = [
+    '/gestion/inventario/ajustes',
+    '/gestion/inventario/reporte-inventario',
+    '/gestion/ingresos',
+    '/gestion/egresos',
+    '/gestion/compras',
+    '/gestion/lugar-venta',
+    '/gestion/comisionista',
+    '/gestion/todos/identificador',
+    '/facturacion/empresas',
+    '/facturacion/sucursales',
+    '/venta-tactil',
+    '/gestion/inventario/categorias-producto',
+  ]
+  
+  // Si es una ruta migrada, NO es no migrado
+  if (rutasMigradas.some(ruta => h === ruta || h.startsWith(ruta + '/'))) {
+    return false
+  }
+  
+  // Detectar si tiene formato Scriptcase (con guiones bajos)
+  const tieneGuionBajo = /[a-z]+_[a-z]+/.test(h)
+  
+  // Detectar si no tiene formato Laravel (no empieza con /gestion/ o /facturacion/)
+  const noTieneFormatoLaravel = !h.startsWith('/gestion/') && 
+                                 !h.startsWith('/facturacion/') && 
+                                 !h.startsWith('/venta-') &&
+                                 !h.startsWith('/contexto') &&
+                                 !h.startsWith('/oficial')
+  
+  // Detectar si es una URL amigable de Scriptcase (solo texto con guiones)
+  const esScriptcaseAmigable = /^\/[a-z]+[a-z\-]+$/.test(h) && h.length > 5 && !h.includes('gestion')
+  
+  return tieneGuionBajo || noTieneFormatoLaravel || esScriptcaseAmigable
+})
+
 const label = computed(() =>
   props.node?.title ?? props.node?.description ?? props.node?.Description ?? ''
 )
@@ -70,16 +113,30 @@ const toggle = () => {
       class="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] leading-4 transition-colors"
       :class="[
         isActive(href) 
-          ? 'bg-guindo-100 text-guindo-800 font-medium' 
-          : 'text-gray-700 hover:bg-guindo-50 hover:text-guindo-700'
+          ? 'bg-guindo-900 text-white font-medium' 
+          : isNoMigrado
+            ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-l-2 border-amber-400'
+            : 'text-gray-700 hover:bg-guindo-100 hover:text-guindo-800'
       ]"
       @click="toggle"
     >
-      <span class="truncate" :title="label">
+      <span class="truncate flex items-center gap-1.5" :title="label">
+        <!-- 🔥 Icono de advertencia para enlaces no migrados -->
+        <i v-if="isNoMigrado && !collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
+        <i v-if="isNoMigrado && collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
+        
         <span v-if="!collapsed">{{ label }}</span>
         <span v-else class="font-semibold">{{ String(label || '').slice(0,1) }}</span>
       </span>
-      <span v-if="children.length" class="ml-2 text-sm opacity-60 transition-transform" :class="{ 'rotate-90': open }">▶</span>
+      
+      <i 
+        v-if="children.length" 
+        class="fas fa-chevron-right ml-2 text-xs transition-all duration-200"
+        :class="[
+          open ? 'rotate-90' : '',
+          isActive(href) ? 'text-white' : isNoMigrado ? 'text-amber-500' : 'text-guindo-500'
+        ]"
+      ></i>
     </component>
 
     <transition name="fade">

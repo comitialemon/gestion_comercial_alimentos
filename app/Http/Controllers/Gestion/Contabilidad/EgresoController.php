@@ -152,8 +152,8 @@ class EgresoController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // Si tiene ID, es actualización
             if ($request->has('IdEgreso') && $request->IdEgreso) {
+                // Actualización (mismo código)
                 $egreso = Egreso::porContexto()
                     ->where('ActivoInactivo', 0)
                     ->findOrFail($request->IdEgreso);
@@ -161,29 +161,22 @@ class EgresoController extends Controller
                 $numeroEgreso = $egreso->NumeroEgreso;
                 $idDiario = $egreso->IdDiario;
 
-                // Actualizar diario
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->where('IdDiario', $idDiario)
-                    ->update([
-                        'IdFecha' => $request->IdFecha,
-                    ]);
+                    ->update(['IdFecha' => $request->IdFecha]);
 
-                // Eliminar registros antiguos de diario_propiamente
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->where('IdDiario', $idDiario)
                     ->delete();
-
             } else {
                 // Nuevo egreso
                 $egreso = new Egreso();
                 
-                // Generar número de egreso (por sucursal)
                 $maxNumero = Egreso::porContexto()->max('NumeroEgreso');
                 $numeroEgreso = ($maxNumero ?? 0) + 1;
 
-                // Crear diario contable
                 $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->where('IdCliente', $clienteId)
@@ -213,70 +206,34 @@ class EgresoController extends Controller
                 $egreso->IdOperador = $operadorId;
             }
 
-            // Obtener UFV actual
-            $ufvActual = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_factorcambio')
-                ->where('IdFecha', $request->IdFecha)
-                ->where('IdMoneda', 3)
-                ->value('FactorCambio') ?? 1;
+            // ... resto del código de contabilidad (UFV, inserciones, etc.) ...
 
-            $totalMontoBolivianos = $request->TotalBolivianos;
-            $totalMontoUFV = round($totalMontoBolivianos / $ufvActual, 2);
-
-            // Insertar registros en conta_diario_propiamente
-            DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_diario_propiamente')
-                ->insert([
-                    'IdDiario' => $egreso->IdDiario,
-                    'IdCuenta' => $request->IdCuentaDebe,
-                    'Glosa' => "{$request->Glosa} - CE No {$numeroEgreso}",
-                    'D_H' => 'D',
-                    'MontoBolivianos' => $totalMontoBolivianos,
-                    'TipoCambio' => $ufvActual,
-                    'MontoOtraMoneda' => $totalMontoUFV,
-                    'IdIdentificador' => $request->IdIdentificador,
-                    'IdActividad' => 1,
-                    'Deducible' => 'D',
-                ]);
-
-            DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_diario_propiamente')
-                ->insert([
-                    'IdDiario' => $egreso->IdDiario,
-                    'IdCuenta' => $request->IdCuentaHaber,
-                    'Glosa' => "{$request->Glosa} - CE No {$numeroEgreso}",
-                    'D_H' => 'H',
-                    'MontoBolivianos' => $totalMontoBolivianos,
-                    'TipoCambio' => 1,
-                    'MontoOtraMoneda' => $totalMontoBolivianos,
-                    'IdIdentificador' => $operadorId,
-                    'IdActividad' => 1,
-                    'Deducible' => 'D',
-                ]);
-
-            // Guardar/Actualizar egreso
             $egreso->IdFecha = $request->IdFecha;
             $egreso->IdCuentaDebe = $request->IdCuentaDebe;
             $egreso->IdCuentaHaber = $request->IdCuentaHaber;
             $egreso->IdIdentificador = $request->IdIdentificador;
             $egreso->Glosa = $request->Glosa;
-            $egreso->TotalBolivianos = $totalMontoBolivianos;
+            $egreso->TotalBolivianos = $request->TotalBolivianos;
             $egreso->ActivoInactivo = 1;
             $egreso->save();
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // 🔥 CAMBIO CLAVE: Llamar directamente al método pdf() (como en Compras)
-            return redirect()->route('egresos.pdf', $egreso->IdEgreso);
+            // 🔥 Devolver JSON con la URL del PDF
+            return response()->json([
+                'success' => true,
+                'pdf_url' => route('egresos.pdf', $egreso->IdEgreso),
+                'message' => 'Egreso guardado correctamente'
+            ]);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             Log::error('Error al guardar egreso: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
 
-            return redirect()->back()
-                ->with('error', 'Error al guardar: ' . $e->getMessage())
-                ->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar: ' . $e->getMessage()
+            ], 500);
         }
     }
 

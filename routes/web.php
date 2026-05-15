@@ -45,6 +45,7 @@ use App\Http\Controllers\Facturacion\SiatCuisController;
 use App\Http\Controllers\Facturacion\SiatCufdController;
 use App\Http\Controllers\Facturacion\SiatCatalogoController;
 use App\Http\Controllers\Facturacion\SiatOperacionesController;
+use App\Http\Controllers\Gestion\Contabilidad\IngresoController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -64,7 +65,7 @@ Route::middleware(['auth.operador'])->group(function () {
     // ==================== HOME / REDIRECCIONES ====================
     Route::get('/', function () {
         if (session('cliente_id') && session('cliente_sucursal_id')) {
-            return redirect()->route('venta-tactil.nueva');
+            return redirect()->route('oficial.index');
         }
         return redirect()->route('contexto.index');
     })->name('home');
@@ -144,14 +145,29 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
     });
 
-    // ==================== CONTABILIDAD - EGRESOS ====================
+    // ==================== CONTABILIDAD ====================
+    // ==================== EGRESOS ====================
     Route::prefix('gestion/egresos')->group(function () {
         Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');
         Route::get('/create', [EgresoController::class, 'create'])->name('egresos.create');
         Route::post('/', [EgresoController::class, 'store'])->name('egresos.store');
         Route::get('/{id}/edit', [EgresoController::class, 'edit'])->name('egresos.edit');
         Route::put('/{id}', [EgresoController::class, 'update'])->name('egresos.update');
-        Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])->name('egresos.pdf');
+        
+        // 🔥 La ruta PDF debe estar FUERA del grupo con middleware de sesión
+        Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])
+            ->name('egresos.pdf')
+            ->withoutMiddleware([\App\Http\Middleware\VerificarContexto::class]);
+    });
+
+    // ==================== INGRESOS ====================
+    Route::prefix('gestion/ingresos')->group(function () {
+        Route::get('/', [IngresoController::class, 'index'])->name('ingresos.index');
+        Route::get('/create', [IngresoController::class, 'create'])->name('ingresos.create');
+        Route::post('/', [IngresoController::class, 'store'])->name('ingresos.store');
+        Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
+        Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
+        Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
     });
 
     // ==================== INVENTARIO - CATÁLOGOS ====================
@@ -185,6 +201,10 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::prefix('gestion/inventario/ajustes')->group(function () {
         Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
         Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
+        
+        // 🔥 Ruta para CREAR un nuevo ajuste (borrador)
+        Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
+        
         Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
         Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
         Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');

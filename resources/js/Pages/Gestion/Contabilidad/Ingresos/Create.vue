@@ -9,23 +9,23 @@ defineOptions({ layout: AppLayout })
 const toast = inject('toast')
 
 const props = defineProps({
-    egreso: Object,
+    ingreso: Object,
     fechas: Array,
     identificadores: Array,
-    cuentasHaber: Array,
     cuentasDebe: Array,
+    cuentasHaber: Array,
     editando: Boolean,
 })
 
-// Formulario con datos reactivos (sin useForm)
+// Formulario con datos reactivos (sin useForm para evitar interceptación)
 const form = ref({
-    IdEgreso: props.egreso?.IdEgreso || null,
-    IdFecha: props.egreso?.IdFecha || '',
-    IdIdentificador: props.egreso?.IdIdentificador || '',
-    IdCuentaHaber: props.egreso?.IdCuentaHaber || '',
-    IdCuentaDebe: props.egreso?.IdCuentaDebe || '',
-    Glosa: props.egreso?.Glosa || '',
-    TotalBolivianos: props.egreso?.TotalBolivianos || '',
+    IdIngreso: props.ingreso?.IdIngreso || null,
+    IdFecha: props.ingreso?.IdFecha || '',
+    IdIdentificador: props.ingreso?.IdIdentificador || '',
+    IdCuentaDebe: props.ingreso?.IdCuentaDebe || '',
+    IdCuentaHaber: props.ingreso?.IdCuentaHaber || '',
+    Glosa: props.ingreso?.Glosa || '',
+    TotalBolivianos: props.ingreso?.TotalBolivianos || '',
 })
 
 const guardando = ref(false)
@@ -95,15 +95,15 @@ const validarCampos = () => {
     const nuevosErrors = {}
     if (!form.value.IdFecha) nuevosErrors.IdFecha = 'Seleccione fecha'
     if (!form.value.IdIdentificador) nuevosErrors.IdIdentificador = 'Seleccione identificador'
-    if (!form.value.IdCuentaHaber) nuevosErrors.IdCuentaHaber = 'Seleccione cuenta'
     if (!form.value.IdCuentaDebe) nuevosErrors.IdCuentaDebe = 'Seleccione cuenta'
+    if (!form.value.IdCuentaHaber) nuevosErrors.IdCuentaHaber = 'Seleccione cuenta'
     if (!form.value.Glosa) nuevosErrors.Glosa = 'Ingrese glosa'
     if (!form.value.TotalBolivianos || form.value.TotalBolivianos <= 0) nuevosErrors.TotalBolivianos = 'Ingrese monto mayor a 0'
     errors.value = nuevosErrors
     return Object.keys(nuevosErrors).length === 0
 }
 
-// Enviar formulario con AXIOS (como en Ingresos)
+// Enviar formulario con AXIOS (como en Ajustes)
 const submitForm = async () => {
     if (!validarCampos()) {
         toast?.warning('Datos incompletos', 'Complete todos los campos obligatorios')
@@ -115,12 +115,13 @@ const submitForm = async () => {
     try {
         let response
         if (props.editando) {
-            response = await axios.put(`/gestion/egresos/${form.value.IdEgreso}`, form.value)
+            response = await axios.put(`/gestion/ingresos/${form.value.IdIngreso}`, form.value)
         } else {
-            response = await axios.post('/gestion/egresos', form.value)
+            response = await axios.post('/gestion/ingresos', form.value)
         }
         
         if (response.status === 200 || response.status === 201) {
+            // El servidor puede redirigir directamente o devolver la URL
             const redirectUrl = response.request?.responseURL
             if (redirectUrl && redirectUrl.includes('/pdf')) {
                 window.open(redirectUrl, '_blank')
@@ -128,8 +129,8 @@ const submitForm = async () => {
                 window.open(response.data.pdf_url, '_blank')
             }
             
-            toast?.success('Éxito', props.editando ? 'Egreso actualizado correctamente' : 'Egreso guardado correctamente')
-            router.get('/gestion/egresos')
+            toast?.success('Éxito', props.editando ? 'Ingreso actualizado correctamente' : 'Ingreso guardado correctamente')
+            router.get('/gestion/ingresos')
         }
     } catch (error) {
         console.error('Error:', error)
@@ -141,8 +142,8 @@ const submitForm = async () => {
 }
 
 onMounted(() => {
-    if (props.egreso?.IdIdentificador) {
-        const ident = listaIdentificadores.value.find(i => i.id === props.egreso.IdIdentificador)
+    if (props.ingreso?.IdIdentificador) {
+        const ident = listaIdentificadores.value.find(i => i.id === props.ingreso.IdIdentificador)
         if (ident) {
             busquedaIdentificador.value = `${ident.ci} - ${ident.nombre}`
         }
@@ -161,8 +162,8 @@ onMounted(() => {
                             <i class="fas fa-money-bill-wave text-guindo-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-lg font-bold text-gray-800">{{ editando ? 'Editar Egreso' : 'Nuevo Egreso' }}</h1>
-                            <p class="text-[10px] text-gray-500">Complete los datos del comprobante de egreso</p>
+                            <h1 class="text-lg font-bold text-gray-800">{{ editando ? 'Editar Ingreso' : 'Nuevo Ingreso' }}</h1>
+                            <p class="text-[10px] text-gray-500">Complete los datos del comprobante de ingreso</p>
                         </div>
                     </div>
                 </div>
@@ -182,7 +183,7 @@ onMounted(() => {
 
                         <!-- Identificador -->
                         <div>
-                            <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo entregado a: *</label>
+                            <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo recibido de: *</label>
                             <div class="flex gap-2">
                                 <div class="relative flex-1">
                                     <input type="text" v-model="busquedaIdentificador" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdIdentificador }" placeholder="Buscar por CI/NIT o nombre..." @focus="busquedaIdentificador = ''">
@@ -199,34 +200,34 @@ onMounted(() => {
                             <p v-if="errors.IdIdentificador" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdIdentificador }}</p>
                         </div>
 
-                        <!-- Cuentas en grid de 2 columnas -->
+                        <!-- Cuentas en grid -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo retirado de: *</label>
-                                <select v-model="form.IdCuentaHaber" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdCuentaHaber }">
-                                    <option value="">Seleccione</option>
-                                    <option v-for="c in cuentasHaber" :key="c.id" :value="c.id">{{ c.nombre }}</option>
-                                </select>
-                                <p v-if="errors.IdCuentaHaber" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdCuentaHaber }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo destinado para: *</label>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo depositado en: *</label>
                                 <select v-model="form.IdCuentaDebe" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdCuentaDebe }">
                                     <option value="">Seleccione</option>
                                     <option v-for="c in cuentasDebe" :key="c.id" :value="c.id">{{ c.nombre }}</option>
                                 </select>
                                 <p v-if="errors.IdCuentaDebe" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdCuentaDebe }}</p>
                             </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo entregado como: *</label>
+                                <select v-model="form.IdCuentaHaber" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdCuentaHaber }">
+                                    <option value="">Seleccione</option>
+                                    <option v-for="c in cuentasHaber" :key="c.id" :value="c.id">{{ c.nombre }}</option>
+                                </select>
+                                <p v-if="errors.IdCuentaHaber" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdCuentaHaber }}</p>
+                            </div>
                         </div>
 
                         <!-- Glosa -->
                         <div>
                             <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Glosa *</label>
-                            <textarea v-model="form.Glosa" rows="2" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Glosa }" placeholder="Descripción del egreso..."></textarea>
+                            <textarea v-model="form.Glosa" rows="2" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Glosa }" placeholder="Descripción del ingreso..."></textarea>
                             <p v-if="errors.Glosa" class="text-[10px] text-red-500 mt-0.5">{{ errors.Glosa }}</p>
                         </div>
 
-                        <!-- Total Bolivianos -->
+                        <!-- Total -->
                         <div>
                             <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Total Bolivianos *</label>
                             <div class="relative">
@@ -238,13 +239,13 @@ onMounted(() => {
 
                         <!-- Botones -->
                         <div class="flex justify-end gap-2 pt-3 border-t">
-                            <button type="button" @click="router.get('/gestion/egresos')" class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">
+                            <button type="button" @click="router.get('/gestion/ingresos')" class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">
                                 Cancelar
                             </button>
                             <button type="submit" :disabled="guardando" class="px-4 py-1.5 bg-emerald-600 text-white rounded-md text-xs hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-1">
                                 <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
                                 <i v-else class="fas fa-save text-[10px]"></i>
-                                {{ guardando ? 'Guardando...' : 'Guardar Egreso' }}
+                                {{ guardando ? 'Guardando...' : 'Guardar Ingreso' }}
                             </button>
                         </div>
                     </form>
