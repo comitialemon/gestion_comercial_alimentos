@@ -6,51 +6,257 @@
     
     <meta name="csrf-token" content="{{ csrf_token() }}">
     
+    <!-- 🔥 HEADERS ANTI-CACHÉ HTML -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
     @vite('resources/js/app.js')
     @inertiaHead
+    
+    <style>
+        /* 🔥 ESTILOS PARA EL LOADER SUAVE */
+        .session-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #f9fafb;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s ease-out;
+        }
+        .session-loader.hide {
+            opacity: 0;
+            pointer-events: none;
+        }
+        .session-loader.hidden-permanent {
+            display: none;
+        }
+        .loader-spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid #e5e7eb;
+            border-top-color: #61131a;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        .loader-text {
+            margin-top: 16px;
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+        
+        /* 🔥 EVITAR QUE SE VEA EL CONTENIDO ANTES DE TIEMPO */
+        .inertia-content {
+            opacity: 0;
+            transition: opacity 0.15s ease;
+        }
+        .inertia-content.visible {
+            opacity: 1;
+        }
+    </style>
   </head>
   <body class="font-sans antialiased">
-    @inertia
+    <!-- 🔥 LOADER ELEGANTE (siempre visible al inicio) -->
+    <div id="session-loader" class="session-loader">
+        <div class="text-center">
+            <div class="loader-spinner mx-auto"></div>
+            <p class="loader-text">Cargando...</p>
+        </div>
+    </div>
     
     <script>
         (function() {
             const ruta = window.location.pathname;
             const esLogin = ruta === '/login';
             const esContexto = ruta === '/contexto' || ruta === '/contexto/pdv';
+            const loader = document.getElementById('session-loader');
             
-            // Función para cerrar sesión
-            function forzarLogout() {
-                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-                
-                // Evitar múltiples redirecciones
-                if (window._logoutEnProgreso) return;
-                window._logoutEnProgreso = true;
-                
-                // Limpiar localStorage y sessionStorage
-                localStorage.clear();
-                sessionStorage.clear();
-                
-                if (token) {
-                    fetch('/logout', {
-                        method: 'POST',
-                        headers: { 'X-CSRF-TOKEN': token, 'Content-Type': 'application/json' }
-                    }).finally(() => {
-                        window.location.replace('/login');
-                    });
-                } else {
-                    window.location.replace('/login');
+            // 🔥 Función para ocultar loader permanentemente
+            function hideLoaderPermanent() {
+                if (loader) {
+                    loader.classList.add('hidden-permanent');
                 }
             }
             
-            // 🔥 Verificar sesión activa
+            // 🔥 Función para ocultar loader suavemente
+            function hideLoader() {
+                if (loader && !loader.classList.contains('hidden-permanent')) {
+                    loader.classList.add('hide');
+                    setTimeout(() => {
+                        if (loader && !loader.classList.contains('hidden-permanent')) {
+                            loader.style.display = 'none';
+                        }
+                    }, 200);
+                }
+            }
+            
+            // 🔥 Verificar sesión ANTES de mostrar la página (solo en páginas protegidas)
+            if (!esLogin && !esContexto) {
+                fetch('/check-session', {
+                    method: 'GET',
+                    headers: { 'Cache-Control': 'no-cache, no-store' },
+                    cache: 'no-store'
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (!data.has_session) {
+                        window.location.replace('/login');
+                    } else {
+                        // Sesión válida, ocultar loader
+                        hideLoaderPermanent();
+                    }
+                })
+                .catch(() => {
+                    window.location.replace('/login');
+                });
+            } else {
+                // En login o contexto, ocultar loader
+                hideLoaderPermanent();
+            }
+        })();
+    </script>
+    
+    <div id="inertia-content" class="inertia-content">
+        @inertia
+    </div>
+    
+    <script>
+        (function() {
+            const ruta = window.location.pathname;
+            const esLogin = ruta === '/login';
+            const esContexto = ruta === '/contexto' || ruta === '/contexto/pdv';
+            const loader = document.getElementById('session-loader');
+            const inertiaContent = document.getElementById('inertia-content');
+            
+            // 🔥 Mostrar contenido con fade in
+            function showContent() {
+                if (inertiaContent) {
+                    setTimeout(() => {
+                        inertiaContent.classList.add('visible');
+                    }, 50);
+                }
+            }
+            
+            // 🔥 Mostrar loader durante navegación
+            function showLoader() {
+                if (loader && loader.style.display === 'none') {
+                    loader.style.display = 'flex';
+                    loader.classList.remove('hide');
+                    loader.classList.remove('hidden-permanent');
+                } else if (loader && loader.classList.contains('hidden-permanent')) {
+                    loader.classList.remove('hidden-permanent');
+                    loader.classList.remove('hide');
+                }
+            }
+            
+            // 🔥 Ocultar loader después de navegación
+            function hideLoader() {
+                if (loader) {
+                    loader.classList.add('hide');
+                    setTimeout(() => {
+                        if (loader) {
+                            loader.style.display = 'none';
+                        }
+                    }, 200);
+                }
+            }
+            
+            // 🔥 Escuchar eventos de Inertia
+            document.addEventListener('inertia:start', () => {
+                showLoader();
+            });
+            
+            document.addEventListener('inertia:finish', () => {
+                hideLoader();
+                showContent();
+            });
+            
+            // Ocultar loader después de carga inicial
+            setTimeout(() => {
+                hideLoader();
+                showContent();
+            }, 100);
+            
+            // =============================================
+            // 1. SI ESTÁ EN LOGIN - BLOQUEAR CUALQUIER POSIBILIDAD DE VOLVER
+            // =============================================
+            if (esLogin) {
+                window.history.replaceState(null, "", window.location.href);
+                
+                window.onpopstate = function() {
+                    window.history.go(1);
+                };
+                
+                fetch('/check-session', {
+                    method: 'GET',
+                    headers: { 'Cache-Control': 'no-cache, no-store' },
+                    cache: 'no-store'
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.has_session) {
+                        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                        fetch('/logout', {
+                            method: 'POST',
+                            headers: { 
+                                'X-CSRF-TOKEN': token, 
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            }
+                        }).finally(() => {
+                            window.location.reload();
+                        });
+                    }
+                })
+                .catch(() => {});
+            }
+            
+            // =============================================
+            // 2. FUNCIÓN FORZAR LOGOUT
+            // =============================================
+            function forzarLogout() {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                
+                if (window._logoutEnProgreso) return;
+                window._logoutEnProgreso = true;
+                
+                localStorage.clear();
+                sessionStorage.clear();
+                
+                const logoutUrl = '/logout';
+                const redirectUrl = '/login';
+                
+                if (token) {
+                    fetch(logoutUrl, {
+                        method: 'POST',
+                        headers: { 'X-CSRF-TOKEN': token, 'Content-Type': 'application/json' }
+                    }).finally(() => {
+                        window.location.replace(redirectUrl);
+                    });
+                } else {
+                    window.location.replace(redirectUrl);
+                }
+            }
+            
+            // =============================================
+            // 3. VERIFICAR SESIÓN ACTIVA
+            // =============================================
             function verificarSesion(redirigirSiNoHay = true) {
                 return fetch('/check-session', {
                     method: 'GET',
                     headers: { 'Content-Type': 'application/json' },
-                    cache: 'no-store' // No usar caché
+                    cache: 'no-store'
                 })
                 .then(res => res.json())
                 .then(data => {
@@ -62,76 +268,90 @@
                 })
                 .catch(() => {
                     if (redirigirSiNoHay && !esLogin) {
-                        forzarLogout();
-                        return false;
+                        window.location.replace('/login');
                     }
                     return false;
                 });
             }
             
-            // 🔥 Verificar al cargar la página (sin caché)
+            // =============================================
+            // 4. VERIFICAR AL CARGAR LA PÁGINA
+            // =============================================
             verificarSesion(true);
             
-            // 🔥 Detectar cuando la página se carga desde caché (botón atrás/adelante)
-            let paginaCargadaDesdeCache = false;
-            
+            // =============================================
+            // 5. DETECTAR CUANDO LA PÁGINA VIENE DE CACHÉ
+            // =============================================
             window.addEventListener('pageshow', function(event) {
-                if (event.persisted) {
-                    paginaCargadaDesdeCache = true;
-                    // Forzar verificación (sin caché)
+                if (event.persisted || (window.performance && window.performance.navigation.type === 2)) {
+                    showLoader();
                     fetch('/check-session', {
-                        headers: { 'Cache-Control': 'no-cache' }
+                        method: 'GET',
+                        headers: { 'Cache-Control': 'no-cache, no-store' },
+                        cache: 'no-store'
                     })
                     .then(res => res.json())
                     .then(data => {
-                        if (!data.has_session && !esLogin) {
+                        if (!data.has_session) {
                             forzarLogout();
-                        }
-                    })
-                    .catch(() => {
-                        if (!esLogin) forzarLogout();
-                    });
-                }
-            });
-            
-            // 🔥 Prevenir que el usuario navegue con atrás/adelante si no hay sesión
-            let ultimoEstado = true;
-            
-            setInterval(() => {
-                fetch('/check-session', { cache: 'no-store' })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (ultimoEstado !== data.has_session) {
-                            ultimoEstado = data.has_session;
-                            if (!data.has_session && !esLogin) {
+                        } else {
+                            if (esLogin) {
                                 forzarLogout();
+                            } else {
+                                hideLoader();
                             }
                         }
                     })
                     .catch(() => {
                         if (!esLogin) forzarLogout();
                     });
-            }, 2000); // Verificar cada 2 segundos
+                }
+            });
             
-            // 🔥 Manejar evento popstate (navegación atrás/adelante)
+            // =============================================
+            // 6. VERIFICACIÓN PERIÓDICA
+            // =============================================
+            let ultimoEstado = true;
+            
+            setInterval(() => {
+                if (!esLogin) {
+                    fetch('/check-session', { cache: 'no-store' })
+                        .then(res => res.json())
+                        .then(data => {
+                            if (ultimoEstado !== data.has_session) {
+                                ultimoEstado = data.has_session;
+                                if (!data.has_session && !esLogin) {
+                                    forzarLogout();
+                                }
+                            }
+                        })
+                        .catch(() => {
+                            if (!esLogin) forzarLogout();
+                        });
+                }
+            }, 3000);
+            
+            // =============================================
+            // 7. MANEJAR EVENTO POPSTATE
+            // =============================================
             window.addEventListener('popstate', function() {
                 verificarSesion(true);
             });
             
-            // 🔥 Prevenir que la página se almacene en bfcache (back-forward cache)
-            window.addEventListener('beforeunload', function() {
-                // No hacer nada, solo asegurar que la verificación funcione
-            });
-            
-            // 🔥 Detectar si la página ya no tiene sesión visiblemente
+            // =============================================
+            // 8. DETECTAR VISIBILIDAD
+            // =============================================
             document.addEventListener('visibilitychange', function() {
                 if (!document.hidden) {
                     verificarSesion(true);
                 }
             });
+            
         })();
-
-        // Actualizar el token CSRF en el meta tag después de cada navegación
+        
+        // =============================================
+        // 9. ACTUALIZAR TOKEN CSRF
+        // =============================================
         (function() {
             const originalFetch = window.fetch;
             window.fetch = function(...args) {
@@ -142,11 +362,18 @@
                         if (meta) {
                             meta.setAttribute('content', newToken);
                         }
+                        if (window.axios) {
+                            window.axios.defaults.headers.common['X-CSRF-TOKEN'] = newToken;
+                        }
                     }
                     return response;
                 });
             };
         })();
+        
+        window.addEventListener('beforeunload', function() {
+            sessionStorage.setItem('last_visit', Date.now());
+        });
     </script>
   </body>
 </html>

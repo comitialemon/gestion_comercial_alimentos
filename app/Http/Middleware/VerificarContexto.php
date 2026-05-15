@@ -119,9 +119,10 @@ class VerificarContexto
      */
     private function preventCache($response)
     {
-        $response->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        // 'no-store' es el factor determinante para el botón adelante/atrás
+        $response->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $response->header('Pragma', 'no-cache');
-        $response->header('Expires', '0');
+        $response->header('Expires', 'Sun, 02 Jan 1990 00:00:00 GMT'); 
         return $response;
     }
 }
