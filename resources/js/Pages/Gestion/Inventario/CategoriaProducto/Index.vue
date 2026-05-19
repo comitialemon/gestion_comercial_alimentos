@@ -1,9 +1,11 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 defineOptions({ layout: AppLayout })
+
+const toast = inject('toast')
 
 const props = defineProps({
     categorias: Array,
@@ -22,7 +24,33 @@ const formData = ref({
 })
 const errors = ref({})
 const imgInput = ref(null)
+const calculandoOrden = ref(false)
 
+// 🔥 Calcular el siguiente orden según el padre seleccionado
+const calcularSiguienteOrden = () => {
+    if (editando.value) return // En edición no recalculamos
+    
+    const padreId = formData.value.id_padre
+    
+    // Filtrar categorías que tengan el mismo padre
+    let hermanos
+    
+    if (padreId) {
+        hermanos = props.categorias.filter(c => c.id_padre === padreId)
+    } else {
+        hermanos = props.categorias.filter(c => !c.id_padre)
+    }
+    
+    // Encontrar el máximo orden
+    let maxOrden = 0
+    hermanos.forEach(h => {
+        if (h.orden > maxOrden) maxOrden = h.orden
+    })
+    
+    formData.value.orden = maxOrden + 1
+}
+
+// Resetear formulario
 const resetForm = () => {
     editando.value = false
     editId.value = null
@@ -35,8 +63,10 @@ const resetForm = () => {
         preview_url: null
     }
     if (imgInput.value) imgInput.value.value = ''
+    calcularSiguienteOrden()
 }
 
+// Editar
 const editar = (cat) => {
     editando.value = true
     editId.value = cat.id_categoria
@@ -49,6 +79,13 @@ const editar = (cat) => {
         preview_url: cat.imagen_url
     }
 }
+
+// 🔥 Cuando cambia el padre, recalcular el orden
+watch(() => formData.value.id_padre, () => {
+    if (!editando.value) {
+        calcularSiguienteOrden()
+    }
+})
 
 const convertirMayusculas = () => {
     formData.value.nombre = formData.value.nombre.toUpperCase()
@@ -70,13 +107,19 @@ const guardar = () => {
     if (editando.value) {
         router.put(`/gestion/inventario/categorias-producto/${editId.value}`, formData.value, {
             preserveScroll: true,
-            onSuccess: () => resetForm(),
+            onSuccess: () => {
+                toast?.success('Éxito', 'Categoría actualizada correctamente')
+                resetForm()
+            },
             onError: (err) => { errors.value = err }
         })
     } else {
         router.post('/gestion/inventario/categorias-producto', formData.value, {
             preserveScroll: true,
-            onSuccess: () => resetForm(),
+            onSuccess: () => {
+                toast?.success('Éxito', 'Categoría creada correctamente')
+                resetForm()
+            },
             onError: (err) => { errors.value = err }
         })
     }
@@ -84,44 +127,81 @@ const guardar = () => {
 
 const eliminar = (id, nombre) => {
     if (confirm(`¿Eliminar la categoría "${nombre}"?`)) {
-        router.delete(`/gestion/inventario/categorias-producto/${id}`)
+        router.delete(`/gestion/inventario/categorias-producto/${id}`, {
+            onSuccess: () => {
+                toast?.success('Éxito', 'Categoría eliminada correctamente')
+            }
+        })
     }
 }
 
-const mostrarArbol = (items, nivel = 0) => {
-    return items.flatMap(item => {
-        const hijos = props.categorias.filter(c => c.id_padre === item.id_categoria)
+// Construir árbol para el selector de padre (con sangría)
+const construirArbolParaSelect = (items, nivel = 0, parentId = null) => {
+    let resultado = []
+    const hijos = props.categorias.filter(c => c.id_padre === parentId)
+    
+    hijos.sort((a, b) => a.orden - b.orden).forEach(hijo => {
         const prefix = '—'.repeat(nivel) + (nivel > 0 ? ' ' : '')
-        const resultado = [{
-            ...item,
-            nombre_con_indent: prefix + item.nombre
-        }]
-        return resultado.concat(mostrarArbol(hijos, nivel + 1))
+        resultado.push({
+            id: hijo.id_categoria,
+            nombre: prefix + hijo.nombre,
+            nivel: nivel,
+            orden: hijo.orden
+        })
+        resultado = resultado.concat(construirArbolParaSelect(items, nivel + 1, hijo.id_categoria))
     })
+    
+    return resultado
+}
+
+const categoriasParaSelect = computed(() => {
+    const raices = props.categorias.filter(c => !c.id_padre)
+    return construirArbolParaSelect(raices)
+})
+
+// Mostrar árbol en la tabla
+const mostrarArbol = (items, nivel = 0, parentId = null) => {
+    let resultado = []
+    const hijos = props.categorias.filter(c => c.id_padre === parentId)
+    
+    hijos.sort((a, b) => a.orden - b.orden).forEach(hijo => {
+        const prefix = '—'.repeat(nivel) + (nivel > 0 ? ' ' : '')
+        resultado.push({
+            ...hijo,
+            nombre_con_indent: prefix + hijo.nombre,
+            nivel: nivel
+        })
+        resultado = resultado.concat(mostrarArbol(items, nivel + 1, hijo.id_categoria))
+    })
+    
+    return resultado
 }
 
 const categoriasArbol = computed(() => {
-    const raices = props.categorias.filter(c => !c.id_padre)
-    return mostrarArbol(raices)
+    return mostrarArbol(props.categorias, 0, null)
 })
 
+// Inicializar orden al montar
 resetForm()
 </script>
 
 <template>
-    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
+    <div class="min-h-screen bg-gray-100">
         <div class="py-6 px-4 sm:px-6 lg:px-8">
             <div class="max-w-6xl mx-auto">
+                <!-- Header -->
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-100 rounded-2xl mb-3">
-                        <i class="fas fa-tree text-xl text-indigo-600"></i>
+                    <div class="inline-flex items-center justify-center w-14 h-14 bg-guindo-100 rounded-2xl mb-3">
+                        <i class="fas fa-tree text-xl text-guindo-600"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Categorías de Productos</h1>
-                    <p class="text-xs text-gray-500">Menú táctil con imágenes - Organización jerárquica</p>
+                    <p class="text-xs text-gray-500">Menú táctil con imágenes - Organización jerárquica (compartido por todas las sucursales)</p>
                 </div>
 
+                <!-- Formulario -->
                 <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <!-- Nombre -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Nombre *</label>
                             <input type="text" v-model="formData.nombre" @input="convertirMayusculas"
@@ -131,22 +211,27 @@ resetForm()
                             <p v-if="errors.nombre" class="text-xs text-red-500 mt-1">{{ errors.nombre }}</p>
                         </div>
                         
+                        <!-- Categoría Padre (selector con árbol) -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Categoría Padre</label>
                             <select v-model="formData.id_padre" class="w-full border rounded-lg px-3 py-2 text-sm">
                                 <option value="">[NINGUNA - ES RAÍZ]</option>
-                                <option v-for="cat in categoriasArbol" :key="cat.id_categoria" :value="cat.id_categoria">
-                                    {{ cat.nombre_con_indent }}
+                                <option v-for="cat in categoriasParaSelect" :key="cat.id" :value="cat.id">
+                                    {{ cat.nombre }}
                                 </option>
                             </select>
                         </div>
                         
+                        <!-- Orden (solo lectura, calculado automáticamente) -->
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Orden</label>
-                            <input type="number" v-model.number="formData.orden" min="0"
-                                class="w-full border rounded-lg px-3 py-2 text-sm">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Orden (automático)</label>
+                            <input type="number" v-model.number="formData.orden" 
+                                readonly
+                                class="w-full border rounded-lg px-3 py-2 text-sm bg-gray-100 text-gray-600">
+                            <p class="text-[10px] text-gray-400 mt-0.5">* Se calcula automáticamente según el padre</p>
                         </div>
                         
+                        <!-- Activo -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Activo</label>
                             <select v-model.number="formData.activo" class="w-full border rounded-lg px-3 py-2 text-sm">
@@ -155,6 +240,7 @@ resetForm()
                             </select>
                         </div>
                         
+                        <!-- Imagen -->
                         <div class="md:col-span-2 lg:col-span-3">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Imagen</label>
                             <div class="flex gap-3 items-center">
@@ -166,9 +252,10 @@ resetForm()
                             </div>
                         </div>
                         
+                        <!-- Botones -->
                         <div class="flex items-end gap-2">
                             <button @click="guardar" 
-                                class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                                class="px-4 py-2 bg-guindo-600 text-white rounded-lg text-sm hover:bg-guindo-700">
                                 <i class="fas" :class="editando ? 'fa-pencil-alt' : 'fa-plus'"></i>
                                 {{ editando ? 'Actualizar' : 'Guardar' }}
                             </button>
@@ -180,18 +267,19 @@ resetForm()
                     </div>
                 </div>
 
+                <!-- Tabla de categorías (agrupada visualmente por padre) -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                            <thead class="bg-guindo-50">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Imagen</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Categoría</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Padre</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Orden</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Imagen</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Categoría</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Padre</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Orden</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -204,8 +292,8 @@ resetForm()
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500">{{ cat.id_categoria }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-700">
-                                        <span class="font-mono text-xs text-gray-400 mr-2">{{ cat.nivel ? '├─' : '' }}</span>
-                                        {{ cat.nombre }}
+                                        <span class="text-gray-400 mr-2">{{ cat.nivel ? '├─' : '' }}</span>
+                                        <span :style="{ marginLeft: (cat.nivel * 20) + 'px' }">{{ cat.nombre }}</span>
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500">{{ cat.padre?.nombre || '-' }}</td>
                                     <td class="px-4 py-3 text-center text-sm text-gray-500">{{ cat.orden }}</td>
@@ -216,7 +304,7 @@ resetForm()
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-right text-sm font-medium">
-                                        <button @click="editar(cat)" class="text-indigo-600 hover:text-indigo-900 mr-3">
+                                        <button @click="editar(cat)" class="text-guindo-600 hover:text-guindo-900 mr-3">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button @click="eliminar(cat.id_categoria, cat.nombre)" class="text-red-600 hover:text-red-900">
@@ -230,7 +318,8 @@ resetForm()
                 </div>
 
                 <div class="mt-4 text-xs text-gray-400 text-center">
-                    <i class="fas fa-info-circle"></i> Las categorías raíz (sin padre) serán los botones principales del menú táctil.
+                    <i class="fas fa-info-circle"></i> Las categorías se ordenan automáticamente según el padre seleccionado.
+                    El orden se calcula como el siguiente número disponible.
                 </div>
             </div>
         </div>

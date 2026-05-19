@@ -13,7 +13,8 @@ class ProductoCategoria extends Model
 
     protected $fillable = [
         'id_detalle_producto',
-        'id_categoria'
+        'id_categoria',
+        'id_sucursal',  // 🔥 NUEVO
     ];
 
     public function producto()
@@ -24,5 +25,11 @@ class ProductoCategoria extends Model
     public function categoria()
     {
         return $this->belongsTo(CategoriaProducto::class, 'id_categoria', 'id_categoria');
+    }
+
+    // 🔥 Scope para filtrar por sucursal actual
+    public function scopePorContexto($query)
+    {
+        return $query->where('id_sucursal', session('cliente_sucursal_id'));
     }
 }

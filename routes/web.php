@@ -249,6 +249,9 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::put('/{id}', [CategoriaProductoController::class, 'update'])->name('gestion.inventario.categorias-producto.update');
         Route::delete('/{id}', [CategoriaProductoController::class, 'destroy'])->name('gestion.inventario.categorias-producto.destroy');
     });
+    // Reordenar categorías (opcional, para limpiar órdenes)
+    Route::post('/gestion/inventario/categorias-producto/reordenar', [CategoriaProductoController::class, 'reordenarTodo'])
+        ->name('gestion.inventario.categorias-producto.reordenar');
 
     // ==================== INVENTARIO - ASIGNAR PRODUCTOS A CATEGORÍAS ====================
     Route::get('/gestion/inventario/asignar-productos-categoria', [AsignarProductoCategoriaController::class, 'index'])->name('gestion.inventario.asignar-productos-categoria.index');

@@ -18,7 +18,7 @@ class CategoriaProductoController extends Controller
             ->get();
 
         $categoriasPadre = CategoriaProducto::porContexto()
-            ->orderBy('nombre')
+            ->orderBy('orden')
             ->get(['id_categoria as id', 'nombre']);
 
         return Inertia::render('Gestion/Inventario/CategoriaProducto/Index', [
@@ -32,7 +32,6 @@ class CategoriaProductoController extends Controller
         $request->validate([
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
-            'orden' => 'required|integer|min:0',
             'activo' => 'boolean',
             'imagen_base64' => 'nullable|string'
         ]);
@@ -47,14 +46,16 @@ class CategoriaProductoController extends Controller
             $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->nombre, $padre);
         }
 
+        // 🔥 Calcular orden automáticamente
+        $orden = CategoriaProducto::getNextOrder($request->id_padre);
+
         $categoria = CategoriaProducto::create([
             'nombre' => strtoupper($request->nombre),
             'id_padre' => $request->id_padre ?: null,
             'imagen_url' => $imagenUrl,
-            'orden' => $request->orden,
+            'orden' => $orden,
             'activo' => $request->activo ? 1 : 0,
             'id_cliente' => session('cliente_id'),
-            'id_sucursal' => session('cliente_sucursal_id'),
         ]);
 
         return redirect()->back()->with('success', "Categoría '{$categoria->nombre}' creada correctamente");
@@ -67,7 +68,6 @@ class CategoriaProductoController extends Controller
         $request->validate([
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
-            'orden' => 'required|integer|min:0',
             'activo' => 'boolean',
             'imagen_base64' => 'nullable|string'
         ]);
@@ -75,6 +75,9 @@ class CategoriaProductoController extends Controller
         if ($request->id_padre == $id) {
             return redirect()->back()->withErrors(['id_padre' => 'No puedes poner una categoría como hija de sí misma']);
         }
+
+        $padreAnterior = $categoria->id_padre;
+        $nuevoPadre = $request->id_padre;
 
         $padre = null;
         if ($request->id_padre) {
@@ -93,13 +96,27 @@ class CategoriaProductoController extends Controller
             $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->nombre, $padre);
         }
 
+        // 🔥 Si cambió de padre, reordenar en ambos grupos
+        if ($padreAnterior != $nuevoPadre) {
+            // Calcular nuevo orden para el nuevo padre
+            $nuevoOrden = CategoriaProducto::getNextOrder($nuevoPadre);
+            $categoria->orden = $nuevoOrden;
+            
+            // Reordenar el grupo anterior
+            CategoriaProducto::reordenar($padreAnterior);
+        }
+
         $categoria->update([
             'nombre' => strtoupper($request->nombre),
             'id_padre' => $request->id_padre ?: null,
             'imagen_url' => $imagenUrl,
-            'orden' => $request->orden,
             'activo' => $request->activo ? 1 : 0,
         ]);
+
+        // Reordenar el nuevo grupo para mantener consistencia
+        if ($padreAnterior != $nuevoPadre) {
+            CategoriaProducto::reordenar($nuevoPadre);
+        }
 
         return redirect()->back()->with('success', "Categoría '{$categoria->nombre}' actualizada correctamente");
     }
@@ -116,6 +133,8 @@ class CategoriaProductoController extends Controller
             return redirect()->back()->with('error', 'No se puede eliminar porque tiene productos asociados');
         }
 
+        $padreId = $categoria->id_padre;
+
         if ($categoria->imagen_url) {
             $rutaCompleta = public_path($categoria->imagen_url);
             if (file_exists($rutaCompleta)) {
@@ -129,7 +148,20 @@ class CategoriaProductoController extends Controller
 
         $categoria->delete();
 
+        // 🔥 Reordenar el grupo del padre después de eliminar
+        CategoriaProducto::reordenar($padreId);
+
         return redirect()->back()->with('success', 'Categoría eliminada correctamente');
+    }
+
+    /**
+     * 🔥 Reordenar todas las categorías (útil para limpiar órdenes desordenados)
+     */
+    public function reordenarTodo()
+    {
+        CategoriaProducto::reordenarTodo();
+        
+        return redirect()->back()->with('success', 'Categorías reordenadas correctamente');
     }
 
     private function guardarImagen($base64, $nombre, $padre = null)

@@ -18,7 +18,6 @@ class CategoriaProducto extends Model
         'orden',
         'activo',
         'id_cliente',
-        'id_sucursal'
     ];
 
     // Relación con el padre
@@ -34,11 +33,10 @@ class CategoriaProducto extends Model
                     ->orderBy('orden');
     }
 
-    // Scope para filtrar por empresa actual
+    // Scope para filtrar por empresa (SOLO cliente, NO sucursal)
     public function scopePorContexto($query)
     {
-        return $query->where('id_cliente', session('cliente_id'))
-                     ->where('id_sucursal', session('cliente_sucursal_id'));
+        return $query->where('id_cliente', session('cliente_id'));
     }
 
     // Scope para obtener solo raíces
@@ -47,14 +45,80 @@ class CategoriaProducto extends Model
         return $query->whereNull('id_padre');
     }
     
-    // Relación con productos a través de la tabla puente
-    public function productos()
+    // Relación con productos a través de la tabla puente (con sucursal)
+    public function productos($sucursalId = null)
     {
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+        
         return $this->belongsToMany(
             ProductoVenta::class,
             'inventario_producto_categoria',
             'id_categoria',
             'id_detalle_producto'
-        );
+        )->wherePivot('id_sucursal', $sucursalId);
+    }
+
+    /**
+     * 🔥 Calcula el siguiente orden disponible para un padre específico
+     */
+    public static function getNextOrder($parentId = null)
+    {
+        $query = self::where('id_cliente', session('cliente_id'));
+        
+        if ($parentId) {
+            $query->where('id_padre', $parentId);
+        } else {
+            $query->whereNull('id_padre');
+        }
+        
+        $maxOrder = $query->max('orden');
+        
+        return ($maxOrder ?? -1) + 1;
+    }
+
+    /**
+     * 🔥 Reordena las categorías de un padre específico
+     */
+    public static function reordenar($parentId = null)
+    {
+        $categorias = self::where('id_cliente', session('cliente_id'));
+        
+        if ($parentId) {
+            $categorias->where('id_padre', $parentId);
+        } else {
+            $categorias->whereNull('id_padre');
+        }
+        
+        $categorias = $categorias->orderBy('orden')->get();
+        
+        $orden = 0;
+        foreach ($categorias as $cat) {
+            $cat->update(['orden' => $orden]);
+            $orden++;
+        }
+    }
+
+    /**
+     * 🔥 Reordena recursivamente todas las categorías (para mantener consistencia)
+     */
+    public static function reordenarTodo($parentId = null)
+    {
+        $orden = 0;
+        
+        $categorias = self::where('id_cliente', session('cliente_id'));
+        
+        if ($parentId) {
+            $categorias->where('id_padre', $parentId);
+        } else {
+            $categorias->whereNull('id_padre');
+        }
+        
+        $categorias = $categorias->orderBy('orden')->get();
+        
+        foreach ($categorias as $cat) {
+            $cat->update(['orden' => $orden]);
+            self::reordenarTodo($cat->id_categoria);
+            $orden++;
+        }
     }
 }

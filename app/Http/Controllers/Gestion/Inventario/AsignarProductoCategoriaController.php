@@ -13,6 +13,7 @@ class AsignarProductoCategoriaController extends Controller
 {
     public function index()
     {
+        // Categorías por cliente (sin sucursal)
         $categorias = CategoriaProducto::porContexto()
             ->with('padre')
             ->orderBy('orden')
@@ -20,14 +21,18 @@ class AsignarProductoCategoriaController extends Controller
         
         $categoriasArbol = $this->buildTree($categorias);
         
+        // Productos por contexto (cliente + sucursal)
         $productos = ProductoVenta::porContexto()
             ->where('ActivoInactivo', 0)
             ->orderBy('Detalle')
             ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
         
+        // 🔥 Asignaciones por sucursal actual
+        $sucursalId = session('cliente_sucursal_id');
         $asignaciones = [];
         if ($categorias->isNotEmpty()) {
-            $asignaciones = ProductoCategoria::whereIn('id_categoria', $categorias->pluck('id_categoria'))
+            $asignaciones = ProductoCategoria::where('id_sucursal', $sucursalId)
+                ->whereIn('id_categoria', $categorias->pluck('id_categoria'))
                 ->get()
                 ->groupBy('id_categoria')
                 ->map(function ($items) {
@@ -39,7 +44,8 @@ class AsignarProductoCategoriaController extends Controller
             'categorias' => $categoriasArbol,
             'productos' => $productos,
             'asignaciones' => $asignaciones,
-            'categoriasLista' => $categorias
+            'categoriasLista' => $categorias,
+            'sucursalId' => $sucursalId,
         ]);
     }
     
@@ -51,19 +57,28 @@ class AsignarProductoCategoriaController extends Controller
             'productos_ids.*' => 'exists:inventario_relacion_ventainventario,IdDetalleProducto'
         ]);
         
-        ProductoCategoria::where('id_categoria', $request->id_categoria)->delete();
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // 🔥 Eliminar asignaciones actuales de esta categoría para esta sucursal
+        ProductoCategoria::where('id_categoria', $request->id_categoria)
+            ->where('id_sucursal', $sucursalId)
+            ->delete();
         
         foreach ($request->productos_ids as $idProducto) {
             ProductoCategoria::create([
                 'id_detalle_producto' => $idProducto,
-                'id_categoria' => $request->id_categoria
+                'id_categoria' => $request->id_categoria,
+                'id_sucursal' => $sucursalId,
             ]);
         }
         
         $categoria = CategoriaProducto::find($request->id_categoria);
         
+        // 🔥 Mostrar mensaje indicando la sucursal
+        $sucursalNombre = session('cliente_sucursal_nombre');
+        
         return redirect()->back()->with('success', 
-            count($request->productos_ids) . " productos asignados a '{$categoria->nombre}'");
+            count($request->productos_ids) . " productos asignados a '{$categoria->nombre}' para la sucursal '{$sucursalNombre}'");
     }
     
     private function buildTree($categorias, $parentId = null, $level = 0)
