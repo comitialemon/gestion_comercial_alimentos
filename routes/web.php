@@ -46,6 +46,15 @@ use App\Http\Controllers\Facturacion\SiatCufdController;
 use App\Http\Controllers\Facturacion\SiatCatalogoController;
 use App\Http\Controllers\Facturacion\SiatOperacionesController;
 use App\Http\Controllers\Gestion\Contabilidad\IngresoController;
+use App\Http\Controllers\Gestion\Todos\SucursalGestionController;
+use App\Http\Controllers\Gestion\Menu\ReporteMenuController;
+use App\Http\Controllers\Gestion\Todos\OperadorController;
+use App\Http\Controllers\Gestion\Todos\OperadorSucursalController;
+use App\Http\Controllers\Gestion\Todos\PerfilController;
+use App\Http\Controllers\Gestion\Todos\FechaController;
+use App\Http\Controllers\Gestion\Todos\CierreFechaController;
+
+
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -87,14 +96,32 @@ Route::middleware(['auth.operador'])->group(function () {
     });
 
     // ==================== MENÚS ====================
+    // ==================== GESTIÓN DE MENÚS ====================
     Route::prefix('gestion/menu')->group(function () {
-        Route::get('/asignar', [AsignarMenuController::class, 'index'])->name('gestion.menu.asignar');
-        Route::get('/asignar/{operadorId}', [AsignarMenuController::class, 'getAsignados'])->name('gestion.menu.asignar.get');
-        Route::post('/asignar', [AsignarMenuController::class, 'store'])->name('gestion.menu.asignar.store');
+        
+        // Asignación de menús a operadores
+        Route::prefix('asignar')->group(function () {
+            Route::get('/', [AsignarMenuController::class, 'index'])->name('gestion.menu.asignar');
+            Route::get('/{operadorId}', [AsignarMenuController::class, 'getAsignados'])->name('gestion.menu.asignar.get');
+            Route::post('/', [AsignarMenuController::class, 'store'])->name('gestion.menu.asignar.store');
+        });
+        
+        // Reporte de menús asignados por operador
+        Route::prefix('reporte')->group(function () {
+            Route::get('/', [ReporteMenuController::class, 'index'])->name('gestion.menu.reporte');
+            Route::get('/arbol/{operadorId}', [ReporteMenuController::class, 'getArbol'])->name('gestion.menu.reporte.arbol');
+        });
     });
 
-    Route::get('/api/menu', [MenuController::class, 'index'])->name('api.menu');
-
+    //========== GESTION TODOS ==================
+    // ==================== SUCURSALES (GESTIÓN) ====================
+    Route::prefix('gestion/sucursales')->group(function () {
+        Route::get('/', [SucursalGestionController::class, 'index'])->name('sucursales-gestion.index');
+        Route::get('/create', [SucursalGestionController::class, 'create'])->name('sucursales-gestion.create');
+        Route::post('/', [SucursalGestionController::class, 'store'])->name('sucursales-gestion.store');
+        Route::get('/{id}/edit', [SucursalGestionController::class, 'edit'])->name('sucursales-gestion.edit');
+        Route::put('/{id}', [SucursalGestionController::class, 'update'])->name('sucursales-gestion.update');
+    });
     // ==================== IDENTIFICADORES ====================
     Route::prefix('gestion/todos/identificador')->group(function () {
         Route::get('/', [IdentificadorController::class, 'index'])->name('gestion.todos.identificador.index');
@@ -102,8 +129,42 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::put('/{id}', [IdentificadorController::class, 'update'])->name('gestion.todos.identificador.update');
         Route::delete('/{id}', [IdentificadorController::class, 'destroy'])->name('gestion.todos.identificador.destroy');
     });
+    // ==================== OPERADORES ====================
+    Route::prefix('gestion/operadores')->group(function () {
+        Route::get('/', [OperadorController::class, 'index'])->name('gestion.operadores.index');
+        Route::post('/', [OperadorController::class, 'store'])->name('gestion.operadores.store');
+        Route::put('/{id}', [OperadorController::class, 'update'])->name('gestion.operadores.update');
+        Route::delete('/{id}', [OperadorController::class, 'destroy'])->name('gestion.operadores.destroy');
+        Route::post('/{id}/activar', [OperadorController::class, 'activar'])->name('gestion.operadores.activar');
+    });
+    // ==================== PERFIL DE USUARIO ====================
+    Route::prefix('gestion/perfil')->group(function () {
+        Route::get('/', [PerfilController::class, 'edit'])->name('gestion.perfil.edit');
+        Route::put('/', [PerfilController::class, 'update'])->name('gestion.perfil.update');
+    });
+    // ==================== ASIGNACIÓN OPERADOR - SUCURSAL ====================
+    Route::prefix('gestion/operador-sucursal')->group(function () {
+        Route::get('/', [OperadorSucursalController::class, 'index'])->name('gestion.operador-sucursal.index');
+        Route::post('/', [OperadorSucursalController::class, 'store'])->name('gestion.operador-sucursal.store');
+        Route::put('/{id}', [OperadorSucursalController::class, 'update'])->name('gestion.operador-sucursal.update');
+        Route::delete('/{id}', [OperadorSucursalController::class, 'destroy'])->name('gestion.operador-sucursal.destroy');
+    });
+    // ==================== FECHAS Y TIPOS DE CAMBIO ====================
+    Route::prefix('gestion/fechas')->group(function () {
+        Route::get('/', [FechaController::class, 'index'])->name('gestion.fechas.index');
+        Route::post('/', [FechaController::class, 'store'])->name('gestion.fechas.store');
+        Route::put('/{id}', [FechaController::class, 'update'])->name('gestion.fechas.update');
+        Route::delete('/{id}', [FechaController::class, 'destroy'])->name('gestion.fechas.destroy');
+    });
+    // ==================== CIERRE DE FECHAS ====================
+    Route::prefix('gestion/cierre-fechas')->group(function () {
+        Route::get('/', [CierreFechaController::class, 'index'])->name('gestion.cierre-fechas.index');
+        Route::put('/{id}', [CierreFechaController::class, 'update'])->name('gestion.cierre-fechas.update');
+        Route::post('/update-multiple', [CierreFechaController::class, 'updateMultiple'])->name('gestion.cierre-fechas.update-multiple');
+    });
 
-    // ==================== IMPUESTOS - LUGARES DE VENTA ====================
+    // ============= IMPUESTOS ===============
+    // ==================== LUGARES DE VENTA ====================
     Route::prefix('gestion/lugar-venta')->group(function () {
         Route::get('/', [LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
         Route::get('/create', [LugarVentaController::class, 'create'])->name('gestion.lugar-venta.create');

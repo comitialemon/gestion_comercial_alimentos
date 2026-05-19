@@ -23,35 +23,24 @@ class ClienteSucursal extends Model
         'Orden',
         'Categoria',
         'ActivoInactivo',
+        'ControlInternoEfectivo',  // 🔥 AGREGAR ESTE
         'facturacion_habilitada',
     ];
 
-    /**
-     * Obtiene la empresa de esta sucursal
-     */
+    // Relaciones
     public function empresa()
     {
         return $this->belongsTo(Cliente::class, 'IdCliente', 'IdCliente');
     }
 
-    /**
-     * Obtiene la plaza de esta sucursal
-     */
     public function plaza()
     {
         return $this->belongsTo(ClientePlaza::class, 'IdPlaza', 'IdPlaza');
     }
 
-    /**
-     * Obtiene los operadores asignados a esta sucursal
-     */
-    public function operadores()
+    // Scope para filtrar por contexto
+    public function scopePorContexto($query)
     {
-        return $this->belongsToMany(
-            Operador::class,
-            'todos_operador_sucursaldb',
-            'IdSucursal',
-            'IdOperador'
-        )->distinct();
+        return $query->where('IdCliente', session('cliente_id'));
     }
 }
