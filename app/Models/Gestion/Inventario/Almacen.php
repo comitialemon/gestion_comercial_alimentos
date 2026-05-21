@@ -1,7 +1,9 @@
 <?php
+
 namespace App\Models\Gestion\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Gestion\Todos\ClienteSucursal;
 
 class Almacen extends Model
 {
@@ -11,6 +13,12 @@ class Almacen extends Model
     public $timestamps = false;
 
     protected $fillable = ['Almacen', 'AlmacenPrincipal', 'IdCliente', 'IdSucursal'];
+
+    // 🔥 Relación con sucursal (importante para que funcione)
+    public function sucursal()
+    {
+        return $this->belongsTo(ClienteSucursal::class, 'IdSucursal', 'IdClienteSucursal');
+    }
 
     public function scopePorContexto($query)
     {

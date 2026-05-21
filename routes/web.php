@@ -57,6 +57,10 @@ use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoAprobacionConfigController;
 use App\Http\Controllers\Gestion\Impuestos\LiquidacionVendedorController;
 use App\Http\Controllers\Gestion\Impuestos\ReporteVentasVendedorController;
+use App\Http\Controllers\Gestion\Impuestos\ReporteVentasSucursalController;
+use App\Http\Controllers\Gestion\Impuestos\ReporteListadoFacturasController;
+use App\Http\Controllers\Gestion\Impuestos\AnularFacturaController;
+use App\Http\Controllers\Gestion\Impuestos\MantenimientoMetodosPagoController;
 
 
 
@@ -168,6 +172,22 @@ Route::middleware(['auth.operador'])->group(function () {
     });
 
     // ============= IMPUESTOS ===============
+    // ==================== ANULAR FACTURA ====================
+    Route::get('/gestion/anular-factura', [AnularFacturaController::class, 'index'])
+        ->name('gestion.anular-factura.index');
+    Route::post('/gestion/anular-factura/anular', [AnularFacturaController::class, 'anular'])
+        ->name('gestion.anular-factura.anular');
+
+    // ==================== MANTENIMIENTO MÉTODOS DE PAGO ====================
+    Route::prefix('gestion/mantenimiento-metodos-pago')->group(function () {
+        Route::get('/', [MantenimientoMetodosPagoController::class, 'index'])
+            ->name('gestion.mantenimiento-metodos-pago.index');
+        Route::get('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'getMetodosPago'])
+            ->name('gestion.mantenimiento-metodos-pago.get');
+        Route::put('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'updateMetodosPago'])
+            ->name('gestion.mantenimiento-metodos-pago.update');
+    });
+
     // ==================== LUGARES DE VENTA ====================
     Route::prefix('gestion/lugar-venta')->group(function () {
         Route::get('/', [LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
@@ -189,6 +209,7 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::delete('/{id}', [ComisionistaController::class, 'destroy'])->name('gestion.comisionista.destroy');
         Route::get('/buscar-identificador', [ComisionistaController::class, 'buscarIdentificador'])->name('gestion.comisionista.buscar-identificador');
     });
+    
     // ==================== IMPUESTOS - LIQUIDACIÓN CONCEPTOS ====================
     Route::prefix('gestion/impuestos/liquidacion-concepto')->group(function () {
         Route::get('/', [LiquidacionConceptoController::class, 'index'])->name('gestion.impuestos.liquidacion-concepto.index');
@@ -213,7 +234,22 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
     });
 
-    // ==================== COMPRAS ====================
+
+    // ==================== REPORTE DE VENTAS POR SUCURSAL ====================
+    Route::get('/gestion/reporte-ventas-sucursal', [ReporteVentasSucursalController::class, 'index'])
+        ->name('gestion.reporte-ventas-sucursal.index');
+    Route::get('/gestion/reporte-ventas-sucursal/detalle-producto', [ReporteVentasSucursalController::class, 'getDetalleProducto'])
+        ->name('gestion.reporte-ventas-sucursal.detalle-producto');
+
+
+    // ==================== REPORTE LISTADO DE FACTURAS ====================
+    Route::get('/gestion/reporte-listado-facturas', [ReporteListadoFacturasController::class, 'index'])
+        ->name('gestion.reporte-listado-facturas.index');
+    Route::get('/gestion/reporte-listado-facturas/reimprimir/{id}', [ReporteListadoFacturasController::class, 'reimprimir'])
+        ->name('gestion.reporte-listado-facturas.reimprimir');
+        
+    
+        // ==================== COMPRAS ====================
     Route::prefix('gestion/compras')->group(function () {
         Route::get('/', [CompraController::class, 'index'])->name('compras.index');
         Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
@@ -509,11 +545,4 @@ Route::middleware(['auth.operador'])->group(function () {
             'has_session' => session()->has('operador_id') && session('operador_id') > 0
         ]);
     });
-    Route::get('/debug-sesion', function () {
-    return response()->json([
-        'cliente_id' => session('cliente_id'),
-        'cliente_sucursal_id' => session('cliente_sucursal_id'),
-        'cliente_sucursal_nombre' => session('cliente_sucursal_nombre'),
-    ]);
-});
 });
