@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 import ModalDetalleProducto from './components/ModalDetalleProducto.vue'
@@ -8,9 +8,7 @@ import ModalDetalleProducto from './components/ModalDetalleProducto.vue'
 defineOptions({ layout: AppLayout })
 
 const props = defineProps({
-    ventasAgrupadas: Array,
-    totalUnidades: Number,
-    totalBolivianos: Number,
+    reporte: Object,
     grupos: Array,
     metodosPago: Array,
     filtros: Object,
@@ -28,9 +26,7 @@ const tipoBusqueda = ref(props.filtros?.fecha ? 'dia' : (props.filtros?.fecha_de
 // Modal
 const modalOpen = ref(false)
 const productoSeleccionado = ref('')
-const detallesCargando = ref(false)
 
-// Aplicar filtros
 const aplicarFiltros = () => {
     const params = {}
     
@@ -50,7 +46,6 @@ const aplicarFiltros = () => {
     })
 }
 
-// Limpiar filtros
 const limpiarFiltros = () => {
     fecha.value = ''
     fechaDesde.value = ''
@@ -61,19 +56,23 @@ const limpiarFiltros = () => {
     aplicarFiltros()
 }
 
-// Abrir modal con detalle del producto
-const verDetalle = async (producto) => {
+const verDetalle = (producto) => {
     productoSeleccionado.value = producto
     modalOpen.value = true
 }
 
-// Formatear números
 const formatearNumero = (value, decimals = 2) => {
     if (value === undefined || value === null) return '0.00'
     return Number(value).toLocaleString('es-BO', {
         minimumFractionDigits: decimals,
         maximumFractionDigits: decimals
     })
+}
+
+const formatearFechaCabecera = (fecha) => {
+    if (!fecha) return '-'
+    const date = new Date(fecha)
+    return date.toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 </script>
 
@@ -97,7 +96,6 @@ const formatearNumero = (value, decimals = 2) => {
                 <!-- Filtros -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-                        <!-- Tipo de búsqueda -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de búsqueda</label>
                             <div class="flex gap-3">
@@ -112,13 +110,11 @@ const formatearNumero = (value, decimals = 2) => {
                             </div>
                         </div>
 
-                        <!-- Fecha única -->
                         <div v-if="tipoBusqueda === 'dia'">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Fecha</label>
                             <input type="date" v-model="fecha" class="w-40 border rounded-md px-2 py-1.5 text-sm">
                         </div>
 
-                        <!-- Rango de fechas (inputs más compactos) -->
                         <div v-if="tipoBusqueda === 'rango'" class="sm:col-span-2">
                             <div class="flex gap-2">
                                 <div class="w-40">
@@ -132,7 +128,6 @@ const formatearNumero = (value, decimals = 2) => {
                             </div>
                         </div>
 
-                        <!-- Grupo -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Grupo</label>
                             <select v-model="grupo" class="w-full border rounded-md px-2 py-1.5 text-sm">
@@ -141,7 +136,6 @@ const formatearNumero = (value, decimals = 2) => {
                             </select>
                         </div>
 
-                        <!-- Método de pago -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Método de pago</label>
                             <select v-model="metodoPago" class="w-full border rounded-md px-2 py-1.5 text-sm">
@@ -167,55 +161,126 @@ const formatearNumero = (value, decimals = 2) => {
                     <p class="text-sm text-blue-700">Seleccione fechas y presione "Buscar" para ver el reporte</p>
                 </div>
 
-                <!-- Tabla agrupada -->
-                <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <!-- Tabla - Modo Día Único -->
+                <div v-else-if="reporte.tipo === 'dia'" class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-guindo-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-guindo-700 uppercase tracking-wider">Producto</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-guindo-700 uppercase tracking-wider">Unidades</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-guindo-700 uppercase tracking-wider">Total Bs</th>
+                                    <th class="px-4 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Producto</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Unidades</th>
+                                    <th class="px-4 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Total Bs</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-100">
                                 <tr 
-                                    v-for="venta in ventasAgrupadas" 
-                                    :key="venta.ProductoVenta" 
-                                    @click="verDetalle(venta.ProductoVenta)"
+                                    v-for="item in reporte.productos" 
+                                    :key="item.Producto"
+                                    @click="verDetalle(item.Producto)"
                                     class="hover:bg-gray-50 cursor-pointer transition"
                                 >
                                     <td class="px-4 py-2 text-sm font-medium text-guindo-700">
                                         <i class="fas fa-box text-guindo-400 mr-1 text-xs"></i>
-                                        {{ venta.ProductoVenta }}
+                                        {{ item.Producto }}
                                     </td>
                                     <td class="px-4 py-2 text-sm text-right text-gray-700">
-                                        {{ formatearNumero(venta.TotalUnidades, 4) }}
+                                        {{ formatearNumero(item.Unidades, 4) }}
                                     </td>
                                     <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">
-                                        {{ formatearNumero(venta.TotalBolivianos, 2) }}
-                                    </td>
-                                </tr>
-                                <tr v-if="ventasAgrupadas.length === 0">
-                                    <td colspan="3" class="px-4 py-10 text-center text-gray-500">
-                                        <i class="fas fa-chart-line text-2xl mb-2 block"></i>
-                                        <p class="text-sm">No hay ventas registradas con los filtros seleccionados</p>
+                                        {{ formatearNumero(item.Total, 2) }}
                                     </td>
                                 </tr>
                             </tbody>
-                            <tfoot v-if="ventasAgrupadas.length > 0" class="bg-gray-50">
+                            <tfoot class="bg-gray-50">
                                 <tr class="border-t border-gray-200">
                                     <td class="px-4 py-2 text-sm font-bold text-gray-800">TOTAL ACUMULADO</td>
                                     <td class="px-4 py-2 text-sm text-right font-bold text-gray-800">
-                                        {{ formatearNumero(totalUnidades, 4) }}
+                                        {{ formatearNumero(reporte.totalGeneralUnidades, 4) }}
                                     </td>
                                     <td class="px-4 py-2 text-sm text-right font-bold text-guindo-700">
-                                        {{ formatearNumero(totalBolivianos, 2) }}
+                                        {{ formatearNumero(reporte.totalGeneralBs, 2) }}
                                     </td>
                                 </tr>
                             </tfoot>
                         </table>
                     </div>
+                </div>
+
+                <!-- Tabla - Modo Rango de Fechas (columnas dinámicas con etiquetas claras) -->
+                <div v-else-if="reporte.tipo === 'rango'" class="bg-white rounded-lg shadow-sm overflow-x-auto">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-guindo-50">
+                            <tr>
+                                <th class="px-4 py-2 text-left text-xs font-medium text-guindo-700 uppercase sticky left-0 bg-guindo-50 z-10" style="min-width: 180px">Producto</th>
+                                <th 
+                                    v-for="fecha in reporte.fechas" 
+                                    :key="fecha" 
+                                    class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase"
+                                    style="min-width: 110px"
+                                >
+                                    {{ formatearFechaCabecera(fecha) }}
+                                </th>
+                                <th class="px-4 py-2 text-center text-xs font-medium text-guindo-700 uppercase bg-guindo-100" style="min-width: 100px">TOTAL</th>
+                            </tr>
+                            <tr class="bg-guindo-100">
+                                <th class="px-4 py-1 text-left text-[10px] font-medium text-guindo-800 sticky left-0 bg-guindo-100"></th>
+                                <th 
+                                    v-for="fecha in reporte.fechas" 
+                                    :key="fecha" 
+                                    class="px-3 py-1 text-center text-[10px] font-medium text-guindo-800"
+                                >
+                                    <span class="block text-emerald-700">Unidades</span>
+                                    <span class="block text-blue-700">Total Bs</span>
+                                </th>
+                                <th class="px-4 py-1 text-center text-[10px] font-medium text-guindo-800 bg-guindo-100">
+                                    <span class="block text-emerald-700">Unidades</span>
+                                    <span class="block text-blue-700">Total Bs</span>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white divide-y divide-gray-100">
+                            <tr 
+                                v-for="item in reporte.productos" 
+                                :key="item.Producto"
+                                @click="verDetalle(item.Producto)"
+                                class="hover:bg-gray-50 cursor-pointer transition"
+                            >
+                                <td class="px-4 py-3 text-sm font-medium text-guindo-700 sticky left-0 bg-white z-10 border-r">
+                                    <i class="fas fa-box text-guindo-400 mr-2 text-xs"></i>
+                                    {{ item.Producto }}
+                                </td>
+                                <td 
+                                    v-for="(detalle, idx) in item.detalles" 
+                                    :key="idx" 
+                                    class="px-3 py-3 text-center border-r"
+                                >
+                                    <div class="text-xs font-semibold text-emerald-700">{{ formatearNumero(detalle.unidades, 4) }}</div>
+                                    <div class="text-xs font-semibold text-blue-700 mt-1">{{ formatearNumero(detalle.total, 2) }}</div>
+                                </td>
+                                <td class="px-4 py-3 text-center bg-gray-50">
+                                    <div class="text-xs font-bold text-emerald-800">{{ formatearNumero(item.totalUnidades, 4) }}</div>
+                                    <div class="text-xs font-bold text-blue-800 mt-1">{{ formatearNumero(item.totalBs, 2) }}</div>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="bg-gray-100">
+                            <tr>
+                                <td class="px-4 py-3 text-sm font-bold text-gray-800 sticky left-0 bg-gray-100 border-r">TOTAL ACUMULADO</td>
+                                <td 
+                                    v-for="(total, idx) in reporte.totalesPorFecha" 
+                                    :key="idx" 
+                                    class="px-3 py-3 text-center border-r"
+                                >
+                                    <div class="text-xs font-bold text-emerald-800">{{ formatearNumero(total.unidades, 4) }}</div>
+                                    <div class="text-xs font-bold text-blue-800 mt-1">{{ formatearNumero(total.total, 2) }}</div>
+                                </td>
+                                <td class="px-4 py-3 text-center bg-gray-200">
+                                    <div class="text-sm font-bold text-emerald-800">{{ formatearNumero(reporte.totalGeneralUnidades, 4) }}</div>
+                                    <div class="text-sm font-bold text-blue-800 mt-1">{{ formatearNumero(reporte.totalGeneralBs, 2) }}</div>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
         </div>

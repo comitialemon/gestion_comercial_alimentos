@@ -15,8 +15,8 @@ class ReporteVentasVendedorController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // Consulta base (sin agrupar, para contar)
-        $baseQuery = DB::connection('mysql_gestion_comercial_alimentos')
+        // Consulta base (la misma que en Scriptcase)
+        $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
             ->join('inventario_relacion_ventainventario as rvi', 'vd.idrelacionventainventario', '=', 'rvi.IdDetalleProducto')
@@ -30,49 +30,133 @@ class ReporteVentasVendedorController extends Controller
             ->where('v.IdEstado', 1);
 
         // Aplicar filtros de fecha
+        $esRango = false;
+        
         if ($request->filled('fecha')) {
-            $baseQuery->whereDate('v.FechaVenta', $request->fecha);
-        }
-        if ($request->filled('fecha_desde') && $request->filled('fecha_hasta')) {
-            $baseQuery->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
-                      ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
-        } elseif ($request->filled('fecha_desde')) {
-            $baseQuery->whereDate('v.FechaVenta', '>=', $request->fecha_desde);
-        } elseif ($request->filled('fecha_hasta')) {
-            $baseQuery->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
+            $query->whereDate('v.FechaVenta', $request->fecha);
+        } elseif ($request->filled('fecha_desde') && $request->filled('fecha_hasta')) {
+            $esRango = true;
+            $query->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
+                ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
         }
 
-        // Aplicar filtros adicionales
+        // Aplicar otros filtros
         if ($request->filled('grupo')) {
-            $baseQuery->where('rvi.IdVentaGrupo', $request->grupo);
+            $query->where('rvi.IdVentaGrupo', $request->grupo);
         }
         if ($request->filled('metodo_pago')) {
-            $baseQuery->where('cc.Descripcion', $request->metodo_pago);
+            $query->where('cc.Descripcion', $request->metodo_pago);
         }
 
-        // Consulta agrupada para la tabla principal
-        $ventasAgrupadas = (clone $baseQuery)
-            ->select(
+        // Obtener datos crudos
+        $datosCrudos = $query->select(
+                DB::raw('DATE(v.FechaVenta) as Fecha'),
+                'v.NumeroFactura',
+                'rvi.IdVentaGrupo',
                 'rvi.Detalle as ProductoVenta',
-                DB::raw('SUM(vd.unidades) as TotalUnidades'),
-                DB::raw('SUM(vd.totalbolivianos) as TotalBolivianos')
+                'pd.Descripcion as ProductoInventario',
+                'vd.unidades',
+                'vd.preciounidades as PrecioUnidades',
+                'vd.totalbolivianos as Total',
+                DB::raw("COALESCE(cc.Descripcion, 'SIN MÉTODO DE PAGO') as MetodoPago")
             )
-            ->groupBy('rvi.Detalle', 'rvi.IdDetalleProducto')
             ->orderBy('rvi.Detalle', 'asc')
+            ->orderBy('Fecha', 'asc')
             ->get();
 
-        // Totales acumulados
-        $totalUnidades = $ventasAgrupadas->sum('TotalUnidades');
-        $totalBolivianos = $ventasAgrupadas->sum('TotalBolivianos');
+        if ($esRango) {
+            // Obtener fechas únicas con ventas
+            $fechasUnicas = $datosCrudos->unique('Fecha')->pluck('Fecha')->values();
+            
+            // Agrupar por producto
+            $productosArray = [];
+            $productosGroup = $datosCrudos->groupBy('ProductoVenta');
+            
+            foreach ($productosGroup as $producto => $items) {
+                $fila = [
+                    'Producto' => $producto,
+                    'detalles' => []
+                ];
+                
+                $totalUnidadesProducto = 0;
+                $totalBsProducto = 0;
+                
+                foreach ($fechasUnicas as $fecha) {
+                    $ventasFecha = $items->where('Fecha', $fecha);
+                    $unidades = $ventasFecha->sum('unidades');
+                    $total = $ventasFecha->sum('Total');
+                    
+                    $fila['detalles'][] = [
+                        'fecha' => $fecha,
+                        'unidades' => $unidades,
+                        'total' => $total,
+                    ];
+                    
+                    $totalUnidadesProducto += $unidades;
+                    $totalBsProducto += $total;
+                }
+                
+                $fila['totalUnidades'] = $totalUnidadesProducto;
+                $fila['totalBs'] = $totalBsProducto;
+                
+                $productosArray[] = $fila;
+            }
+            
+            // Calcular total por fecha
+            $totalesPorFecha = [];
+            foreach ($fechasUnicas as $fecha) {
+                $unidadesFecha = 0;
+                $totalFecha = 0;
+                foreach ($productosArray as $producto) {
+                    $detalle = collect($producto['detalles'])->firstWhere('fecha', $fecha);
+                    if ($detalle) {
+                        $unidadesFecha += $detalle['unidades'];
+                        $totalFecha += $detalle['total'];
+                    }
+                }
+                $totalesPorFecha[] = [
+                    'fecha' => $fecha,
+                    'unidades' => $unidadesFecha,
+                    'total' => $totalFecha,
+                ];
+            }
+            
+            $resultado = [
+                'tipo' => 'rango',
+                'fechas' => $fechasUnicas,
+                'productos' => $productosArray,
+                'totalesPorFecha' => $totalesPorFecha,
+                'totalGeneralUnidades' => collect($productosArray)->sum('totalUnidades'),
+                'totalGeneralBs' => collect($productosArray)->sum('totalBs'),
+            ];
+        } else {
+            // Modo día único
+            $productosArray = [];
+            $productosGroup = $datosCrudos->groupBy('ProductoVenta');
+            
+            foreach ($productosGroup as $producto => $items) {
+                $productosArray[] = [
+                    'Producto' => $producto,
+                    'Unidades' => $items->sum('unidades'),
+                    'Total' => $items->sum('Total'),
+                ];
+            }
+            
+            $resultado = [
+                'tipo' => 'dia',
+                'productos' => $productosArray,
+                'totalGeneralUnidades' => collect($productosArray)->sum('Unidades'),
+                'totalGeneralBs' => collect($productosArray)->sum('Total'),
+            ];
+        }
 
-        // Obtener grupos para el filtro
+        // Datos para filtros
         $grupos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_relacion_ventainventario_grupouno')
             ->where('IdCliente', $clienteId)
             ->orderBy('Detalle')
             ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
 
-        // Obtener métodos de pago disponibles
         $metodosPago = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_liquidacion as vl', 'v.IdVentas', '=', 'vl.IdVentas')
@@ -86,9 +170,7 @@ class ReporteVentasVendedorController extends Controller
             ->pluck('nombre');
 
         return Inertia::render('Gestion/Impuestos/ReporteVentasVendedor/Index', [
-            'ventasAgrupadas' => $ventasAgrupadas,
-            'totalUnidades' => $totalUnidades,
-            'totalBolivianos' => $totalBolivianos,
+            'reporte' => $resultado,
             'grupos' => $grupos,
             'metodosPago' => $metodosPago,
             'filtros' => [
@@ -109,11 +191,6 @@ class ReporteVentasVendedorController extends Controller
     {
         $request->validate([
             'producto' => 'required|string',
-            'fecha' => 'nullable|date',
-            'fecha_desde' => 'nullable|date',
-            'fecha_hasta' => 'nullable|date',
-            'grupo' => 'nullable|string',
-            'metodo_pago' => 'nullable|string',
         ]);
 
         $clienteId = session('cliente_id');
@@ -134,7 +211,6 @@ class ReporteVentasVendedorController extends Controller
             ->where('v.IdEstado', 1)
             ->where('rvi.Detalle', $request->producto);
 
-        // Aplicar mismos filtros que en el reporte principal
         if ($request->filled('fecha')) {
             $query->whereDate('v.FechaVenta', $request->fecha);
         }
@@ -172,71 +248,6 @@ class ReporteVentasVendedorController extends Controller
             'detalles' => $detalles,
             'totalUnidades' => $totalUnidades,
             'totalBolivianos' => $totalBolivianos,
-        ]);
-    }
-
-    public function export(Request $request)
-    {
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-        $operadorId = session('operador_id');
-
-        $query = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas as v')
-            ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
-            ->join('inventario_relacion_ventainventario as rvi', 'vd.idrelacionventainventario', '=', 'rvi.IdDetalleProducto')
-            ->join('inventario_relacion_ventainventario_detalle as rvid', 'rvi.IdDetalleProducto', '=', 'rvid.IdDetalleProducto')
-            ->join('inventario_productodetalle as pd', 'rvid.IdProducto', '=', 'pd.IdProducto')
-            ->leftJoin('impuestos_ventas_liquidacion as vl', 'v.IdVentas', '=', 'vl.IdVentas')
-            ->leftJoin('conta_cuenta as cc', 'vl.IdCuenta', '=', 'cc.IdCuenta')
-            ->where('v.IdCliente', $clienteId)
-            ->where('v.IdClienteSucursal', $sucursalId)
-            ->where('v.IdOperadorIngresa', $operadorId)
-            ->where('v.IdEstado', 1);
-
-        if ($request->filled('fecha')) {
-            $query->whereDate('v.FechaVenta', $request->fecha);
-        }
-        if ($request->filled('fecha_desde') && $request->filled('fecha_hasta')) {
-            $query->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
-                  ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
-        }
-        if ($request->filled('grupo')) {
-            $query->where('rvi.IdVentaGrupo', $request->grupo);
-        }
-        if ($request->filled('metodo_pago')) {
-            $query->where('cc.Descripcion', $request->metodo_pago);
-        }
-
-        $ventas = $query->select(
-                'rvi.Detalle as ProductoVenta',
-                DB::raw('SUM(vd.unidades) as TotalUnidades'),
-                DB::raw('SUM(vd.totalbolivianos) as TotalBolivianos')
-            )
-            ->groupBy('rvi.Detalle', 'rvi.IdDetalleProducto')
-            ->orderBy('rvi.Detalle', 'asc')
-            ->get();
-
-        $filename = 'reporte_ventas_agrupado_' . date('Y-m-d_H-i-s') . '.csv';
-        $handle = fopen('php://temp', 'w+');
-
-        fputcsv($handle, ['Producto', 'Unidades', 'Total Bs'], ';');
-
-        foreach ($ventas as $venta) {
-            fputcsv($handle, [
-                $venta->ProductoVenta,
-                number_format($venta->TotalUnidades, 4, ',', '.'),
-                number_format($venta->TotalBolivianos, 2, ',', '.'),
-            ], ';');
-        }
-
-        rewind($handle);
-        $csvContent = stream_get_contents($handle);
-        fclose($handle);
-
-        return response($csvContent, 200, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => "attachment; filename=\"$filename\"",
         ]);
     }
 }
