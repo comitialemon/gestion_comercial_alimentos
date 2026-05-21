@@ -20,4 +20,20 @@ class RelacionVentaDetalle extends Model
         'IdOperadorActualiza',
         'FechaActualiza',
     ];
+
+    /**
+     * Relación con el producto de inventario
+     */
+    public function producto()
+    {
+        return $this->belongsTo(ProductoDetalle::class, 'IdProducto', 'IdProducto');
+    }
+
+    /**
+     * Relación con el producto de venta (padre)
+     */
+    public function productoServicio()
+    {
+        return $this->belongsTo(ProductoVenta::class, 'IdDetalleProducto', 'IdDetalleProducto');
+    }
 }

@@ -74,7 +74,6 @@ class MenuTactilController extends Controller
             ->orderBy('orden')
             ->get();
 
-        // Obtener comisionista de sesión
         $comisionistaNombre = null;
         $comisionistaId = session('venta_tactil_comisionista_id');
         if ($comisionistaId) {
@@ -95,13 +94,35 @@ class MenuTactilController extends Controller
             ]);
         }
 
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // 🔥 LOG PARA DEPURACIÓN
+        \Log::info('=== verCategoria ===');
+        \Log::info('Categoria ID: ' . $id);
+        \Log::info('Sucursal ID: ' . $sucursalId);
+        
+        // Consulta para verificar asignaciones
+        $asignaciones = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_producto_categoria')
+            ->where('id_categoria', $id)
+            ->where('id_sucursal', $sucursalId)
+            ->get();
+        
+        \Log::info('Asignaciones encontradas: ' . $asignaciones->count());
+        foreach ($asignaciones as $asig) {
+            \Log::info('Producto ID asignado: ' . $asig->id_detalle_producto);
+        }
+        
         $productos = ProductoVenta::porContexto()
-            ->where('ActivoInactivo', 0)
-            ->whereHas('categorias', function($q) use ($id) {
-                $q->where('inventario_producto_categoria.id_categoria', $id);
+            ->where('ActivoInactivo', ProductoVenta::ESTADO_ACTIVO)
+            ->whereHas('categorias', function($q) use ($id, $sucursalId) {
+                $q->where('inventario_producto_categoria.id_categoria', $id)
+                ->where('inventario_producto_categoria.id_sucursal', $sucursalId);
             })
             ->orderBy('Detalle')
             ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
+        
+        \Log::info('Productos encontrados por Eloquent: ' . $productos->count());
 
         return Inertia::render('PuntoVenta/MenuTactil/Productos', [
             'categoria' => $categoria,

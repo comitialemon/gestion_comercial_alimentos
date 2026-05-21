@@ -31,79 +31,43 @@ const searchSucursal = ref('')
 const showSucursalDropdown = ref(false)
 
 const sucursalesFiltradas = computed(() => {
-    if (!searchSucursal.value) return props.sucursales
+    if (!searchSucursal.value) return props.sucursales || []
     const term = searchSucursal.value.toLowerCase()
-    return props.sucursales?.filter(s => 
+    return (props.sucursales || []).filter(s => 
         s.nombre?.toLowerCase().includes(term) || 
         s.NumeroSucursal?.toString().includes(term)
-    ) || []
+    )
 })
 
-// Búsqueda de operadores (solo para nueva asignación)
+// Búsqueda de operadores
 const searchOperador = ref('')
 const showOperadorDropdown = ref(false)
 
 const operadoresFiltrados = computed(() => {
-    if (!searchOperador.value) return props.operadores
+    if (!searchOperador.value) return props.operadores || []
     const term = searchOperador.value.toLowerCase()
-    return props.operadores?.filter(op => 
+    return (props.operadores || []).filter(op => 
         op.nombre?.toLowerCase().includes(term) || 
         op.ci?.toString().includes(term) ||
         op.iniciales?.toLowerCase().includes(term)
-    ) || []
+    )
 })
 
-// Obtener texto de sucursal por ID
-const getSucursalTexto = (id) => {
-    if (!id) return ''
-    const s = props.sucursales?.find(suc => suc.id == id)
-    if (s) {
-        return `${s.nombre} ${s.NumeroSucursal ? `(N° ${s.NumeroSucursal})` : ''}`
+// Actualizar búsqueda de operador (corregido)
+const onSearchOperadorInput = (event) => {
+    if (!props.editando) {
+        searchOperador.value = event.target.value
+        if (searchOperador.value === '') {
+            form.value.IdOperador = ''
+        }
     }
-    return ''
 }
 
-// Obtener texto de operador por ID
-const getOperadorTexto = (id) => {
-    if (!id) return ''
-    const op = props.operadores?.find(o => o.id == id)
-    if (op) {
-        return `${op.ci} - ${op.nombre} (${op.iniciales})`
-    }
-    return ''
-}
-
-// Cargar datos cuando se abre el modal
-const cargarDatos = async () => {
-    await nextTick()
-    
-    if (props.editando && props.asignacion) {
-        form.value.IdSucursal = props.asignacion.IdSucursal
-        form.value.IdOperador = props.asignacion.IdOperador
-        
-        const sucursalEncontrada = props.sucursales?.find(s => s.id == props.asignacion.IdSucursal)
-        if (sucursalEncontrada) {
-            searchSucursal.value = `${sucursalEncontrada.nombre} ${sucursalEncontrada.NumeroSucursal ? `(N° ${sucursalEncontrada.NumeroSucursal})` : ''}`
-        } else {
-            searchSucursal.value = props.asignacion.sucursal?.Nombre || ''
-        }
-        
-        // En edición, mostrar el operador pero no permitir cambiarlo
-        const operadorEncontrado = props.operadores?.find(o => o.id == props.asignacion.IdOperador)
-        if (operadorEncontrado) {
-            searchOperador.value = `${operadorEncontrado.ci} - ${operadorEncontrado.nombre} (${operadorEncontrado.iniciales})`
-        } else {
-            searchOperador.value = props.asignacion.operador?.identificador?.Nombre || ''
-        }
-        
-    } else {
-        // Nueva asignación: limpiar todo
-        form.value = {
-            IdSucursal: '',
-            IdOperador: '',
-        }
-        searchSucursal.value = ''
-        searchOperador.value = ''
+// Actualizar búsqueda de sucursal
+const onSearchSucursalInput = (event) => {
+    searchSucursal.value = event.target.value
+    if (searchSucursal.value === '') {
+        form.value.IdSucursal = ''
     }
 }
 
@@ -114,7 +78,7 @@ const seleccionarSucursal = (sucursal) => {
     showSucursalDropdown.value = false
 }
 
-// Seleccionar operador (solo para nueva asignación)
+// Seleccionar operador
 const seleccionarOperador = (operador) => {
     form.value.IdOperador = operador.id
     searchOperador.value = `${operador.ci} - ${operador.nombre} (${operador.iniciales})`
@@ -156,6 +120,32 @@ const resetForm = () => {
     searchSucursal.value = ''
     searchOperador.value = ''
     errors.value = {}
+}
+
+// Cargar datos cuando se abre el modal
+const cargarDatos = async () => {
+    await nextTick()
+    
+    if (props.editando && props.asignacion) {
+        form.value.IdSucursal = props.asignacion.IdSucursal
+        form.value.IdOperador = props.asignacion.IdOperador
+        
+        const sucursalEncontrada = props.sucursales?.find(s => s.id == props.asignacion.IdSucursal)
+        if (sucursalEncontrada) {
+            searchSucursal.value = `${sucursalEncontrada.nombre} ${sucursalEncontrada.NumeroSucursal ? `(N° ${sucursalEncontrada.NumeroSucursal})` : ''}`
+        } else {
+            searchSucursal.value = props.asignacion.sucursal?.Nombre || ''
+        }
+        
+        const operadorEncontrado = props.operadores?.find(o => o.id == props.asignacion.IdOperador)
+        if (operadorEncontrado) {
+            searchOperador.value = `${operadorEncontrado.ci} - ${operadorEncontrado.nombre} (${operadorEncontrado.iniciales})`
+        } else {
+            searchOperador.value = props.asignacion.operador?.identificador?.Nombre || ''
+        }
+    } else {
+        resetForm()
+    }
 }
 
 // Watch para cuando se abre el modal
@@ -257,9 +247,9 @@ const save = async () => {
                                     <input 
                                         type="text"
                                         :value="searchSucursal"
+                                        @input="onSearchSucursalInput"
                                         @focus="showSucursalDropdown = true"
                                         @blur="cerrarDropdownSucursal"
-                                        @input="(e) => { searchSucursal = e.target.value; form.value.IdSucursal = '' }"
                                         placeholder="Buscar sucursal..."
                                         class="w-full border rounded-md px-2 py-1.5 text-xs pr-6"
                                         :class="{ 'border-red-500': errors.IdSucursal }"
@@ -289,18 +279,11 @@ const save = async () => {
                                         {{ s.nombre }} {{ s.NumeroSucursal ? `(N° ${s.NumeroSucursal})` : '' }}
                                     </div>
                                 </div>
-                                
-                                <div 
-                                    v-if="showSucursalDropdown && searchSucursal && sucursalesFiltradas.length === 0"
-                                    class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-xs"
-                                >
-                                    No se encontraron sucursales
-                                </div>
                             </div>
                             <p v-if="errors.IdSucursal" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdSucursal }}</p>
                         </div>
 
-                        <!-- Operador (bloqueado en edición) -->
+                        <!-- Operador -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-0.5">Operador *</label>
                             <div class="relative">
@@ -308,14 +291,13 @@ const save = async () => {
                                     <input 
                                         type="text"
                                         :value="searchOperador"
-                                        :disabled="editando"
+                                        :readonly="editando"
+                                        @input="onSearchOperadorInput"
                                         @focus="!editando && (showOperadorDropdown = true)"
                                         @blur="cerrarDropdownOperador"
-                                        @input="!editando && ((e) => searchOperador = e.target.value)"
                                         placeholder="Buscar por CI, nombre o iniciales..."
                                         class="w-full border rounded-md px-2 py-1.5 text-xs pr-6"
                                         :class="{ 'border-red-500': errors.IdOperador, 'bg-gray-100': editando }"
-                                        :readonly="editando"
                                     >
                                     <button 
                                         v-if="searchOperador && !editando"
@@ -327,7 +309,7 @@ const save = async () => {
                                     </button>
                                 </div>
                                 
-                                <!-- Dropdown de operadores (solo en nueva asignación) -->
+                                <!-- Dropdown de operadores -->
                                 <div 
                                     v-if="!editando && showOperadorDropdown && operadoresFiltrados.length > 0"
                                     class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto"
@@ -344,13 +326,6 @@ const save = async () => {
                                         <span class="text-gray-800">{{ op.nombre }}</span>
                                         <span class="ml-1 text-gray-400">({{ op.iniciales }})</span>
                                     </div>
-                                </div>
-                                
-                                <div 
-                                    v-if="!editando && showOperadorDropdown && searchOperador && operadoresFiltrados.length === 0"
-                                    class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-xs"
-                                >
-                                    No se encontraron operadores
                                 </div>
                             </div>
                             <p v-if="errors.IdOperador" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdOperador }}</p>

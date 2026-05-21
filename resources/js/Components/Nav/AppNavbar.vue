@@ -2,6 +2,7 @@
 import { computed, inject } from 'vue'
 import { usePage, router } from '@inertiajs/vue3'
 import { useUiStore } from '@/stores/ui'
+import Notificaciones from '@/Components/Nav/Notificaciones.vue'
 
 const page = usePage()
 const ui = useUiStore()
@@ -70,6 +71,9 @@ const logout = () => {
 
       <!-- Spacer -->
       <div class="flex-1"></div>
+
+      <!-- 🔥 NOTIFICACIONES (solo cuando hay contexto) -->
+      <Notificaciones v-if="ctxReady" />
 
       <!-- Operador y Logout -->
       <div class="flex items-center gap-3">

@@ -12,4 +12,12 @@ class VentaGrupo extends Model
     public $timestamps = false;
 
     protected $fillable = ['Detalle', 'Orden', 'IdCliente', 'IdSucursal'];
+
+    /**
+     * Relación con productos
+     */
+    public function productos()
+    {
+        return $this->hasMany(ProductoVenta::class, 'IdVentaGrupo', 'IdVentaGrupo');
+    }
 }

@@ -12,7 +12,8 @@ const props = defineProps({
     productos: Array,
     asignaciones: Object,
     categoriasLista: Array,
-    sucursalId: Number,  // 🔥 NUEVO: para saber qué sucursal se está asignando
+    sucursalId: Number,
+    sucursalNombre: String,
 })
 
 const categoriaSeleccionada = ref(null)
@@ -30,6 +31,7 @@ const productosAsignadosIds = computed(() => {
     return props.asignaciones[categoriaSeleccionada.value] || []
 })
 
+// ✅ Todos los productos del cliente (sin filtrar)
 const productosFiltrados = computed(() => {
     if (!buscando.value) return props.productos || []
     const termino = buscando.value.toLowerCase()
@@ -100,7 +102,9 @@ const guardarAsignaciones = () => {
                     <h1 class="text-xl font-bold text-gray-900">Asignar Productos a Categorías</h1>
                     <p class="text-xs text-gray-500">
                         Selecciona una categoría y elige qué productos mostrarán en el menú táctil
-                        <br><span class="text-guindo-600 font-medium">Sucursal actual: ID {{ sucursalId }}</span>
+                    </p>
+                    <p class="text-xs text-guindo-600 font-medium mt-1">
+                        📍 Sucursal actual: <strong>{{ sucursalNombre }} (ID: {{ sucursalId }})</strong>
                     </p>
                 </div>
 
@@ -143,7 +147,7 @@ const guardarAsignaciones = () => {
                                 <div>
                                     <h2 class="text-lg font-bold text-gray-800">{{ categoriaActual?.nombre }}</h2>
                                     <p class="text-xs text-gray-500">
-                                        {{ productosAsignadosIds.length }} productos asignados actualmente
+                                        {{ productosAsignadosIds.length }} productos asignados actualmente para esta sucursal
                                     </p>
                                 </div>
                             </div>
@@ -155,6 +159,9 @@ const guardarAsignaciones = () => {
                                     <input type="text" v-model="buscando" placeholder="Buscar producto por nombre o ID..."
                                         class="w-full border rounded-lg pl-10 pr-4 py-2 text-sm">
                                 </div>
+                                <p class="text-xs text-gray-400 mt-1">
+                                    Total productos disponibles: {{ productos.length }}
+                                </p>
                             </div>
 
                             <!-- Acciones -->

@@ -53,6 +53,8 @@ use App\Http\Controllers\Gestion\Todos\OperadorSucursalController;
 use App\Http\Controllers\Gestion\Todos\PerfilController;
 use App\Http\Controllers\Gestion\Todos\FechaController;
 use App\Http\Controllers\Gestion\Todos\CierreFechaController;
+use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
+use App\Http\Controllers\Gestion\Inventario\ProductoAprobacionConfigController;
 
 
 
@@ -276,6 +278,50 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
         Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
     });
+    
+    // ==================== PRODUCTOS VENTA ====================
+    Route::prefix('gestion/productos-venta')->group(function () {
+        Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');
+        Route::get('/create', [ProductoVentaController::class, 'create'])->name('gestion.productos-venta.create');
+        Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
+        Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
+        Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
+        Route::post('/{id}/activar', [ProductoVentaController::class, 'activar'])->name('gestion.productos-venta.activar');
+        Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar'])->name('gestion.productos-venta.desactivar');
+        
+        // Endpoints para tabs
+        Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
+        Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
+        Route::delete('/precio-sucursal/{id}', [ProductoVentaController::class, 'destroyPrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.destroy');
+        
+        Route::post('/precio-mayorista', [ProductoVentaController::class, 'storePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.store');
+        Route::put('/precio-mayorista/{id}', [ProductoVentaController::class, 'updatePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.update');
+        Route::delete('/precio-mayorista/{id}', [ProductoVentaController::class, 'destroyPrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.destroy');
+        
+        Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
+        Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
+        Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
+    });
+    
+    // ==================== CONFIGURACIÓN DE APROBACIÓN DE PRODUCTOS ====================
+
+    // ==================== APROBACIÓN DE PRODUCTOS ====================
+    Route::prefix('gestion/productos-aprobacion')->group(function () {
+        Route::get('/config', [ProductoAprobacionConfigController::class, 'index'])->name('gestion.productos-aprobacion.config');
+        Route::post('/config', [ProductoAprobacionConfigController::class, 'store'])->name('gestion.productos-aprobacion.config.store');
+        Route::delete('/config/{id}', [ProductoAprobacionConfigController::class, 'destroy'])->name('gestion.productos-aprobacion.config.destroy');        Route::post('/config/{id}/toggle', [ProductoAprobacionConfigController::class, 'toggle'])->name('gestion.productos-aprobacion.config.toggle');
+        
+        Route::get('/pendientes', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'pendientesAprobacion'])->name('gestion.productos-aprobacion.pendientes');
+        Route::post('/votar/{id}', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'votarAprobacion'])->name('gestion.productos-aprobacion.votar');
+        Route::get('/ver/{id}', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'verAprobacion'])->name('gestion.productos-aprobacion.ver');
+    });
+
+    // Modificar la ruta de productos para incluir el envío a aprobación
+    Route::prefix('gestion/productos-venta')->group(function () {
+        // ... rutas existentes ...
+        Route::post('/{id}/enviar-aprobacion', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
+    });
+
 
     // ==================== PUNTO DE VENTA (VENTA NORMAL) ====================
     Route::prefix('venta-factura')->group(function () {
@@ -446,5 +492,11 @@ Route::middleware(['auth.operador'])->group(function () {
             'has_session' => session()->has('operador_id') && session('operador_id') > 0
         ]);
     });
-
+    Route::get('/debug-sesion', function () {
+    return response()->json([
+        'cliente_id' => session('cliente_id'),
+        'cliente_sucursal_id' => session('cliente_sucursal_id'),
+        'cliente_sucursal_nombre' => session('cliente_sucursal_nombre'),
+    ]);
+});
 });

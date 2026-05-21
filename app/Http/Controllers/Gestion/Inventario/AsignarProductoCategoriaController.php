@@ -13,23 +13,26 @@ class AsignarProductoCategoriaController extends Controller
 {
     public function index()
     {
-        // Categorías por cliente (sin sucursal)
-        $categorias = CategoriaProducto::porContexto()
+        $clienteId = session('cliente_id');
+        
+        // ✅ Categorías por cliente (sin sucursal)
+        $categorias = CategoriaProducto::where('id_cliente', $clienteId)
             ->with('padre')
             ->orderBy('orden')
             ->get();
         
         $categoriasArbol = $this->buildTree($categorias);
         
-        // Productos por contexto (cliente + sucursal)
-        $productos = ProductoVenta::porContexto()
+        // ✅ TODOS los productos del cliente (activos), sin filtrar por sucursal
+        $productos = ProductoVenta::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Detalle')
             ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
         
-        // 🔥 Asignaciones por sucursal actual
+        // ✅ Asignaciones por sucursal actual
         $sucursalId = session('cliente_sucursal_id');
         $asignaciones = [];
+        
         if ($categorias->isNotEmpty()) {
             $asignaciones = ProductoCategoria::where('id_sucursal', $sucursalId)
                 ->whereIn('id_categoria', $categorias->pluck('id_categoria'))
@@ -40,12 +43,14 @@ class AsignarProductoCategoriaController extends Controller
                 });
         }
         
+        // ✅ También pasar la lista de categorías completa para mostrar nombres
         return Inertia::render('Gestion/Inventario/AsignarProductoCategoria/Index', [
             'categorias' => $categoriasArbol,
             'productos' => $productos,
             'asignaciones' => $asignaciones,
             'categoriasLista' => $categorias,
             'sucursalId' => $sucursalId,
+            'sucursalNombre' => session('cliente_sucursal_nombre'),
         ]);
     }
     
@@ -59,11 +64,12 @@ class AsignarProductoCategoriaController extends Controller
         
         $sucursalId = session('cliente_sucursal_id');
         
-        // 🔥 Eliminar asignaciones actuales de esta categoría para esta sucursal
+        // ✅ Eliminar asignaciones actuales de esta categoría para esta sucursal
         ProductoCategoria::where('id_categoria', $request->id_categoria)
             ->where('id_sucursal', $sucursalId)
             ->delete();
         
+        // ✅ Crear nuevas asignaciones
         foreach ($request->productos_ids as $idProducto) {
             ProductoCategoria::create([
                 'id_detalle_producto' => $idProducto,
@@ -73,8 +79,6 @@ class AsignarProductoCategoriaController extends Controller
         }
         
         $categoria = CategoriaProducto::find($request->id_categoria);
-        
-        // 🔥 Mostrar mensaje indicando la sucursal
         $sucursalNombre = session('cliente_sucursal_nombre');
         
         return redirect()->back()->with('success', 
