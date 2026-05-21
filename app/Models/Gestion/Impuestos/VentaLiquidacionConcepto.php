@@ -16,22 +16,19 @@ class VentaLiquidacionConcepto extends Model
         'Concepto',
         'IdCuenta',
         'IdCliente',
-        'IdSucursal',
         'activo'
-        // ❌ Eliminado 'orden'
     ];
 
     /**
-     * Scope para filtrar por empresa actual (contexto)
+     * Scope para filtrar por empresa actual (SOLO cliente, SIN sucursal)
      */
     public function scopePorContexto($query)
     {
-        return $query->where('IdCliente', session('cliente_id'))
-                     ->where('IdSucursal', session('cliente_sucursal_id'));
+        return $query->where('IdCliente', session('cliente_id'));
     }
 
     /**
-     * Scope para solo activos (sin orderBy porque no existe orden)
+     * Scope para solo activos
      */
     public function scopeActivos($query)
     {

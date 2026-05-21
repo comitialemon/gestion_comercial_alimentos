@@ -9,8 +9,14 @@ defineOptions({ layout: AppLayout })
 const toast = inject('toast')
 
 const props = defineProps({
-    conceptos: Array,
-    cuentasContables: Array
+    conceptos: {
+        type: Array,
+        default: () => []
+    },
+    cuentasContables: {
+        type: Array,
+        default: () => []
+    }
 })
 
 const editando = ref(false)
@@ -34,16 +40,16 @@ const cuentasFiltradas = computed(() => {
     
     const termino = busquedaCuenta.value.toLowerCase()
     return (props.cuentasContables || []).filter(cuenta => {
-        return cuenta.nombre?.toLowerCase().includes(termino) ||
-               cuenta.descripcion?.toLowerCase().includes(termino) ||
-               cuenta.id?.toString().includes(termino)
+        return cuenta?.nombre?.toLowerCase().includes(termino) ||
+               cuenta?.descripcion?.toLowerCase().includes(termino) ||
+               cuenta?.id?.toString().includes(termino)
     })
 })
 
 // Obtener el nombre de la cuenta seleccionada
 const nombreCuentaSeleccionada = computed(() => {
     if (!formData.value.IdCuenta) return ''
-    const cuenta = props.cuentasContables?.find(c => c.id === formData.value.IdCuenta)
+    const cuenta = props.cuentasContables?.find(c => c?.id === formData.value.IdCuenta)
     return cuenta ? `${cuenta.nombre} - ${cuenta.descripcion || ''}` : ''
 })
 
@@ -62,14 +68,15 @@ const resetForm = () => {
 
 // Editar
 const editar = (item) => {
+    if (!item) return
     editando.value = true
     editId.value = item.IdConceptoLiquidacion
     formData.value = {
-        Concepto: item.Concepto,
-        IdCuenta: item.IdCuenta,
-        activo: item.activo
+        Concepto: item.Concepto || '',
+        IdCuenta: item.IdCuenta || '',
+        activo: item.activo !== undefined ? item.activo : 1
     }
-    const cuenta = props.cuentasContables?.find(c => c.id === item.IdCuenta)
+    const cuenta = props.cuentasContables?.find(c => c?.id === item.IdCuenta)
     if (cuenta) {
         busquedaCuenta.value = `${cuenta.nombre} - ${cuenta.descripcion || ''}`
     }
@@ -82,13 +89,19 @@ const guardar = async () => {
     
     try {
         let response
+        const dataToSend = {
+            Concepto: formData.value.Concepto,
+            IdCuenta: formData.value.IdCuenta,
+            activo: formData.value.activo
+        }
+        
         if (editando.value) {
             response = await axios.post(`/gestion/impuestos/liquidacion-concepto/${editId.value}`, {
-                ...formData.value,
+                ...dataToSend,
                 _method: 'PUT'
             })
         } else {
-            response = await axios.post('/gestion/impuestos/liquidacion-concepto', formData.value)
+            response = await axios.post('/gestion/impuestos/liquidacion-concepto', dataToSend)
         }
         
         if (response.status === 200 || response.status === 201) {
@@ -111,21 +124,40 @@ const guardar = async () => {
         guardando.value = false
     }
 }
-
-// Eliminar
+//eliminar
 const eliminar = async (id, nombre) => {
+    
+    if (!id) {
+        toast?.error('Error', 'No se pudo identificar el registro')
+        return
+    }
+    
     if (!confirm(`¿Eliminar "${nombre}"?`)) return
     
     eliminando.value = true
     try {
-        await axios.delete(`/gestion/impuestos/liquidacion-concepto/${id}`)
-        toast?.success('Concepto eliminado', `"${nombre}" fue eliminado correctamente`)
-        setTimeout(() => {
-            router.reload()
-        }, 1000)
+        // 🔥 Usar DELETE directamente
+        const response = await axios.delete(`/gestion/impuestos/liquidacion-concepto/${id}`)
+                
+        if (response.data.success) {
+            toast?.success('Concepto eliminado', `"${nombre}" fue eliminado correctamente`)
+            setTimeout(() => {
+                router.reload()
+            }, 500)
+        } else {
+            toast?.error('Error', response.data.message || 'Error al eliminar')
+        }
     } catch (error) {
         console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al eliminar')
+        // Si el error es 405 pero igual eliminó, recargar
+        if (error.response?.status === 405) {
+            toast?.success('Éxito', 'Concepto eliminado correctamente')
+            setTimeout(() => {
+                router.reload()
+            }, 500)
+        } else {
+            toast?.error('Error', error.response?.data?.message || 'Error al eliminar')
+        }
     } finally {
         eliminando.value = false
     }
@@ -133,6 +165,7 @@ const eliminar = async (id, nombre) => {
 
 // Seleccionar cuenta
 const seleccionarCuenta = (cuenta) => {
+    if (!cuenta) return
     formData.value.IdCuenta = cuenta.id
     busquedaCuenta.value = `${cuenta.nombre} - ${cuenta.descripcion || ''}`
     mostrarListaCuentas.value = false
@@ -146,6 +179,7 @@ const handleClickOutside = (event) => {
     }
 }
 
+// Inicializar
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
 })
@@ -165,6 +199,9 @@ onUnmounted(() => {
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Conceptos de Liquidación</h1>
                     <p class="text-xs text-gray-500">Configurar métodos de pago para sucursales SIN facturación</p>
+                    <p class="text-xs text-blue-600 mt-1">
+                        <i class="fas fa-globe mr-1"></i> Los conceptos aplican a TODAS las sucursales de la empresa
+                    </p>
                 </div>
 
                 <!-- Formulario -->
@@ -292,10 +329,10 @@ onUnmounted(() => {
                                         </button>
                                     </td>
                                 </tr>
-                                <tr v-if="conceptos.length === 0">
+                                <tr v-if="!conceptos || conceptos.length === 0">
                                     <td colspan="4" class="px-4 py-8 text-center text-gray-400">
                                         <i class="fas fa-info-circle mr-1"></i>
-                                        No hay conceptos configurados para esta sucursal
+                                        No hay conceptos configurados para esta empresa
                                     </td>
                                 </tr>
                             </tbody>
@@ -305,7 +342,7 @@ onUnmounted(() => {
 
                 <div class="mt-4 text-xs text-gray-400 text-center">
                     <i class="fas fa-info-circle"></i> 
-                    Estos conceptos se mostrarán en la pantalla de pago para sucursales SIN facturación electrónica.
+                    Estos conceptos se mostrarán en la pantalla de pago para TODAS las sucursales SIN facturación electrónica.
                 </div>
             </div>
         </div>

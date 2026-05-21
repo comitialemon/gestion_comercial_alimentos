@@ -43,7 +43,7 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
     // ==================== REPORTE INVENTARIO ====================
     Route::get('/inventario/reporte-movimientos', [App\Http\Controllers\Gestion\Inventario\ReporteInventarioController::class, 'getMovimientos']);
     
-    // 🔥 NOTIFICACIONES DE APROBACIÓN DE PRODUCTOS
+    // ==================== NOTIFICACIONES DE APROBACIÓN DE PRODUCTOS ====================
     Route::get('/notificaciones/pendientes', function () {
         $operadorId = session('operador_id');
         
@@ -68,4 +68,8 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         
         return response()->json($pendientes);
     })->name('api.notificaciones.pendientes');
+    
+    // ==================== CONCEPTOS DE LIQUIDACIÓN (SIN FACTURACIÓN) ====================
+    Route::get('/conceptos-liquidacion', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'getConceptosPorCliente'])
+        ->name('api.conceptos-liquidacion');
 });

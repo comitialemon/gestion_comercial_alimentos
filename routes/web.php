@@ -187,13 +187,15 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::delete('/{id}', [ComisionistaController::class, 'destroy'])->name('gestion.comisionista.destroy');
         Route::get('/buscar-identificador', [ComisionistaController::class, 'buscarIdentificador'])->name('gestion.comisionista.buscar-identificador');
     });
-
     // ==================== IMPUESTOS - LIQUIDACIÓN CONCEPTOS ====================
     Route::prefix('gestion/impuestos/liquidacion-concepto')->group(function () {
         Route::get('/', [LiquidacionConceptoController::class, 'index'])->name('gestion.impuestos.liquidacion-concepto.index');
         Route::post('/', [LiquidacionConceptoController::class, 'store'])->name('gestion.impuestos.liquidacion-concepto.store');
         Route::put('/{id}', [LiquidacionConceptoController::class, 'update'])->name('gestion.impuestos.liquidacion-concepto.update');
         Route::delete('/{id}', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.destroy');
+        
+        // 🔥 Agrega esta ruta POST como alternativa
+        Route::post('/{id}/eliminar', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.eliminar');
     });
 
     // ==================== COMPRAS ====================
