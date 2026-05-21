@@ -55,6 +55,7 @@ use App\Http\Controllers\Gestion\Todos\FechaController;
 use App\Http\Controllers\Gestion\Todos\CierreFechaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoAprobacionConfigController;
+use App\Http\Controllers\Gestion\Impuestos\LiquidacionVendedorController;
 
 
 
@@ -196,6 +197,12 @@ Route::middleware(['auth.operador'])->group(function () {
         
         // 🔥 Agrega esta ruta POST como alternativa
         Route::post('/{id}/eliminar', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.eliminar');
+    });
+    // ==================== LIQUIDACIÓN DE VENTAS ====================
+    Route::prefix('gestion/liquidacion-vendedor')->group(function () {
+        Route::get('/', [LiquidacionVendedorController::class, 'index'])->name('liquidacion-vendedor.index');
+        Route::get('/datos/{fechaId}', [LiquidacionVendedorController::class, 'getDatos'])->name('liquidacion-vendedor.datos');
+        Route::post('/guardar', [LiquidacionVendedorController::class, 'guardar'])->name('liquidacion-vendedor.guardar');
     });
 
     // ==================== COMPRAS ====================
