@@ -56,6 +56,7 @@ use App\Http\Controllers\Gestion\Todos\CierreFechaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoAprobacionConfigController;
 use App\Http\Controllers\Gestion\Impuestos\LiquidacionVendedorController;
+use App\Http\Controllers\Gestion\Impuestos\ReporteVentasVendedorController;
 
 
 
@@ -203,6 +204,13 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/', [LiquidacionVendedorController::class, 'index'])->name('liquidacion-vendedor.index');
         Route::get('/datos/{fechaId}', [LiquidacionVendedorController::class, 'getDatos'])->name('liquidacion-vendedor.datos');
         Route::post('/guardar', [LiquidacionVendedorController::class, 'guardar'])->name('liquidacion-vendedor.guardar');
+    });
+
+    // ==================== REPORTE VENTAS VENDEDOR ====================
+    Route::prefix('gestion/reporte-ventas-vendedor')->group(function () {
+        Route::get('/', [ReporteVentasVendedorController::class, 'index'])->name('reporte-ventas-vendedor.index');
+        Route::get('/detalle-producto', [ReporteVentasVendedorController::class, 'getDetalleProducto'])->name('reporte-ventas-vendedor.detalle');
+        Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
     });
 
     // ==================== COMPRAS ====================
