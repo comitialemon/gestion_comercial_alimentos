@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\VentaTactilController;
 use App\Http\Controllers\Api\PagoController;
 use App\Http\Controllers\PuntoVenta\PagoVentaController;
 use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
+use App\Models\Gestion\Contabilidad\ContaCuenta;
+use App\Models\Gestion\Contabilidad\FactorCambio;
 
 // Middleware web + auth para tener sesión
 Route::middleware(['web', 'auth.operador'])->group(function () {
@@ -72,4 +74,82 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
     // ==================== CONCEPTOS DE LIQUIDACIÓN (SIN FACTURACIÓN) ====================
     Route::get('/conceptos-liquidacion', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'getConceptosPorCliente'])
         ->name('api.conceptos-liquidacion');
+    
+    // ==================== FACTOR DE CAMBIO PARA DIARIOS ====================
+    Route::get('/factor-cambio/{fechaId}/{cuentaId}', function ($fechaId, $cuentaId) {
+        try {
+            $cuenta = ContaCuenta::find($cuentaId);
+            
+            if (!$cuenta) {
+                return response()->json([
+                    'success' => true,
+                    'tipoCambio' => 1,
+                    'montoOtraMoneda' => 0,
+                    'idMoneda' => 1
+                ]);
+            }
+            
+            if (!$cuenta->IdMoneda || $cuenta->IdMoneda == 1) {
+                return response()->json([
+                    'success' => true,
+                    'tipoCambio' => 1,
+                    'montoOtraMoneda' => 0,
+                    'idMoneda' => 1
+                ]);
+            }
+            
+            $factor = FactorCambio::where('IdFecha', $fechaId)
+                ->where('IdMoneda', $cuenta->IdMoneda)
+                ->first();
+            
+            $tipoCambio = $factor ? (float) $factor->FactorCambio : 1;
+            
+            return response()->json([
+                'success' => true,
+                'tipoCambio' => $tipoCambio,
+                'montoOtraMoneda' => 0,
+                'idMoneda' => (int) $cuenta->IdMoneda
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en factor-cambio: ' . $e->getMessage());
+            return response()->json([
+                'success' => true,
+                'tipoCambio' => 1,
+                'montoOtraMoneda' => 0,
+                'idMoneda' => 1
+            ]);
+        }
+    })->name('api.factor-cambio');
+    
+    // ==================== IDENTIFICADORES (para selects) ====================
+    Route::get('/identificadores', function () {
+        $identificadores = App\Models\Gestion\Todos\Identificador::orderBy('Nombre')
+            ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
+        
+        return response()->json($identificadores);
+    })->name('api.identificadores');
+    
+    // ==================== CUENTAS CONTABLES (para selects) ====================
+    Route::get('/cuentas-contables', function () {
+        $clienteId = session('cliente_id');
+        
+        $cuentas = App\Models\Gestion\Contabilidad\ContaCuenta::where('AbiertoCerrado', 0)
+            ->where('IdCliente', $clienteId)
+            ->orderBy('Cuenta')
+            ->get(['IdCuenta as id', 'Cuenta', 'Descripcion', 'TipoDeCuenta', 'IdMoneda', 'ActivoFijo']);
+        
+        return response()->json($cuentas);
+    })->name('api.cuentas-contables');
+    
+    // ==================== ACTIVIDADES (para selects) ====================
+    Route::get('/actividades', function () {
+        $clienteId = session('cliente_id');
+        
+        $actividades = App\Models\Gestion\Todos\ClienteActividad::where('IdCliente', $clienteId)
+            ->orderBy('Actividad')
+            ->get(['IdActividad as id', 'Actividad as nombre']);
+        
+        return response()->json($actividades);
+    })->name('api.actividades');
 });

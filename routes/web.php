@@ -61,7 +61,11 @@ use App\Http\Controllers\Gestion\Impuestos\ReporteVentasSucursalController;
 use App\Http\Controllers\Gestion\Impuestos\ReporteListadoFacturasController;
 use App\Http\Controllers\Gestion\Impuestos\AnularFacturaController;
 use App\Http\Controllers\Gestion\Impuestos\MantenimientoMetodosPagoController;
-
+use App\Http\Controllers\Gestion\Contabilidad\DiarioIngresoController;
+use App\Http\Controllers\Gestion\Contabilidad\AdministradorDiarioController;
+use App\Http\Controllers\Gestion\Contabilidad\ContaCuentaSucursalController;
+use App\Http\Controllers\Gestion\Contabilidad\BalanceGeneralA3Controller;
+use App\Http\Controllers\Gestion\Contabilidad\EstadoResultadosA3Controller;
 
 
 // ============================================
@@ -209,7 +213,7 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::delete('/{id}', [ComisionistaController::class, 'destroy'])->name('gestion.comisionista.destroy');
         Route::get('/buscar-identificador', [ComisionistaController::class, 'buscarIdentificador'])->name('gestion.comisionista.buscar-identificador');
     });
-    
+
     // ==================== IMPUESTOS - LIQUIDACIÓN CONCEPTOS ====================
     Route::prefix('gestion/impuestos/liquidacion-concepto')->group(function () {
         Route::get('/', [LiquidacionConceptoController::class, 'index'])->name('gestion.impuestos.liquidacion-concepto.index');
@@ -262,6 +266,51 @@ Route::middleware(['auth.operador'])->group(function () {
     });
 
     // ==================== CONTABILIDAD ====================
+
+// ==================== CONTABILIDAD - DIARIO DE INGRESOS ====================
+    Route::prefix('contabilidad/diario-ingreso')->group(function () {
+        Route::get('/', [DiarioIngresoController::class, 'index'])->name('contabilidad.diario-ingreso.index');
+        Route::get('/create', [DiarioIngresoController::class, 'create'])->name('contabilidad.diario-ingreso.create');
+        Route::post('/', [DiarioIngresoController::class, 'store'])->name('contabilidad.diario-ingreso.store');
+        Route::get('/{id}/edit', [DiarioIngresoController::class, 'edit'])->name('contabilidad.diario-ingreso.edit');
+        Route::put('/{id}', [DiarioIngresoController::class, 'update'])->name('contabilidad.diario-ingreso.update');
+        
+        // Asientos
+        Route::post('/asiento', [DiarioIngresoController::class, 'storeAsiento'])->name('contabilidad.diario-ingreso.asiento.store');
+        Route::put('/asiento/{id}', [DiarioIngresoController::class, 'updateAsiento'])->name('contabilidad.diario-ingreso.asiento.update');
+        Route::delete('/asiento/{id}', [DiarioIngresoController::class, 'destroyAsiento'])->name('contabilidad.diario-ingreso.asiento.destroy');
+        
+        // Contabilizar
+        Route::post('/{id}/contabilizar', [DiarioIngresoController::class, 'contabilizar'])->name('contabilidad.diario-ingreso.contabilizar');
+        Route::get('/{id}/pdf', [DiarioIngresoController::class, 'pdf'])->name('contabilidad.diario-ingreso.pdf');
+    });
+
+    // ==================== BALANCE GENERAL A3 ====================
+    Route::get('/gestion/balance-general-a3', [BalanceGeneralA3Controller::class, 'index'])
+        ->name('gestion.balance-general-a3.index');
+    Route::get('/gestion/balance-general-a3/generar', [BalanceGeneralA3Controller::class, 'generar'])
+        ->name('gestion.balance-general-a3.generar');
+
+    // ==================== ESTADO DE RESULTADOS A3 ====================
+    Route::get('/gestion/estado-resultados-a3', [EstadoResultadosA3Controller::class, 'index'])
+        ->name('gestion.estado-resultados-a3.index');
+    Route::get('/gestion/estado-resultados-a3/generar', [EstadoResultadosA3Controller::class, 'generar'])
+        ->name('gestion.estado-resultados-a3.generar');
+
+    // ==================== ADMINISTRADOR DE DIARIOS ====================
+    Route::prefix('gestion/administrador-diario')->group(function () {
+        Route::get('/', [AdministradorDiarioController::class, 'index'])->name('gestion.administrador-diario.index');
+        Route::post('/{id}/reabrir', [AdministradorDiarioController::class, 'reabrir'])->name('gestion.administrador-diario.reabrir');
+    });
+
+    // ==================== CONTABILIDAD - CUENTAS POR SUCURSAL ====================
+    Route::prefix('gestion/conta-cuenta-sucursal')->group(function () {
+        Route::get('/', [ContaCuentaSucursalController::class, 'index'])->name('gestion.conta-cuenta-sucursal.index');
+        Route::post('/', [ContaCuentaSucursalController::class, 'store'])->name('gestion.conta-cuenta-sucursal.store');
+        Route::put('/{id}', [ContaCuentaSucursalController::class, 'update'])->name('gestion.conta-cuenta-sucursal.update');
+        Route::delete('/{id}', [ContaCuentaSucursalController::class, 'destroy'])->name('gestion.conta-cuenta-sucursal.destroy');
+    });
+
     // ==================== EGRESOS ====================
     Route::prefix('gestion/egresos')->group(function () {
         Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');
