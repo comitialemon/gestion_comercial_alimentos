@@ -89,6 +89,7 @@ const agregarFila = () => {
     errors.value = {}
 }
 
+// 🔥 SIN VALIDACIÓN DE DUPLICADOS - Solo guarda
 const guardarNuevaFila = async () => {
     if (!nuevaFila.value.IdProducto) {
         errors.value = { IdProducto: 'Seleccione un producto' }
@@ -134,6 +135,7 @@ const editarFila = (detalle) => {
     detalle.editando = true
 }
 
+// 🔥 SIN VALIDACIÓN DE DUPLICADOS - Solo actualiza
 const guardarEdicion = async (detalle) => {
     if (detalle.Porcion <= 0) {
         alert('La porción debe ser mayor a 0')

@@ -7,6 +7,7 @@ use App\Http\Controllers\PuntoVenta\PagoVentaController;
 use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 use App\Models\Gestion\Contabilidad\ContaCuenta;
 use App\Models\Gestion\Contabilidad\FactorCambio;
+use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 
 // Middleware web + auth para tener sesión
 Route::middleware(['web', 'auth.operador'])->group(function () {
@@ -152,4 +153,6 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         
         return response()->json($actividades);
     })->name('api.actividades');
+
+    Route::post('/productos-venta/verificar-composicion', [ProductoVentaController::class, 'verificarComposicion']);
 });

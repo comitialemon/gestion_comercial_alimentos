@@ -11,11 +11,15 @@ class ProductoVenta extends Model
     protected $primaryKey = 'IdDetalleProducto';
     public $timestamps = false;
     
-    // 🔥 ESTADOS DEL PRODUCTO
-    const ESTADO_ACTIVO = 0;                 // Aprobado y disponible para venta
-    const ESTADO_INACTIVO = 1;              // Borrador (no enviado a aprobación)
-    const ESTADO_PENDIENTE_APROBACION = 2;  // Enviado, esperando votos
-    const ESTADO_RECHAZADO = 3;             // Rechazado por algún aprobador
+    // 🔥 ESTADOS COMERCIALES (ActivoInactivo)
+    const COMERCIAL_ACTIVO = 0;      // Producto disponible para venta
+    const COMERCIAL_INACTIVO = 1;    // Producto NO disponible para venta (desactivado por admin)
+    
+    // 🔥 ESTADOS DE APROBACIÓN (estado_aprobacion)
+    const APROBACION_BORRADOR = 0;       // Recién creado, pendiente de completar datos
+    const APROBACION_PENDIENTE = 1;      // Enviado, esperando votos de aprobadores
+    const APROBACION_APROBADO = 2;       // Aprobado (puede ser activado/desactivado comercialmente)
+    const APROBACION_RECHAZADO = 3;      // Rechazado por algún aprobador
     
     protected $fillable = [
         'IdVentaGrupo',
@@ -24,6 +28,7 @@ class ProductoVenta extends Model
         'NombreCortoFactura',
         'PrecioVenta',
         'ActivoInactivo',
+        'estado_aprobacion',  // 🔥 NUEVO CAMPO
         'ImagenProducto',
         'IdCliente',
         'IdSucursal',
@@ -32,27 +37,29 @@ class ProductoVenta extends Model
         'IdOperadorActualiza',
         'FechaActualiza',
         'CierrePermanente',
+        'id_categoria',
     ];
 
     protected $casts = [
         'PrecioVenta' => 'decimal:2',
         'ActivoInactivo' => 'integer',
+        'estado_aprobacion' => 'integer',
         'CierrePermanente' => 'integer',
     ];
 
     protected $attributes = [
         'CierrePermanente' => 0,
+        'estado_aprobacion' => 0,
     ];
 
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
-                     //->where('IdSucursal', session('cliente_sucursal_id'));
     }
 
-    public function scopeActivos($query)
+    public function scopeActivosComercialmente($query)
     {
-        return $query->where('ActivoInactivo', self::ESTADO_ACTIVO);
+        return $query->where('ActivoInactivo', self::COMERCIAL_ACTIVO);
     }
 
     public function grupo()
@@ -60,15 +67,19 @@ class ProductoVenta extends Model
         return $this->belongsTo(VentaGrupo::class, 'IdVentaGrupo', 'IdVentaGrupo');
     }
 
-    // ✅ CORRECTO - Solo define la conexión entre tablas
-    public function categorias()
+    public function categoria()
+    {
+        return $this->belongsTo(CategoriaProducto::class, 'id_categoria', 'id_categoria');
+    }
+
+    public function categoriasHabilitadas()
     {
         return $this->belongsToMany(
             CategoriaProducto::class,
             'inventario_producto_categoria',
-            'id_detalle_producto',   // FK local
-            'id_categoria'           // FK remoto
-        );
+            'id_detalle_producto',
+            'id_categoria'
+        )->wherePivot('id_sucursal', session('cliente_sucursal_id'));
     }
 
     public function solicitudAprobacion()
@@ -79,10 +90,8 @@ class ProductoVenta extends Model
     public function getEstadoTextoAttribute()
     {
         return match($this->ActivoInactivo) {
-            self::ESTADO_ACTIVO => 'Activo',
-            self::ESTADO_INACTIVO => 'Borrador',
-            self::ESTADO_PENDIENTE_APROBACION => 'Pendiente de Aprobación',
-            self::ESTADO_RECHAZADO => 'Rechazado',
+            self::COMERCIAL_ACTIVO => 'Activo',
+            self::COMERCIAL_INACTIVO => 'Inactivo',
             default => 'Desconocido'
         };
     }
@@ -90,10 +99,30 @@ class ProductoVenta extends Model
     public function getEstadoClaseAttribute()
     {
         return match($this->ActivoInactivo) {
-            self::ESTADO_ACTIVO => 'bg-green-100 text-green-800',
-            self::ESTADO_INACTIVO => 'bg-gray-100 text-gray-600',
-            self::ESTADO_PENDIENTE_APROBACION => 'bg-yellow-100 text-yellow-800',
-            self::ESTADO_RECHAZADO => 'bg-red-100 text-red-800',
+            self::COMERCIAL_ACTIVO => 'bg-green-100 text-green-800',
+            self::COMERCIAL_INACTIVO => 'bg-red-100 text-red-800',
+            default => 'bg-gray-100 text-gray-500'
+        };
+    }
+    
+    public function getAprobacionTextoAttribute()
+    {
+        return match($this->estado_aprobacion) {
+            self::APROBACION_BORRADOR => 'Borrador',
+            self::APROBACION_PENDIENTE => 'Pendiente de Aprobación',
+            self::APROBACION_APROBADO => 'Aprobado',
+            self::APROBACION_RECHAZADO => 'Rechazado',
+            default => 'Desconocido'
+        };
+    }
+    
+    public function getAprobacionClaseAttribute()
+    {
+        return match($this->estado_aprobacion) {
+            self::APROBACION_BORRADOR => 'bg-gray-100 text-gray-600',
+            self::APROBACION_PENDIENTE => 'bg-yellow-100 text-yellow-800',
+            self::APROBACION_APROBADO => 'bg-green-100 text-green-800',
+            self::APROBACION_RECHAZADO => 'bg-red-100 text-red-800',
             default => 'bg-gray-100 text-gray-500'
         };
     }

@@ -1,12 +1,13 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, inject, computed } from 'vue'
+import { ref, inject, computed, watch } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import axios from 'axios'
 import PrecioSucursalTab from './components/PrecioSucursalTab.vue'
 import PrecioMayoristaTab from './components/PrecioMayoristaTab.vue'
 import InventarioDetalleTab from './components/InventarioDetalleTab.vue'
+import ModalCategorias from './components/ModalCategorias.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -18,6 +19,7 @@ const props = defineProps({
     preciosMayorista: Array,
     detalles: Array,
     grupos: Array,
+    categorias: Array,
     sucursales: Array,
     identificadores: Array,
     productosInventario: Array,
@@ -30,28 +32,37 @@ const activeTab = ref(0)
 const productoGuardado = ref(props.editando || false)
 const productoId = ref(props.producto?.IdDetalleProducto || null)
 const enviandoAprobacion = ref(false)
+const eliminando = ref(false)
 
-// 🔥 CONSTANTES DE ESTADO
+// Estado del modal de categorías
+const modalCategoriasOpen = ref(false)
+const categoriaNombre = ref('')
+
+// CONSTANTES DE ESTADO
 const ESTADO_ACTIVO = 0
 const ESTADO_INACTIVO = 1
 const ESTADO_PENDIENTE = 2
 const ESTADO_RECHAZADO = 3
 
-// 🔥 Verificar si puede enviar a aprobación (INACTIVO o RECHAZADO)
 const puedeEnviarAprobacion = computed(() => {
     if (!props.editando) return false
     const estado = props.producto?.ActivoInactivo
     return estado === ESTADO_INACTIVO || estado === ESTADO_RECHAZADO
 })
 
-// Mostrar botón de activar/desactivar (solo para ACTIVO o INACTIVO)
 const mostrarToggleEstado = computed(() => {
     if (!props.editando) return false
     const estado = props.producto?.ActivoInactivo
     return estado === ESTADO_ACTIVO || estado === ESTADO_INACTIVO
 })
 
-// Texto del estado actual
+// 🔥 Mostrar botón "Descartar Borrador" solo si está en estado BORRADOR
+const mostrarDescartarBorrador = computed(() => {
+    if (!props.editando) return false
+    const estado = props.producto?.ActivoInactivo
+    return estado === ESTADO_INACTIVO // Solo borrador
+})
+
 const estadoTexto = computed(() => {
     if (!props.editando || !props.producto) return ''
     switch(props.producto.ActivoInactivo) {
@@ -63,7 +74,6 @@ const estadoTexto = computed(() => {
     }
 })
 
-// Clase CSS del estado
 const estadoClase = computed(() => {
     if (!props.editando || !props.producto) return ''
     switch(props.producto.ActivoInactivo) {
@@ -75,14 +85,12 @@ const estadoClase = computed(() => {
     }
 })
 
-// Verificar si puede editar (productos pendientes NO se pueden editar)
 const puedeEditar = computed(() => {
     if (!props.editando) return true
     const estado = props.producto?.ActivoInactivo
     return estado === ESTADO_ACTIVO || estado === ESTADO_INACTIVO || estado === ESTADO_RECHAZADO
 })
 
-// Texto del botón de activar/desactivar
 const textoBotonEstado = computed(() => {
     if (!props.editando) return ''
     const estado = props.producto?.ActivoInactivo
@@ -93,6 +101,7 @@ const textoBotonEstado = computed(() => {
 
 const form = useForm({
     IdVentaGrupo: props.producto?.IdVentaGrupo || '',
+    id_categoria: props.producto?.id_categoria || '',
     Codigo: props.producto?.Codigo || '',
     Detalle: props.producto?.Detalle || '',
     NombreCortoFactura: props.producto?.NombreCortoFactura || '',
@@ -100,6 +109,40 @@ const form = useForm({
     imagen_base64: null,
     preview_url: props.producto?.ImagenProducto || null,
 })
+
+// Inicializar nombre de categoría
+const inicializarCategoria = () => {
+    if (props.producto?.id_categoria && props.categorias) {
+        const categoriaEncontrada = props.categorias.find(c => c.id === props.producto.id_categoria)
+        if (categoriaEncontrada) {
+            categoriaNombre.value = categoriaEncontrada.nombre
+            form.id_categoria = props.producto.id_categoria
+        }
+    }
+}
+
+watch(() => props.producto, (nuevoProducto) => {
+    if (nuevoProducto && nuevoProducto.id_categoria && props.categorias) {
+        form.id_categoria = nuevoProducto.id_categoria
+        const categoriaEncontrada = props.categorias.find(c => c.id === nuevoProducto.id_categoria)
+        if (categoriaEncontrada) {
+            categoriaNombre.value = categoriaEncontrada.nombre
+        }
+    }
+}, { immediate: true, deep: true })
+
+watch(() => form.id_categoria, (nuevoId) => {
+    if (nuevoId && props.categorias) {
+        const categoriaEncontrada = props.categorias.find(c => c.id === nuevoId)
+        if (categoriaEncontrada) {
+            categoriaNombre.value = categoriaEncontrada.nombre
+        }
+    } else if (!nuevoId) {
+        categoriaNombre.value = ''
+    }
+}, { immediate: true })
+
+inicializarCategoria()
 
 if (props.errors) {
     Object.keys(props.errors).forEach(key => {
@@ -131,14 +174,32 @@ const preciosSucursalList = ref(props.preciosSucursal || [])
 const preciosMayoristaList = ref(props.preciosMayorista || [])
 const detallesList = ref(props.detalles || [])
 
-const guardarProducto = () => {
-    const datos = {
-        ...form.data(),
-        ActivoInactivo: false  // Siempre se crea como INACTIVO (Borrador)
+const abrirModalCategorias = () => {
+    if (props.editando && props.producto?.ActivoInactivo === ESTADO_PENDIENTE) {
+        toast?.warning('Atención', 'No se puede editar un producto pendiente de aprobación')
+        return
     }
-    
+    modalCategoriasOpen.value = true
+}
+
+const seleccionarCategoriaModal = (categoria) => {
+    form.id_categoria = categoria.id_categoria
+    categoriaNombre.value = categoria.nombre
+}
+
+const guardarProducto = () => {
     if (props.editando) {
-        form.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, {
+        const datosEdicion = {
+            IdVentaGrupo: form.IdVentaGrupo,
+            id_categoria: form.id_categoria,
+            Codigo: form.Codigo,
+            Detalle: form.Detalle,
+            NombreCortoFactura: form.NombreCortoFactura,
+            PrecioVenta: form.PrecioVenta,
+            imagen_base64: form.imagen_base64,
+        }
+        
+        form.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion, {
             preserveScroll: true,
             onSuccess: () => {
                 toast?.success('Éxito', 'Producto actualizado correctamente')
@@ -152,7 +213,17 @@ const guardarProducto = () => {
             }
         })
     } else {
-        form.post('/gestion/productos-venta', {
+        const datosCreacion = {
+            IdVentaGrupo: form.IdVentaGrupo,
+            id_categoria: form.id_categoria,
+            Codigo: form.Codigo,
+            Detalle: form.Detalle,
+            NombreCortoFactura: form.NombreCortoFactura,
+            PrecioVenta: form.PrecioVenta,
+            imagen_base64: form.imagen_base64,
+        }
+        
+        form.post('/gestion/productos-venta', datosCreacion, {
             preserveScroll: true,
             onSuccess: (response) => {
                 if (response.props?.flash?.success) {
@@ -171,9 +242,65 @@ const guardarProducto = () => {
     }
 }
 
-// Enviar a aprobación
+// 🔥 Eliminar producto borrador (sin confirmación molesta)
+const descartarBorrador = async () => {
+    if (!props.producto?.IdDetalleProducto) return
+    
+    eliminando.value = true
+    try {
+        await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
+        toast?.success('🗑️ Borrador eliminado', 'El producto ha sido descartado')
+        setTimeout(() => {
+            router.get('/gestion/productos-venta')
+        }, 1000)
+    } catch (error) {
+        toast?.error('Error', error.response?.data?.message || 'No se pudo eliminar el borrador')
+    } finally {
+        eliminando.value = false
+    }
+}
+
+// 🔥 Verificar composición duplicada antes de enviar a aprobación
+const verificarComposicionAntesDeEnviar = async () => {
+    if (detallesList.value.length === 0) {
+        toast?.warning('Atención', 'Agregue productos al detalle antes de enviar a aprobación')
+        return false
+    }
+    
+    const productosIds = detallesList.value.map(d => d.IdProducto)
+    const porciones = detallesList.value.map(d => d.Porcion)
+    
+    try {
+        const response = await axios.post('/api/productos-venta/verificar-composicion', {
+            productos_ids: productosIds,
+            porciones: porciones,
+            excluir_id: props.producto?.IdDetalleProducto || null
+        })
+        
+        if (response.data.existe) {
+            // 🔥 Eliminar el producto borrador si es nuevo
+            if (props.producto?.IdDetalleProducto && !props.editando) {
+                await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
+            }
+            
+            toast?.error('Producto Duplicado', `Ya existe un producto con la misma composición: "${response.data.producto.nombre}"`)
+            
+            setTimeout(() => {
+                router.get('/gestion/productos-venta')
+            }, 2000)
+            
+            return false
+        }
+        return true
+    } catch (error) {
+        console.error('Error verificando composición:', error)
+        return true
+    }
+}
+
 const enviarAprobacion = async () => {
-    if (!confirm('¿Enviar este producto a aprobación? Los aprobadores deberán validarlo antes de que esté disponible para la venta.')) return
+    const composicionValida = await verificarComposicionAntesDeEnviar()
+    if (!composicionValida) return
     
     enviandoAprobacion.value = true
     try {
@@ -189,7 +316,6 @@ const enviarAprobacion = async () => {
     }
 }
 
-// Activar/Desactivar producto (solo después de aprobado)
 const toggleEstado = async () => {
     if (!props.editando) return
     
@@ -231,7 +357,6 @@ const toggleEstado = async () => {
                         </div>
                     </div>
                     
-                    <!-- Indicador de estado (solo en edición) -->
                     <div v-if="editando" class="flex items-center gap-2">
                         <span class="text-xs font-medium text-gray-600">Estado:</span>
                         <span class="px-2 py-0.5 text-xs rounded-full" :class="estadoClase">
@@ -244,20 +369,24 @@ const toggleEstado = async () => {
                             Cancelar
                         </button>
                         
-                        <!-- Botón Activar/Desactivar (solo para productos aprobados ACTIVO o INACTIVO) -->
+                        <!-- 🔥 Botón Descartar Borrador (solo para productos en estado BORRADOR) -->
+                        <button v-if="mostrarDescartarBorrador" @click="descartarBorrador" :disabled="eliminando" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs transition disabled:opacity-50 flex items-center gap-1">
+                            <i v-if="eliminando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else class="fas fa-trash-alt text-[10px]"></i>
+                            {{ eliminando ? 'Eliminando...' : 'Descartar Borrador' }}
+                        </button>
+                        
                         <button v-if="editando && mostrarToggleEstado" @click="toggleEstado" class="px-3 py-1 rounded-md text-xs transition" :class="props.producto?.ActivoInactivo === 0 ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'">
                             <i :class="props.producto?.ActivoInactivo === 0 ? 'fas fa-ban text-[10px]' : 'fas fa-check-circle text-[10px]'"></i>
                             {{ textoBotonEstado }}
                         </button>
                         
-                        <!-- 🔥 BOTÓN ENVIAR A APROBACIÓN (INACTIVO o RECHAZADO) -->
                         <button v-if="editando && puedeEnviarAprobacion" @click="enviarAprobacion" :disabled="enviandoAprobacion" class="px-3 py-1 bg-blue-600 text-white rounded-md text-xs hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1">
                             <i v-if="enviandoAprobacion" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-paper-plane text-[10px]"></i>
                             {{ enviandoAprobacion ? 'Enviando...' : 'Enviar a Aprobación' }}
                         </button>
                         
-                        <!-- Botón Guardar -->
                         <button @click="guardarProducto" :disabled="form.processing || (editando && !puedeEditar)" class="px-3 py-1 bg-emerald-600 text-white rounded-md text-xs hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-1">
                             <i v-if="form.processing" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-save text-[10px]"></i>
@@ -266,17 +395,16 @@ const toggleEstado = async () => {
                     </div>
                 </div>
 
-                <!-- Mensaje informativo para productos pendientes -->
+                <!-- Mensajes informativos -->
                 <div v-if="editando && props.producto?.ActivoInactivo === 2" class="mb-4 p-3 rounded-lg bg-yellow-50 border border-yellow-200">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-clock text-yellow-600"></i>
                         <span class="text-xs text-yellow-700">
-                            Este producto está pendiente de aprobación y no puede ser editado. Esperando la aprobación de todos los aprobadores.
+                            Este producto está pendiente de aprobación y no puede ser editado.
                         </span>
                     </div>
                 </div>
 
-                <!-- Mensaje para productos rechazados -->
                 <div v-if="editando && props.producto?.ActivoInactivo === 3" class="mb-4 p-3 rounded-lg bg-red-50 border border-red-200">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-times-circle text-red-600"></i>
@@ -286,9 +414,9 @@ const toggleEstado = async () => {
                     </div>
                 </div>
 
-                <!-- Formulario Principal (sin campo Estado) -->
+                <!-- Formulario Principal -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4" :class="{ 'opacity-70': editando && props.producto?.ActivoInactivo === 2 }">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 mb-3">
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Grupo *</label>
                             <select v-model="form.IdVentaGrupo" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.IdVentaGrupo }" :disabled="editando && props.producto?.ActivoInactivo === 2">
@@ -299,12 +427,37 @@ const toggleEstado = async () => {
                         </div>
 
                         <div>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Categoría *</label>
+                            <div class="flex gap-2">
+                                <div 
+                                    @click="abrirModalCategorias"
+                                    class="flex-1 border rounded-md px-2 py-1.5 text-xs cursor-pointer hover:border-guindo-400 transition flex items-center justify-between"
+                                    :class="{ 'border-red-500': form.errors.id_categoria, 'bg-gray-100 cursor-not-allowed': editando && props.producto?.ActivoInactivo === 2 }"
+                                >
+                                    <span :class="{ 'text-gray-400': !categoriaNombre }">
+                                        {{ categoriaNombre || 'Seleccione una categoría' }}
+                                    </span>
+                                    <i class="fas fa-chevron-down text-gray-400 text-[10px]"></i>
+                                </div>
+                                <button 
+                                    v-if="categoriaNombre && !(editando && props.producto?.ActivoInactivo === 2)"
+                                    @click="form.id_categoria = ''; categoriaNombre = ''" 
+                                    type="button" 
+                                    class="px-2 py-1 bg-red-100 text-red-600 rounded-md text-xs hover:bg-red-200"
+                                >
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <p v-if="form.errors.id_categoria" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.id_categoria }}</p>
+                        </div>
+
+                        <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Código *</label>
                             <input type="text" v-model="form.Codigo" class="w-full border rounded-md px-2 py-1.5 text-xs uppercase" :class="{ 'border-red-500': form.errors.Codigo }" placeholder="CÓDIGO ÚNICO" :disabled="editando && props.producto?.ActivoInactivo === 2">
                             <p v-if="form.errors.Codigo" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Codigo }}</p>
                         </div>
 
-                        <div class="lg:col-span-1">
+                        <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Detalle *</label>
                             <input type="text" v-model="form.Detalle" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.Detalle }" placeholder="Nombre del producto" :disabled="editando && props.producto?.ActivoInactivo === 2">
                             <p v-if="form.errors.Detalle" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Detalle }}</p>
@@ -326,7 +479,6 @@ const toggleEstado = async () => {
                         </div>
                     </div>
 
-                    <!-- Solo campo de imagen (sin Estado) -->
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Imagen</label>
                         <div class="flex items-center gap-3">
@@ -385,12 +537,18 @@ const toggleEstado = async () => {
                     </div>
                 </div>
 
-                <!-- Mensaje para nuevo producto -->
                 <div v-else class="bg-amber-50 rounded-lg border border-amber-200 p-4 text-center">
                     <i class="fas fa-info-circle text-amber-500 text-sm mb-2 block"></i>
                     <p class="text-xs text-amber-700">Complete los datos del producto y presione "Guardar" para poder configurar precios por sucursal, precios mayorista y detalle de inventario.</p>
                 </div>
             </div>
         </div>
+
+        <ModalCategorias 
+            v-model="modalCategoriasOpen"
+            :categorias="categorias"
+            :categoria-seleccionada="categorias?.find(c => c.id === form.id_categoria)"
+            @select="seleccionarCategoriaModal"
+        />
     </div>
 </template>

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Gestion\Inventario;
 
 use App\Http\Controllers\Controller;
-use App\Models\Gestion\Inventario\CategoriaProducto;
 use App\Models\Gestion\Inventario\ProductoVenta;
 use App\Models\Gestion\Inventario\ProductoCategoria;
 use Illuminate\Http\Request;
@@ -14,94 +13,79 @@ class AsignarProductoCategoriaController extends Controller
     public function index()
     {
         $clienteId = session('cliente_id');
-        
-        // ✅ Categorías por cliente (sin sucursal)
-        $categorias = CategoriaProducto::where('id_cliente', $clienteId)
-            ->with('padre')
-            ->orderBy('orden')
-            ->get();
-        
-        $categoriasArbol = $this->buildTree($categorias);
-        
-        // ✅ TODOS los productos del cliente (activos), sin filtrar por sucursal
-        $productos = ProductoVenta::where('IdCliente', $clienteId)
-            ->where('ActivoInactivo', 0)
-            ->orderBy('Detalle')
-            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
-        
-        // ✅ Asignaciones por sucursal actual
         $sucursalId = session('cliente_sucursal_id');
-        $asignaciones = [];
         
-        if ($categorias->isNotEmpty()) {
-            $asignaciones = ProductoCategoria::where('id_sucursal', $sucursalId)
-                ->whereIn('id_categoria', $categorias->pluck('id_categoria'))
-                ->get()
-                ->groupBy('id_categoria')
-                ->map(function ($items) {
-                    return $items->pluck('id_detalle_producto')->toArray();
-                });
+        // 🔥 OBTENER TODOS LOS PRODUCTOS ACTIVOS del cliente
+        $productos = ProductoVenta::where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0) // Solo activos
+            ->with('categoria') // Cargar la categoría del producto
+            ->orderBy('Detalle')
+            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta', 'id_categoria']);
+        
+        // 🔥 OBTENER ASIGNACIONES ACTUALES (qué productos están habilitados en esta sucursal)
+        $asignaciones = ProductoCategoria::where('id_sucursal', $sucursalId)
+            ->pluck('id_detalle_producto')
+            ->toArray();
+        
+        // 🔥 AGRUPAR PRODUCTOS POR CATEGORÍA (para mostrar visualmente)
+        $categoriasConProductos = [];
+        foreach ($productos as $producto) {
+            $catId = $producto->id_categoria;
+            $catNombre = $producto->categoria?->nombre ?? 'Sin categoría';
+            
+            if (!isset($categoriasConProductos[$catId])) {
+                $categoriasConProductos[$catId] = [
+                    'id' => $catId,
+                    'nombre' => $catNombre,
+                    'productos' => []
+                ];
+            }
+            $categoriasConProductos[$catId]['productos'][] = $producto;
         }
         
-        // ✅ También pasar la lista de categorías completa para mostrar nombres
+        // Ordenar por nombre de categoría
+        $categoriasConProductos = collect($categoriasConProductos)->sortBy('nombre')->values();
+        
         return Inertia::render('Gestion/Inventario/AsignarProductoCategoria/Index', [
-            'categorias' => $categoriasArbol,
+            'categoriasConProductos' => $categoriasConProductos,
             'productos' => $productos,
             'asignaciones' => $asignaciones,
-            'categoriasLista' => $categorias,
             'sucursalId' => $sucursalId,
             'sucursalNombre' => session('cliente_sucursal_nombre'),
+            'totalProductos' => $productos->count(),
+            'totalHabilitados' => count($asignaciones),
         ]);
     }
     
     public function store(Request $request)
     {
         $request->validate([
-            'id_categoria' => 'required|exists:inventario_menu_categoria,id_categoria',
             'productos_ids' => 'array',
             'productos_ids.*' => 'exists:inventario_relacion_ventainventario,IdDetalleProducto'
         ]);
         
         $sucursalId = session('cliente_sucursal_id');
         
-        // ✅ Eliminar asignaciones actuales de esta categoría para esta sucursal
-        ProductoCategoria::where('id_categoria', $request->id_categoria)
-            ->where('id_sucursal', $sucursalId)
-            ->delete();
+        // 🔥 Eliminar todas las habilitaciones actuales de esta sucursal
+        ProductoCategoria::where('id_sucursal', $sucursalId)->delete();
         
-        // ✅ Crear nuevas asignaciones
+        // 🔥 Crear nuevas habilitaciones usando la categoría del producto
         foreach ($request->productos_ids as $idProducto) {
-            ProductoCategoria::create([
-                'id_detalle_producto' => $idProducto,
-                'id_categoria' => $request->id_categoria,
-                'id_sucursal' => $sucursalId,
-            ]);
-        }
-        
-        $categoria = CategoriaProducto::find($request->id_categoria);
-        $sucursalNombre = session('cliente_sucursal_nombre');
-        
-        return redirect()->back()->with('success', 
-            count($request->productos_ids) . " productos asignados a '{$categoria->nombre}' para la sucursal '{$sucursalNombre}'");
-    }
-    
-    private function buildTree($categorias, $parentId = null, $level = 0)
-    {
-        $result = [];
-        
-        foreach ($categorias as $cat) {
-            if ($cat->id_padre == $parentId) {
-                $prefix = str_repeat('— ', $level);
-                $result[] = [
-                    'id' => $cat->id_categoria,
-                    'nombre' => $prefix . $cat->nombre,
-                    'nivel' => $level,
-                    'raw_nombre' => $cat->nombre
-                ];
-                $result = array_merge($result, $this->buildTree($categorias, $cat->id_categoria, $level + 1));
+            $producto = ProductoVenta::find($idProducto);
+            
+            if ($producto && $producto->id_categoria) {
+                ProductoCategoria::create([
+                    'id_detalle_producto' => $idProducto,
+                    'id_categoria' => $producto->id_categoria, // 🔥 USAR LA CATEGORÍA DEL PRODUCTO
+                    'id_sucursal' => $sucursalId,
+                ]);
             }
         }
         
-        return $result;
+        $sucursalNombre = session('cliente_sucursal_nombre');
+        $cantidad = count($request->productos_ids);
+        
+        return redirect()->back()->with('success', 
+            "{$cantidad} productos habilitados para la sucursal '{$sucursalNombre}'");
     }
 }

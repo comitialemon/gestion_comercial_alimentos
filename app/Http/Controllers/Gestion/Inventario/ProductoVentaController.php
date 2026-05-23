@@ -9,6 +9,7 @@ use App\Models\Gestion\Inventario\ProductoVentaPrecioSucursal;
 use App\Models\Gestion\Inventario\ProductoVentaPrecioMayorista;
 use App\Models\Gestion\Inventario\RelacionVentaDetalle;
 use App\Models\Gestion\Inventario\ProductoDetalle;
+use App\Models\Gestion\Inventario\CategoriaProducto;
 use App\Models\Gestion\Todos\ClienteSucursal;
 use App\Models\Gestion\Todos\Identificador;
 use Illuminate\Http\Request;
@@ -20,14 +21,13 @@ use App\Models\Gestion\Inventario\ProductoAprobacionConfig;
 use App\Models\Gestion\Inventario\ProductoAprobacionSolicitud;
 use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 
-
 class ProductoVentaController extends Controller
 {
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
         
-        $query = ProductoVenta::where('IdCliente', $clienteId)->with('grupo');
+        $query = ProductoVenta::where('IdCliente', $clienteId)->with('grupo', 'categoria'); // 🔥 AGREGAR 'categoria'
         
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('ActivoInactivo', $request->estado);
@@ -75,23 +75,25 @@ class ProductoVentaController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // 🔥 BUSCAR SI HAY UN PRODUCTO BORRADOR (ActivoInactivo = 1) PARA ESTE OPERADOR
+        // 🔥 Buscar borrador por estado_aprobacion = APROBACION_BORRADOR (0)
         $productoBorrador = ProductoVenta::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->where('IdOperadorInserta', $operadorId)
-            ->where('ActivoInactivo', ProductoVenta::ESTADO_INACTIVO) // 1 = Borrador
+            ->where('estado_aprobacion', ProductoVenta::APROBACION_BORRADOR)
             ->first();
 
         if ($productoBorrador) {
-            // Redirigir a edición del producto borrador
             return redirect()->route('gestion.productos-venta.edit', $productoBorrador->IdDetalleProducto)
                 ->with('info', 'Tienes un producto en borrador. Continúa editándolo.');
         }
 
-        // Si no hay borrador, mostrar formulario normal
         $grupos = VentaGrupo::where('IdCliente', $clienteId)
             ->orderBy('Detalle')
             ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
+        
+        $categorias = CategoriaProducto::porContexto()
+            ->orderBy('orden')
+            ->get();
         
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
@@ -111,6 +113,7 @@ class ProductoVentaController extends Controller
         
         return Inertia::render('Gestion/Inventario/ProductosVenta/Create', [
             'grupos' => $grupos,
+            'categorias' => $categorias,
             'sucursales' => $sucursales,
             'identificadores' => $identificadores,
             'productosInventario' => $productosInventario,
@@ -121,7 +124,9 @@ class ProductoVentaController extends Controller
     {
         $clienteId = session('cliente_id');
         
-        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+        $producto = ProductoVenta::where('IdCliente', $clienteId)
+            ->with('categoria')
+            ->findOrFail($id);
         
         $preciosSucursal = ProductoVentaPrecioSucursal::where('IdCliente', $clienteId)
             ->where('IdProducto', $id)
@@ -140,6 +145,11 @@ class ProductoVentaController extends Controller
         $grupos = VentaGrupo::where('IdCliente', $clienteId)
             ->orderBy('Detalle')
             ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
+        
+        // 🔥 OBTENER CATEGORÍAS COMPLETAS
+        $categorias = CategoriaProducto::porContexto()
+            ->orderBy('orden')
+            ->get(); // 👈 SIN select
         
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
@@ -163,6 +173,7 @@ class ProductoVentaController extends Controller
             'preciosMayorista' => $preciosMayorista,
             'detalles' => $detalles,
             'grupos' => $grupos,
+            'categorias' => $categorias,
             'sucursales' => $sucursales,
             'identificadores' => $identificadores,
             'productosInventario' => $productosInventario,
@@ -178,6 +189,7 @@ class ProductoVentaController extends Controller
 
         $request->validate([
             'IdVentaGrupo' => 'required|exists:inventario_relacion_ventainventario_grupouno,IdVentaGrupo',
+            'id_categoria' => 'required|exists:inventario_menu_categoria,id_categoria',
             'Codigo' => 'required|string|max:100',
             'Detalle' => 'required|string|max:100',
             'NombreCortoFactura' => 'required|string|max:20',
@@ -185,7 +197,6 @@ class ProductoVentaController extends Controller
             'imagen_base64' => 'nullable|string',
         ]);
 
-        // Validar unicidad
         $codigoExiste = ProductoVenta::where('IdCliente', $clienteId)
             ->where('Codigo', $request->Codigo)
             ->exists();
@@ -214,14 +225,17 @@ class ProductoVentaController extends Controller
                 $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->Codigo);
             }
 
-            // 🔥 CREAR PRODUCTO COMO BORRADOR (ESTADO_INACTIVO = 1)
+            // 🔥 CREAR PRODUCTO CON estado_aprobacion = APROBACION_BORRADOR (0)
+            // 🔥 ActivoInactivo = COMERCIAL_INACTIVO (1)
             $producto = ProductoVenta::create([
                 'IdVentaGrupo' => $request->IdVentaGrupo,
+                'id_categoria' => $request->id_categoria,
                 'Codigo' => $request->Codigo,
                 'Detalle' => $request->Detalle,
                 'NombreCortoFactura' => $request->NombreCortoFactura,
                 'PrecioVenta' => $request->PrecioVenta,
-                'ActivoInactivo' => ProductoVenta::ESTADO_INACTIVO, // 1 = Borrador
+                'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
+                'estado_aprobacion' => ProductoVenta::APROBACION_BORRADOR,
                 'ImagenProducto' => $imagenUrl,
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $sucursalId,
@@ -251,17 +265,22 @@ class ProductoVentaController extends Controller
         $clienteId = session('cliente_id');
         $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
         
+        // 🔥 VALIDAR QUE NO ESTÉ PENDIENTE DE APROBACIÓN
+        if ($producto->estado_aprobacion == ProductoVenta::APROBACION_PENDIENTE) {
+            return redirect()->back()->with('error', 'No se puede editar un producto pendiente de aprobación.');
+        }
+        
         $request->validate([
             'IdVentaGrupo' => 'required|exists:inventario_relacion_ventainventario_grupouno,IdVentaGrupo',
+            'id_categoria' => 'required|exists:inventario_menu_categoria,id_categoria',
             'Codigo' => 'required|string|max:100',
             'Detalle' => 'required|string|max:100',
             'NombreCortoFactura' => 'required|string|max:20',
             'PrecioVenta' => 'required|numeric|min:0',
-            'ActivoInactivo' => 'required|boolean',
             'imagen_base64' => 'nullable|string',
         ]);
         
-        // VALIDACIONES MANUALES DE UNICIDAD (excluyendo actual)
+        // Validaciones de unicidad
         $codigoExiste = ProductoVenta::where('IdCliente', $clienteId)
             ->where('Codigo', $request->Codigo)
             ->where('IdDetalleProducto', '!=', $id)
@@ -269,7 +288,7 @@ class ProductoVentaController extends Controller
         
         if ($codigoExiste) {
             return redirect()->back()
-                ->withErrors(['Codigo' => 'El código ya existe. Por favor, use un código diferente.'])
+                ->withErrors(['Codigo' => 'El código ya existe.'])
                 ->withInput();
         }
         
@@ -280,7 +299,7 @@ class ProductoVentaController extends Controller
         
         if ($detalleExiste) {
             return redirect()->back()
-                ->withErrors(['Detalle' => 'El detalle ya existe. Por favor, use un nombre diferente.'])
+                ->withErrors(['Detalle' => 'El detalle ya existe.'])
                 ->withInput();
         }
         
@@ -291,7 +310,7 @@ class ProductoVentaController extends Controller
         
         if ($nombreCortoExiste) {
             return redirect()->back()
-                ->withErrors(['NombreCortoFactura' => 'El nombre para factura ya existe. Por favor, use uno diferente.'])
+                ->withErrors(['NombreCortoFactura' => 'El nombre para factura ya existe.'])
                 ->withInput();
         }
         
@@ -306,13 +325,14 @@ class ProductoVentaController extends Controller
                 $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->Codigo);
             }
             
+            // 🔥 NO MODIFICAR estado_aprobacion ni ActivoInactivo aquí
             $producto->update([
                 'IdVentaGrupo' => $request->IdVentaGrupo,
+                'id_categoria' => $request->id_categoria,
                 'Codigo' => $request->Codigo,
                 'Detalle' => $request->Detalle,
                 'NombreCortoFactura' => $request->NombreCortoFactura,
                 'PrecioVenta' => $request->PrecioVenta,
-                'ActivoInactivo' => $request->ActivoInactivo ? 0 : 1,
                 'ImagenProducto' => $imagenUrl,
                 'IdOperadorActualiza' => session('operador_id'),
                 'FechaActualiza' => now(),
@@ -330,11 +350,51 @@ class ProductoVentaController extends Controller
                 ->withInput();
         }
     }
+    public function destroy($id)
+    {
+        $clienteId = session('cliente_id');
+        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+        
+        // 🔥 CORREGIDO: Usar COMERCIAL_INACTIVO en lugar de ESTADO_INACTIVO
+        if ($producto->ActivoInactivo != ProductoVenta::COMERCIAL_INACTIVO) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede eliminar un producto que ya ha sido enviado a aprobación'
+            ], 400);
+        }
+        
+        try {
+            // Eliminar primero los detalles relacionados
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProducto', $id)
+                ->delete();
+            
+            // Eliminar el producto
+            $producto->delete();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto eliminado correctamente'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar producto: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     
     public function activar($id)
     {
         $clienteId = session('cliente_id');
         $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+        
+        // 🔥 Solo se puede activar si está APROBADO
+        if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+            return redirect()->back()->with('error', 'El producto debe estar aprobado primero');
+        }
         
         $tieneDetalle = RelacionVentaDetalle::where('IdDetalleProducto', $id)->exists();
         
@@ -343,26 +403,98 @@ class ProductoVentaController extends Controller
         }
         
         $producto->update([
-            'ActivoInactivo' => 0,
+            'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
             'IdOperadorActualiza' => session('operador_id'),
             'FechaActualiza' => now(),
         ]);
         
         return redirect()->back()->with('success', 'Producto activado correctamente');
     }
-    
     public function desactivar($id)
     {
         $clienteId = session('cliente_id');
         $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
         
+        // 🔥 Solo se puede desactivar si está APROBADO
+        if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+            return redirect()->back()->with('error', 'El producto debe estar aprobado primero');
+        }
+        
         $producto->update([
-            'ActivoInactivo' => 1,
+            'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
             'IdOperadorActualiza' => session('operador_id'),
             'FechaActualiza' => now(),
         ]);
         
         return redirect()->back()->with('success', 'Producto desactivado correctamente');
+    }
+    public function catalogo(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        
+        $query = ProductoVenta::where('IdCliente', $clienteId)
+            ->with(['grupo', 'categoria']);
+        
+        // Filtro por categoría
+        if ($request->filled('categoria')) {
+            $query->where('id_categoria', $request->categoria);
+        }
+        
+        // Filtro por grupo
+        if ($request->filled('grupo')) {
+            $query->where('IdVentaGrupo', $request->grupo);
+        }
+        
+        // 🔥 Filtro por estado de aprobación
+        if ($request->filled('aprobacion') && $request->aprobacion !== '') {
+            $query->where('estado_aprobacion', $request->aprobacion);
+        }
+        
+        // 🔥 Filtro por estado comercial (Activo/Inactivo)
+        if ($request->filled('estado') && $request->estado !== '') {
+            $query->where('ActivoInactivo', $request->estado);
+        }
+        
+        // Búsqueda
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('Codigo', 'like', "%{$search}%")
+                ->orWhere('Detalle', 'like', "%{$search}%");
+            });
+        }
+        
+        $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
+        
+        $categorias = CategoriaProducto::porContexto()
+            ->orderBy('orden')
+            ->get(['id_categoria as id', 'nombre']);
+        
+        $grupos = VentaGrupo::where('IdCliente', $clienteId)
+            ->orderBy('Detalle')
+            ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
+        
+        $totalProductos = ProductoVenta::where('IdCliente', $clienteId)->count();
+        $totalConCategoria = ProductoVenta::where('IdCliente', $clienteId)
+            ->whereNotNull('id_categoria')
+            ->count();
+        $totalSinCategoria = $totalProductos - $totalConCategoria;
+        
+        return Inertia::render('Gestion/Inventario/ProductosVenta/Catalogo', [
+            'productos' => $productos,
+            'categorias' => $categorias,
+            'grupos' => $grupos,
+            'totalProductos' => $totalProductos,
+            'totalConCategoria' => $totalConCategoria,
+            'totalSinCategoria' => $totalSinCategoria,
+            'filtros' => [
+                'categoria' => $request->categoria,
+                'grupo' => $request->grupo,
+                'aprobacion' => $request->aprobacion,
+                'estado' => $request->estado,
+                'search' => $request->search,
+            ],
+        ]);
     }
     
     // ==================== PRECIO SUCURSAL ====================
@@ -399,8 +531,8 @@ class ProductoVentaController extends Controller
                 'Precio' => $request->Precio,
                 'IdOperadorInserta' => $operadorId,
                 'FechaInserta' => now(),
-                'IdOperadorActualiza' => $operadorId,  // 🔥 AGREGAR ESTE
-                'FechaActualiza' => now(),            // 🔥 AGREGAR ESTE
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
             ]);
 
             $precio->load('sucursal');
@@ -510,8 +642,8 @@ class ProductoVentaController extends Controller
                 'Precio' => $request->Precio,
                 'IdOperadorInserta' => $operadorId,
                 'FechaInserta' => now(),
-                'IdOperadorActualiza' => $operadorId,  // 🔥 AGREGAR ESTE
-                'FechaActualiza' => now(),            // 🔥 AGREGAR ESTE
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
             ]);
 
             $precio->load(['sucursal', 'identificador']);
@@ -618,7 +750,6 @@ class ProductoVentaController extends Controller
                 'FechaActualiza' => now(),
             ]);
 
-            // Cargar la relación producto manualmente
             $detalle->load('producto');
 
             return response()->json([
@@ -685,6 +816,62 @@ class ProductoVentaController extends Controller
         }
     }
     
+    /**
+     * Verificar si ya existe un producto con la misma composición (mismos productos y mismas porciones)
+     */
+    public function verificarComposicion(Request $request)
+    {
+        $request->validate([
+            'productos_ids' => 'required|array|min:1',
+            'productos_ids.*' => 'exists:inventario_productodetalle,IdProducto',
+            'porciones' => 'required|array|min:1',
+            'porciones.*' => 'numeric|min:0.000001',
+            'excluir_id' => 'nullable|exists:inventario_relacion_ventainventario,IdDetalleProducto'
+        ]);
+        
+        $clienteId = session('cliente_id');
+        $productosIds = $request->productos_ids;
+        $porciones = $request->porciones;
+        
+        // Construir pares (IdProducto:Porcion) ordenados
+        $pares = [];
+        for ($i = 0; $i < count($productosIds); $i++) {
+            $pares[] = $productosIds[$i] . ':' . number_format((float)$porciones[$i], 6, '.', '');
+        }
+        sort($pares);
+        $hashComposicion = implode('|', $pares);
+        
+        // Buscar productos con la misma composición
+        $existe = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_relacion_ventainventario as p')
+            ->where('p.IdCliente', $clienteId)
+            ->where('p.CierrePermanente', 0)
+            ->whereExists(function($query) use ($hashComposicion, $clienteId) {
+                $query->select(DB::raw('1'))
+                    ->from('inventario_relacion_ventainventario_detalle as d')
+                    ->whereRaw('d.IdDetalleProducto = p.IdDetalleProducto')
+                    ->whereRaw('(
+                        SELECT GROUP_CONCAT(CONCAT(IdProducto, ":", ROUND(Porcion, 6)) ORDER BY IdProducto SEPARATOR "|")
+                        FROM inventario_relacion_ventainventario_detalle
+                        WHERE IdDetalleProducto = p.IdDetalleProducto
+                    ) = ?', [$hashComposicion]);
+            })
+            ->select('p.IdDetalleProducto as id', 'p.Detalle as nombre')
+            ->first();
+        
+        if ($existe && (!$request->excluir_id || $existe->id != $request->excluir_id)) {
+            return response()->json([
+                'existe' => true,
+                'producto' => [
+                    'id' => $existe->id,
+                    'nombre' => $existe->nombre
+                ]
+            ]);
+        }
+        
+        return response()->json(['existe' => false]);
+    }
+
     // ==================== UTILIDADES ====================
     
     private function guardarImagen($base64, $codigo)
@@ -720,7 +907,6 @@ class ProductoVentaController extends Controller
     }
 
     //========= APROBACIÓN DE PRODUCTOS =========
-    // Enviar producto a aprobación
     public function enviarAprobacion($id)
     {
         $clienteId = session('cliente_id');
@@ -728,13 +914,12 @@ class ProductoVentaController extends Controller
         
         $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
         
-        // 🔥 PERMITIR ENVIAR DESDE INACTIVO (1) O RECHAZADO (3)
-        if ($producto->ActivoInactivo != ProductoVenta::ESTADO_INACTIVO && 
-            $producto->ActivoInactivo != ProductoVenta::ESTADO_RECHAZADO) {
+        // 🔥 Solo se puede enviar desde BORRADOR o RECHAZADO
+        if ($producto->estado_aprobacion != ProductoVenta::APROBACION_BORRADOR && 
+            $producto->estado_aprobacion != ProductoVenta::APROBACION_RECHAZADO) {
             return redirect()->back()->with('error', 'El producto no puede ser enviado a aprobación en su estado actual');
         }
         
-        // Obtener aprobadores configurados
         $aprobadores = ProductoAprobacionConfig::porContexto()
             ->activos()
             ->get();
@@ -749,14 +934,13 @@ class ProductoVentaController extends Controller
             // Eliminar solicitud anterior si existe
             ProductoAprobacionSolicitud::where('IdDetalleProducto', $producto->IdDetalleProducto)->delete();
             
-            // Cambiar estado del producto a pendiente de aprobación
+            // 🔥 Cambiar estado a PENDIENTE
             $producto->update([
-                'ActivoInactivo' => ProductoVenta::ESTADO_PENDIENTE_APROBACION,
+                'estado_aprobacion' => ProductoVenta::APROBACION_PENDIENTE,
                 'IdOperadorActualiza' => $operadorId,
                 'FechaActualiza' => now(),
             ]);
             
-            // Crear solicitud
             $solicitud = ProductoAprobacionSolicitud::create([
                 'IdDetalleProducto' => $producto->IdDetalleProducto,
                 'IdOperadorSolicita' => $operadorId,
@@ -764,7 +948,6 @@ class ProductoVentaController extends Controller
                 'FechaSolicitud' => now(),
             ]);
             
-            // Crear votos para cada aprobador
             foreach ($aprobadores as $aprobador) {
                 ProductoAprobacionVoto::create([
                     'IdProductoAprobacionSolicitud' => $solicitud->IdProductoAprobacionSolicitud,
@@ -785,7 +968,6 @@ class ProductoVentaController extends Controller
         }
     }
 
-    // Listado de productos pendientes para el aprobador
     public function pendientesAprobacion()
     {
         $operadorId = session('operador_id');
@@ -805,7 +987,6 @@ class ProductoVentaController extends Controller
         ]);
     }
 
-    // Aprobar o rechazar producto
     public function votarAprobacion(Request $request, $id)
     {
         $request->validate([
@@ -833,22 +1014,21 @@ class ProductoVentaController extends Controller
             ]);
             
             $solicitud = $voto->solicitud;
-            
-            // Verificar si todos los votos están completados
             $todosVotos = $solicitud->votos;
             $pendientes = $todosVotos->where('Estado', 'pendiente')->count();
             $rechazados = $todosVotos->where('Estado', 'rechazado')->count();
             
             if ($rechazados > 0) {
-                // Alguien rechazó -> solicitud rechazada
+                // 🔥 Alguien rechazó -> solicitud rechazada
                 $solicitud->update([
                     'Estado' => 'rechazado',
                     'IdOperadorActualiza' => $operadorId,
                     'FechaActualiza' => now(),
                 ]);
                 
+                // 🔥 Producto RECHAZADO (estado_aprobacion = 3)
                 $solicitud->producto->update([
-                    'ActivoInactivo' => ProductoVenta::ESTADO_RECHAZADO,
+                    'estado_aprobacion' => ProductoVenta::APROBACION_RECHAZADO,
                     'IdOperadorActualiza' => $operadorId,
                     'FechaActualiza' => now(),
                 ]);
@@ -856,21 +1036,25 @@ class ProductoVentaController extends Controller
                 $mensaje = 'Producto rechazado';
                 
             } elseif ($pendientes == 0) {
-                // Todos aprobaron -> solicitud aprobada y producto activado
+                // 🔥 Todos aprobaron -> solicitud aprobada y producto activado
                 $solicitud->update([
                     'Estado' => 'aprobado',
                     'IdOperadorActualiza' => $operadorId,
                     'FechaActualiza' => now(),
                 ]);
                 
+                // 🔥 Producto APROBADO (estado_aprobacion = 2) y comercialmente ACTIVO (ActivoInactivo = 0)
                 $solicitud->producto->update([
-                    'ActivoInactivo' => ProductoVenta::ESTADO_ACTIVO,
+                    'estado_aprobacion' => ProductoVenta::APROBACION_APROBADO,
+                    'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
                     'IdOperadorActualiza' => $operadorId,
                     'FechaActualiza' => now(),
                 ]);
                 
                 $mensaje = 'Producto aprobado y activado para la venta';
+                
             } else {
+                // 🔥 Aún faltan votos
                 $mensaje = 'Voto registrado correctamente. Pendiente ' . $pendientes . ' aprobador(es) más.';
             }
             
@@ -885,12 +1069,10 @@ class ProductoVentaController extends Controller
         }
     }
 
-    // Ver detalle de aprobación de un producto
     public function verAprobacion($id)
     {
-        // 🔥 Cargar la relación 'grupo'
         $producto = ProductoVenta::where('IdCliente', session('cliente_id'))
-            ->with('grupo')  // 👈 AGREGAR ESTO
+            ->with('grupo', 'categoria') // 🔥 AGREGAR 'categoria'
             ->findOrFail($id);
         
         $solicitud = ProductoAprobacionSolicitud::where('IdDetalleProducto', $producto->IdDetalleProducto)
@@ -919,5 +1101,4 @@ class ProductoVentaController extends Controller
             'detallesInventario' => $detallesInventario,
         ]);
     }
-
 }

@@ -390,7 +390,7 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
         Route::post('/{id}/activar', [ProductoVentaController::class, 'activar'])->name('gestion.productos-venta.activar');
         Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar'])->name('gestion.productos-venta.desactivar');
-        
+        Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
         // Endpoints para tabs
         Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
         Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
@@ -404,7 +404,9 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
         Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
     });
-    
+    // Catálogo de productos (con categorías)
+    Route::get('/gestion/productos-venta/catalogo', [ProductoVentaController::class, 'catalogo'])
+        ->name('gestion.productos-venta.catalogo');
     // ==================== CONFIGURACIÓN DE APROBACIÓN DE PRODUCTOS ====================
 
     // ==================== APROBACIÓN DE PRODUCTOS ====================
