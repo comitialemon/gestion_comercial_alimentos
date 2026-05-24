@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -17,20 +17,146 @@ const nuevaFila = ref({ IdSucursal: '', IdIdentificador: '', Precio: 0, editando
 const errors = ref({})
 const editandoId = ref(null)
 const editPrecioValue = ref(0)
-const busquedaIdentificador = ref('')
 
+// 🔥 BÚSQUEDA DE SUCURSAL
+const busquedaSucursal = ref('')
+const showSucursalDropdown = ref(false)
+const sucursalDropdownRef = ref(null)
+const sucursalInputRef = ref(null)
+
+// 🔥 BÚSQUEDA DE COMISIONISTAS
+const busquedaIdentificador = ref('')
+const showDropdown = ref(false)
+const dropdownRef = ref(null)
+const inputRef = ref(null)
+
+// 🔥 Sucursales filtradas
+const sucursalesFiltradas = computed(() => {
+    if (!props.sucursales || !Array.isArray(props.sucursales)) {
+        return []
+    }
+    
+    if (!busquedaSucursal.value || busquedaSucursal.value.trim() === '') {
+        return props.sucursales
+    }
+    
+    const termino = busquedaSucursal.value.toLowerCase().trim()
+    return props.sucursales.filter(s => {
+        const nombre = String(s.nombre || '').toLowerCase()
+        return nombre.includes(termino)
+    })
+})
+
+// 🔥 Identificadores filtrados
 const identificadoresFiltrados = computed(() => {
-    if (!busquedaIdentificador.value) return props.identificadores
-    const termino = busquedaIdentificador.value.toLowerCase()
-    return props.identificadores.filter(i => 
-        i.ci?.toString().includes(termino) || 
-        i.nombre?.toLowerCase().includes(termino)
-    )
+    if (!props.identificadores || !Array.isArray(props.identificadores)) {
+        return []
+    }
+    
+    if (!busquedaIdentificador.value || busquedaIdentificador.value.trim() === '') {
+        return []
+    }
+    
+    const termino = busquedaIdentificador.value.toLowerCase().trim()
+    return props.identificadores.filter(i => {
+        const ci = String(i.ci || i.CI_NIT || '').toLowerCase()
+        const nombre = String(i.nombre || i.Nombre || '').toLowerCase()
+        return ci.includes(termino) || nombre.includes(termino)
+    })
+})
+
+// 🔥 Abrir/cerrar dropdown de sucursal
+const abrirSucursalDropdown = () => {
+    showSucursalDropdown.value = true
+}
+
+const cerrarSucursalDropdown = () => {
+    setTimeout(() => {
+        showSucursalDropdown.value = false
+    }, 200)
+}
+
+const handleSucursalClickOutside = (event) => {
+    if (sucursalDropdownRef.value && !sucursalDropdownRef.value.contains(event.target) && 
+        sucursalInputRef.value && !sucursalInputRef.value.contains(event.target)) {
+        showSucursalDropdown.value = false
+    }
+}
+
+// 🔥 Seleccionar sucursal
+const seleccionarSucursal = (sucursal) => {
+    nuevaFila.value.IdSucursal = sucursal.id
+    busquedaSucursal.value = sucursal.nombre
+    showSucursalDropdown.value = false
+    errors.value.IdSucursal = ''
+}
+
+// 🔥 Limpiar selección de sucursal
+const limpiarSeleccionSucursal = () => {
+    nuevaFila.value.IdSucursal = ''
+    busquedaSucursal.value = ''
+    showSucursalDropdown.value = false
+}
+
+// 🔥 Abrir/cerrar dropdown de comisionista
+const abrirDropdown = () => {
+    if (busquedaIdentificador.value) {
+        showDropdown.value = true
+    }
+}
+
+const cerrarDropdown = () => {
+    setTimeout(() => {
+        showDropdown.value = false
+    }, 200)
+}
+
+const handleClickOutside = (event) => {
+    if (dropdownRef.value && !dropdownRef.value.contains(event.target) && 
+        inputRef.value && !inputRef.value.contains(event.target)) {
+        showDropdown.value = false
+    }
+}
+
+// 🔥 Seleccionar identificador
+const seleccionarIdentificador = (item) => {
+    const id = item.id || item.IdIdentificador
+    const ci = item.ci || item.CI_NIT
+    const nombre = item.nombre || item.Nombre
+    
+    nuevaFila.value.IdIdentificador = id
+    busquedaIdentificador.value = `${ci} - ${nombre}`
+    showDropdown.value = false
+    errors.value.IdIdentificador = ''
+}
+
+// 🔥 Limpiar selección de comisionista
+const limpiarSeleccion = () => {
+    nuevaFila.value.IdIdentificador = ''
+    busquedaIdentificador.value = ''
+    showDropdown.value = false
+}
+
+// Agregar eventos globales
+if (typeof window !== 'undefined') {
+    window.addEventListener('click', handleClickOutside)
+    window.addEventListener('click', handleSucursalClickOutside)
+}
+
+onBeforeUnmount(() => {
+    if (typeof window !== 'undefined') {
+        window.removeEventListener('click', handleClickOutside)
+        window.removeEventListener('click', handleSucursalClickOutside)
+    }
 })
 
 const agregarFila = () => {
     nuevaFila.value = { IdSucursal: '', IdIdentificador: '', Precio: 0, editando: true }
+    busquedaSucursal.value = ''
     busquedaIdentificador.value = ''
+    showDropdown.value = false
+    showSucursalDropdown.value = false
+    errors.value = {}
 }
 
 const guardarNuevaFila = async () => {
@@ -62,7 +188,10 @@ const guardarNuevaFila = async () => {
             precios.value.push(response.data.precio)
             emit('update', [...precios.value])
             nuevaFila.value = { IdSucursal: '', IdIdentificador: '', Precio: 0, editando: false }
+            busquedaSucursal.value = ''
             busquedaIdentificador.value = ''
+            showDropdown.value = false
+            showSucursalDropdown.value = false
         }
     } catch (error) {
         errors.value = { general: error.response?.data?.message || 'Error al guardar' }
@@ -73,7 +202,10 @@ const guardarNuevaFila = async () => {
 
 const cancelarNuevaFila = () => {
     nuevaFila.value = { IdSucursal: '', IdIdentificador: '', Precio: 0, editando: false }
+    busquedaSucursal.value = ''
     busquedaIdentificador.value = ''
+    showDropdown.value = false
+    showSucursalDropdown.value = false
     errors.value = {}
 }
 
@@ -124,11 +256,6 @@ const eliminarFila = async (precio) => {
         alert('Error al eliminar')
     }
 }
-
-const seleccionarIdentificador = (id, ci, nombre) => {
-    nuevaFila.value.IdIdentificador = id
-    busquedaIdentificador.value = `${ci} - ${nombre}`
-}
 </script>
 
 <template>
@@ -143,56 +270,137 @@ const seleccionarIdentificador = (id, ci, nombre) => {
             </button>
         </div>
 
-        <!-- Tabla sin altura máxima -->
-        <div class="overflow-x-auto rounded-lg border border-gray-200">
+        <!-- Contenedor con altura mínima -->
+        <div class="overflow-x-auto rounded-lg border border-gray-200" style="min-height: 300px;">
             <table class="min-w-full">
-                <thead class="bg-guindo-50">
+                <thead class="bg-guindo-50 sticky top-0">
                     <tr>
-                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Sucursal</th>
-                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Comisionista</th>
-                        <th class="px-4 py-2 text-right text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Precio (Bs)</th>
-                        <th class="px-4 py-2 text-center text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-24">Acciones</th>
+                        <!-- Sucursal: ancho 220px -->
+                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[220px]">Sucursal</th>
+                        <!-- Comisionista: ancho flexible -->
+                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Comisionista</th>
+                        <!-- Precio: ancho 100px -->
+                        <th class="px-3 py-2 text-right text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[100px]">Precio (Bs)</th>
+                        <!-- Acciones: ancho 80px -->
+                        <th class="px-3 py-2 text-center text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[80px]">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <!-- Nueva fila -->
                     <tr v-if="nuevaFila.editando" class="bg-amber-50">
-                        <td class="px-4 py-2">
-                            <select v-model="nuevaFila.IdSucursal" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500">
-                                <option value="">-- Seleccione sucursal --</option>
-                                <option v-for="s in sucursales" :key="s.id" :value="s.id">{{ s.nombre }}</option>
-                            </select>
-                        </td>
-                        <td class="px-4 py-2">
+                        <!-- Sucursal con buscador -->
+                        <td class="px-3 py-2">
                             <div class="relative">
                                 <input 
+                                    ref="sucursalInputRef"
                                     type="text" 
-                                    v-model="busquedaIdentificador" 
+                                    v-model="busquedaSucursal" 
+                                    @focus="abrirSucursalDropdown"
+                                    @blur="cerrarSucursalDropdown"
+                                    @input="abrirSucursalDropdown"
                                     class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500"
-                                    placeholder="Buscar por CI/NIT o nombre..."
-                                    @focus="busquedaIdentificador = ''"
+                                    placeholder="Buscar sucursal..."
                                 >
-                                <div v-if="busquedaIdentificador && identificadoresFiltrados.length" class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                                    <div 
-                                        v-for="item in identificadoresFiltrados" 
-                                        :key="item.id" 
-                                        @click="seleccionarIdentificador(item.id, item.ci, item.nombre)"
+                                <button 
+                                    v-if="busquedaSucursal"
+                                    @click="limpiarSeleccionSucursal"
+                                    type="button"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <i class="fas fa-times text-[9px]"></i>
+                                </button>
+                                
+                                <!-- Dropdown de sucursales -->
+                                <div 
+                                    v-if="showSucursalDropdown && sucursalesFiltradas.length > 0"
+                                    ref="sucursalDropdownRef"
+                                    class="absolute z-[9999] mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-[200px] overflow-y-auto"
+                                >
+                                    <div
+                                        v-for="s in sucursalesFiltradas"
+                                        :key="s.id"
+                                        @click="seleccionarSucursal(s)"
+                                        @mousedown.prevent
                                         class="px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-xs border-b last:border-b-0"
                                     >
-                                        <span class="font-mono text-[10px]">{{ item.ci }}</span> - {{ item.nombre }}
+                                        {{ s.nombre }}
                                     </div>
+                                </div>
+                                
+                                <!-- Mensaje sin resultados -->
+                                <div 
+                                    v-if="showSucursalDropdown && busquedaSucursal && sucursalesFiltradas.length === 0"
+                                    class="absolute z-[9999] mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-xs"
+                                >
+                                    No se encontraron sucursales
+                                </div>
+                            </div>
+                            <p v-if="errors.IdSucursal" class="text-red-500 text-[9px] mt-1">{{ errors.IdSucursal }}</p>
+                        </td>
+                        <!-- Comisionista con buscador -->
+                        <td class="px-3 py-2">
+                            <div class="relative">
+                                <input 
+                                    ref="inputRef"
+                                    type="text" 
+                                    v-model="busquedaIdentificador" 
+                                    @focus="abrirDropdown"
+                                    @blur="cerrarDropdown"
+                                    @input="abrirDropdown"
+                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500"
+                                    placeholder="Buscar por CI o nombre..."
+                                >
+                                <button 
+                                    v-if="busquedaIdentificador"
+                                    @click="limpiarSeleccion"
+                                    type="button"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                >
+                                    <i class="fas fa-times text-[9px]"></i>
+                                </button>
+                                
+                                <!-- Dropdown de resultados -->
+                                <div 
+                                    v-if="showDropdown && identificadoresFiltrados.length > 0"
+                                    ref="dropdownRef"
+                                    class="absolute z-[9999] mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-[200px] overflow-y-auto"
+                                >
+                                    <div
+                                        v-for="item in identificadoresFiltrados"
+                                        :key="item.id || item.IdIdentificador"
+                                        @click="seleccionarIdentificador(item)"
+                                        @mousedown.prevent
+                                        class="px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-xs border-b last:border-b-0 flex items-center gap-2"
+                                    >
+                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-guindo-600">{{ item.ci || item.CI_NIT }}</span>
+                                        <span class="text-gray-700 truncate">{{ item.nombre || item.Nombre }}</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Mensaje sin resultados -->
+                                <div 
+                                    v-if="showDropdown && busquedaIdentificador && identificadoresFiltrados.length === 0"
+                                    class="absolute z-[9999] mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-xs"
+                                >
+                                    No se encontraron comisionistas
                                 </div>
                             </div>
                             <p v-if="errors.IdIdentificador" class="text-red-500 text-[9px] mt-1">{{ errors.IdIdentificador }}</p>
                         </td>
-                        <td class="px-4 py-2">
+                        <td class="px-3 py-2">
                             <div class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]">Bs</span>
-                                <input type="number" v-model.number="nuevaFila.Precio" step="0.01" min="0" class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500">
+                                <input 
+                                    type="number" 
+                                    v-model.number="nuevaFila.Precio" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                >
                             </div>
                             <p v-if="errors.Precio" class="text-red-500 text-[9px] mt-1">{{ errors.Precio }}</p>
                         </td>
-                        <td class="px-4 py-2 text-center">
+                        <td class="px-3 py-2 text-center">
                             <button @click="guardarNuevaFila" :disabled="loading" class="text-green-600 hover:text-green-800 mr-2 transition" title="Guardar">
                                 <i class="fas fa-save text-sm"></i>
                             </button>
@@ -204,24 +412,31 @@ const seleccionarIdentificador = (id, ci, nombre) => {
 
                     <!-- Filas existentes -->
                     <tr v-for="precio in precios" :key="precio.IdPrecioMayorista" class="hover:bg-gray-50 transition">
-                        <td class="px-4 py-2 text-sm text-gray-700">
-                            <i class="fas fa-store text-guindo-400 text-[10px] mr-2"></i>
+                        <td class="px-3 py-2 text-xs text-gray-700">
+                            <i class="fas fa-store text-guindo-400 text-[10px] mr-1"></i>
                             {{ precio.sucursal?.Nombre || '-' }}
                         </td>
-                        <td class="px-4 py-2 text-sm text-gray-700">
-                            <i class="fas fa-user text-guindo-400 text-[10px] mr-2"></i>
-                            {{ precio.identificador?.CI_NIT }} - {{ precio.identificador?.Nombre }}
+                        <td class="px-3 py-2 text-xs text-gray-700">
+                            <i class="fas fa-user text-guindo-400 text-[10px] mr-1"></i>
+                            <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded mr-1">{{ precio.identificador?.CI_NIT }}</span>
+                            <span class="truncate">{{ precio.identificador?.Nombre }}</span>
                         </td>
-                        <td class="px-4 py-2">
-                            <div v-if="editandoId !== precio.IdPrecioMayorista" class="text-right font-semibold text-guindo-600 text-sm">
-                                {{ Number(precio.Precio).toFixed(2) }} Bs
+                        <td class="px-3 py-2">
+                            <div v-if="editandoId !== precio.IdPrecioMayorista" class="text-right font-semibold text-guindo-600 text-xs">
+                                {{ Number(precio.Precio).toFixed(2) }}
                             </div>
                             <div v-else class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]">Bs</span>
-                                <input type="number" v-model.number="editPrecioValue" step="0.01" min="0" class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-sm focus:ring-guindo-500 focus:border-guindo-500">
+                                <input 
+                                    type="number" 
+                                    v-model.number="editPrecioValue" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                >
                             </div>
                         </td>
-                        <td class="px-4 py-2 text-center">
+                        <td class="px-3 py-2 text-center">
                             <div v-if="editandoId !== precio.IdPrecioMayorista">
                                 <button @click="editarFila(precio)" class="text-guindo-600 hover:text-guindo-800 mr-2 transition" title="Editar">
                                     <i class="fas fa-edit text-sm"></i>
@@ -242,7 +457,7 @@ const seleccionarIdentificador = (id, ci, nombre) => {
                     </tr>
 
                     <tr v-if="precios.length === 0 && !nuevaFila.editando">
-                        <td colspan="4" class="px-4 py-8 text-center">
+                        <td colspan="4" class="px-3 py-8 text-center">
                             <i class="fas fa-chart-line text-gray-300 text-2xl mb-2 block"></i>
                             <p class="text-gray-400 text-xs">No hay precios mayoristas configurados</p>
                             <button @click="agregarFila" class="mt-2 text-guindo-600 hover:text-guindo-700 text-xs font-medium">+ Agregar precio</button>

@@ -89,7 +89,6 @@ const agregarFila = () => {
     errors.value = {}
 }
 
-// 🔥 SIN VALIDACIÓN DE DUPLICADOS - Solo guarda
 const guardarNuevaFila = async () => {
     if (!nuevaFila.value.IdProducto) {
         errors.value = { IdProducto: 'Seleccione un producto' }
@@ -135,7 +134,6 @@ const editarFila = (detalle) => {
     detalle.editando = true
 }
 
-// 🔥 SIN VALIDACIÓN DE DUPLICADOS - Solo actualiza
 const guardarEdicion = async (detalle) => {
     if (detalle.Porcion <= 0) {
         alert('La porción debe ser mayor a 0')
@@ -247,7 +245,13 @@ const eliminarFila = async (detalle) => {
                             <p v-if="errors.IdProducto" class="text-red-500 text-[10px] mt-1">{{ errors.IdProducto }}</p>
                         </td>
                         <td class="px-4 py-2">
-                            <input type="number" v-model.number="nuevaFila.Porcion" step="0.000001" min="0" class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500">
+                            <input 
+                                type="number" 
+                                v-model.number="nuevaFila.Porcion" 
+                                step="0.000001" 
+                                min="0" 
+                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            >
                             <p v-if="errors.Porcion" class="text-red-500 text-[10px] mt-1">{{ errors.Porcion }}</p>
                         </td>
                         <td class="px-4 py-2 text-center">
@@ -271,7 +275,14 @@ const eliminarFila = async (detalle) => {
                             <div v-if="!detalle.editando" class="text-right font-semibold text-guindo-600 text-[11px]">
                                 {{ Number(detalle.Porcion).toFixed(6) }}
                             </div>
-                            <input v-else type="number" v-model.number="detalle.Porcion" step="0.000001" min="0" class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500">
+                            <input 
+                                v-else 
+                                type="number" 
+                                v-model.number="detalle.Porcion" 
+                                step="0.000001" 
+                                min="0" 
+                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            >
                         </td>
                         <td class="px-4 py-2 text-center">
                             <button v-if="!detalle.editando" @click="editarFila(detalle)" class="text-guindo-600 hover:text-guindo-800 mr-2 transition" title="Editar">

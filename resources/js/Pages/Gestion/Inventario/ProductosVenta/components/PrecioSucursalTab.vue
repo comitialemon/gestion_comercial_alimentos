@@ -149,7 +149,13 @@ const nombreSucursal = (sucursal) => {
                         <td class="px-4 py-2">
                             <div class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]">Bs</span>
-                                <input type="number" v-model.number="nuevaFila.Precio" step="0.01" min="0" class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500">
+                                <input 
+                                    type="number" 
+                                    v-model.number="nuevaFila.Precio" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                >
                             </div>
                             <p v-if="errors.Precio" class="text-red-500 text-[9px] mt-1">{{ errors.Precio }}</p>
                         </td>
@@ -175,7 +181,13 @@ const nombreSucursal = (sucursal) => {
                             </div>
                             <div v-else class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]">Bs</span>
-                                <input type="number" v-model.number="editPrecioValue" step="0.01" min="0" class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-sm focus:ring-guindo-500 focus:border-guindo-500">
+                                <input 
+                                    type="number" 
+                                    v-model.number="editPrecioValue" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-sm focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                >
                             </div>
                         </td>
                         <td class="px-4 py-2 text-center">

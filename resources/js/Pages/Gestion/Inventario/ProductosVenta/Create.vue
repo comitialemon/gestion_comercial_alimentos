@@ -222,7 +222,7 @@ const guardarProducto = () => {
         axios.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion)
             .then(response => {
                 if (response.data.success) {
-                    toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
+                    toast?.success('Éxito', response.data.message || 'Producto atualizado correctamente')
                     setTimeout(() => {
                         window.location.reload()
                     }, 1500)
@@ -232,7 +232,7 @@ const guardarProducto = () => {
             })
             .catch(error => {
                 console.error('Errores:', error)
-                const message = error.response?.data?.message || 'Verifique los datos ingresados'
+                const message = error.response?.data?.message || 'Verifique os dados inseridos'
                 toast?.error('Error', message)
             })
     } else {
@@ -259,7 +259,7 @@ const guardarProducto = () => {
             },
             onError: (errors) => {
                 console.error('Errores:', errors)
-                toast?.error('Error', 'Verifique los datos ingresados')
+                toast?.error('Error', 'Verifique os dados inseridos')
             }
         })
     }
@@ -493,7 +493,16 @@ const toggleEstado = async () => {
                             <label class="block text-xs font-medium text-gray-700 mb-1">Precio Venta (Bs) *</label>
                             <div class="relative">
                                 <span class="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500 text-[10px]">Bs</span>
-                                <input type="number" v-model.number="form.PrecioVenta" step="0.01" min="0" class="w-full border rounded-md pl-7 pr-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.PrecioVenta }" placeholder="0.00" :disabled="editando && props.producto?.ActivoInactivo === 2">
+                                <input 
+                                    type="number" 
+                                    v-model.number="form.PrecioVenta" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="w-full border rounded-md pl-7 pr-2 py-1.5 text-xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    :class="{ 'border-red-500': form.errors.PrecioVenta }" 
+                                    placeholder="0.00" 
+                                    :disabled="editando && props.producto?.ActivoInactivo === 2"
+                                >
                             </div>
                             <p v-if="form.errors.PrecioVenta" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.PrecioVenta }}</p>
                         </div>
