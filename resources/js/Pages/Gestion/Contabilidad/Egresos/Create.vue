@@ -150,6 +150,19 @@ onMounted(() => {
 })
 </script>
 
+<style scoped>
+/* 🔥 Eliminar flechas del input number */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>
+
 <template>
     <div class="min-h-screen bg-gray-100">
         <div class="py-4 px-3 sm:px-5 lg:px-6">
@@ -226,12 +239,20 @@ onMounted(() => {
                             <p v-if="errors.Glosa" class="text-[10px] text-red-500 mt-0.5">{{ errors.Glosa }}</p>
                         </div>
 
-                        <!-- Total Bolivianos -->
+                        <!-- Total Bolivianos (sin flechas) -->
                         <div>
                             <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Total Bolivianos *</label>
                             <div class="relative">
                                 <span class="absolute left-2 top-1.5 text-gray-500 text-xs">Bs.</span>
-                                <input type="number" v-model.number="form.TotalBolivianos" step="0.01" min="0" class="w-full border rounded-md pl-8 pr-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.TotalBolivianos }" placeholder="0.00">
+                                <input 
+                                    type="number" 
+                                    v-model.number="form.TotalBolivianos" 
+                                    step="0.01" 
+                                    min="0" 
+                                    class="no-spinner w-full border rounded-md pl-8 pr-2 py-1.5 text-xs" 
+                                    :class="{ 'border-red-500': errors.TotalBolivianos }" 
+                                    placeholder="0.00"
+                                >
                             </div>
                             <p v-if="errors.TotalBolivianos" class="text-[10px] text-red-500 mt-0.5">{{ errors.TotalBolivianos }}</p>
                         </div>

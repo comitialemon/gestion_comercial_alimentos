@@ -258,10 +258,14 @@ Route::middleware(['auth.operador'])->group(function () {
         ->name('gestion.reporte-listado-facturas.reimprimir');
         
     
-        // ==================== COMPRAS ====================
+    // ==================== COMPRAS ====================
     Route::prefix('gestion/compras')->group(function () {
         Route::get('/', [CompraController::class, 'index'])->name('compras.index');
         Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+        
+        // 🔥 AGREGAR ESTA RUTA
+        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+        
         Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
         Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
         Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
@@ -382,8 +386,13 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::post('/gestion/inventario/asignar-productos-categoria', [AsignarProductoCategoriaController::class, 'store'])->name('gestion.inventario.asignar-productos-categoria.store');
 
     // ==================== INVENTARIO - ACTUAL Y REPORTES ====================
-    Route::get('/gestion/inventario/inventario-actual', [InventarioActualController::class, 'index'])->name('gestion.inventario.inventario-actual.index');
-    Route::get('/gestion/inventario/reporte-inventario', [ReporteInventarioController::class, 'index'])->name('gestion.inventario.reporte-inventario.index');
+    // ==================== REPORTE DE INVENTARIO ====================
+    Route::get('/gestion/inventario/reporte-inventario', [ReporteInventarioController::class, 'index'])
+        ->name('gestion.inventario.reporte-inventario.index');
+
+    // 🔥 NUEVA RUTA: Reporte de inventario por sucursal actual (sin selector)
+    Route::get('/gestion/inventario/reporte-inventario/sucursal-actual', [ReporteInventarioController::class, 'porSucursal'])
+        ->name('gestion.inventario.reporte-inventario.sucursal-actual');
 
     // ==================== INVENTARIO - AJUSTES ====================
     Route::prefix('gestion/inventario/ajustes')->group(function () {

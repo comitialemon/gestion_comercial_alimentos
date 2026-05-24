@@ -9,7 +9,7 @@ defineOptions({ layout: AppLayout })
 const toast = inject('toast')
 
 const props = defineProps({
-    compra: Object,        // Puede ser null si no hay compra pendiente
+    compra: Object,
     detalles: Array,
     almacenes: Array,
     tiposFactura: Array,
@@ -37,7 +37,7 @@ const guardandoDetalle = ref(false)
 const contabilizando = ref(false)
 const errors = ref({})
 const mostrarConfirmacion = ref(false)
-const cabeceraGuardada = ref(false)  // 🔥 Controla si se muestra la sección de productos
+const cabeceraGuardada = ref(false)
 
 // Buscador de productos
 const busquedaProducto = ref('')
@@ -63,7 +63,7 @@ const proveedoresFiltrados = computed(() => {
     )
 })
 
-// Total de la compra (calculado desde detalles)
+// Total de la compra
 const importeFacturaCalculado = computed(() => {
     return detallesGrid.value.reduce((sum, item) => sum + (Number(item.TotalBolivianos) || 0), 0)
 })
@@ -84,7 +84,7 @@ const validarCamposCabecera = () => {
     return Object.keys(nuevosErrors).length === 0
 }
 
-// Guardar cabecera (crea la compra si no existe, o actualiza si existe)
+// Guardar cabecera
 const guardarCabecera = async () => {
     if (!validarCamposCabecera()) {
         toast?.warning('Datos incompletos', 'Complete todos los campos obligatorios')
@@ -95,7 +95,6 @@ const guardarCabecera = async () => {
     try {
         let idCompra = form.value.IdCompras
         
-        // 🔥 Si no hay ID, primero crear la compra
         if (!idCompra) {
             const crearResponse = await axios.post('/gestion/compras/crear')
             if (crearResponse.data.success) {
@@ -106,7 +105,6 @@ const guardarCabecera = async () => {
             }
         }
         
-        // Actualizar cabecera
         await axios.put(`/gestion/compras/actualizar-cabecera/${idCompra}`, {
             IdAlmacen: form.value.IdAlmacen,
             IdTipoFactura: form.value.IdTipoFactura,
@@ -118,9 +116,8 @@ const guardarCabecera = async () => {
             Observacion: form.value.Observacion || '',
         })
         
-        // ✅ SOLO AQUÍ se activa la sección de productos
         cabeceraGuardada.value = true
-        toast?.success('Cabecera guardada', 'Datos guardados correctamente. Ahora puede agregar productos.')
+        toast?.success('Cabecera guardada', 'Ahora puede agregar productos')
     } catch (error) {
         console.error('Error:', error)
         toast?.error('Error', error.response?.data?.message || 'Error al guardar la cabecera')
@@ -161,14 +158,11 @@ const agregarProducto = async () => {
         return
     }
     
-    const productoData = {
-        id: productoSeleccionado.value.id,
-        Codigo: productoSeleccionado.value.Codigo,
-        Descripcion: productoSeleccionado.value.Descripcion
-    }
+    const unidadesInput = document.getElementById('unidades_input')
+    const totalInput = document.getElementById('total_input')
     
-    const unidades = parseFloat(document.getElementById('unidades_input')?.value) || 0
-    const totalBolivianos = parseFloat(document.getElementById('total_input')?.value) || 0
+    const unidades = parseFloat(unidadesInput?.value) || 0
+    const totalBolivianos = parseFloat(totalInput?.value) || 0
     
     if (unidades <= 0) {
         toast?.warning('Unidades inválidas', 'Deben ser > 0')
@@ -185,7 +179,7 @@ const agregarProducto = async () => {
     try {
         const response = await axios.post('/gestion/compras/agregar-detalle', {
             IdCompras: form.value.IdCompras,
-            IdProducto: productoData.id,
+            IdProducto: productoSeleccionado.value.id,
             Unidades: unidades,
             TotalBolivianos: totalBolivianos,
         })
@@ -194,18 +188,18 @@ const agregarProducto = async () => {
             detallesGrid.value.push({
                 IdComprasDetalle: response.data.detalle.IdComprasDetalle,
                 IdProducto: response.data.detalle.IdProducto,
-                Codigo: productoData.Codigo,
-                Descripcion: productoData.Descripcion,
+                Codigo: productoSeleccionado.value.Codigo,
+                Descripcion: productoSeleccionado.value.Descripcion,
                 Unidades: unidades,
                 TotalBolivianos: totalBolivianos,
                 Precio: precio
             })
             
             limpiarSeleccionProducto()
-            document.getElementById('unidades_input').value = ''
-            document.getElementById('total_input').value = ''
+            if (unidadesInput) unidadesInput.value = ''
+            if (totalInput) totalInput.value = ''
             
-            toast?.success('Producto agregado', `${productoData.Descripcion} - ${unidades} x ${totalBolivianos.toFixed(2)} Bs`)
+            toast?.success('Producto agregado', `${productoSeleccionado.value.Descripcion}`)
         }
     } catch (error) {
         console.error('Error:', error)
@@ -274,11 +268,9 @@ const ejecutarContabilizar = async () => {
 
 const cancelarConfirmacion = () => mostrarConfirmacion.value = false
 
-// Inicializar
 onMounted(() => {
     cargarDetalles()
     
-    // 🔥 Si ya existe una compra con ID y tiene detalles, mostrar productos
     if (form.value.IdCompras && detallesGrid.value.length > 0) {
         cabeceraGuardada.value = true
     }
@@ -289,6 +281,19 @@ onMounted(() => {
     }
 })
 </script>
+
+<style scoped>
+/* 🔥 Eliminar flechas de los inputs number */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>
 
 <template>
     <div class="min-h-screen bg-gray-100 py-4 px-3">
@@ -348,13 +353,23 @@ onMounted(() => {
 
                     <div>
                         <label class="block text-gray-600 mb-0.5">N° Documento *</label>
-                        <input type="number" v-model.number="form.NumeroFactura" class="w-full border rounded px-2 py-1 text-xs" placeholder="Número">
+                        <input 
+                            type="number" 
+                            v-model.number="form.NumeroFactura" 
+                            class="no-spinner w-full border rounded px-2 py-1 text-xs" 
+                            placeholder="Número"
+                        >
                         <p v-if="errors.NumeroFactura" class="text-red-500 text-[10px]">{{ errors.NumeroFactura }}</p>
                     </div>
 
                     <div v-if="mostrarAutorizacion">
                         <label class="block text-gray-600 mb-0.5">N° Autorización</label>
-                        <input type="number" v-model.number="form.NumeroAutorizacion" class="w-full border rounded px-2 py-1 text-xs" placeholder="Autorización">
+                        <input 
+                            type="number" 
+                            v-model.number="form.NumeroAutorizacion" 
+                            class="no-spinner w-full border rounded px-2 py-1 text-xs" 
+                            placeholder="Autorización"
+                        >
                     </div>
 
                     <div class="md:col-span-2">
@@ -377,7 +392,7 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- Sección Detalle (solo visible después de guardar cabecera) -->
+            <!-- Sección Detalle -->
             <div v-if="cabeceraGuardada" class="bg-white rounded-lg shadow-sm p-3 mb-4">
                 <h2 class="text-sm font-semibold text-gray-700 mb-2">Productos</h2>
 
@@ -394,11 +409,11 @@ onMounted(() => {
                     </div>
                     <div class="col-span-6 md:col-span-2">
                         <label class="block text-gray-600 mb-0.5">Unidades</label>
-                        <input id="unidades_input" type="number" step="0.0001" @input="calcularPrecioDesdeCampos" class="w-full border rounded px-2 py-1 text-xs" placeholder="0.0000">
+                        <input id="unidades_input" type="number" step="0.0001" @input="calcularPrecioDesdeCampos" class="no-spinner w-full border rounded px-2 py-1 text-xs" placeholder="0.0000">
                     </div>
                     <div class="col-span-6 md:col-span-3">
                         <label class="block text-gray-600 mb-0.5">Total Bs</label>
-                        <input id="total_input" type="number" step="0.01" @input="calcularPrecioDesdeCampos" class="w-full border rounded px-2 py-1 text-xs" placeholder="0.00">
+                        <input id="total_input" type="number" step="0.01" @input="calcularPrecioDesdeCampos" class="no-spinner w-full border rounded px-2 py-1 text-xs" placeholder="0.00">
                     </div>
                     <div class="col-span-6 md:col-span-2">
                         <label class="block text-gray-600 mb-0.5">Precio</label>

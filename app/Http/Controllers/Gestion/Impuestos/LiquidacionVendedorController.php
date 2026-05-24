@@ -269,9 +269,10 @@ class LiquidacionVendedorController extends Controller
             ], 500);
         }
     }
+
     /**
-         * Generar PDF de la liquidación (Versión Corregida y Agrupada)
-         */
+     * Generar PDF de la liquidación (Versión Corregida - Inventario como Scriptcase)
+     */
     public function pdf($id)
     {
         \Log::info('=== GENERANDO PDF LIQUIDACION ===');
@@ -287,6 +288,7 @@ class LiquidacionVendedorController extends Controller
             $sucursalId = $liquidacion->iDsucursal;
             $vendedorId = $liquidacion->iDoperadorVendedor;
             $diarioId = $liquidacion->IdDiario;
+            $idFechaCorte = $liquidacion->IdFecha;
 
             // Datos de la empresa
             $empresa = DB::connection('mysql_gestion_comercial_alimentos')
@@ -366,89 +368,73 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // INVENTARIO ACTUALIZADO (OPTIMIZADO Y AGRUPADO)
+            // INVENTARIO ACTUALIZADO (CORREGIDO - Como Scriptcase)
+            // Muestra TODOS los productos activos de la sucursal
             // =============================================
             
-            // 1. Obtener todas las facturas involucradas en esta liquidación
-            $ventasLiquidacion = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('impuestos_ventas')
-                ->where('LiquidadoVendedor', $diarioId)
-                ->where('IdCliente', $clienteId)
-                ->where('IdClienteSucursal', $sucursalId)
-                ->orderBy('IdVentas', 'asc')
-                ->get(['IdVentas']);
-
             $inventarioConSaldo = [];
+            
+            // Obtener TODOS los productos ACTIVOS de la sucursal
+            $productosActivos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle')
+                ->where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('ActivoInactivo', 0)
+                ->orderBy('Descripcion')
+                ->get(['IdProducto', 'Descripcion']);
 
-            if ($ventasLiquidacion->count() > 0) {
-                $idVentasEnLiquidacion = $ventasLiquidacion->pluck('IdVentas')->toArray();
-                $primerIdVentaActual = min($idVentasEnLiquidacion);
-
-                // 2. Traer el consolidado de productos vendidos en TODA la liquidación de una sola vez
-                $productosAgrupadosConsolidado = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('impuestos_ventas_detalle as vd')
-                    ->join('inventario_relacion_ventainventario as irv', 'vd.idrelacionventainventario', '=', 'irv.IdDetalleProducto')
-                    ->leftJoin('inventario_relacion_ventainventario_detalle as rd', 'irv.IdDetalleProducto', '=', 'rd.IdDetalleProducto')
-                    ->whereIn('vd.idventas', $idVentasEnLiquidacion)
-                    ->select(
-                        DB::raw('COALESCE(rd.IdProducto, irv.IdDetalleProducto) as producto_id'),
-                        DB::raw('COALESCE(irv.Detalle, "Producto") as producto_nombre'),
-                        DB::raw('SUM(COALESCE(rd.Porcion, 1) * vd.unidades) as unidades_totales_vendidas')
-                    )
-                    ->groupBy(DB::raw('COALESCE(rd.IdProducto, irv.IdDetalleProducto)'), 'irv.Detalle')
-                    ->get();
-
-                // 3. Calcular saldos iniciales y finales de forma limpia por producto único
-                foreach ($productosAgrupadosConsolidado as $prodConsolidado) {
-                    $idProducto = $prodConsolidado->producto_id;
-                    $unidadesTotalesVenta = floatval($prodConsolidado->unidades_totales_vendidas);
-                    
-                    if ($unidadesTotalesVenta <= 0) continue;
-
-                    // Ingresos históricos físicos (Todas las compras previas y actuales)
-                    $ingresoInicial = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_propiamente')
-                        ->where('IdProducto', $idProducto)
-                        ->where('IdCliente', $clienteId)
-                        ->where('IdSucursal', $sucursalId)
-                        ->where('D_H', 'D')
-                        ->sum('Unidades') ?? 0;
-                    
-                    // Ventas estrictamente ANTERIORES al día de hoy (Frontera: el ID más bajo de hoy)
-                    $ventasAnteriores = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('impuestos_ventas_detalle as vd')
-                        ->join('inventario_relacion_ventainventario as irv', 'vd.idrelacionventainventario', '=', 'irv.IdDetalleProducto')
-                        ->leftJoin('inventario_relacion_ventainventario_detalle as rd', 'irv.IdDetalleProducto', '=', 'rd.IdDetalleProducto')
-                        ->join('impuestos_ventas as v', 'vd.idventas', '=', 'v.IdVentas')
-                        ->where('v.IdCliente', $clienteId)
-                        ->where('v.IdClienteSucursal', $sucursalId)
-                        ->where('v.IdEstado', 1)
-                        ->where(DB::raw('COALESCE(rd.IdProducto, irv.IdDetalleProducto)'), $idProducto)
-                        ->where('vd.idventas', '<', $primerIdVentaActual) 
-                        ->sum(DB::raw('COALESCE(rd.Porcion, 1) * vd.unidades')) ?? 0;
-
-                    // Matemática libre de nulos
-                    $saldoAntesDeHoy = floatval($ingresoInicial) - floatval($ventasAnteriores);
-                    $saldoDespuesDeHoy = $saldoAntesDeHoy - $unidadesTotalesVenta;
-
+            foreach ($productosActivos as $producto) {
+                // Saldo anterior (todas las operaciones con IdFecha < fecha de corte)
+                $saldoAnterior = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->where('IdProducto', $producto->IdProducto)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdFecha', '<', $idFechaCorte)
+                    ->select(DB::raw('SUM(CASE WHEN D_H = "D" THEN Unidades ELSE 0 END) - SUM(CASE WHEN D_H = "H" THEN Unidades ELSE 0 END) as saldo'))
+                    ->value('saldo') ?? 0;
+                
+                // Ingresos del día (compras)
+                $ingresosDia = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->where('IdProducto', $producto->IdProducto)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdFecha', $idFechaCorte)
+                    ->where('D_H', 'D')
+                    ->sum('Unidades') ?? 0;
+                
+                // Salidas del día (ventas)
+                $salidasDia = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->where('IdProducto', $producto->IdProducto)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdFecha', $idFechaCorte)
+                    ->where('D_H', 'H')
+                    ->sum('Unidades') ?? 0;
+                
+                // Solo mostrar productos que tienen movimiento O saldo diferente de cero
+                if ($ingresosDia != 0 || $salidasDia != 0 || $saldoAnterior != 0) {
                     $inventarioConSaldo[] = [
-                        'producto' => $prodConsolidado->producto_nombre,
-                        'saldo_anterior' => $saldoAntesDeHoy,
-                        'unidades_vendidas' => $unidadesTotalesVenta,
-                        'saldo_actual' => $saldoDespuesDeHoy
+                        'producto' => $producto->Descripcion,
+                        'saldo_anterior' => $saldoAnterior,
+                        'ingresos' => $ingresosDia,
+                        'salidas' => $salidasDia,
+                        'saldo_actual' => $saldoAnterior + $ingresosDia - $salidasDia
                     ];
                 }
-
-                // Ordenar alfabéticamente por nombre de producto
-                usort($inventarioConSaldo, function($a, $b) {
-                    return strcmp($a['producto'], $b['producto']);
-                });
             }
+
+            // Ordenar alfabéticamente
+            usort($inventarioConSaldo, function($a, $b) {
+                return strcmp($a['producto'], $b['producto']);
+            });
 
             // =============================================
             // GENERAR PDF (TCPDF TICKET FORMAT)
             // =============================================
-            $pdf = new \TCPDF('P', 'mm', array(100, 300));
+            $pdf = new \TCPDF('P', 'mm', array(100, 500));
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
             $pdf->SetMargins(5, 5, 5);
@@ -491,7 +477,7 @@ class LiquidacionVendedorController extends Controller
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedor, 2, '.', ''), 0, 0, 'R');
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedorConfirma, 2, '.', ''), 0, 1, 'R');
 
-            // LISTA DE VENTAS
+            // LISTA DE VENTAS POR COMISIONISTA
             if ($pdf->GetY() > 240) {
                 $pdf->AddPage();
             }
@@ -567,7 +553,9 @@ class LiquidacionVendedorController extends Controller
             $pdf->Cell(69, 5, "TOTAL GENERAL:", 'T', 0, 'R');
             $pdf->Cell(15, 5, number_format($totalGeneralVentas, 2, '.', ''), 'T', 1, 'R');
 
-            // SECCIÓN INVENTARIO ACTUALIZADO REVISADO
+            // =============================================
+            // INVENTARIO ACTUALIZADO (SECCIÓN DEL PDF)
+            // =============================================
             if (count($inventarioConSaldo) > 0) {
                 if ($pdf->GetY() > 240) {
                     $pdf->AddPage();
@@ -579,9 +567,10 @@ class LiquidacionVendedorController extends Controller
 
                 $pdf->SetFont('times', 'B', 8);
                 $pdf->Cell(45, 5, "Producto", 0, 0, 'L');
-                $pdf->Cell(12, 5, "Saldo Ant.", 0, 0, 'R');
-                $pdf->Cell(12, 5, "Vendido", 0, 0, 'R');
-                $pdf->Cell(15, 5, "Saldo", 0, 1, 'R');
+                $pdf->Cell(12, 5, "Sal.Ini.", 0, 0, 'R');
+                $pdf->Cell(12, 5, "Ingr.", 0, 0, 'R');
+                $pdf->Cell(12, 5, "Salida", 0, 0, 'R');
+                $pdf->Cell(12, 5, "Saldo", 0, 1, 'R');
                 $pdf->Cell(90, 1, "", 'T', 1);
 
                 $pdf->SetFont('times', '', 7);
@@ -591,12 +580,13 @@ class LiquidacionVendedorController extends Controller
                         $pdf->AddPage();
                         $pdf->SetFont('times', '', 7);
                         
-                        // Reimprimir encabezado en nueva página si se corta
+                        // Reimprimir encabezado
                         $pdf->SetFont('times', 'B', 8);
                         $pdf->Cell(45, 5, "Producto", 0, 0, 'L');
-                        $pdf->Cell(12, 5, "Saldo Ant.", 0, 0, 'R');
-                        $pdf->Cell(12, 5, "Vendido", 0, 0, 'R');
-                        $pdf->Cell(15, 5, "Saldo", 0, 1, 'R');
+                        $pdf->Cell(12, 5, "Sal.Ini.", 0, 0, 'R');
+                        $pdf->Cell(12, 5, "Ingr.", 0, 0, 'R');
+                        $pdf->Cell(12, 5, "Salida", 0, 0, 'R');
+                        $pdf->Cell(12, 5, "Saldo", 0, 1, 'R');
                         $pdf->Cell(90, 1, "", 'T', 1);
                         $pdf->SetFont('times', '', 7);
                     }
@@ -604,8 +594,9 @@ class LiquidacionVendedorController extends Controller
                     $nombreProducto = substr($item['producto'], 0, 40);
                     $pdf->Cell(45, 4, $nombreProducto, 0, 0, 'L');
                     $pdf->Cell(12, 4, number_format($item['saldo_anterior'], 2, '.', ''), 0, 0, 'R');
-                    $pdf->Cell(12, 4, number_format($item['unidades_vendidas'], 2, '.', ''), 0, 0, 'R');
-                    $pdf->Cell(15, 4, number_format($item['saldo_actual'], 2, '.', ''), 0, 1, 'R');
+                    $pdf->Cell(12, 4, number_format($item['ingresos'], 2, '.', ''), 0, 0, 'R');
+                    $pdf->Cell(12, 4, number_format($item['salidas'], 2, '.', ''), 0, 0, 'R');
+                    $pdf->Cell(12, 4, number_format($item['saldo_actual'], 2, '.', ''), 0, 1, 'R');
                 }
             }
 

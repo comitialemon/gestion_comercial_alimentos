@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 class ReporteInventarioController extends Controller
 {
     /**
-     * Mostrar reporte de inventario por rango de fechas
+     * Mostrar reporte de inventario por rango de fechas (CON selector de sucursal)
      */
     public function index(Request $request)
     {
@@ -124,6 +124,120 @@ class ReporteInventarioController extends Controller
             'fechaInicial' => $fechaInicial,
             'fechaFinal' => $fechaFinal,
             'sucursalSeleccionada' => $sucursalId,
+            'soloConMovimiento' => $soloConMovimiento,
+            'search' => $search,
+        ]);
+    }
+
+    /**
+     * Mostrar reporte de inventario de la sucursal actual (contexto)
+     * No permite cambiar de sucursal
+     */
+    public function porSucursal(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // Obtener nombre de la sucursal actual
+        $sucursalActual = ClienteSucursal::where('IdCliente', $clienteId)
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first();
+        
+        $nombreSucursal = $sucursalActual ? $sucursalActual->Nombre : 'Sucursal no encontrada';
+        
+        $fechaInicial = $request->fecha_inicial ?? date('Y-m-01');
+        $fechaFinal = $request->fecha_final ?? date('Y-m-d');
+        $soloConMovimiento = $request->boolean('solo_con_movimiento', false);
+        $search = $request->search;
+
+        $productos = collect();
+
+        // Solo consultar si hay una sucursal válida
+        if ($sucursalId && $sucursalId > 0) {
+            $query = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle as p')
+                ->select(
+                    'p.IdProducto',
+                    'p.Codigo',
+                    'p.Descripcion'
+                )
+                ->addSelect(DB::raw("(
+                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE -ip.Unidades END), 0)
+                    FROM inventario_propiamente ip
+                    INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
+                    WHERE ip.IdProducto = p.IdProducto
+                        AND ip.IdCliente = p.IdCliente
+                        AND ip.IdSucursal = {$sucursalId}
+                        AND tf.Fecha < '{$fechaInicial}'
+                ) as saldo_anterior"))
+                ->addSelect(DB::raw("(
+                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE 0 END), 0)
+                    FROM inventario_propiamente ip
+                    INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
+                    WHERE ip.IdProducto = p.IdProducto
+                        AND ip.IdCliente = p.IdCliente
+                        AND ip.IdSucursal = {$sucursalId}
+                        AND tf.Fecha BETWEEN '{$fechaInicial}' AND '{$fechaFinal}'
+                ) as ingresos"))
+                ->addSelect(DB::raw("(
+                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'H' THEN ip.Unidades ELSE 0 END), 0)
+                    FROM inventario_propiamente ip
+                    INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
+                    WHERE ip.IdProducto = p.IdProducto
+                        AND ip.IdCliente = p.IdCliente
+                        AND ip.IdSucursal = {$sucursalId}
+                        AND tf.Fecha BETWEEN '{$fechaInicial}' AND '{$fechaFinal}'
+                ) as salidas"))
+                ->where('p.IdCliente', $clienteId)
+                ->where('p.ActivoInactivo', 0);
+
+            if ($search) {
+                $query->where(function($q) use ($search) {
+                    $q->where('p.Codigo', 'like', "%{$search}%")
+                      ->orWhere('p.Descripcion', 'like', "%{$search}%");
+                });
+            }
+
+            $todosProductos = $query->orderBy('p.Descripcion')->get();
+
+            foreach ($todosProductos as $producto) {
+                $producto->saldo_anterior = (float) $producto->saldo_anterior;
+                $producto->ingresos = (float) $producto->ingresos;
+                $producto->salidas = (float) $producto->salidas;
+                $producto->saldo_actual = $producto->saldo_anterior + $producto->ingresos - $producto->salidas;
+            }
+
+            if ($soloConMovimiento) {
+                $todosProductos = $todosProductos->filter(function($p) {
+                    return $p->saldo_anterior != 0 || $p->ingresos != 0 || $p->salidas != 0;
+                });
+            }
+
+            $perPage = 50;
+            $currentPage = \Illuminate\Pagination\Paginator::resolveCurrentPage();
+            $currentItems = $todosProductos->slice(($currentPage - 1) * $perPage, $perPage)->values();
+            
+            $productos = new \Illuminate\Pagination\LengthAwarePaginator(
+                $currentItems,
+                $todosProductos->count(),
+                $perPage,
+                $currentPage,
+                ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]
+            );
+            
+            $productos->appends([
+                'fecha_inicial' => $fechaInicial,
+                'fecha_final' => $fechaFinal,
+                'solo_con_movimiento' => $soloConMovimiento ? 1 : 0,
+                'search' => $search
+            ]);
+        }
+
+        return Inertia::render('Gestion/Inventario/ReporteInventario/PorSucursal', [
+            'productos' => $productos,
+            'nombreSucursal' => $nombreSucursal,
+            'fechaInicial' => $fechaInicial,
+            'fechaFinal' => $fechaFinal,
             'soloConMovimiento' => $soloConMovimiento,
             'search' => $search,
         ]);
