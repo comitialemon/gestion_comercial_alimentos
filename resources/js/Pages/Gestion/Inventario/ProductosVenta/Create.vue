@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, inject, computed, watch } from 'vue'
+import { ref, inject, computed, watch, onMounted } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import axios from 'axios'
 import PrecioSucursalTab from './components/PrecioSucursalTab.vue'
@@ -56,11 +56,10 @@ const mostrarToggleEstado = computed(() => {
     return estado === ESTADO_ACTIVO || estado === ESTADO_INACTIVO
 })
 
-// 🔥 Mostrar botón "Descartar Borrador" solo si está en estado BORRADOR
 const mostrarDescartarBorrador = computed(() => {
     if (!props.editando) return false
     const estado = props.producto?.ActivoInactivo
-    return estado === ESTADO_INACTIVO // Solo borrador
+    return estado === ESTADO_INACTIVO
 })
 
 const estadoTexto = computed(() => {
@@ -110,39 +109,65 @@ const form = useForm({
     preview_url: props.producto?.ImagenProducto || null,
 })
 
-// Inicializar nombre de categoría
-const inicializarCategoria = () => {
-    if (props.producto?.id_categoria && props.categorias) {
-        const categoriaEncontrada = props.categorias.find(c => c.id === props.producto.id_categoria)
+// 🔥 FUNCIÓN PARA ACTUALIZAR EL NOMBRE DE LA CATEGORÍA EN EL BOTÓN
+const actualizarNombreCategoria = () => {
+    if (form.id_categoria && props.categorias) {
+        const categoriaEncontrada = props.categorias.find(c => c.id === form.id_categoria || c.id_categoria === form.id_categoria)
         if (categoriaEncontrada) {
             categoriaNombre.value = categoriaEncontrada.nombre
-            form.id_categoria = props.producto.id_categoria
+        } else {
+            categoriaNombre.value = ''
+        }
+    } else {
+        categoriaNombre.value = ''
+    }
+}
+
+// 🔥 INICIALIZAR CATEGORÍA AL CARGAR
+const inicializarCategoria = () => {
+    if (props.producto?.id_categoria && props.categorias) {
+        // Buscar por id_categoria (puede venir como id o id_categoria)
+        const categoriaEncontrada = props.categorias.find(c => 
+            c.id === props.producto.id_categoria || 
+            c.id_categoria === props.producto.id_categoria
+        )
+        if (categoriaEncontrada) {
+            form.id_categoria = categoriaEncontrada.id || categoriaEncontrada.id_categoria
+            categoriaNombre.value = categoriaEncontrada.nombre
         }
     }
 }
 
+// 🔥 WATCH PARA CUANDO CAMBIA LA CATEGORÍA EN EL MODAL
+const seleccionarCategoriaModal = (categoria) => {
+    form.id_categoria = categoria.id_categoria || categoria.id
+    categoriaNombre.value = categoria.nombre
+    modalCategoriasOpen.value = false
+}
+
+// 🔥 WATCH PARA CUANDO EL PRODUCTO VIENE DESDE EL SERVIDOR
 watch(() => props.producto, (nuevoProducto) => {
     if (nuevoProducto && nuevoProducto.id_categoria && props.categorias) {
-        form.id_categoria = nuevoProducto.id_categoria
-        const categoriaEncontrada = props.categorias.find(c => c.id === nuevoProducto.id_categoria)
+        const categoriaEncontrada = props.categorias.find(c => 
+            c.id === nuevoProducto.id_categoria || 
+            c.id_categoria === nuevoProducto.id_categoria
+        )
         if (categoriaEncontrada) {
+            form.id_categoria = categoriaEncontrada.id || categoriaEncontrada.id_categoria
             categoriaNombre.value = categoriaEncontrada.nombre
         }
     }
 }, { immediate: true, deep: true })
 
-watch(() => form.id_categoria, (nuevoId) => {
-    if (nuevoId && props.categorias) {
-        const categoriaEncontrada = props.categorias.find(c => c.id === nuevoId)
-        if (categoriaEncontrada) {
-            categoriaNombre.value = categoriaEncontrada.nombre
-        }
-    } else if (!nuevoId) {
-        categoriaNombre.value = ''
-    }
+// 🔥 WATCH PARA CUANDO CAMBIA form.id_categoria
+watch(() => form.id_categoria, () => {
+    actualizarNombreCategoria()
 }, { immediate: true })
 
-inicializarCategoria()
+// Inicializar al montar
+onMounted(() => {
+    inicializarCategoria()
+})
 
 if (props.errors) {
     Object.keys(props.errors).forEach(key => {
@@ -182,11 +207,6 @@ const abrirModalCategorias = () => {
     modalCategoriasOpen.value = true
 }
 
-const seleccionarCategoriaModal = (categoria) => {
-    form.id_categoria = categoria.id_categoria
-    categoriaNombre.value = categoria.nombre
-}
-
 const guardarProducto = () => {
     if (props.editando) {
         const datosEdicion = {
@@ -199,19 +219,22 @@ const guardarProducto = () => {
             imagen_base64: form.imagen_base64,
         }
         
-        form.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion, {
-            preserveScroll: true,
-            onSuccess: () => {
-                toast?.success('Éxito', 'Producto actualizado correctamente')
-                setTimeout(() => {
-                    window.location.reload()
-                }, 500)
-            },
-            onError: (errors) => {
-                console.error('Errores:', errors)
-                toast?.error('Error', 'Verifique los datos ingresados')
-            }
-        })
+        axios.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion)
+            .then(response => {
+                if (response.data.success) {
+                    toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
+                    setTimeout(() => {
+                        window.location.reload()
+                    }, 1500)
+                } else {
+                    toast?.error('Error', response.data.message || 'Error al actualizar')
+                }
+            })
+            .catch(error => {
+                console.error('Errores:', error)
+                const message = error.response?.data?.message || 'Verifique los datos ingresados'
+                toast?.error('Error', message)
+            })
     } else {
         const datosCreacion = {
             IdVentaGrupo: form.IdVentaGrupo,
@@ -242,7 +265,6 @@ const guardarProducto = () => {
     }
 }
 
-// 🔥 Eliminar producto borrador (sin confirmación molesta)
 const descartarBorrador = async () => {
     if (!props.producto?.IdDetalleProducto) return
     
@@ -260,7 +282,6 @@ const descartarBorrador = async () => {
     }
 }
 
-// 🔥 Verificar composición duplicada antes de enviar a aprobación
 const verificarComposicionAntesDeEnviar = async () => {
     if (detallesList.value.length === 0) {
         toast?.warning('Atención', 'Agregue productos al detalle antes de enviar a aprobación')
@@ -278,7 +299,6 @@ const verificarComposicionAntesDeEnviar = async () => {
         })
         
         if (response.data.existe) {
-            // 🔥 Eliminar el producto borrador si es nuevo
             if (props.producto?.IdDetalleProducto && !props.editando) {
                 await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
             }
@@ -369,7 +389,6 @@ const toggleEstado = async () => {
                             Cancelar
                         </button>
                         
-                        <!-- 🔥 Botón Descartar Borrador (solo para productos en estado BORRADOR) -->
                         <button v-if="mostrarDescartarBorrador" @click="descartarBorrador" :disabled="eliminando" class="px-3 py-1 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs transition disabled:opacity-50 flex items-center gap-1">
                             <i v-if="eliminando" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-trash-alt text-[10px]"></i>
@@ -426,6 +445,7 @@ const toggleEstado = async () => {
                             <p v-if="form.errors.IdVentaGrupo" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.IdVentaGrupo }}</p>
                         </div>
 
+                        <!-- Campo Categoría con Modal -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Categoría *</label>
                             <div class="flex gap-2">
@@ -479,6 +499,7 @@ const toggleEstado = async () => {
                         </div>
                     </div>
 
+                    <!-- Imagen -->
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Imagen</label>
                         <div class="flex items-center gap-3">
@@ -544,6 +565,7 @@ const toggleEstado = async () => {
             </div>
         </div>
 
+        <!-- Modal de Categorías -->
         <ModalCategorias 
             v-model="modalCategoriasOpen"
             :categorias="categorias"

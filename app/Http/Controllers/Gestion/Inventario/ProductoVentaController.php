@@ -26,44 +26,71 @@ class ProductoVentaController extends Controller
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         
-        $query = ProductoVenta::where('IdCliente', $clienteId)->with('grupo', 'categoria'); // 🔥 AGREGAR 'categoria'
+        $query = ProductoVenta::where('IdCliente', $clienteId)
+            ->with(['grupo', 'categoria']);
         
+        // Filtro por estado
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('ActivoInactivo', $request->estado);
         }
         
-        if ($request->filled('grupos')) {
-            $gruposArray = explode(',', $request->grupos);
-            $query->whereIn('IdVentaGrupo', $gruposArray);
+        // 🔥 FILTRO POR CATEGORÍAS (múltiples)
+        if ($request->filled('categorias')) {
+            $categoriasArray = explode(',', $request->categorias);
+            $query->whereIn('id_categoria', $categoriasArray);
         }
         
+        // Búsqueda
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
                 $q->where('Codigo', 'like', "%{$search}%")
-                  ->orWhere('Detalle', 'like', "%{$search}%");
+                ->orWhere('Detalle', 'like', "%{$search}%");
             });
         }
         
         $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
         
-        $grupos = VentaGrupo::where('IdCliente', $clienteId)
-            ->withCount('productos')
-            ->orderBy('Detalle')
-            ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
+        // 🔥 OBTENER CATEGORÍAS CON EL CONTEO CORRECTO
+        $categorias = CategoriaProducto::porContexto()
+            ->orderBy('orden')
+            ->get()
+            ->map(function($categoria) use ($clienteId, $request) {
+                // Contar productos que pertenecen a esta categoría
+                $query = ProductoVenta::where('IdCliente', $clienteId)
+                    ->where('id_categoria', $categoria->id_categoria);
+                
+                // Aplicar el mismo filtro de búsqueda si existe
+                if ($request->filled('search')) {
+                    $search = $request->search;
+                    $query->where(function($q) use ($search) {
+                        $q->where('Codigo', 'like', "%{$search}%")
+                        ->orWhere('Detalle', 'like', "%{$search}%");
+                    });
+                }
+                
+                // Aplicar filtro de estado si existe
+                if ($request->filled('estado') && $request->estado !== '') {
+                    $query->where('ActivoInactivo', $request->estado);
+                }
+                
+                $categoria->productos_count = $query->count();
+                return $categoria;
+            });
         
         $totalActivos = ProductoVenta::where('IdCliente', $clienteId)->where('ActivoInactivo', 0)->count();
         $totalInactivos = ProductoVenta::where('IdCliente', $clienteId)->where('ActivoInactivo', 1)->count();
         
         return Inertia::render('Gestion/Inventario/ProductosVenta/Index', [
             'productos' => $productos,
-            'grupos' => $grupos,
+            'categorias' => $categorias,
             'totalActivos' => $totalActivos,
             'totalInactivos' => $totalInactivos,
             'filtros' => [
                 'estado' => $request->estado,
-                'grupos' => $request->grupos,
+                'categorias' => $request->categorias,
                 'search' => $request->search,
             ],
         ]);
@@ -259,59 +286,67 @@ class ProductoVentaController extends Controller
                 ->withInput();
         }
     }
-
     public function update(Request $request, $id)
     {
         $clienteId = session('cliente_id');
         $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
         
-        // 🔥 VALIDAR QUE NO ESTÉ PENDIENTE DE APROBACIÓN
         if ($producto->estado_aprobacion == ProductoVenta::APROBACION_PENDIENTE) {
-            return redirect()->back()->with('error', 'No se puede editar un producto pendiente de aprobación.');
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede editar un producto pendiente de aprobación.'
+            ], 400);
         }
         
         $request->validate([
             'IdVentaGrupo' => 'required|exists:inventario_relacion_ventainventario_grupouno,IdVentaGrupo',
-            'id_categoria' => 'required|exists:inventario_menu_categoria,id_categoria',
+            'id_categoria' => 'nullable|exists:inventario_menu_categoria,id_categoria',
             'Codigo' => 'required|string|max:100',
             'Detalle' => 'required|string|max:100',
-            'NombreCortoFactura' => 'required|string|max:20',
+            'NombreCortoFactura' => 'nullable|string|max:20',
             'PrecioVenta' => 'required|numeric|min:0',
             'imagen_base64' => 'nullable|string',
         ]);
         
-        // Validaciones de unicidad
+        // Validar Código
         $codigoExiste = ProductoVenta::where('IdCliente', $clienteId)
             ->where('Codigo', $request->Codigo)
             ->where('IdDetalleProducto', '!=', $id)
             ->exists();
         
         if ($codigoExiste) {
-            return redirect()->back()
-                ->withErrors(['Codigo' => 'El código ya existe.'])
-                ->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => 'El código ya existe.'
+            ], 422);
         }
         
+        // Validar Detalle
         $detalleExiste = ProductoVenta::where('IdCliente', $clienteId)
             ->where('Detalle', $request->Detalle)
             ->where('IdDetalleProducto', '!=', $id)
             ->exists();
         
         if ($detalleExiste) {
-            return redirect()->back()
-                ->withErrors(['Detalle' => 'El detalle ya existe.'])
-                ->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => 'El detalle ya existe.'
+            ], 422);
         }
         
-        $nombreCortoExiste = ProductoVenta::where('IdCliente', $clienteId)
-            ->where('NombreCortoFactura', $request->NombreCortoFactura)
-            ->where('IdDetalleProducto', '!=', $id)
-            ->exists();
-        
-        if ($nombreCortoExiste) {
-            return redirect()->back()
-                ->withErrors(['NombreCortoFactura' => 'El nombre para factura ya existe.'])
-                ->withInput();
+        // Validar NombreCortoFactura SOLO si cambió
+        if ($request->filled('NombreCortoFactura') && $request->NombreCortoFactura !== $producto->NombreCortoFactura) {
+            $nombreCortoExiste = ProductoVenta::where('IdCliente', $clienteId)
+                ->where('NombreCortoFactura', $request->NombreCortoFactura)
+                ->where('IdDetalleProducto', '!=', $id)
+                ->exists();
+            
+            if ($nombreCortoExiste) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El nombre para factura ya existe.'
+                ], 422);
+            }
         }
         
         try {
@@ -325,13 +360,12 @@ class ProductoVentaController extends Controller
                 $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->Codigo);
             }
             
-            // 🔥 NO MODIFICAR estado_aprobacion ni ActivoInactivo aquí
             $producto->update([
                 'IdVentaGrupo' => $request->IdVentaGrupo,
                 'id_categoria' => $request->id_categoria,
                 'Codigo' => $request->Codigo,
                 'Detalle' => $request->Detalle,
-                'NombreCortoFactura' => $request->NombreCortoFactura,
+                'NombreCortoFactura' => $request->NombreCortoFactura ?? '',
                 'PrecioVenta' => $request->PrecioVenta,
                 'ImagenProducto' => $imagenUrl,
                 'IdOperadorActualiza' => session('operador_id'),
@@ -340,16 +374,21 @@ class ProductoVentaController extends Controller
             
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
             
-            return redirect()->back()->with('success', 'Producto actualizado correctamente');
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto actualizado correctamente'
+            ]);
             
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             Log::error('Error al actualizar producto: ' . $e->getMessage());
-            return redirect()->back()
-                ->with('error', 'Error al actualizar: ' . $e->getMessage())
-                ->withInput();
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar: ' . $e->getMessage()
+            ], 500);
         }
     }
+
     public function destroy($id)
     {
         $clienteId = session('cliente_id');

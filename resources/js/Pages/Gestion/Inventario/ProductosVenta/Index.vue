@@ -7,7 +7,7 @@ defineOptions({ layout: AppLayout })
 
 const props = defineProps({
     productos: Object,
-    grupos: Array,
+    categorias: Array,  // 🔥 Recibir categorías desde el controlador
     totalActivos: Number,
     totalInactivos: Number,
     filtros: Object,
@@ -16,50 +16,50 @@ const props = defineProps({
 // Filtros Reactivos
 const search = ref(props.filtros?.search || '')
 const estado = ref(props.filtros?.estado || '')
-const gruposSeleccionados = ref([])
+const categoriasSeleccionadas = ref([])  // 🔥 Array de IDs de categorías seleccionadas
 
-// Procesar estrictamente lo que viene del servidor al cargar la página
+// Procesar categorías seleccionadas desde los filtros al cargar
 onMounted(() => {
-    if (props.filtros?.grupos) {
-        const queryGrupos = props.filtros.grupos;
-        if (typeof queryGrupos === 'string' && queryGrupos.trim() !== '') {
-            gruposSeleccionados.value = queryGrupos.split(',').map(Number);
-        } else if (Array.isArray(queryGrupos)) {
-            gruposSeleccionados.value = queryGrupos.map(Number);
+    if (props.filtros?.categorias) {
+        const queryCategorias = props.filtros.categorias;
+        if (typeof queryCategorias === 'string' && queryCategorias.trim() !== '') {
+            categoriasSeleccionadas.value = queryCategorias.split(',').map(Number);
+        } else if (Array.isArray(queryCategorias)) {
+            categoriasSeleccionadas.value = queryCategorias.map(Number);
         }
     }
 })
 
-// Obtener el ID real del grupo
-const getGrupoId = (grupo) => {
-    return grupo ? (grupo.id ?? grupo.IdVentaGrupo ?? grupo.IdGrupo) : null;
+// Obtener el ID real de la categoría
+const getCategoriaId = (categoria) => {
+    return categoria ? (categoria.id ?? categoria.id_categoria ?? categoria.IdCategoria) : null;
 }
 
-// Obtener el nombre real del grupo
-const getGrupoNombre = (grupo) => {
-    return grupo ? (grupo.nombre ?? grupo.Detalle) : '';
+// Obtener el nombre real de la categoría
+const getCategoriaNombre = (categoria) => {
+    return categoria ? (categoria.nombre ?? categoria.Detalle) : '';
 }
 
-// Alternar selección de grupos
-const toggleGrupo = (grupo) => {
-    const id = getGrupoId(grupo);
+// Alternar selección de categorías
+const toggleCategoria = (categoria) => {
+    const id = getCategoriaId(categoria);
     if (id === null || id === undefined) return;
     
     const idNum = Number(id);
-    const index = gruposSeleccionados.value.indexOf(idNum);
+    const index = categoriasSeleccionadas.value.indexOf(idNum);
     
     if (index === -1) {
-        gruposSeleccionados.value.push(idNum);
+        categoriasSeleccionadas.value.push(idNum);
     } else {
-        gruposSeleccionados.value.splice(index, 1);
+        categoriasSeleccionadas.value.splice(index, 1);
     }
 }
 
-// Verificar si está seleccionado
-const isGrupoSelected = (grupo) => {
-    const id = getGrupoId(grupo);
+// Verificar si una categoría está seleccionada
+const isCategoriaSelected = (categoria) => {
+    const id = getCategoriaId(categoria);
     if (id === null || id === undefined) return false;
-    return gruposSeleccionados.value.includes(Number(id));
+    return categoriasSeleccionadas.value.includes(Number(id));
 }
 
 // Aplicar filtros a la URL
@@ -74,8 +74,8 @@ const aplicarFiltros = () => {
         params.estado = estado.value;
     }
     
-    if (gruposSeleccionados.value.length > 0) {
-        params.grupos = gruposSeleccionados.value.join(',');
+    if (categoriasSeleccionadas.value.length > 0) {
+        params.categorias = categoriasSeleccionadas.value.join(',');
     }
 
     router.get('/gestion/productos-venta', params, {
@@ -88,7 +88,7 @@ const aplicarFiltros = () => {
 const limpiarFiltros = () => {
     search.value = ''
     estado.value = ''
-    gruposSeleccionados.value = []
+    categoriasSeleccionadas.value = []
     
     router.get('/gestion/productos-venta', {}, {
         preserveState: true,
@@ -115,6 +115,21 @@ const estadoClase = (activo) => {
     if (activo === 2) return 'bg-yellow-100 text-yellow-800'
     if (activo === 3) return 'bg-red-100 text-red-800'
     return 'bg-gray-100 text-gray-800'
+}
+
+// Obtener nombre de categoría para mostrar en la tabla
+const getCategoriaNombreProducto = (producto) => {
+    if (producto.categoria) {
+        return producto.categoria.nombre
+    }
+    return 'Sin categoría'
+}
+
+const getCategoriaClase = (producto) => {
+    if (producto.categoria) {
+        return 'bg-guindo-100 text-guindo-700'
+    }
+    return 'bg-gray-100 text-gray-500'
 }
 </script>
 
@@ -189,35 +204,37 @@ const estadoClase = (activo) => {
                                 </div>
                             </div>
 
-                            <!-- Lista de Grupos -->
+                            <!-- 🔥 LISTA DE CATEGORÍAS (Checkboxes) -->
                             <div class="mb-3">
                                 <div class="flex justify-between items-center mb-1">
-                                    <label class="text-[10px] font-medium text-gray-700">Grupos</label>
-                                    <span v-if="gruposSeleccionados.length > 0" class="text-[9px] text-guindo-600 font-bold">
-                                        {{ gruposSeleccionados.length }} sel.
+                                    <label class="text-[10px] font-medium text-gray-700">Categorías</label>
+                                    <span v-if="categoriasSeleccionadas.length > 0" class="text-[9px] text-guindo-600 font-bold">
+                                        {{ categoriasSeleccionadas.length }} sel.
                                     </span>
                                 </div>
                                 <div class="max-h-48 overflow-y-auto border rounded-md bg-white">
                                     <div 
-                                        v-for="(grupo, index) in grupos" 
-                                        :key="getGrupoId(grupo) || index" 
+                                        v-for="(categoria, index) in categorias" 
+                                        :key="getCategoriaId(categoria) || index" 
                                         class="flex items-center justify-between px-2 py-1.5 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
                                     >
                                         <label class="flex items-center gap-1.5 flex-1 min-w-0 cursor-pointer select-none py-0.5">
                                             <input 
                                                 type="checkbox" 
-                                                :checked="isGrupoSelected(grupo)" 
-                                                @change="toggleGrupo(grupo)"
+                                                :checked="isCategoriaSelected(categoria)" 
+                                                @change="toggleCategoria(categoria)"
                                                 class="w-3 h-3 rounded border-gray-300 text-guindo-600 focus:ring-0 cursor-pointer"
                                             >
                                             <span class="text-[11px] text-gray-700 truncate">
-                                                {{ getGrupoNombre(grupo) }}
+                                                {{ getCategoriaNombre(categoria) }}
                                             </span>
                                         </label>
-                                        <span class="text-[9px] text-gray-400 pl-1 pr-1">({{ grupo.productos_count || 0 }})</span>
+                                        <span class="text-[9px] text-gray-400 pl-1 pr-1">
+                                            ({{ categoria.productos_count || 0 }})
+                                        </span>
                                     </div>
-                                    <div v-if="!grupos || grupos.length === 0" class="px-2 py-3 text-center text-gray-400 text-[10px]">
-                                        No hay grupos disponibles
+                                    <div v-if="!categorias || categorias.length === 0" class="px-2 py-3 text-center text-gray-400 text-[10px]">
+                                        No hay categorías disponibles
                                     </div>
                                 </div>
                             </div>
@@ -244,6 +261,7 @@ const estadoClase = (activo) => {
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Producto</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Grupo</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Categoría</th>
                                             <th class="px-3 py-2 text-right text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Precio</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Estado</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Aprobación</th>
@@ -256,6 +274,13 @@ const estadoClase = (activo) => {
                                             <td class="px-3 py-2 text-[11px] text-gray-800">{{ producto.Detalle }}</td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
                                                 {{ producto.grupo?.Detalle || producto.grupo?.nombre || 'Sin Grupo' }}
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="getCategoriaClase(producto)">
+                                                    <i v-if="producto.categoria" class="fas fa-tag mr-1 text-[8px]"></i>
+                                                    <i v-else class="fas fa-question-circle mr-1 text-[8px]"></i>
+                                                    {{ getCategoriaNombreProducto(producto) }}
+                                                </span>
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-right font-semibold text-guindo-600">
                                                 {{ Number(producto.PrecioVenta).toFixed(2) }} Bs
@@ -284,7 +309,7 @@ const estadoClase = (activo) => {
                                             </td>
                                         </tr>
                                         <tr v-if="!productos.data || productos.data.length === 0">
-                                            <td colspan="7" class="px-3 py-8 text-center text-gray-400 text-[11px]">
+                                            <td colspan="8" class="px-3 py-8 text-center text-gray-400 text-[11px]">
                                                 <i class="fas fa-box-open text-xl mb-1 block"></i>
                                                 No se encontraron productos con los filtros seleccionados.
                                             </td>
