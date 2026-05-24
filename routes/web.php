@@ -66,6 +66,8 @@ use App\Http\Controllers\Gestion\Contabilidad\AdministradorDiarioController;
 use App\Http\Controllers\Gestion\Contabilidad\ContaCuentaSucursalController;
 use App\Http\Controllers\Gestion\Contabilidad\BalanceGeneralA3Controller;
 use App\Http\Controllers\Gestion\Contabilidad\EstadoResultadosA3Controller;
+use App\Http\Controllers\Gestion\Contabilidad\AnalisisCuentaController;
+use App\Http\Controllers\Gestion\Contabilidad\ImprimirDiarioController;
 
 
 // ============================================
@@ -229,6 +231,9 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/', [LiquidacionVendedorController::class, 'index'])->name('liquidacion-vendedor.index');
         Route::get('/datos/{fechaId}', [LiquidacionVendedorController::class, 'getDatos'])->name('liquidacion-vendedor.datos');
         Route::post('/guardar', [LiquidacionVendedorController::class, 'guardar'])->name('liquidacion-vendedor.guardar');
+        Route::get('/mis-liquidaciones', [LiquidacionVendedorController::class, 'liquidacionesPorOperador'])->name('liquidacion-vendedor.mis-liquidaciones');
+        Route::get('/reimprimir/{id}', [LiquidacionVendedorController::class, 'reimprimir'])->name('liquidacion-vendedor.reimprimir');
+        Route::get('/pdf/{id}', [LiquidacionVendedorController::class, 'pdf'])->name('liquidacion-vendedor.pdf');    
     });
 
     // ==================== REPORTE VENTAS VENDEDOR ====================
@@ -303,12 +308,27 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::post('/{id}/reabrir', [AdministradorDiarioController::class, 'reabrir'])->name('gestion.administrador-diario.reabrir');
     });
 
+
+    // ==================== CONTABILIDAD - ANÁLISIS DE CUENTA ====================
+    Route::prefix('gestion/analisis-cuenta')->group(function () {
+        Route::get('/', [AnalisisCuentaController::class, 'index'])->name('gestion.analisis-cuenta.index');
+        Route::post('/excel', [AnalisisCuentaController::class, 'generarExcel'])->name('gestion.analisis-cuenta.excel');
+    });
+
     // ==================== CONTABILIDAD - CUENTAS POR SUCURSAL ====================
     Route::prefix('gestion/conta-cuenta-sucursal')->group(function () {
         Route::get('/', [ContaCuentaSucursalController::class, 'index'])->name('gestion.conta-cuenta-sucursal.index');
         Route::post('/', [ContaCuentaSucursalController::class, 'store'])->name('gestion.conta-cuenta-sucursal.store');
         Route::put('/{id}', [ContaCuentaSucursalController::class, 'update'])->name('gestion.conta-cuenta-sucursal.update');
         Route::delete('/{id}', [ContaCuentaSucursalController::class, 'destroy'])->name('gestion.conta-cuenta-sucursal.destroy');
+    });
+
+    // ==================== CONTABILIDAD - IMPRIMIR DIARIO ====================
+    Route::prefix('gestion/imprimir-diario')->group(function () {
+        Route::get('/', [ImprimirDiarioController::class, 'index'])->name('gestion.imprimir-diario.index');
+        Route::get('/buscar', [ImprimirDiarioController::class, 'buscar'])->name('gestion.imprimir-diario.buscar');
+        Route::get('/operadores/{sucursalId}', [ImprimirDiarioController::class, 'getOperadoresPorSucursal'])->name('gestion.imprimir-diario.operadores');
+        Route::get('/pdf/{id}', [ImprimirDiarioController::class, 'pdf'])->name('gestion.imprimir-diario.pdf');
     });
 
     // ==================== EGRESOS ====================

@@ -1,12 +1,11 @@
 <script setup>
-import AppLayout from '@/Layouts/AppLayout.vue'
 import { ref, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 
-// No usar AppLayout aquí porque ya lo tiene el padre
 const props = defineProps({
     liquidacion: Object,
+    conceptos: Array,
     fechaStr: String,
     fechaId: Number,
 })
@@ -16,38 +15,36 @@ const emit = defineEmits(['volver'])
 // Estado del formulario
 const form = ref({
     IdFecha: props.fechaId,
-    vEntas: props.liquidacion?.vEntas || 0,
     vEntasConfirma: props.liquidacion?.vEntasConfirma || 0,
-    eFectivoBolivianos: props.liquidacion?.eFectivoBolivianos || 0,
-    eFectivoBolivianosConfirma: props.liquidacion?.eFectivoBolivianosConfirma || 0,
-    cLientes: props.liquidacion?.cLientes || 0,
-    cLientesConfirma: props.liquidacion?.cLientesConfirma || 0,
-    pOrCobrarPersonal: props.liquidacion?.pOrCobrarPersonal || 0,
-    pOrCobrarPersonalConfirma: props.liquidacion?.pOrCobrarPersonalConfirma || 0,
-    tArjetaATC: props.liquidacion?.tArjetaATC || 0,
-    tArjetaATCconfirma: props.liquidacion?.tArjetaATCconfirma || 0,
-    dIfVendedor: props.liquidacion?.dIfVendedor || 0,
-    dIfVendedorConfirma: props.liquidacion?.dIfVendedorConfirma || 0,
+    conceptos: props.conceptos || [],
 })
 
 const loading = ref(false)
 
 // Recalcular diferencia automáticamente
 const recalcularDiferencia = () => {
-    const sumaPagos = form.value.eFectivoBolivianosConfirma + 
-                      form.value.cLientesConfirma + 
-                      form.value.pOrCobrarPersonalConfirma + 
-                      form.value.tArjetaATCconfirma
-    
-    form.value.dIfVendedorConfirma = form.value.vEntasConfirma - sumaPagos
+    const sumaMontos = form.value.conceptos.reduce((sum, c) => sum + (Number(c.monto_confirmacion) || 0), 0)
+    form.value.diferencia = form.value.vEntasConfirma - sumaMontos
 }
 
-// Watchers para recalcular diferencia
+// Watcher para vEntasConfirma
 watch(() => form.value.vEntasConfirma, () => recalcularDiferencia())
-watch(() => form.value.eFectivoBolivianosConfirma, () => recalcularDiferencia())
-watch(() => form.value.cLientesConfirma, () => recalcularDiferencia())
-watch(() => form.value.pOrCobrarPersonalConfirma, () => recalcularDiferencia())
-watch(() => form.value.tArjetaATCconfirma, () => recalcularDiferencia())
+
+// Watcher para cada concepto
+const addConceptoWatchers = () => {
+    form.value.conceptos.forEach((concepto, index) => {
+        watch(() => form.value.conceptos[index].monto_confirmacion, () => recalcularDiferencia())
+    })
+}
+
+// Inicializar watchers
+recalcularDiferencia()
+addConceptoWatchers()
+
+// Actualizar monto_confirmacion de un concepto
+const actualizarMonto = (index, value) => {
+    form.value.conceptos[index].monto_confirmacion = parseFloat(value) || 0
+}
 
 // Guardar liquidación
 const guardarLiquidacion = async () => {
@@ -58,16 +55,25 @@ const guardarLiquidacion = async () => {
     
     loading.value = true
     try {
-        await axios.post('/gestion/liquidacion-vendedor/guardar', {
+        const response = await axios.post('/gestion/liquidacion-vendedor/guardar', {
             IdFecha: form.value.IdFecha,
             vEntasConfirma: form.value.vEntasConfirma,
-            eFectivoBolivianosConfirma: form.value.eFectivoBolivianosConfirma,
-            cLientesConfirma: form.value.cLientesConfirma,
-            pOrCobrarPersonalConfirma: form.value.pOrCobrarPersonalConfirma,
-            tArjetaATCconfirma: form.value.tArjetaATCconfirma,
-            dIfVendedorConfirma: form.value.dIfVendedorConfirma,
+            conceptos: form.value.conceptos.map(c => ({
+                id: c.id,
+                monto_sistema: c.monto_sistema,
+                monto_confirmacion: c.monto_confirmacion,
+            })),
         })
-        router.get('/gestion/liquidacion-vendedor')
+        
+        if (response.data.success) {
+            // 🔥 Abrir PDF en nueva pestaña
+            window.open(response.data.pdf_url, '_blank')
+            
+            // Redirigir al listado
+            router.get('/gestion/liquidacion-vendedor')
+        } else {
+            alert(response.data.message || 'Error al guardar')
+        }
     } catch (error) {
         console.error('Error:', error)
         alert(error.response?.data?.message || 'Error al guardar')
@@ -75,12 +81,10 @@ const guardarLiquidacion = async () => {
         loading.value = false
     }
 }
-
 const volver = () => {
     emit('volver')
 }
 
-// Formatear números
 const formatearNumero = (value) => {
     return Number(value).toFixed(2)
 }
@@ -88,7 +92,6 @@ const formatearNumero = (value) => {
 
 <template>
     <div>
-        <!-- Formulario de liquidación -->
         <div class="bg-white rounded-xl shadow-sm overflow-hidden">
             <!-- Botón volver -->
             <div class="p-4 border-b bg-gray-50">
@@ -116,7 +119,7 @@ const formatearNumero = (value) => {
                         <tr>
                             <td class="px-6 py-4 text-sm font-medium text-gray-700">Total Ventas</td>
                             <td class="px-6 py-4 text-right text-sm text-gray-600">
-                                {{ formatearNumero(form.vEntas) }}
+                                {{ formatearNumero(form.vEntasConfirma) }}
                             </td>
                             <td class="px-6 py-4 text-right">
                                 <input 
@@ -127,75 +130,33 @@ const formatearNumero = (value) => {
                                 >
                             </td>
                         </tr>
-                        <!-- Efectivo -->
-                        <tr>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-700">Efectivo</td>
+                        
+                        <!-- Conceptos dinámicos -->
+                        <tr v-for="(concepto, index) in form.conceptos" :key="concepto.id">
+                            <td class="px-6 py-4 text-sm font-medium text-gray-700">{{ concepto.nombre }}</td>
                             <td class="px-6 py-4 text-right text-sm text-gray-600">
-                                {{ formatearNumero(form.eFectivoBolivianos) }}
+                                {{ formatearNumero(concepto.monto_sistema) }}
                             </td>
                             <td class="px-6 py-4 text-right">
                                 <input 
                                     type="number" 
-                                    v-model.number="form.eFectivoBolivianosConfirma" 
+                                    :value="concepto.monto_confirmacion"
+                                    @input="actualizarMonto(index, $event.target.value)"
                                     step="0.01"
                                     class="w-40 text-right border rounded-lg px-2 py-1 text-sm"
                                 >
                             </td>
                         </tr>
-                        <!-- Clientes -->
-                        <tr>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-700">Clientes (Crédito)</td>
-                            <td class="px-6 py-4 text-right text-sm text-gray-600">
-                                {{ formatearNumero(form.cLientes) }}
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.cLientesConfirma" 
-                                    step="0.01"
-                                    class="w-40 text-right border rounded-lg px-2 py-1 text-sm"
-                                >
-                            </td>
-                        </tr>
-                        <!-- QR / Por Cobrar Personal -->
-                        <tr>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-700">QR / Por Cobrar Personal</td>
-                            <td class="px-6 py-4 text-right text-sm text-gray-600">
-                                {{ formatearNumero(form.pOrCobrarPersonal) }}
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.pOrCobrarPersonalConfirma" 
-                                    step="0.01"
-                                    class="w-40 text-right border rounded-lg px-2 py-1 text-sm"
-                                >
-                            </td>
-                        </tr>
-                        <!-- Tarjeta ATC -->
-                        <tr>
-                            <td class="px-6 py-4 text-sm font-medium text-gray-700">Tarjeta ATC</td>
-                            <td class="px-6 py-4 text-right text-sm text-gray-600">
-                                {{ formatearNumero(form.tArjetaATC) }}
-                            </td>
-                            <td class="px-6 py-4 text-right">
-                                <input 
-                                    type="number" 
-                                    v-model.number="form.tArjetaATCconfirma" 
-                                    step="0.01"
-                                    class="w-40 text-right border rounded-lg px-2 py-1 text-sm"
-                                >
-                            </td>
-                        </tr>
+                        
                         <!-- Diferencia -->
                         <tr class="bg-gray-50 font-bold">
                             <td class="px-6 py-4 text-sm font-bold text-gray-800">Diferencia</td>
                             <td class="px-6 py-4 text-right text-sm font-bold text-guindo-600">
-                                {{ formatearNumero(form.dIfVendedor) }}
+                                {{ formatearNumero(form.diferencia) }}
                             </td>
                             <td class="px-6 py-4 text-right">
                                 <span class="inline-block w-40 text-right font-bold text-guindo-600">
-                                    {{ formatearNumero(form.dIfVendedorConfirma) }}
+                                    {{ formatearNumero(form.diferencia) }}
                                 </span>
                             </td>
                         </tr>

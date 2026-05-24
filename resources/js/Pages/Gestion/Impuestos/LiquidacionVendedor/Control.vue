@@ -15,6 +15,7 @@ const fechaSeleccionada = ref('')
 const loading = ref(false)
 const mostrarLiquidacion = ref(false)
 const liquidacionData = ref(null)
+const conceptosData = ref(null)
 const fechaId = ref(null)
 const fechaStr = ref('')
 
@@ -29,7 +30,15 @@ const seleccionarFecha = async () => {
         const response = await axios.get(`/gestion/liquidacion-vendedor/datos/${fechaSeleccionada.value}`)
         
         if (response.data.success) {
-            liquidacionData.value = response.data.liquidacion || response.data.data
+            if (response.data.liquidacion) {
+                // Liquidación existente
+                liquidacionData.value = response.data.liquidacion
+                conceptosData.value = null // Cargar desde liquidacion.detalles
+            } else {
+                // Nueva liquidación
+                liquidacionData.value = response.data.data
+                conceptosData.value = response.data.conceptos
+            }
             fechaId.value = response.data.fechaId
             fechaStr.value = response.data.fechaStr
             mostrarLiquidacion.value = true
@@ -47,6 +56,8 @@ const seleccionarFecha = async () => {
 const volver = () => {
     mostrarLiquidacion.value = false
     fechaSeleccionada.value = ''
+    liquidacionData.value = null
+    conceptosData.value = null
 }
 </script>
 
@@ -98,6 +109,7 @@ const volver = () => {
                 <Liquidacion 
                     v-else
                     :liquidacion="liquidacionData"
+                    :conceptos="conceptosData"
                     :fecha-str="fechaStr"
                     :fecha-id="fechaId"
                     @volver="volver"

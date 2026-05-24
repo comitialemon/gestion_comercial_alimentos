@@ -3,6 +3,7 @@
 namespace App\Models\Gestion\Impuestos;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Gestion\Todos\Fecha;  // 👈 Importante: está en Todos, no en Impuestos
 
 class LiquidacionVendedor extends Model
 {
@@ -16,17 +17,9 @@ class LiquidacionVendedor extends Model
         'IdDiario',
         'vEntas',
         'vEntasConfirma',
-        'eFectivoBolivianos',
-        'eFectivoBolivianosConfirma',
-        'cLientes',
-        'cLientesConfirma',
-        'pOrCobrarPersonal',
-        'pOrCobrarPersonalConfirma',
-        'tArjetaATC',
-        'tArjetaATCconfirma',
         'dIfVendedor',
-        'ActivoInactivo',
         'dIfVendedorConfirma',
+        'ActivoInactivo',
         'LiquidadoSupervisor',
         'iDcliente',
         'iDsucursal',
@@ -37,21 +30,42 @@ class LiquidacionVendedor extends Model
     protected $casts = [
         'vEntas' => 'decimal:2',
         'vEntasConfirma' => 'decimal:2',
-        'eFectivoBolivianos' => 'decimal:2',
-        'eFectivoBolivianosConfirma' => 'decimal:2',
-        'cLientes' => 'decimal:2',
-        'cLientesConfirma' => 'decimal:2',
-        'pOrCobrarPersonal' => 'decimal:2',
-        'pOrCobrarPersonalConfirma' => 'decimal:2',
-        'tArjetaATC' => 'decimal:2',
-        'tArjetaATCconfirma' => 'decimal:2',
         'dIfVendedor' => 'decimal:2',
         'dIfVendedorConfirma' => 'decimal:2',
         'ActivoInactivo' => 'integer',
     ];
 
+    // Relaciones
     public function fecha()
     {
         return $this->belongsTo(Fecha::class, 'IdFecha', 'IdFecha');
     }
+
+    public function detalles()
+    {
+        return $this->hasMany(LiquidacionVendedorDetalle::class, 'iDLiquidacionVendedor', 'iDLiquidacionVendedor');
+    }
+
+    // Scopes
+    public function scopePorContexto($query)
+    {
+        return $query->where('iDcliente', session('cliente_id'))
+                     ->where('iDsucursal', session('cliente_sucursal_id'));
+    }
+
+    public function scopePorVendedor($query)
+    {
+        return $query->where('iDoperadorVendedor', session('operador_id'));
+    }
+
+    public function scopePendientes($query)
+    {
+        return $query->where('ActivoInactivo', 0);
+    }
+
+    public function scopeContabilizadas($query)
+    {
+        return $query->where('ActivoInactivo', 1);
+    }
+    
 }
