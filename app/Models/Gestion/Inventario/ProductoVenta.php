@@ -12,14 +12,14 @@ class ProductoVenta extends Model
     public $timestamps = false;
     
     // 🔥 ESTADOS COMERCIALES (ActivoInactivo)
-    const COMERCIAL_ACTIVO = 0;      // Producto disponible para venta
-    const COMERCIAL_INACTIVO = 1;    // Producto NO disponible para venta (desactivado por admin)
+    const COMERCIAL_ACTIVO = 0;
+    const COMERCIAL_INACTIVO = 1;
     
     // 🔥 ESTADOS DE APROBACIÓN (estado_aprobacion)
-    const APROBACION_BORRADOR = 0;       // Recién creado, pendiente de completar datos
-    const APROBACION_PENDIENTE = 1;      // Enviado, esperando votos de aprobadores
-    const APROBACION_APROBADO = 2;       // Aprobado (puede ser activado/desactivado comercialmente)
-    const APROBACION_RECHAZADO = 3;      // Rechazado por algún aprobador
+    const APROBACION_BORRADOR = 0;
+    const APROBACION_PENDIENTE = 1;
+    const APROBACION_APROBADO = 2;
+    const APROBACION_RECHAZADO = 3;
     
     protected $fillable = [
         'IdVentaGrupo',
@@ -28,7 +28,7 @@ class ProductoVenta extends Model
         'NombreCortoFactura',
         'PrecioVenta',
         'ActivoInactivo',
-        'estado_aprobacion',  // 🔥 NUEVO CAMPO
+        'estado_aprobacion',
         'ImagenProducto',
         'IdCliente',
         'IdSucursal',
@@ -72,14 +72,15 @@ class ProductoVenta extends Model
         return $this->belongsTo(CategoriaProducto::class, 'id_categoria', 'id_categoria');
     }
 
-    public function categoriasHabilitadas()
+    // 🔥 RELACIÓN PRINCIPAL CON CATEGORÍAS (FILTRA POR SUCURSAL ACTUAL)
+    public function categorias()
     {
         return $this->belongsToMany(
             CategoriaProducto::class,
             'inventario_producto_categoria',
             'id_detalle_producto',
             'id_categoria'
-        )->wherePivot('id_sucursal', session('cliente_sucursal_id'));
+        )->wherePivot('id_sucursal', session('cliente_sucursal_id')); // 🔥 CLAVE: filtro por sucursal
     }
 
     public function solicitudAprobacion()

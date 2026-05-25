@@ -15,12 +15,11 @@ const props = defineProps({
     comisionista: String
 })
 
-// Estado
 const loading = ref(false)
 const carrito = ref([])
 const cargandoCarrito = ref(false)
 
-// Estado del modal
+// Modal
 const modalVisible = ref(false)
 const productoSeleccionado = ref(null)
 const cantidad = ref(1)
@@ -28,24 +27,15 @@ const precioUnitario = ref(0)
 const tipoPrecio = ref('')
 const cargandoPrecio = ref(false)
 
-// Calcular total del modal
-const totalModal = computed(() => {
-    return (cantidad.value * precioUnitario.value).toFixed(2)
-})
-
-const totalCarrito = computed(() => {
-    return carrito.value.reduce((sum, item) => sum + (item.precio * item.cantidad), 0).toFixed(2)
-})
-
-const totalItems = computed(() => {
-    return carrito.value.reduce((sum, item) => sum + item.cantidad, 0)
-})
+const totalModal = computed(() => (cantidad.value * precioUnitario.value).toFixed(2))
+const totalCarrito = computed(() => carrito.value.reduce((sum, item) => sum + (item.precio * item.cantidad), 0).toFixed(2))
+const totalItems = computed(() => carrito.value.reduce((sum, item) => sum + item.cantidad, 0))
 
 const cargarCarrito = async () => {
     cargandoCarrito.value = true
     try {
         const response = await axios.get('/api/venta-tactil/carrito')
-        if (response.data && response.data.success) {
+        if (response.data?.success) {
             carrito.value = (response.data.items || []).map(item => ({
                 id: item.id,
                 id_producto: item.id_producto,
@@ -54,66 +44,38 @@ const cargarCarrito = async () => {
                 cantidad: item.unidades,
                 subtotal: parseFloat(item.subtotal)
             }))
-        } else {
-            console.warn('Respuesta inesperada:', response.data)
-            carrito.value = []
         }
     } catch (error) {
         console.error('Error cargando carrito:', error)
-        if (toast) toast.error('Error', 'No se pudo cargar el carrito')
+        toast?.error('Error', 'No se pudo cargar el carrito')
     } finally {
         cargandoCarrito.value = false
     }
 }
 
-const abrirModal = async (producto) => {
-    if (!producto || !producto.id) {
-        toast.error('Error', 'Producto inválido')
+const abrirModal = (producto) => {
+    if (!producto?.id) {
+        toast?.error('Error', 'Producto inválido')
         return
     }
-    
     productoSeleccionado.value = producto
     cantidad.value = 1
-    
-    cargandoPrecio.value = true
+    // 🔥 Usar el precio real que ya viene en el producto
+    precioUnitario.value = producto.precio_real
+    tipoPrecio.value = producto.tipo_precio || 'default'
     modalVisible.value = true
-    
-    try {
-        const response = await axios.get(`/api/venta-tactil/precio/${producto.id}`)
-        
-        if (response.data.success) {
-            precioUnitario.value = response.data.precio
-            tipoPrecio.value = response.data.tipo
-        } else {
-            precioUnitario.value = Number(producto.PrecioVenta) || 0
-            tipoPrecio.value = 'default'
-        }
-    } catch (error) {
-        console.error('Error obteniendo precio:', error)
-        precioUnitario.value = Number(producto.PrecioVenta) || 0
-        tipoPrecio.value = 'default'
-    } finally {
-        cargandoPrecio.value = false
-    }
 }
 
 const cerrarModal = () => {
     modalVisible.value = false
     setTimeout(() => {
-        if (!modalVisible.value) {
-            productoSeleccionado.value = null
-        }
-    }, 300)
+        if (!modalVisible.value) productoSeleccionado.value = null
+    }, 200)
 }
 
 const incrementarCantidad = () => cantidad.value++
 const decrementarCantidad = () => { if (cantidad.value > 1) cantidad.value-- }
-
-const validarCantidad = () => {
-    let val = parseInt(cantidad.value)
-    if (isNaN(val) || val < 1) cantidad.value = 1
-    else cantidad.value = val
-}
+const validarCantidad = () => { cantidad.value = parseInt(cantidad.value) || 1 }
 
 const agregarAlCarrito = async () => {
     if (!productoSeleccionado.value) {
@@ -127,14 +89,12 @@ const agregarAlCarrito = async () => {
     }
     
     loading.value = true
-    
     try {
         const response = await axios.post('/api/venta-tactil/agregar', {
             id_producto: productoSeleccionado.value.id,
             unidades: cantidad.value,
             precio: precioUnitario.value
         })
-        
         if (response.data.success) {
             await cargarCarrito()
             toast?.success('¡Producto agregado!', `${productoSeleccionado.value.nombre} x ${cantidad.value}`)
@@ -143,8 +103,9 @@ const agregarAlCarrito = async () => {
             toast?.error('Error', response.data.message || 'Error al agregar')
         }
     } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al agregar el producto')
+        let errorMsg = 'Error al agregar el producto'
+        if (error.response?.data?.message) errorMsg = error.response.data.message
+        toast?.error('Error', errorMsg)
     } finally {
         loading.value = false
     }
@@ -156,41 +117,23 @@ const eliminarDelCarrito = async (itemId, nombre) => {
         const response = await axios.delete(`/api/venta-tactil/carrito/${itemId}`)
         if (response.data.success) {
             await cargarCarrito()
-            toast.success('Producto eliminado', `${nombre} fue removido del carrito`)
-        } else {
-            toast.error('Error', response.data.message || 'Error al eliminar')
+            toast?.success('Producto eliminado', nombre)
         }
     } catch (error) {
-        toast.error('Error', 'No se pudo eliminar el producto')
+        toast?.error('Error', 'No se pudo eliminar')
     }
 }
 
 const cancelarVenta = async () => {
-    if (!confirm('¿Cancelar toda la venta? Se perderán todos los productos.')) return
+    if (!confirm('¿Cancelar toda la venta?')) return
     try {
         const response = await axios.delete('/api/venta-tactil/cancelar')
         if (response.data.success) {
             toast?.success('Venta cancelada', 'Inicia una nueva venta')
-            setTimeout(() => router.get('/venta-tactil/nueva'), 1000)
-        } else {
-            toast?.error('Error', response.data.message)
+            setTimeout(() => router.get('/venta-tactil/nueva'), 800)
         }
     } catch (error) {
-        toast?.error('Error', 'No se pudo cancelar la venta')
-    }
-}
-
-const actualizarCantidad = async (itemId, nuevaCantidad, nombre) => {
-    if (nuevaCantidad < 1) {
-        eliminarDelCarrito(itemId, nombre)
-        return
-    }
-    try {
-        const response = await axios.put(`/api/venta-tactil/carrito/${itemId}`, { unidades: nuevaCantidad })
-        if (response.data.success) await cargarCarrito()
-        else toast.error('Error', response.data.message || 'Error al actualizar')
-    } catch (error) {
-        toast.error('Error', 'No se pudo actualizar la cantidad')
+        toast?.error('Error', 'No se pudo cancelar')
     }
 }
 
@@ -201,154 +144,139 @@ onMounted(() => cargarCarrito())
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100">
-        <div class="max-w-6xl mx-auto p-3 sm:p-4">
+    <div class="min-h-screen bg-gray-50">
+        <div class="max-w-7xl mx-auto px-3 py-3">
             
-            <!-- Barra superior -->
-            <div class="bg-white rounded-lg shadow-sm p-2 mb-3 flex items-center justify-between">
-                <button @click="volver" class="px-3 py-1.5 bg-gray-100 rounded-md text-gray-600 text-xs hover:bg-gray-200 flex items-center gap-1">
-                    <i class="fas fa-arrow-left text-[10px]"></i> Volver
+            <!-- Barra superior compacta -->
+            <div class="bg-white rounded-lg shadow-sm p-2 mb-4 flex items-center justify-between">
+                <button @click="volver" class="px-3 py-1.5 bg-guindo-50 text-guindo-700 rounded-lg hover:bg-guindo-100 text-sm flex items-center gap-1.5 transition">
+                    <i class="fas fa-arrow-left text-xs"></i> Volver
                 </button>
                 
-                <div class="text-xs text-gray-500 text-center">
-                    <span class="block text-[10px] text-guindo-600 font-medium">{{ comisionista || 'Sin comisionista' }}</span>
-                    <span>
-                        <span v-for="(item, idx) in ruta" :key="item.id">
-                            <span v-if="idx > 0" class="mx-1">/</span>
-                            <span class="font-medium text-gray-700">{{ item.nombre }}</span>
-                        </span>
-                    </span>
+                <div class="text-center">
+                    <span class="text-[10px] text-amber-600 font-semibold">COMISIONISTA</span>
+                    <span class="text-xs font-medium text-guindo-800 block">{{ comisionista || 'Sin comisionista' }}</span>
                 </div>
                 
-                <div class="flex items-center gap-1">
-                    <button @click="cancelarVenta" class="px-3 py-1.5 bg-red-50 text-red-600 rounded-md text-xs hover:bg-red-100 flex items-center gap-1">
-                        <i class="fas fa-trash-alt text-[10px]"></i>
-                        <span class="hidden sm:inline">Cancelar</span>
+                <div class="flex items-center gap-1.5">
+                    <button @click="cancelarVenta" class="px-2.5 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-sm transition" title="Cancelar">
+                        <i class="fas fa-trash-alt"></i>
                     </button>
-                    
-                    <button @click="irAlCarrito" class="relative px-3 py-1.5 bg-guindo-50 text-guindo-700 rounded-md text-xs hover:bg-guindo-100 flex items-center gap-1">
-                        <i class="fas fa-shopping-cart text-xs"></i>
-                        <span class="hidden sm:inline">Carrito</span>
-                        <span v-if="totalItems > 0" class="absolute -top-1 -right-1 bg-amber-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">
+                    <button @click="irAlCarrito" class="relative px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition text-sm flex items-center gap-1.5">
+                        <i class="fas fa-shopping-cart"></i>
+                        <span v-if="totalItems > 0" class="absolute -top-1.5 -right-1.5 bg-guindo-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
                             {{ totalItems }}
                         </span>
                     </button>
                 </div>
             </div>
 
-            <!-- Título de categoría -->
-            <div class="flex items-center gap-2 mb-4">
-                <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                    <img v-if="categoria?.imagen_url" :src="categoria.imagen_url" class="w-full h-full object-cover rounded-lg">
-                    <i v-else class="fas fa-tag text-guindo-500 text-sm"></i>
+            <!-- Categoría con imagen -->
+            <div class="flex items-center gap-3 mb-4">
+                <div class="w-12 h-12 bg-guindo-100 rounded-xl flex items-center justify-center shadow-sm overflow-hidden">
+                    <img v-if="categoria?.imagen_url" :src="categoria.imagen_url" class="w-full h-full object-cover rounded-xl">
+                    <i v-else class="fas fa-tag text-guindo-500 text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="text-base font-bold text-gray-800">{{ categoria?.nombre }}</h1>
-                    <p class="text-[10px] text-gray-400">{{ productos.length }} productos</p>
+                    <h1 class="text-xl font-bold text-guindo-800">{{ categoria?.nombre }}</h1>
+                    <p class="text-[11px] text-gray-400">{{ productos.length }} productos disponibles</p>
                 </div>
             </div>
 
-            <!-- Grid de productos -->
-            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+            <!-- Grid de productos con precio real -->
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 <div 
                     v-for="prod in productos" 
                     :key="prod.id"
                     @click="abrirModal(prod)"
-                    class="bg-white rounded-lg shadow p-2 cursor-pointer hover:shadow-md transition-all hover:scale-[1.02] text-center"
+                    class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100"
                 >
-                    <div class="w-14 h-14 mx-auto bg-gradient-to-br from-guindo-50 to-amber-50 rounded-lg flex items-center justify-center mb-1">
-                        <i class="fas fa-box-open text-xl text-guindo-400"></i>
+                    <div class="h-20 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center">
+                        <i class="fas fa-box-open text-2xl text-guindo-400"></i>
                     </div>
-                    
-                    <h3 class="font-medium text-[11px] text-gray-700 line-clamp-2 min-h-[32px]">
-                        {{ prod.nombre }}
-                    </h3>
-                    
-                    <div class="mt-1">
-                        <span class="inline-block px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold">
-                            {{ Number(prod.PrecioVenta).toFixed(2) }} Bs
-                        </span>
-                    </div>
-                    
-                    <div class="mt-1 text-[9px] text-guindo-400">
-                        <i class="fas fa-plus-circle"></i> Agregar
+                    <div class="p-2 text-center">
+                        <h3 class="font-medium text-xs text-gray-800 line-clamp-2 min-h-[32px]">{{ prod.nombre }}</h3>
+                        <div class="mt-1 flex flex-col items-center">
+                            <!-- Precio real (con descuento) -->
+                            <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold"
+                                :class="prod.tipo_precio === 'mayorista' ? 'bg-amber-100 text-amber-700' : 'bg-guindo-100 text-guindo-700'"
+                            >
+                                {{ Number(prod.precio_real).toFixed(2) }} Bs
+                            </span>
+                            <!-- Precio original tachado si es diferente -->
+                            <span v-if="prod.precio_real !== prod.precio_normal" class="text-[9px] text-gray-400 line-through mt-0.5">
+                                {{ Number(prod.precio_normal).toFixed(2) }} Bs
+                            </span>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div v-if="!productos.length" class="text-center text-gray-400 py-8 text-sm">
+            <div v-if="!productos.length" class="text-center text-gray-400 py-10">
                 <i class="fas fa-box-open text-3xl mb-2 block"></i>
-                No hay productos en esta categoría
+                <p class="text-sm">No hay productos en esta categoría</p>
             </div>
 
-            <!-- Modal de cantidad -->
-            <div v-if="modalVisible" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3">
+            <!-- Modal compacto -->
+            <div v-if="modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl max-w-sm w-full overflow-hidden shadow-xl">
-                    <div class="bg-gradient-to-r from-guindo-700 to-guindo-800 p-3">
+                    <div class="bg-guindo-700 px-4 py-3">
                         <div class="flex items-center gap-2">
-                            <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-                                <i class="fas fa-box-open text-guindo-600 text-base"></i>
+                            <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+                                <i class="fas fa-box-open text-guindo-600 text-sm"></i>
                             </div>
                             <div class="text-white">
-                                <h3 class="font-semibold text-sm">{{ productoSeleccionado?.nombre }}</h3>
-                                <p class="text-[10px] opacity-80">
+                                <h3 class="font-bold text-sm">{{ productoSeleccionado?.nombre }}</h3>
+                                <p class="text-[10px] opacity-75">
                                     {{ tipoPrecio === 'mayorista' ? 'Precio Mayorista' : tipoPrecio === 'sucursal' ? 'Precio Sucursal' : 'Precio Normal' }}
                                 </p>
                             </div>
                         </div>
                     </div>
-
                     <div class="p-4">
                         <div class="text-center mb-3">
-                            <span class="text-xl font-bold text-guindo-700">{{ precioUnitario.toFixed(2) }} Bs</span>
-                            <span class="text-gray-400 text-[10px] ml-1">c/u</span>
+                            <span class="text-2xl font-bold text-guindo-700">{{ Number(precioUnitario).toFixed(2) }}</span>
+                            <span class="text-gray-400 text-xs ml-0.5">Bs c/u</span>
                         </div>
-
-                        <div class="flex items-center justify-center gap-3 mb-3">
-                            <button @click="decrementarCantidad" class="w-8 h-8 rounded-full bg-gray-100 text-base font-bold text-gray-600 hover:bg-gray-200">-</button>
-                            <input type="number" v-model.number="cantidad" @input="validarCantidad" min="1" class="w-16 text-center text-base font-bold border border-gray-200 rounded-lg py-1 focus:border-guindo-400 focus:outline-none">
-                            <button @click="incrementarCantidad" class="w-8 h-8 rounded-full bg-gray-100 text-base font-bold text-gray-600 hover:bg-gray-200">+</button>
+                        <div class="flex items-center justify-center gap-3 mb-4">
+                            <button @click="decrementarCantidad" class="w-8 h-8 rounded-full bg-guindo-100 text-guindo-700 font-bold hover:bg-guindo-200">-</button>
+                            <input type="number" v-model.number="cantidad" @input="validarCantidad" min="1" class="w-14 text-center text-lg font-bold border rounded-lg py-1 focus:border-guindo-400 focus:outline-none">
+                            <button @click="incrementarCantidad" class="w-8 h-8 rounded-full bg-guindo-100 text-guindo-700 font-bold hover:bg-guindo-200">+</button>
                         </div>
-
-                        <div class="bg-gray-50 rounded-lg p-2 mb-3 text-center">
-                            <p class="text-[10px] text-gray-500">Total</p>
+                        <div class="bg-amber-50 rounded-lg p-2 mb-4 text-center">
+                            <p class="text-[10px] text-amber-700">Total</p>
                             <p class="text-lg font-bold text-guindo-700">{{ totalModal }} Bs</p>
                         </div>
-
                         <div class="flex gap-2">
-                            <button @click="cerrarModal" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-xs font-medium hover:bg-gray-200">Cancelar</button>
-                            <button @click="agregarAlCarrito" :disabled="loading || cargandoPrecio" class="flex-1 py-2 rounded-lg bg-guindo-600 text-white text-xs font-medium hover:bg-guindo-700 disabled:opacity-50 flex items-center justify-center gap-1">
-                                <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
-                                <i v-else class="fas fa-cart-plus text-[10px]"></i>
-                                {{ loading ? 'Agregando...' : `Agregar ${cantidad}` }}
+                            <button @click="cerrarModal" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm hover:bg-gray-200">Cancelar</button>
+                            <button @click="agregarAlCarrito" :disabled="loading" class="flex-1 py-2 rounded-lg bg-guindo-600 hover:bg-guindo-700 text-white text-sm font-medium flex items-center justify-center gap-1">
+                                <i v-if="loading" class="fas fa-spinner fa-spin text-xs"></i>
+                                <i v-else class="fas fa-cart-plus text-xs"></i>
+                                {{ loading ? '' : `Agregar (${cantidad})` }}
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Mini resumen del carrito -->
-            <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border border-gray-100">
+            <!-- Carrito flotante compacto -->
+            <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border-l-3 border-guindo-500">
                 <div class="flex items-center gap-2">
                     <div class="bg-guindo-100 rounded-full w-7 h-7 flex items-center justify-center">
                         <i class="fas fa-shopping-cart text-guindo-600 text-xs"></i>
                     </div>
-                    <div>
-                        <p class="text-[9px] text-gray-400">Productos</p>
-                        <p class="font-bold text-gray-800 text-xs">{{ totalItems }} items</p>
-                    </div>
-                    <div class="border-l pl-2 ml-0.5">
-                        <p class="text-[9px] text-gray-400">Total</p>
-                        <p class="font-bold text-guindo-600 text-xs">{{ totalCarrito }} Bs</p>
+                    <div class="text-[11px]">
+                        <p class="text-gray-500 leading-tight">Total</p>
+                        <p class="font-bold text-guindo-600">{{ totalCarrito }} Bs</p>
                     </div>
                 </div>
             </div>
 
             <!-- Loading -->
-            <div v-if="loading && !modalVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div v-if="loading && !modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
                 <div class="bg-white rounded-lg p-4 flex items-center gap-2">
-                    <i class="fas fa-spinner fa-spin text-guindo-600 text-base"></i>
-                    <span class="text-gray-600 text-sm">Cargando...</span>
+                    <i class="fas fa-spinner fa-spin text-guindo-600"></i>
+                    <span class="text-sm">Cargando...</span>
                 </div>
             </div>
         </div>

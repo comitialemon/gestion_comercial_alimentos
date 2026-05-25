@@ -6,22 +6,20 @@ use App\Http\Controllers\Controller;
 use App\Models\Gestion\Inventario\CategoriaProducto;
 use App\Models\Gestion\Inventario\ProductoVenta;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\DB;  // ← IMPORTANTE: agregar esta línea
+use Illuminate\Support\Facades\DB;
+use Illuminate\Http\Request;
 
 class MenuTactilController extends Controller
 {
     public function index()
     {
-        // Verificar si hay una venta activa en sesión
         $ventaId = session('venta_tactil_id');
         
         if (!$ventaId) {
-            // No hay venta en sesión, redirigir a nueva venta
             return redirect()->route('venta-tactil.nueva')
                 ->with('warning', 'Debes iniciar una venta primero');
         }
         
-        // Verificar que la venta existe y está pendiente
         $venta = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->where('IdVentas', $ventaId)
@@ -29,13 +27,11 @@ class MenuTactilController extends Controller
             ->first();
             
         if (!$venta) {
-            // La venta no existe o ya fue pagada, limpiar sesión
             session()->forget('venta_tactil_id');
             return redirect()->route('venta-tactil.nueva')
                 ->with('warning', 'La venta anterior fue finalizada. Inicia una nueva.');
         }
         
-        // Obtener comisionista de sesión
         $comisionistaNombre = null;
         $comisionistaId = session('venta_tactil_comisionista_id');
         if ($comisionistaId) {
@@ -47,7 +43,6 @@ class MenuTactilController extends Controller
             $comisionistaNombre = $comisionista ? $comisionista->Nombre : null;
         }
         
-        // Mostrar categorías
         $categorias = CategoriaProducto::porContexto()
             ->whereNull('id_padre')
             ->where('activo', 1)
@@ -74,71 +69,96 @@ class MenuTactilController extends Controller
             ->orderBy('orden')
             ->get();
 
-        $comisionistaNombre = null;
-        $comisionistaId = session('venta_tactil_comisionista_id');
+        if ($subcategorias->isNotEmpty()) {
+            return Inertia::render('PuntoVenta/MenuTactil/Index', [
+                'categorias' => $subcategorias,
+                'ruta' => $this->obtenerRuta($categoria),
+                'titulo' => $categoria->nombre,
+                'comisionista' => $this->getComisionistaNombre()
+            ]);
+        }
+
+        // Obtener datos del contexto
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         $identificadorComisionista = session('venta_tactil_comisionista_identificador');
-        
+
+        // Obtener productos con su precio real (como en el modal)
+        $productosQuery = ProductoVenta::porContexto()
+            ->where('ActivoInactivo', 0)
+            ->whereHas('categorias', function($q) use ($id) {
+                $q->where('inventario_producto_categoria.id_categoria', $id);
+            })
+            ->orderBy('Detalle')
+            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
+
+        // Calcular precio real para cada producto
+        $productos = [];
+        foreach ($productosQuery as $producto) {
+            $precioReal = $producto->PrecioVenta; // precio por defecto
+            $tipoPrecio = 'default';
+
+            // 1. Buscar precio mayorista (por comisionista)
+            if ($identificadorComisionista) {
+                $precioMayorista = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_preciomayorista')
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdIdentificador', $identificadorComisionista)
+                    ->where('IdProducto', $producto->id)
+                    ->value('Precio');
+                
+                if ($precioMayorista) {
+                    $precioReal = (float) $precioMayorista;
+                    $tipoPrecio = 'mayorista';
+                }
+            }
+
+            // 2. Si no hay mayorista, buscar precio por sucursal
+            if ($tipoPrecio === 'default') {
+                $precioSucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_preciosucursal')
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdProducto', $producto->id)
+                    ->where('PrecioDiferenciadoA', 'Sucursal')
+                    ->value('Precio');
+                
+                if ($precioSucursal) {
+                    $precioReal = (float) $precioSucursal;
+                    $tipoPrecio = 'sucursal';
+                }
+            }
+
+            $productos[] = [
+                'id' => $producto->id,
+                'nombre' => $producto->nombre,
+                'precio_real' => $precioReal,
+                'precio_normal' => (float) $producto->PrecioVenta,
+                'tipo_precio' => $tipoPrecio
+            ];
+        }
+
+        return Inertia::render('PuntoVenta/MenuTactil/Productos', [
+            'categoria' => $categoria,
+            'productos' => $productos,
+            'ruta' => $this->obtenerRuta($categoria),
+            'comisionista' => $this->getComisionistaNombre()
+        ]);
+    }
+
+    private function getComisionistaNombre()
+    {
+        $comisionistaId = session('venta_tactil_comisionista_id');
         if ($comisionistaId) {
             $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_comisionitas as c')
                 ->join('todos_identificador as i', 'c.IdIdentificador', '=', 'i.IdIdentificador')
                 ->where('c.IdComisionista', $comisionistaId)
                 ->first();
-            $comisionistaNombre = $comisionista ? $comisionista->Nombre : null;
+            return $comisionista ? $comisionista->Nombre : null;
         }
-
-        if ($subcategorias->isNotEmpty()) {
-            return Inertia::render('PuntoVenta/MenuTactil/Index', [
-                'categorias' => $subcategorias,
-                'ruta' => $this->obtenerRuta($categoria),
-                'titulo' => $categoria->nombre,
-                'comisionista' => $comisionistaNombre
-            ]);
-        }
-
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-
-        // 🔥 UNA SOLA CONSULTA SQL con precio priorizado
-        // Orden de prioridad: Mayorista > Sucursal > Default
-        $productos = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_relacion_ventainventario as p')
-            ->join('inventario_producto_categoria as pc', 'p.IdDetalleProducto', '=', 'pc.id_detalle_producto')
-            ->leftJoin('inventario_relacion_ventainventario_preciomayorista as pm', function($join) use ($clienteId, $sucursalId, $identificadorComisionista) {
-                $join->on('p.IdDetalleProducto', '=', 'pm.IdProducto')
-                    ->where('pm.IdCliente', '=', $clienteId)
-                    ->where('pm.IdSucursal', '=', $sucursalId);
-                if ($identificadorComisionista) {
-                    $join->where('pm.IdIdentificador', '=', $identificadorComisionista);
-                } else {
-                    $join->whereNull('pm.IdIdentificador');
-                }
-            })
-            ->leftJoin('inventario_relacion_ventainventario_preciosucursal as ps', function($join) use ($clienteId, $sucursalId) {
-                $join->on('p.IdDetalleProducto', '=', 'ps.IdProducto')
-                    ->where('ps.IdCliente', '=', $clienteId)
-                    ->where('ps.IdSucursal', '=', $sucursalId)
-                    ->where('ps.PrecioDiferenciadoA', '=', 'Sucursal');
-            })
-            ->where('p.IdCliente', $clienteId)
-            ->where('p.IdSucursal', $sucursalId)
-            ->where('p.ActivoInactivo', 0)
-            ->where('pc.id_categoria', $id)
-            ->where('pc.id_sucursal', $sucursalId)
-            ->select(
-                'p.IdDetalleProducto as id',
-                'p.Detalle as nombre',
-                DB::raw("COALESCE(pm.Precio, ps.Precio, p.PrecioVenta, 0) as PrecioVenta")
-            )
-            ->orderBy('p.Detalle')
-            ->get();
-
-        return Inertia::render('PuntoVenta/MenuTactil/Productos', [
-            'categoria' => $categoria,
-            'productos' => $productos,
-            'ruta' => $this->obtenerRuta($categoria),
-            'comisionista' => $comisionistaNombre
-        ]);
+        return null;
     }
 
     private function obtenerRuta($categoria)
@@ -156,6 +176,7 @@ class MenuTactilController extends Controller
         
         return $ruta;
     }
+
     /**
      * Obtener precio de un producto según comisionista y sucursal
      */
@@ -166,7 +187,6 @@ class MenuTactilController extends Controller
             $sucursalId = session('cliente_sucursal_id');
             $identificadorComisionista = session('venta_tactil_comisionista_identificador');
             
-            // 1. Buscar precio mayorista (por comisionista)
             $precioMayorista = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_preciomayorista')
                 ->where('IdCliente', $clienteId)
@@ -182,7 +202,6 @@ class MenuTactilController extends Controller
                 ]);
             }
             
-            // 2. Buscar precio por sucursal
             $precioSucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_preciosucursal')
                 ->where('IdCliente', $clienteId)
@@ -198,7 +217,6 @@ class MenuTactilController extends Controller
                 ]);
             }
             
-            // 3. Precio por defecto
             $producto = ProductoVenta::find($idProducto);
             $precioDefault = $producto ? (float) $producto->PrecioVenta : 0;
             
@@ -212,8 +230,9 @@ class MenuTactilController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+
     /**
-     * Agregar producto al carrito (guardar en impuestos_ventas_detalle)
+     * Agregar producto al carrito
      */
     public function agregarAlCarrito(Request $request)
     {
@@ -233,7 +252,6 @@ class MenuTactilController extends Controller
                 ], 400);
             }
 
-            // Verificar que la venta existe y está pendiente
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
@@ -247,15 +265,13 @@ class MenuTactilController extends Controller
                 ], 400);
             }
 
-            // Calcular total
             $total = $request->precio * $request->unidades;
 
-            // Insertar en impuestos_ventas_detalle
-            $detalleId = DB::connection('mysql_gestion_comercial_alimentos')
+            DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle')
-                ->insertGetId([
+                ->insert([
                     'idventas' => $ventaId,
-                    'IdVentaGrupo' => 0, // Temporal, se puede actualizar después
+                    'IdVentaGrupo' => 0,
                     'idrelacionventainventario' => $request->id_producto,
                     'unidades' => $request->unidades,
                     'preciounidades' => $request->precio,
@@ -266,25 +282,14 @@ class MenuTactilController extends Controller
                     'entregado' => 0,
                 ]);
 
-            // Actualizar el ImporteVenta en la cabecera (sumar el nuevo total)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->increment('ImporteVenta', $total);
 
-            // Obtener el producto para respuesta
-            $producto = ProductoVenta::find($request->id_producto);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Producto agregado correctamente',
-                'data' => [
-                    'id_detalle' => $detalleId,
-                    'producto' => $producto ? $producto->Detalle : 'Producto',
-                    'unidades' => $request->unidades,
-                    'precio' => $request->precio,
-                    'total' => $total
-                ]
+                'message' => 'Producto agregado correctamente'
             ]);
 
         } catch (\Exception $e) {
