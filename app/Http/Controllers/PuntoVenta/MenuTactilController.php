@@ -76,6 +76,8 @@ class MenuTactilController extends Controller
 
         $comisionistaNombre = null;
         $comisionistaId = session('venta_tactil_comisionista_id');
+        $identificadorComisionista = session('venta_tactil_comisionista_identificador');
+        
         if ($comisionistaId) {
             $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_comisionitas as c')
@@ -94,17 +96,42 @@ class MenuTactilController extends Controller
             ]);
         }
 
+        $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
-        // 🔥 CORREGIDO: usar categoriasHabilitadas()
-        $productos = ProductoVenta::porContexto()
-            ->where('ActivoInactivo', ProductoVenta::COMERCIAL_ACTIVO)  // ✅ CORREGIDO
-            ->whereHas('categoriasHabilitadas', function($q) use ($id, $sucursalId) {
-                $q->where('inventario_producto_categoria.id_categoria', $id)
-                ->where('inventario_producto_categoria.id_sucursal', $sucursalId);
+
+        // 🔥 UNA SOLA CONSULTA SQL con precio priorizado
+        // Orden de prioridad: Mayorista > Sucursal > Default
+        $productos = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_relacion_ventainventario as p')
+            ->join('inventario_producto_categoria as pc', 'p.IdDetalleProducto', '=', 'pc.id_detalle_producto')
+            ->leftJoin('inventario_relacion_ventainventario_preciomayorista as pm', function($join) use ($clienteId, $sucursalId, $identificadorComisionista) {
+                $join->on('p.IdDetalleProducto', '=', 'pm.IdProducto')
+                    ->where('pm.IdCliente', '=', $clienteId)
+                    ->where('pm.IdSucursal', '=', $sucursalId);
+                if ($identificadorComisionista) {
+                    $join->where('pm.IdIdentificador', '=', $identificadorComisionista);
+                } else {
+                    $join->whereNull('pm.IdIdentificador');
+                }
             })
-            ->orderBy('Detalle')
-            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
+            ->leftJoin('inventario_relacion_ventainventario_preciosucursal as ps', function($join) use ($clienteId, $sucursalId) {
+                $join->on('p.IdDetalleProducto', '=', 'ps.IdProducto')
+                    ->where('ps.IdCliente', '=', $clienteId)
+                    ->where('ps.IdSucursal', '=', $sucursalId)
+                    ->where('ps.PrecioDiferenciadoA', '=', 'Sucursal');
+            })
+            ->where('p.IdCliente', $clienteId)
+            ->where('p.IdSucursal', $sucursalId)
+            ->where('p.ActivoInactivo', 0)
+            ->where('pc.id_categoria', $id)
+            ->where('pc.id_sucursal', $sucursalId)
+            ->select(
+                'p.IdDetalleProducto as id',
+                'p.Detalle as nombre',
+                DB::raw("COALESCE(pm.Precio, ps.Precio, p.PrecioVenta, 0) as PrecioVenta")
+            )
+            ->orderBy('p.Detalle')
+            ->get();
 
         return Inertia::render('PuntoVenta/MenuTactil/Productos', [
             'categoria' => $categoria,

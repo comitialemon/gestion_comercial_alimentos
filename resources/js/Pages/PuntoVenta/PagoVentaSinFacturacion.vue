@@ -35,9 +35,37 @@ const clienteSeleccionado = ref(null)
 const clientesLista = ref([])
 const mostrandoListaClientes = ref(false)
 const buscandoCliente = ref(false)
+const cargandoNitPredefinido = ref(false)
 
 // Temporizador para búsqueda
 let searchTimeout = null
+
+// Cargar NIT predefinido desde la venta
+const cargarNitPredefinido = async () => {
+    if (!props.ventaId) return
+    
+    cargandoNitPredefinido.value = true
+    try {
+        const response = await axios.get(`/api/venta/${props.ventaId}/nit-predefinido`)
+        if (response.data.success && response.data.nit !== undefined && response.data.nit !== null) {
+            const nitValue = response.data.nit.toString()
+            nitCliente.value = nitValue
+            
+            if (response.data.nombre && response.data.nombre !== 'SIN NIT') {
+                clienteSeleccionado.value = {
+                    IdIdentificador: response.data.id_identificador,
+                    CI_NIT: response.data.nit,
+                    Nombre: response.data.nombre
+                }
+                nitCliente.value = `${response.data.nit} - ${response.data.nombre}`
+            }
+        }
+    } catch (error) {
+        console.error('Error cargando NIT predefinido:', error)
+    } finally {
+        cargandoNitPredefinido.value = false
+    }
+}
 
 // Totales
 const totalRegistrado = computed(() => {
@@ -142,6 +170,10 @@ const procesarPago = async () => {
         })
         
         if (response.data.success) {
+            // Abrir PDF en nueva pestaña
+            if (response.data.pdf_url) {
+                window.open(response.data.pdf_url, '_blank')
+            }
             toast?.success('Venta completada', 'Pago registrado correctamente')
             setTimeout(() => {
                 router.get(props.tipoVenta === 'tactil' ? '/venta-tactil/nueva' : '/venta-factura/crear')
@@ -165,6 +197,7 @@ const volverALaVenta = () => {
 
 onMounted(() => {
     cargarConceptos()
+    cargarNitPredefinido()
     document.addEventListener('click', handleClickOutside)
 })
 
@@ -175,129 +208,127 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
-        <div class="py-4 px-4 sm:px-6 lg:px-8">
+    <div class="min-h-screen bg-gray-100">
+        <div class="py-4 px-3 sm:px-4">
             <div class="max-w-4xl mx-auto">
                 <!-- Header -->
-                <div class="text-center mb-5">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-emerald-100 rounded-2xl mb-2">
-                        <i class="fas fa-cash-register text-2xl text-emerald-600"></i>
+                <div class="text-center mb-4">
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-guindo-100 rounded-xl mb-2">
+                        <i class="fas fa-cash-register text-xl text-guindo-600"></i>
                     </div>
-                    <h1 class="text-xl font-bold text-gray-900">Registrar Pago</h1>
-                    <p class="text-xs text-gray-500">Venta sin facturación</p>
+                    <h1 class="text-lg font-bold text-gray-900">Registrar Pago</h1>
+                    <p class="text-[11px] text-gray-500">Venta sin facturación electrónica</p>
                 </div>
 
                 <!-- Botón Volver -->
                 <div class="mb-3">
-                    <button @click="volverALaVenta" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300">
-                        <i class="fas fa-arrow-left text-xs"></i> {{ tipoVenta === 'tactil' ? 'Volver al Carrito' : 'Volver a la Venta' }}
+                    <button @click="volverALaVenta" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-md text-gray-600 text-xs hover:bg-gray-200">
+                        <i class="fas fa-arrow-left text-[10px]"></i> {{ tipoVenta === 'tactil' ? 'Volver al Carrito' : 'Volver a la Venta' }}
                     </button>
                 </div>
 
                 <!-- Resumen de venta -->
-                <div class="bg-gradient-to-r from-emerald-500 to-teal-500 rounded-xl shadow-lg p-4 mb-5 text-white">
+                <div class="bg-gradient-to-r from-guindo-700 to-guindo-800 rounded-lg shadow-md p-3 mb-4 text-white">
                     <div class="flex justify-between items-center">
                         <div>
-                            <p class="text-xs opacity-90">Total a pagar</p>
-                            <p class="text-3xl font-bold">{{ Number(deuda).toFixed(2) }} Bs</p>
+                            <p class="text-[10px] opacity-80">Total a pagar</p>
+                            <p class="text-2xl font-bold">{{ Number(deuda).toFixed(2) }} Bs</p>
                         </div>
                         <div class="text-right">
-                            <p class="text-xs opacity-90">Productos</p>
-                            <p class="text-xl font-semibold">{{ productos.length }} items</p>
+                            <p class="text-[10px] opacity-80">Productos</p>
+                            <p class="text-base font-semibold">{{ productos.length }} items</p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Formulario de pago -->
-                <div class="bg-white rounded-xl shadow-lg overflow-hidden">
-                    <div class="p-5 space-y-5">
+                <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                    <div class="p-4 space-y-4">
                         
                         <!-- Sección: Cliente -->
-                        <div class="border-b pb-3">
-                            <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                <span class="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-xs text-blue-600">1</span>
+                        <div class="border-b pb-2">
+                            <h3 class="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                                <span class="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[9px] text-blue-600">1</span>
                                 Cliente (Opcional)
                             </h3>
                             <div class="relative cliente-autocomplete">
                                 <div class="flex gap-2">
                                     <div class="flex-1 relative">
                                         <div class="relative">
-                                            <i class="fas fa-search absolute left-3 top-3 text-gray-400 text-sm"></i>
+                                            <i class="fas fa-search absolute left-3 top-2 text-gray-400 text-[11px]"></i>
                                             <input 
                                                 type="text"
                                                 v-model="nitCliente"
                                                 @input="buscarClientes"
                                                 @focus="mostrandoListaClientes = true"
-                                                placeholder="Buscar por CI/NIT o nombre del cliente..."
-                                                class="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 text-sm focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                                placeholder="Buscar por CI/NIT o nombre..."
+                                                class="w-full border border-gray-200 rounded-md pl-8 pr-3 py-1.5 text-xs focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200"
+                                                :disabled="cargandoNitPredefinido"
                                             />
+                                            <div v-if="cargandoNitPredefinido" class="absolute right-2 top-1.5">
+                                                <i class="fas fa-spinner fa-spin text-gray-400 text-[10px]"></i>
+                                            </div>
                                         </div>
                                         
-                                        <!-- Lista de resultados -->
                                         <div v-if="mostrandoListaClientes && clientesLista.length > 0" 
-                                            class="absolute z-50 w-full max-h-60 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg mt-1">
+                                            class="absolute z-50 w-full max-h-48 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg mt-0.5">
                                             <div 
                                                 v-for="cliente in clientesLista" 
                                                 :key="cliente.IdIdentificador"
                                                 @click="seleccionarCliente(cliente)"
-                                                class="px-3 py-2 hover:bg-emerald-50 cursor-pointer border-b last:border-b-0 transition"
+                                                class="px-2 py-1.5 hover:bg-guindo-50 cursor-pointer border-b last:border-b-0 text-xs"
                                             >
-                                                <div class="flex items-center gap-2">
-                                                    <span class="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded-full">{{ cliente.CI_NIT }}</span>
-                                                    <span class="text-sm text-gray-700">{{ cliente.Nombre }}</span>
-                                                </div>
+                                                <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded-full">{{ cliente.CI_NIT }}</span>
+                                                <span class="ml-2 text-gray-700">{{ cliente.Nombre }}</span>
                                             </div>
                                         </div>
                                         
-                                        <!-- Indicador de búsqueda -->
-                                        <div v-if="buscandoCliente" class="absolute right-3 top-2">
-                                            <i class="fas fa-spinner fa-spin text-gray-400"></i>
+                                        <div v-if="buscandoCliente" class="absolute right-2 top-1.5">
+                                            <i class="fas fa-spinner fa-spin text-gray-400 text-[10px]"></i>
                                         </div>
                                     </div>
                                     <button 
                                         v-if="clienteSeleccionado"
                                         @click="limpiarCliente"
-                                        class="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition"
+                                        class="px-2 py-1 bg-red-50 text-red-500 rounded-md text-[10px] hover:bg-red-100"
                                         type="button"
                                     >
-                                        <i class="fas fa-times"></i>
+                                        <i class="fas fa-times text-[9px]"></i>
                                     </button>
                                 </div>
                                 
-                                <!-- Mensaje de cliente seleccionado -->
-                                <div v-if="clienteSeleccionado" class="mt-2 text-sm text-emerald-600 bg-emerald-50 rounded-lg px-3 py-2">
-                                    <i class="fas fa-check-circle mr-1"></i> 
-                                    Cliente: <span class="font-medium">{{ clienteSeleccionado.Nombre }}</span> (CI/NIT: {{ clienteSeleccionado.CI_NIT }})
+                                <div v-if="clienteSeleccionado" class="mt-1.5 text-[11px] text-guindo-600 bg-guindo-50 rounded-md px-2 py-1">
+                                    <i class="fas fa-check-circle text-[10px] mr-1"></i> 
+                                    {{ clienteSeleccionado.Nombre }} ({{ clienteSeleccionado.CI_NIT }})
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Sección: Métodos de Pago en 4 columnas -->
+                        <!-- Sección: Métodos de Pago -->
                         <div>
-                            <h3 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                                <span class="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center text-xs text-emerald-600">2</span>
+                            <h3 class="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                                <span class="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[9px] text-amber-600">2</span>
                                 Métodos de Pago
                             </h3>
                             
-                            <div v-if="loadingConceptos" class="text-center py-8">
-                                <i class="fas fa-spinner fa-spin text-2xl text-emerald-600"></i>
-                                <p class="mt-2 text-gray-500">Cargando métodos de pago...</p>
+                            <div v-if="loadingConceptos" class="text-center py-6">
+                                <i class="fas fa-spinner fa-spin text-xl text-guindo-500"></i>
+                                <p class="mt-1 text-[10px] text-gray-400">Cargando métodos de pago...</p>
                             </div>
 
-                            <!-- 🔥 Grid de 4 columnas para los métodos de pago -->
-                            <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                                <div v-for="concepto in conceptos" :key="concepto.id" class="bg-gray-50 rounded-lg p-3 border border-gray-100">
-                                    <label class="block text-xs font-medium text-gray-700 mb-1">
+                            <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                <div v-for="concepto in conceptos" :key="concepto.id" class="bg-gray-50 rounded-md p-2 border border-gray-100">
+                                    <label class="block text-[10px] font-medium text-gray-600 mb-0.5">
                                         {{ concepto.nombre }}
                                     </label>
                                     <div class="relative">
-                                        <span class="absolute left-2 top-1.5 text-gray-500 text-xs">Bs</span>
+                                        <span class="absolute left-1.5 top-0.5 text-gray-400 text-[9px]">Bs</span>
                                         <input 
                                             v-model.number="montosPorConcepto[concepto.id]" 
                                             type="number" 
                                             step="0.01" 
                                             min="0" 
-                                            class="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-sm font-mono focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                            class="no-spinner w-full border border-gray-200 rounded-md pl-6 pr-2 py-1 text-xs font-mono focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -306,44 +337,61 @@ onUnmounted(() => {
                         </div>
 
                         <!-- Resumen de pagos -->
-                        <div class="bg-gray-100 rounded-lg p-4">
+                        <div class="bg-gray-50 rounded-md p-3">
                             <div class="flex justify-between items-center">
-                                <span class="text-gray-600">Total registrado:</span>
-                                <span class="text-xl font-bold" :class="pagoCorrecto ? 'text-emerald-600' : 'text-red-600'">
+                                <span class="text-[11px] text-gray-600">Total registrado:</span>
+                                <span class="text-base font-bold" :class="pagoCorrecto ? 'text-guindo-700' : 'text-red-600'">
                                     {{ totalRegistrado.toFixed(2) }} Bs
                                 </span>
                             </div>
-                            <div v-if="!pagoCorrecto && totalRegistrado > 0" class="text-xs text-red-500 mt-2">
-                                <i class="fas fa-exclamation-circle mr-1"></i>
+                            <div v-if="!pagoCorrecto && totalRegistrado > 0" class="text-[10px] text-red-500 mt-1">
+                                <i class="fas fa-exclamation-circle mr-0.5"></i>
                                 Faltan {{ (deuda - totalRegistrado).toFixed(2) }} Bs
                             </div>
-                            <div v-if="totalRegistrado > deuda" class="text-xs text-amber-500 mt-2">
-                                <i class="fas fa-exchange-alt mr-1"></i>
+                            <div v-if="totalRegistrado > deuda" class="text-[10px] text-amber-500 mt-1">
+                                <i class="fas fa-exchange-alt mr-0.5"></i>
                                 Cambio: {{ (totalRegistrado - deuda).toFixed(2) }} Bs
                             </div>
                         </div>
                     </div>
 
                     <!-- Botones de acción -->
-                    <div class="px-5 py-4 bg-gray-50 border-t flex justify-end gap-3">
+                    <div class="px-4 py-3 bg-gray-50 border-t flex justify-end gap-2">
                         <button 
                             @click="volverALaVenta" 
-                            class="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 transition"
+                            class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-100 transition"
                         >
                             Cancelar
                         </button>
                         <button 
                             @click="procesarPago" 
                             :disabled="!pagoCorrecto || procesando || loadingConceptos" 
-                            class="px-6 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg text-sm font-medium hover:shadow-lg transition disabled:opacity-50 flex items-center gap-2"
+                            class="px-4 py-1.5 bg-guindo-600 text-white rounded-md text-xs font-medium hover:bg-guindo-700 transition disabled:opacity-50 flex items-center gap-1"
                         >
-                            <i v-if="procesando" class="fas fa-spinner fa-spin"></i>
-                            <i v-else class="fas fa-check"></i>
+                            <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else class="fas fa-check text-[10px]"></i>
                             {{ procesando ? 'Procesando...' : 'Completar Venta' }}
                         </button>
                     </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="mt-3 text-center text-[9px] text-gray-400">
+                    <i class="fas fa-lock"></i> Datos seguros
                 </div>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>

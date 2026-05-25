@@ -339,6 +339,19 @@ const formatearNumero = (value, decimals = 2) => {
 emitirEstado()
 </script>
 
+<style scoped>
+/* 🔥 Eliminar flechas del input number */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>
+
 <template>
     <div class="text-xs">
         <!-- Totales principales (Debe, Haber, Diferencia) -->
@@ -398,7 +411,14 @@ emitirEstado()
 
                         <div>
                             <label class="block text-[10px] font-medium text-gray-600 mb-0.5">Monto Bolivianos *</label>
-                            <input type="number" v-model.number="nuevaFila.MontoBolivianos" @input="recalcularMontos" step="0.01" min="0" class="w-full border rounded px-2 py-1 text-[11px] text-right">
+                            <input 
+                                type="number" 
+                                v-model.number="nuevaFila.MontoBolivianos" 
+                                @input="recalcularMontos" 
+                                step="0.01" 
+                                min="0" 
+                                class="no-spinner w-full border rounded px-2 py-1 text-[11px] text-right"
+                            >
                         </div>
 
                         <div>
@@ -502,7 +522,7 @@ emitirEstado()
                                 <div v-if="!asiento.editando" class="text-[11px] text-gray-700">
                                     {{ formatearNumero(asiento.MontoBolivianos) }}
                                 </div>
-                                <input v-else type="number" v-model.number="asiento.MontoBolivianos" step="0.01" class="w-full border rounded px-2 py-1 text-[11px] text-right">
+                                <input v-else type="number" v-model.number="asiento.MontoBolivianos" step="0.01" class="no-spinner w-full border rounded px-2 py-1 text-[11px] text-right">
                             </div>
 
                             <div>

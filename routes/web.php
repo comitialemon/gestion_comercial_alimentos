@@ -458,20 +458,17 @@ Route::middleware(['auth.operador'])->group(function () {
 
     // ==================== PUNTO DE VENTA (VENTA NORMAL) ====================
     Route::prefix('venta-factura')->group(function () {
-        // Paso 1: Seleccionar lugar y comisionista
         Route::get('/crear', [NuevaVentaController::class, 'create'])->name('ventas.crear');
         Route::post('/store', [NuevaVentaController::class, 'store'])->name('ventas.store');
-        
-        // Paso 2: Formulario de venta (productos)
         Route::get('/nueva', [FormularioVentaController::class, 'create'])->name('ventas.formulario');
         Route::post('/guardar', [FormularioVentaController::class, 'store'])->name('ventas.guardar');
-        
-        // Paso 3: Pago
         Route::get('/pago', [PagoVentaController::class, 'create'])->name('ventas.pago');
         Route::post('/buscar-cliente', [PagoVentaController::class, 'buscarCliente'])->name('ventas.buscar-cliente');
         Route::post('/procesar-pago', [PagoVentaController::class, 'store'])->name('ventas.procesar-pago');
+        
+        // 🔥 Ruta PDF - DENTRO del grupo
+        Route::get('/factura-pdf/{id}', [PagoVentaController::class, 'facturaPdf'])->name('ventas.factura-pdf');
     });
-
     // ==================== PUNTO DE VENTA (VENTA TÁCTIL) ====================
     Route::prefix('venta-tactil')->group(function () {
         // Formulario de inicio

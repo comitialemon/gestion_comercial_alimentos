@@ -39,6 +39,15 @@ const errors = ref({})
 const mostrarConfirmacion = ref(false)
 const cabeceraGuardada = ref(false)
 
+// Datos del nuevo producto temporal
+const nuevoProducto = ref({
+    IdProducto: '',
+    Codigo: '',
+    Descripcion: '',
+    Unidades: 0,
+    Bolivianos: 0,
+})
+
 // Buscador de productos
 const busquedaProducto = ref('')
 const productosFiltrados = computed(() => {
@@ -49,8 +58,6 @@ const productosFiltrados = computed(() => {
         p.Descripcion?.toLowerCase().includes(termino)
     )
 })
-
-const productoSeleccionado = ref(null)
 
 // Tipos de operación filtrados por concepto
 const tiposFiltrados = computed(() => {
@@ -78,6 +85,33 @@ const personasFiltradasAutorizado = computed(() => {
     )
 })
 
+// Precio calculado
+const precioCalculado = computed(() => {
+    if (nuevoProducto.value.Unidades > 0 && nuevoProducto.value.Bolivianos > 0) {
+        return (nuevoProducto.value.Bolivianos / nuevoProducto.value.Unidades).toFixed(2)
+    }
+    return '0.00'
+})
+
+// Seleccionar producto
+const seleccionarProducto = (producto) => {
+    nuevoProducto.value.IdProducto = producto.id
+    nuevoProducto.value.Codigo = producto.Codigo
+    nuevoProducto.value.Descripcion = producto.Descripcion
+    busquedaProducto.value = `${producto.Codigo} - ${producto.Descripcion}`
+}
+
+const limpiarSeleccionProducto = () => {
+    nuevoProducto.value = {
+        IdProducto: '',
+        Codigo: '',
+        Descripcion: '',
+        Unidades: 0,
+        Bolivianos: 0,
+    }
+    busquedaProducto.value = ''
+}
+
 // Validar campos obligatorios de cabecera
 const validarCamposCabecera = () => {
     const nuevosErrors = {}
@@ -91,8 +125,7 @@ const validarCamposCabecera = () => {
     return Object.keys(nuevosErrors).length === 0
 }
 
-// Guardar cabecera (solo aquí se activa la sección de productos)
-// Guardar cabecera (crea el ajuste si no existe, o actualiza si existe)
+// Guardar cabecera
 const guardarCabecera = async () => {
     if (!validarCamposCabecera()) {
         toast?.warning('Datos incompletos', 'Complete todos los campos obligatorios')
@@ -103,7 +136,6 @@ const guardarCabecera = async () => {
     try {
         let idAjuste = form.value.IdAjustesPrincipal
         
-        // 🔥 Si no hay ID, primero crear el ajuste
         if (!idAjuste) {
             const crearResponse = await axios.post('/gestion/inventario/ajustes/crear')
             if (crearResponse.data.success) {
@@ -114,7 +146,6 @@ const guardarCabecera = async () => {
             }
         }
         
-        // Actualizar cabecera
         await axios.put(`/gestion/inventario/ajustes/cabecera/${idAjuste}`, {
             IdFecha: form.value.IdFecha,
             ConceptoOperacion: form.value.ConceptoOperacion,
@@ -134,6 +165,7 @@ const guardarCabecera = async () => {
         guardandoCabecera.value = false
     }
 }
+
 // Cargar detalles existentes
 const cargarDetalles = () => {
     if (props.detalles && props.detalles.length) {
@@ -148,69 +180,43 @@ const cargarDetalles = () => {
     }
 }
 
-// Seleccionar producto
-const seleccionarProducto = (producto) => {
-    productoSeleccionado.value = {
-        id: producto.id,
-        Codigo: producto.Codigo,
-        Descripcion: producto.Descripcion
-    }
-    busquedaProducto.value = `${producto.Codigo} - ${producto.Descripcion}`
-}
-
-const limpiarSeleccionProducto = () => {
-    productoSeleccionado.value = null
-    busquedaProducto.value = ''
-    const unidadesInput = document.getElementById('unidades_input')
-    const bolivianosInput = document.getElementById('bolivianos_input')
-    const precioDisplay = document.getElementById('precio_display')
-    if (unidadesInput) unidadesInput.value = ''
-    if (bolivianosInput) bolivianosInput.value = ''
-    if (precioDisplay) precioDisplay.value = '0.00'
-}
-
 // Agregar producto
 const agregarProducto = async () => {
-    if (!productoSeleccionado.value) {
+    if (!nuevoProducto.value.IdProducto) {
         toast?.warning('Producto requerido', 'Seleccione un producto')
         return
     }
     
-    const unidades = parseFloat(document.getElementById('unidades_input')?.value) || 0
-    const bolivianos = parseFloat(document.getElementById('bolivianos_input')?.value) || 0
-    
-    if (unidades <= 0) {
+    if (nuevoProducto.value.Unidades <= 0) {
         toast?.warning('Unidades inválidas', 'Deben ser > 0')
         return
     }
-    if (bolivianos <= 0) {
+    if (nuevoProducto.value.Bolivianos <= 0) {
         toast?.warning('Monto inválido', 'Debe ser > 0')
         return
     }
-    
-    const productoData = productoSeleccionado.value
     
     guardandoDetalle.value = true
     try {
         const response = await axios.post('/gestion/inventario/ajustes/detalle', {
             IdAjustesPrincipal: form.value.IdAjustesPrincipal,
-            IdProducto: productoData.id,
-            Unidades: unidades,
-            Bolivianos: bolivianos,
+            IdProducto: nuevoProducto.value.IdProducto,
+            Unidades: nuevoProducto.value.Unidades,
+            Bolivianos: nuevoProducto.value.Bolivianos,
         })
         
         if (response.data.success) {
             detallesGrid.value.push({
                 IdAjustesPropiamente: response.data.detalle.IdAjustesPropiamente,
                 IdProducto: response.data.detalle.IdProducto,
-                Codigo: productoData.Codigo,
-                Descripcion: productoData.Descripcion,
-                Unidades: unidades,
-                Bolivianos: bolivianos,
+                Codigo: nuevoProducto.value.Codigo,
+                Descripcion: nuevoProducto.value.Descripcion,
+                Unidades: nuevoProducto.value.Unidades,
+                Bolivianos: nuevoProducto.value.Bolivianos,
             })
             
             limpiarSeleccionProducto()
-            toast?.success('Producto agregado', `${productoData.Descripcion} - ${unidades} unidades`)
+            toast?.success('Producto agregado', `${nuevoProducto.value.Descripcion} - ${nuevoProducto.value.Unidades} unidades`)
         }
     } catch (error) {
         console.error('Error:', error)
@@ -234,18 +240,6 @@ const eliminarProducto = async (index) => {
     } catch (error) {
         console.error('Error:', error)
         toast?.error('Error', 'No se pudo eliminar')
-    }
-}
-
-// Calcular precio
-const calcularPrecio = () => {
-    const unidades = parseFloat(document.getElementById('unidades_input')?.value) || 0
-    const bolivianos = parseFloat(document.getElementById('bolivianos_input')?.value) || 0
-    const precioDisplay = document.getElementById('precio_display')
-    if (precioDisplay && unidades > 0 && bolivianos > 0) {
-        precioDisplay.value = (bolivianos / unidades).toFixed(2)
-    } else if (precioDisplay) {
-        precioDisplay.value = '0.00'
     }
 }
 
@@ -284,16 +278,13 @@ const cancelarConfirmacion = () => {
 }
 
 // Inicializar
-// Inicializar
 onMounted(() => {
     cargarDetalles()
     
-    // Si hay detalles, significa que ya existía un ajuste con productos
     if (detallesGrid.value.length > 0) {
         cabeceraGuardada.value = true
     }
     
-    // Cargar nombres de personas seleccionadas
     if (form.value.IdRealizadoPor) {
         const persona = props.personas.find(p => p.id === form.value.IdRealizadoPor)
         if (persona) busquedaRealizadoPor.value = `${persona.ci} - ${persona.nombre}`
@@ -304,6 +295,19 @@ onMounted(() => {
     }
 })
 </script>
+
+<style scoped>
+/* 🔥 Eliminar flechas del input number */
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>
 
 <template>
     <div class="min-h-screen bg-gray-100 py-4 px-3">
@@ -422,20 +426,40 @@ onMounted(() => {
                     </div>
                     <div class="col-span-6 md:col-span-2">
                         <label class="block text-gray-600 mb-0.5">Unidades</label>
-                        <input id="unidades_input" type="number" step="0.01" @input="calcularPrecio" class="w-full border rounded px-2 py-1 text-xs" placeholder="0.00">
+                        <input 
+                            id="unidades_input" 
+                            type="number" 
+                            step="0.01" 
+                            v-model.number="nuevoProducto.Unidades"
+                            class="no-spinner w-full border rounded px-2 py-1 text-xs" 
+                            placeholder="0.00"
+                        >
                     </div>
                     <div class="col-span-6 md:col-span-3">
                         <label class="block text-gray-600 mb-0.5">Monto Bs</label>
-                        <input id="bolivianos_input" type="number" step="0.01" @input="calcularPrecio" class="w-full border rounded px-2 py-1 text-xs" placeholder="0.00">
+                        <input 
+                            id="bolivianos_input" 
+                            type="number" 
+                            step="0.01" 
+                            v-model.number="nuevoProducto.Bolivianos"
+                            class="no-spinner w-full border rounded px-2 py-1 text-xs" 
+                            placeholder="0.00"
+                        >
                     </div>
                     <div class="col-span-6 md:col-span-2">
                         <label class="block text-gray-600 mb-0.5">Precio Unit.</label>
-                        <input id="precio_display" type="text" readonly class="w-full border rounded px-2 py-1 text-xs bg-gray-100" value="0.00">
+                        <input 
+                            id="precio_display" 
+                            type="text" 
+                            readonly 
+                            class="w-full border rounded px-2 py-1 text-xs bg-gray-100" 
+                            :value="precioCalculado"
+                        >
                     </div>
                 </div>
 
                 <div class="flex justify-end mb-3">
-                    <button @click="agregarProducto" :disabled="guardandoDetalle || !productoSeleccionado" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded text-xs flex items-center gap-1">
+                    <button @click="agregarProducto" :disabled="guardandoDetalle || !nuevoProducto.IdProducto" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded text-xs flex items-center gap-1">
                         <i v-if="guardandoDetalle" class="fas fa-spinner fa-spin"></i>
                         <i v-else class="fas fa-plus"></i>
                         {{ guardandoDetalle ? 'Agregando...' : 'Agregar' }}

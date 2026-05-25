@@ -154,5 +154,34 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         return response()->json($actividades);
     })->name('api.actividades');
 
+    // ==================== VERIFICAR COMPOSICIÓN DE PRODUCTO ====================
     Route::post('/productos-venta/verificar-composicion', [ProductoVentaController::class, 'verificarComposicion']);
+    
+    // ==================== NIT PREDEFINIDO PARA VENTA ====================
+    Route::get('/venta/{ventaId}/nit-predefinido', function ($ventaId) {
+        try {
+            $venta = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdVentas', $ventaId)
+                ->first();
+            
+            if (!$venta) {
+                return response()->json(['success' => false, 'message' => 'Venta no encontrada']);
+            }
+            
+            $identificador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_identificador')
+                ->where('IdIdentificador', $venta->IdNIT)
+                ->first();
+            
+            return response()->json([
+                'success' => true,
+                'nit' => $identificador ? $identificador->CI_NIT : 0,
+                'nombre' => $identificador ? $identificador->Nombre : '',
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error en nit-predefinido: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    })->name('api.venta.nit-predefinido');
 });

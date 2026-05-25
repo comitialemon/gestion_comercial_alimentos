@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Gestion\Impuestos;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\PuntoVenta\PagoVentaController;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -91,93 +92,12 @@ class ReporteListadoFacturasController extends Controller
     }
 
     /**
-     * Reimprimir comprobante (Factura/Recibo)
+     * Reimprimir factura
      */
     public function reimprimir($id)
     {
-        $venta = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas as v')
-            ->leftJoin('todos_identificador as i', 'v.IdNIT', '=', 'i.IdIdentificador')
-            ->leftJoin('impuestos_ventas_comisionitas as c', 'v.IdComisionista', '=', 'c.IdComisionista')
-            ->leftJoin('todos_identificador as ic', 'c.IdIdentificador', '=', 'ic.IdIdentificador')
-            ->where('v.IdVentas', $id)
-            ->select(
-                'v.*',
-                'i.CI_NIT as NITCliente',
-                'i.Nombre as NombreCliente',
-                'ic.Nombre as NombreComisionista'
-            )
-            ->first();
-
-        if (!$venta) {
-            return redirect()->back()->with('error', 'Factura no encontrada');
-        }
-
-        // Obtener detalles de la venta
-        $detalles = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas_detalle as vd')
-            ->join('inventario_relacion_ventainventario as rvi', 'vd.idrelacionventainventario', '=', 'rvi.IdDetalleProducto')
-            ->where('vd.idventas', $id)
-            ->select(
-                'rvi.NombreCortoFactura as producto',
-                'vd.unidades',
-                'vd.preciounidades',
-                'vd.totalbolivianos'
-            )
-            ->get();
-
-        // Obtener métodos de pago
-        $metodosPago = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas_liquidacion as vl')
-            ->join('conta_cuenta as cc', 'vl.IdCuenta', '=', 'cc.IdCuenta')
-            ->where('vl.IdVentas', $id)
-            ->select('cc.Descripcion', 'vl.Bolivianos')
-            ->get();
-
-        // Obtener datos de la empresa
-        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_cliente')
-            ->where('IdCliente', $venta->IdCliente)
-            ->first();
-
-        $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_cliente_sucursal')
-            ->where('IdClienteSucursal', $venta->IdClienteSucursal)
-            ->first();
-
-        // Obtener información de la dosificación
-        $dosificacion = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas_dosificacion')
-            ->where('IdCliente', $venta->IdCliente)
-            ->where('IdSucursal', $venta->IdClienteSucursal)
-            ->where('Autorizacion', $venta->NumeroAutorizacion)
-            ->first();
-
-        // Obtener operador que realizó la venta
-        $operador = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_operador as op')
-            ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
-            ->where('op.IdOperador', $venta->IdOperadorIngresa)
-            ->first();
-
-        $tipoDocumento = 'FACTURA';
-        $autorizacion = $venta->NumeroAutorizacion;
-        
-        if ($dosificacion && $dosificacion->IdTipoDeDosificacion == 3) {
-            $tipoDocumento = 'RECIBO';
-            $autorizacion = 'SIN AUTORIZACION';
-        }
-
-        return view('pdfs.factura_ticket', [
-            'venta' => $venta,
-            'detalles' => $detalles,
-            'metodosPago' => $metodosPago,
-            'empresa' => $empresa,
-            'sucursal' => $sucursal,
-            'dosificacion' => $dosificacion,
-            'operador' => $operador,
-            'tipoDocumento' => $tipoDocumento,
-            'autorizacion' => $autorizacion,
-        ]);
+        // Crear una instancia del controlador de pago y llamar al método facturaPdf
+        $pagoController = app()->make(PagoVentaController::class);
+        return $pagoController->facturaPdf($id);
     }
 }
