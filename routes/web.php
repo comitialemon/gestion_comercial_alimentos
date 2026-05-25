@@ -257,7 +257,14 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::get('/gestion/reporte-listado-facturas/reimprimir/{id}', [ReporteListadoFacturasController::class, 'reimprimir'])
         ->name('gestion.reporte-listado-facturas.reimprimir');
         
-    
+    // Reporte de Lista de Precios
+    Route::prefix('gestion/reportes/lista-precios')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'index'])
+            ->name('gestion.reportes.lista-precios');
+        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportar'])
+            ->name('gestion.reportes.lista-precios.exportar');
+    });
+
     // ==================== COMPRAS ====================
     Route::prefix('gestion/compras')->group(function () {
         Route::get('/', [CompraController::class, 'index'])->name('compras.index');
