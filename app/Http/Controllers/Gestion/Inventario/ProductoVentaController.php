@@ -427,45 +427,88 @@ class ProductoVentaController extends Controller
     
     public function activar($id)
     {
-        $clienteId = session('cliente_id');
-        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
-        
-        // 🔥 Solo se puede activar si está APROBADO
-        if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
-            return redirect()->back()->with('error', 'El producto debe estar aprobado primero');
+        try {
+            $clienteId = session('cliente_id');
+            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+            
+            \Log::info('=== ACTIVAR PRODUCTO ===');
+            \Log::info('Producto ID: ' . $id);
+            \Log::info('estado_aprobacion en BD: ' . $producto->estado_aprobacion);
+            \Log::info('APROBACION_APROBADO vale: ' . ProductoVenta::APROBACION_APROBADO);
+            
+            // 🔥 Comparación correcta
+            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
+                ], 400);
+            }
+            
+            $tieneDetalle = RelacionVentaDetalle::where('IdDetalleProducto', $id)->exists();
+            
+            if (!$tieneDetalle) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede activar. El producto no tiene relación con inventario.'
+                ], 400);
+            }
+            
+            $producto->update([
+                'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto activado correctamente'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en activar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error en el servidor: ' . $e->getMessage()
+            ], 500);
         }
-        
-        $tieneDetalle = RelacionVentaDetalle::where('IdDetalleProducto', $id)->exists();
-        
-        if (!$tieneDetalle) {
-            return redirect()->back()->with('error', 'No se puede activar. El producto no tiene relación con inventario.');
-        }
-        
-        $producto->update([
-            'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
-            'IdOperadorActualiza' => session('operador_id'),
-            'FechaActualiza' => now(),
-        ]);
-        
-        return redirect()->back()->with('success', 'Producto activado correctamente');
     }
     public function desactivar($id)
     {
-        $clienteId = session('cliente_id');
-        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
-        
-        // 🔥 Solo se puede desactivar si está APROBADO
-        if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
-            return redirect()->back()->with('error', 'El producto debe estar aprobado primero');
+        try {
+            $clienteId = session('cliente_id');
+            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+            
+            \Log::info('=== DESACTIVAR PRODUCTO ===');
+            \Log::info('Producto ID: ' . $id);
+            \Log::info('estado_aprobacion en BD: ' . $producto->estado_aprobacion);
+            \Log::info('APROBACION_APROBADO vale: ' . ProductoVenta::APROBACION_APROBADO);
+            
+            // 🔥 Comparación correcta
+            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
+                ], 400);
+            }
+            
+            $producto->update([
+                'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto desactivado correctamente'
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en desactivar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error en el servidor: ' . $e->getMessage()
+            ], 500);
         }
-        
-        $producto->update([
-            'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
-            'IdOperadorActualiza' => session('operador_id'),
-            'FechaActualiza' => now(),
-        ]);
-        
-        return redirect()->back()->with('success', 'Producto desactivado correctamente');
     }
     public function catalogo(Request $request)
     {

@@ -30,19 +30,22 @@ const emit = defineEmits(['update:visible', 'close'])
 const movimientos = ref([])
 const cargandoMovimientos = ref(false)
 const saldoAnteriorModalRaw = ref(0)
+const errorMessage = ref('')
 
 const cerrar = () => {
     emit('update:visible', false)
     emit('close')
+    errorMessage.value = ''
 }
 
 const cargarMovimientos = async () => {
     if (!props.producto) return
     
     cargandoMovimientos.value = true
+    errorMessage.value = ''
     
     try {
-        const response = await axios.get('/api/inventario/reporte-movimientos', {
+        const response = await axios.get('/inventario/reporte-movimientos', {
             params: {
                 producto_id: props.producto.IdProducto,
                 sucursal_id: props.sucursalId,
@@ -50,10 +53,17 @@ const cargarMovimientos = async () => {
                 fecha_final: props.fechaFinal
             }
         })
-        movimientos.value = response.data.movimientos || []
-        saldoAnteriorModalRaw.value = response.data.saldo_anterior_raw || 0
+        
+        if (response.data.success) {
+            movimientos.value = response.data.movimientos || []
+            saldoAnteriorModalRaw.value = response.data.saldo_anterior_raw || 0
+        } else {
+            errorMessage.value = response.data.message || 'Error al cargar movimientos'
+            movimientos.value = []
+        }
     } catch (error) {
         console.error('Error cargando movimientos:', error)
+        errorMessage.value = error.response?.data?.message || error.message || 'Error de conexión'
         movimientos.value = []
         saldoAnteriorModalRaw.value = 0
     } finally {
@@ -63,20 +73,22 @@ const cargarMovimientos = async () => {
 
 // Recargar cuando se abre el modal
 watch(() => props.visible, (newVal) => {
-    if (newVal && props.producto) {
+    if (newVal && props.producto && props.sucursalId) {
         cargarMovimientos()
+    } else {
+        movimientos.value = []
+        errorMessage.value = ''
     }
 })
 
-// Formatear número (con signo negativo)
 const formatNumber = (num) => {
     if (num === undefined || num === null) return '0.00'
     const valor = Number(num)
+    if (isNaN(valor)) return '0.00'
     if (valor < 0) return `- ${Math.abs(valor).toFixed(2)}`
     return valor.toFixed(2)
 }
 
-// Clase para el color del saldo
 const getSaldoClass = (saldo) => {
     const saldoNum = Number(saldo) || 0
     if (saldoNum < 0) return 'text-red-600 font-bold'
@@ -88,7 +100,7 @@ const getSaldoClass = (saldo) => {
     <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4" @click.self="cerrar">
         <div class="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             
-            <!-- Header FIJO con color guindo DEFAULT -->
+            <!-- Header -->
             <div class="bg-guindo text-white p-3 sm:p-4 flex-shrink-0">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
@@ -107,11 +119,19 @@ const getSaldoClass = (saldo) => {
                 </div>
             </div>
             
-            <!-- Cuerpo con scroll y TÍTULOS FIJOS -->
+            <!-- Cuerpo -->
             <div class="flex-1 overflow-y-auto p-3 sm:p-4">
                 <div v-if="cargandoMovimientos" class="text-center py-12">
                     <i class="fas fa-spinner fa-spin text-3xl text-guindo"></i>
                     <p class="mt-3 text-gray-500">Cargando movimientos...</p>
+                </div>
+                
+                <div v-else-if="errorMessage" class="text-center py-12">
+                    <i class="fas fa-exclamation-triangle text-5xl text-red-400 mb-3 block"></i>
+                    <p class="text-red-600">{{ errorMessage }}</p>
+                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-guindo text-white rounded-lg text-sm">
+                        Reintentar
+                    </button>
                 </div>
                 
                 <div v-else-if="movimientos.length === 0" class="text-center py-12">
@@ -128,10 +148,9 @@ const getSaldoClass = (saldo) => {
                         </span>
                     </div>
                     
-                    <!-- Tabla de movimientos con CABECERA FIJA (sticky) -->
+                    <!-- Tabla de movimientos -->
                     <div class="relative overflow-x-auto" style="max-height: 50vh; overflow-y: auto;">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <!-- CABECERA FIJA - se queda pegada al hacer scroll -->
                             <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th class="px-2 py-2 sm:px-3 text-left text-xs font-medium text-gray-700 uppercase">Fecha</th>
@@ -147,7 +166,7 @@ const getSaldoClass = (saldo) => {
                                     <td class="px-2 py-2 sm:px-3 text-xs sm:text-sm text-gray-600 whitespace-nowrap">{{ mov.fecha }}</td>
                                     <td class="px-2 py-2 sm:px-3 text-xs sm:text-sm text-gray-600 whitespace-nowrap">{{ mov.IdDocumento || '-' }}</td>
                                     <td class="px-2 py-2 sm:px-3 text-xs sm:text-sm">
-                                        <span :class="mov.tipo === 'D' ? 'text-guindo' : 'text-red-600'" class="font-medium">
+                                        <span :class="mov.tipo === 'D' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'">
                                             {{ mov.tipo === 'D' ? 'ENTRADA' : 'SALIDA' }}
                                         </span>
                                     </td>
@@ -163,7 +182,7 @@ const getSaldoClass = (saldo) => {
                                         </div>
                                     </td>
                                     <td class="px-2 py-2 sm:px-3 text-right text-xs sm:text-sm font-mono">
-                                        <span :class="mov.tipo === 'D' ? 'text-guindo' : 'text-red-600'">
+                                        <span :class="mov.tipo === 'D' ? 'text-emerald-600' : 'text-red-600'">
                                             {{ mov.unidades_signo }}
                                         </span>
                                     </td>
@@ -177,7 +196,7 @@ const getSaldoClass = (saldo) => {
                 </div>
             </div>
             
-            <!-- Footer fijo -->
+            <!-- Footer -->
             <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0">
                 <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-guindo text-white rounded-lg text-sm hover:bg-guindo-700 transition">
                     <i class="fas fa-times mr-1"></i> Cerrar
@@ -186,3 +205,15 @@ const getSaldoClass = (saldo) => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.bg-guindo {
+    background-color: #61131a;
+}
+.text-guindo {
+    color: #61131a;
+}
+.border-guindo {
+    border-color: #61131a;
+}
+</style>

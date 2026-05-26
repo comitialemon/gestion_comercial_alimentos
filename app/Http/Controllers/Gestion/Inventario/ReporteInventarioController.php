@@ -20,7 +20,7 @@ class ReporteInventarioController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
 
-        // 🔥 VALOR POR DEFECTO: usar la sucursal de la sesión (contexto)
+        // VALOR POR DEFECTO: usar la sucursal de la sesión (contexto)
         $sucursalDefault = session('cliente_sucursal_id');
         
         // Verificar que la sucursal por defecto existe en las sucursales del usuario
@@ -46,7 +46,13 @@ class ReporteInventarioController extends Controller
                     'p.Descripcion'
                 )
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE -ip.Unidades END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'D' THEN ip.Unidades 
+                            WHEN UPPER(ip.D_H) = 'H' THEN -ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -55,7 +61,12 @@ class ReporteInventarioController extends Controller
                         AND tf.Fecha < '{$fechaInicial}'
                 ) as saldo_anterior"))
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE 0 END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'D' THEN ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -64,7 +75,12 @@ class ReporteInventarioController extends Controller
                         AND tf.Fecha BETWEEN '{$fechaInicial}' AND '{$fechaFinal}'
                 ) as ingresos"))
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'H' THEN ip.Unidades ELSE 0 END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'H' THEN ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -152,7 +168,6 @@ class ReporteInventarioController extends Controller
 
         $productos = collect();
 
-        // Solo consultar si hay una sucursal válida
         if ($sucursalId && $sucursalId > 0) {
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle as p')
@@ -162,7 +177,13 @@ class ReporteInventarioController extends Controller
                     'p.Descripcion'
                 )
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE -ip.Unidades END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'D' THEN ip.Unidades 
+                            WHEN UPPER(ip.D_H) = 'H' THEN -ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -171,7 +192,12 @@ class ReporteInventarioController extends Controller
                         AND tf.Fecha < '{$fechaInicial}'
                 ) as saldo_anterior"))
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE 0 END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'D' THEN ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -180,7 +206,12 @@ class ReporteInventarioController extends Controller
                         AND tf.Fecha BETWEEN '{$fechaInicial}' AND '{$fechaFinal}'
                 ) as ingresos"))
                 ->addSelect(DB::raw("(
-                    SELECT COALESCE(SUM(CASE WHEN ip.D_H = 'H' THEN ip.Unidades ELSE 0 END), 0)
+                    SELECT COALESCE(SUM(
+                        CASE 
+                            WHEN UPPER(ip.D_H) = 'H' THEN ip.Unidades 
+                            ELSE 0 
+                        END
+                    ), 0)
                     FROM inventario_propiamente ip
                     INNER JOIN todos_fecha tf ON ip.IdFecha = tf.IdFecha
                     WHERE ip.IdProducto = p.IdProducto
@@ -240,6 +271,7 @@ class ReporteInventarioController extends Controller
             'fechaFinal' => $fechaFinal,
             'soloConMovimiento' => $soloConMovimiento,
             'search' => $search,
+            'sucursalId' => $sucursalId, // ← PASAR LA SUCURSAL CORRECTA
         ]);
     }
 
@@ -255,6 +287,10 @@ class ReporteInventarioController extends Controller
             'fecha_final' => 'required|date',
         ]);
 
+        \Log::info('=== getMovimientos llamado ===');
+        \Log::info('Parametros:', $request->all());
+
+        // Obtener movimientos
         $movimientos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -272,13 +308,16 @@ class ReporteInventarioController extends Controller
                 'ip.Glosa',
                 'tio.Detalle as tipo_operacion',
                 'ip.Unidades',
-                'ip.D_H as tipo',
+                DB::raw("UPPER(TRIM(ip.D_H)) as tipo"),
                 'ia.Almacen as almacen',
-                'ip.IdFecha',
+                'tf.Fecha as fecha_raw',
                 'ip.IdDocumento'
             )
             ->get();
 
+        \Log::info('Movimientos encontrados: ' . $movimientos->count());
+
+        // Calcular saldo anterior (antes de la fecha inicial)
         $saldoAnterior = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -286,21 +325,39 @@ class ReporteInventarioController extends Controller
             ->where('ip.IdCliente', session('cliente_id'))
             ->where('ip.IdSucursal', $request->sucursal_id)
             ->where('tf.Fecha', '<', $request->fecha_inicial)
-            ->select(DB::raw("COALESCE(SUM(CASE WHEN ip.D_H = 'D' THEN ip.Unidades ELSE -ip.Unidades END), 0) as saldo"))
+            ->select(DB::raw("COALESCE(SUM(
+                CASE 
+                    WHEN UPPER(TRIM(ip.D_H)) = 'D' THEN ip.Unidades 
+                    WHEN UPPER(TRIM(ip.D_H)) = 'H' THEN -ip.Unidades 
+                    ELSE 0 
+                END
+            ), 0) as saldo"))
             ->value('saldo');
 
-        $saldo = $saldoAnterior;
+        $saldo = (float) $saldoAnterior;
+        
         foreach ($movimientos as &$mov) {
-            if ($mov->tipo === 'D') {
+            $tipo = strtoupper(trim($mov->tipo));
+            
+            if ($tipo === 'D') {
                 $mov->unidades_signo = '+' . number_format($mov->Unidades, 2);
-                $saldo += $mov->Unidades;
-            } else {
+                $saldo += (float) $mov->Unidades;
+                $mov->tipo_texto = 'ENTRADA';
+                $mov->tipo_clase = 'text-emerald-600';
+                $mov->tipo = 'D';
+            } elseif ($tipo === 'H') {
                 $mov->unidades_signo = '-' . number_format($mov->Unidades, 2);
-                $saldo -= $mov->Unidades;
+                $saldo -= (float) $mov->Unidades;
+                $mov->tipo_texto = 'SALIDA';
+                $mov->tipo_clase = 'text-red-600';
+                $mov->tipo = 'H';
+            } else {
+                $mov->unidades_signo = '?' . number_format($mov->Unidades, 2);
+                $mov->tipo_texto = 'OTRO';
+                $mov->tipo_clase = 'text-gray-600';
+                $mov->tipo = $tipo;
             }
             
-            $mov->tipo_texto = $mov->tipo === 'D' ? 'ENTRADA' : 'SALIDA';
-            $mov->tipo_clase = $mov->tipo === 'D' ? 'text-emerald-600' : 'text-red-600';
             $mov->unidades_formateado = number_format($mov->Unidades, 2);
             $mov->saldo_acumulado = number_format($saldo, 2);
             $mov->saldo_acumulado_raw = $saldo;
@@ -310,7 +367,7 @@ class ReporteInventarioController extends Controller
             'success' => true,
             'movimientos' => $movimientos,
             'saldo_anterior' => number_format($saldoAnterior, 2),
-            'saldo_anterior_raw' => $saldoAnterior,
+            'saldo_anterior_raw' => (float) $saldoAnterior,
             'producto_id' => $request->producto_id,
             'fecha_inicial' => $request->fecha_inicial,
             'fecha_final' => $request->fecha_final,

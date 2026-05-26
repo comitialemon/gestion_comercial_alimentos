@@ -16,22 +16,20 @@ const props = defineProps({
     search: String
 })
 
-// 🔥 Estado del formulario - INICIALIZAR con la sucursal seleccionada
+// Estado del formulario
 const sucursalId = ref(props.sucursalSeleccionada && props.sucursalSeleccionada > 0 ? props.sucursalSeleccionada : '')
 const mostrarListaSucursales = ref(false)
 const fechaInicial = ref(props.fechaInicial || new Date().toISOString().slice(0, 10))
 const fechaFinal = ref(props.fechaFinal || new Date().toISOString().slice(0, 10))
 const soloConMovimiento = ref(props.soloConMovimiento || false)
 const search = ref(props.search || '')
-
-// 🔥 Buscar el nombre de la sucursal seleccionada para mostrarlo en el input
 const sucursalSearch = ref('')
 
 // Estado del modal
 const modalVisible = ref(false)
 const productoSeleccionado = ref(null)
 
-// 🔥 Cargar el nombre de la sucursal por defecto
+// Cargar el nombre de la sucursal por defecto
 const cargarSucursalNombre = () => {
     if (sucursalId.value && props.sucursales) {
         const sucursalEncontrada = props.sucursales.find(s => s.id === sucursalId.value)
@@ -140,7 +138,6 @@ watch(search, () => {
     }, 500)
 })
 
-// 🔥 Cargar el nombre de la sucursal al montar el componente
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
     cargarSucursalNombre()
@@ -251,7 +248,7 @@ onUnmounted(() => {
                     <p class="text-sm text-gray-400 mt-2">Busca y selecciona una sucursal en el filtro superior</p>
                 </div>
 
-                <!-- Tabla de inventario - SOLO si hay sucursal seleccionada -->
+                <!-- Tabla de inventario -->
                 <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -291,7 +288,7 @@ onUnmounted(() => {
                         </table>
                     </div>
 
-                    <!-- Paginación responsiva -->
+                    <!-- Paginación -->
                     <div v-if="productos.links && productos.links.length > 1" class="px-3 py-2 sm:px-4 sm:py-3 border-t">
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
                             <div class="text-xs sm:text-sm text-gray-500">

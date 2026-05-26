@@ -12,7 +12,8 @@ const props = defineProps({
     fechaInicial: String,
     fechaFinal: String,
     soloConMovimiento: Boolean,
-    search: String
+    search: String,
+    sucursalId: Number, // ← Recibir la sucursal del controlador
 })
 
 // Estado del formulario
@@ -25,19 +26,8 @@ const search = ref(props.search || '')
 const modalVisible = ref(false)
 const productoSeleccionado = ref(null)
 
-// Obtener sucursalId del contexto (para el modal)
-const sucursalId = ref(null)
-
-// Cargar sucursalId de la sesión
-const cargarSucursalId = () => {
-    fetch('/check-session')
-        .then(res => res.json())
-        .then(data => {
-            // Obtener de la sesión, pero como no tenemos endpoint, usamos props o contexto
-            sucursalId.value = 44 // 👈 Reemplaza con tu lógica o pasa como prop
-        })
-        .catch(err => console.error('Error:', err))
-}
+// 🔥 Usar la sucursal que viene de la prop (es la de la sesión logueada)
+const sucursalId = ref(props.sucursalId)
 
 // Aplicar filtros
 const aplicarFiltros = () => {
@@ -49,7 +39,7 @@ const aplicarFiltros = () => {
     }, { preserveState: true, replace: true })
 }
 
-// Limpiar filtros (solo fechas y búsqueda, no sucursal)
+// Limpiar filtros
 const limpiarFiltros = () => {
     fechaInicial.value = new Date().toISOString().slice(0, 10)
     fechaFinal.value = new Date().toISOString().slice(0, 10)
@@ -97,8 +87,6 @@ watch(search, () => {
 onUnmounted(() => {
     if (timeout) clearTimeout(timeout)
 })
-
-cargarSucursalId()
 </script>
 
 <template>
@@ -193,7 +181,7 @@ cargarSucursalId()
                         </table>
                     </div>
 
-                    <!-- Paginación responsiva -->
+                    <!-- Paginación -->
                     <div v-if="productos.links && productos.links.length > 1" class="px-3 py-2 sm:px-4 sm:py-3 border-t">
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
                             <div class="text-xs sm:text-sm text-gray-500">

@@ -8,6 +8,7 @@ import PrecioSucursalTab from './components/PrecioSucursalTab.vue'
 import PrecioMayoristaTab from './components/PrecioMayoristaTab.vue'
 import InventarioDetalleTab from './components/InventarioDetalleTab.vue'
 import ModalCategorias from './components/ModalCategorias.vue'
+import ModalDuplicado from './components/ModalDuplicado.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -37,6 +38,10 @@ const eliminando = ref(false)
 // Estado del modal de categorías
 const modalCategoriasOpen = ref(false)
 const categoriaNombre = ref('')
+
+// 🔥 NUEVO: Estado para modal de duplicado
+const modalDuplicadoOpen = ref(false)
+const productoDuplicado = ref(null)
 
 // CONSTANTES DE ESTADO
 const ESTADO_ACTIVO = 0
@@ -126,7 +131,6 @@ const actualizarNombreCategoria = () => {
 // 🔥 INICIALIZAR CATEGORÍA AL CARGAR
 const inicializarCategoria = () => {
     if (props.producto?.id_categoria && props.categorias) {
-        // Buscar por id_categoria (puede venir como id o id_categoria)
         const categoriaEncontrada = props.categorias.find(c => 
             c.id === props.producto.id_categoria || 
             c.id_categoria === props.producto.id_categoria
@@ -138,7 +142,7 @@ const inicializarCategoria = () => {
     }
 }
 
-// 🔥 WATCH PARA CUANDO CAMBIA LA CATEGORÍA EN EL MODAL
+// 🔥 SELECCIONAR CATEGORÍA DESDE EL MODAL
 const seleccionarCategoriaModal = (categoria) => {
     form.id_categoria = categoria.id_categoria || categoria.id
     categoriaNombre.value = categoria.nombre
@@ -222,7 +226,7 @@ const guardarProducto = () => {
         axios.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion)
             .then(response => {
                 if (response.data.success) {
-                    toast?.success('Éxito', response.data.message || 'Producto atualizado correctamente')
+                    toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
                     setTimeout(() => {
                         window.location.reload()
                     }, 1500)
@@ -232,7 +236,7 @@ const guardarProducto = () => {
             })
             .catch(error => {
                 console.error('Errores:', error)
-                const message = error.response?.data?.message || 'Verifique os dados inseridos'
+                const message = error.response?.data?.message || 'Verifique los dados inseridos'
                 toast?.error('Error', message)
             })
     } else {
@@ -282,6 +286,7 @@ const descartarBorrador = async () => {
     }
 }
 
+// 🔥 NUEVA FUNCIÓN PARA VERIFICAR COMPOSICIÓN Y MOSTRAR MODAL
 const verificarComposicionAntesDeEnviar = async () => {
     if (detallesList.value.length === 0) {
         toast?.warning('Atención', 'Agregue productos al detalle antes de enviar a aprobación')
@@ -299,16 +304,9 @@ const verificarComposicionAntesDeEnviar = async () => {
         })
         
         if (response.data.existe) {
-            if (props.producto?.IdDetalleProducto && !props.editando) {
-                await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
-            }
-            
-            toast?.error('Producto Duplicado', `Ya existe un producto con la misma composición: "${response.data.producto.nombre}"`)
-            
-            setTimeout(() => {
-                router.get('/gestion/productos-venta')
-            }, 2000)
-            
+            // 🔥 MOSTRAR MODAL EN VEZ DE ELIMINAR DIRECTAMENTE
+            productoDuplicado.value = response.data.producto
+            modalDuplicadoOpen.value = true
             return false
         }
         return true
@@ -318,6 +316,26 @@ const verificarComposicionAntesDeEnviar = async () => {
     }
 }
 
+// 🔥 NUEVA FUNCIÓN PARA CANCELAR CREACIÓN (cuando el usuario confirma)
+const cancelarCreacion = async () => {
+    // Si es un producto nuevo (borrador), eliminarlo
+    if (props.producto?.IdDetalleProducto && !props.editando) {
+        try {
+            await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
+        } catch (error) {
+            console.error('Error eliminando borrador:', error)
+        }
+    }
+    
+    toast?.info('Información', 'Creación cancelada')
+    
+    // Redirigir al listado
+    setTimeout(() => {
+        router.get('/gestion/productos-venta')
+    }, 500)
+}
+
+// 🔥 MODIFICAR enviarAprobacion para usar la nueva lógica
 const enviarAprobacion = async () => {
     const composicionValida = await verificarComposicionAntesDeEnviar()
     if (!composicionValida) return
@@ -337,10 +355,22 @@ const enviarAprobacion = async () => {
 }
 
 const toggleEstado = async () => {
-    if (!props.editando) return
+    console.log('=== toggleEstado llamado ===')
+    console.log('props.editando:', props.editando)
+    console.log('props.producto:', props.producto)
+    
+    if (!props.editando) {
+        console.log('No editando, saliendo')
+        return
+    }
     
     const estadoActual = props.producto?.ActivoInactivo
     const accion = estadoActual === ESTADO_ACTIVO ? 'desactivar' : 'activar'
+    
+    console.log('Estado actual:', estadoActual)
+    console.log('Acción:', accion)
+    console.log('Producto ID:', props.producto?.IdDetalleProducto)
+    console.log('URL:', `/gestion/productos-venta/${props.producto?.IdDetalleProducto}/${accion}`)
     
     if (accion === 'activar') {
         if (detallesList.value.length === 0) {
@@ -350,13 +380,22 @@ const toggleEstado = async () => {
     }
     
     try {
-        await axios.post(`/gestion/productos-venta/${props.producto.IdDetalleProducto}/${accion}`)
-        toast?.success('Éxito', `Producto ${accion === 'activar' ? 'activado' : 'desactivado'} correctamente`)
-        setTimeout(() => {
-            window.location.reload()
-        }, 500)
+        const response = await axios.post(`/gestion/productos-venta/${props.producto.IdDetalleProducto}/${accion}`)
+        console.log('Respuesta:', response)
+        
+        if (response.data.success) {
+            toast?.success('Éxito', response.data.message || `Producto ${accion === 'activar' ? 'activado' : 'desactivado'} correctamente`)
+            setTimeout(() => {
+                window.location.reload()
+            }, 500)
+        } else {
+            toast?.error('Error', response.data.message || 'Error al cambiar estado')
+        }
     } catch (error) {
-        toast?.error('Error', error.response?.data?.message || 'Error al cambiar estado')
+        console.error('Error en toggleEstado:', error)
+        console.error('Error response:', error.response)
+        const message = error.response?.data?.message || error.message || 'Error de conexión'
+        toast?.error('Error', message)
     }
 }
 </script>
@@ -578,8 +617,16 @@ const toggleEstado = async () => {
         <ModalCategorias 
             v-model="modalCategoriasOpen"
             :categorias="categorias"
-            :categoria-seleccionada="categorias?.find(c => c.id === form.id_categoria)"
+            :categoria-seleccionada="categorias?.find(c => c.id === form.id_categoria || c.id_categoria === form.id_categoria)"
             @select="seleccionarCategoriaModal"
+        />
+
+        <!-- 🔥 MODAL DE DUPLICADO -->
+        <ModalDuplicado
+            v-model:visible="modalDuplicadoOpen"
+            :producto-existente="productoDuplicado"
+            @continuar="modalDuplicadoOpen = false"
+            @cancelar="cancelarCreacion"
         />
     </div>
 </template>

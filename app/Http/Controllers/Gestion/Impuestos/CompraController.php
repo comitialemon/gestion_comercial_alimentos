@@ -588,25 +588,32 @@ class CompraController extends Controller
 
     private function getFechasDisponibles()
     {
+        // Obtener fechas de la tabla principal
         $fechas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha')
             ->where('ActivoInactivo', 0)
             ->where('CierreSucursal', 0)
             ->where('CierrePermanente', 0)
-            ->select('IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d/%m/%Y') as fecha"))
+            ->select('IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d/%m/%Y') as fecha_display"), 'Fecha as fecha_raw')
             ->orderBy('IdFecha', 'desc')
             ->get();
 
+        // Obtener fechas auxiliares de la sucursal
         $fechasAux = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha_auxiliar_sucursal')
             ->join('todos_fecha', 'todos_fecha_auxiliar_sucursal.IdFecha', '=', 'todos_fecha.IdFecha')
             ->where('todos_fecha_auxiliar_sucursal.IdCliente', session('cliente_id'))
             ->where('todos_fecha_auxiliar_sucursal.IdSucursal', session('cliente_sucursal_id'))
-            ->select('todos_fecha.IdFecha as id', DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha"))
+            ->select('todos_fecha.IdFecha as id', DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha_display"), 'todos_fecha.Fecha as fecha_raw')
             ->orderBy('todos_fecha.IdFecha', 'desc')
             ->get();
 
-        return $fechas->merge($fechasAux)->unique('id');
+        $todasFechas = $fechas->merge($fechasAux)->unique('id');
+        
+        // 🔥 LOG para depuración
+        \Log::info('Fechas disponibles para combo:', $todasFechas->toArray());
+        
+        return $todasFechas;
     }
     
 }

@@ -397,9 +397,12 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::get('/gestion/inventario/reporte-inventario', [ReporteInventarioController::class, 'index'])
         ->name('gestion.inventario.reporte-inventario.index');
 
-    // 🔥 NUEVA RUTA: Reporte de inventario por sucursal actual (sin selector)
+    // Reporte de inventario por sucursal actual (sin selector)
     Route::get('/gestion/inventario/reporte-inventario/sucursal-actual', [ReporteInventarioController::class, 'porSucursal'])
         ->name('gestion.inventario.reporte-inventario.sucursal-actual');
+
+    // API para obtener movimientos de un producto
+    Route::get('/inventario/reporte-movimientos', [ReporteInventarioController::class, 'getMovimientos']);
 
     // ==================== INVENTARIO - AJUSTES ====================
     Route::prefix('gestion/inventario/ajustes')->group(function () {
@@ -424,8 +427,8 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
         Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
         Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
-        Route::post('/{id}/activar', [ProductoVentaController::class, 'activar'])->name('gestion.productos-venta.activar');
-        Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar'])->name('gestion.productos-venta.desactivar');
+        Route::post('/{id}/activar', [ProductoVentaController::class, 'activar']);
+        Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar']);
         Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
         // Endpoints para tabs
         Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');

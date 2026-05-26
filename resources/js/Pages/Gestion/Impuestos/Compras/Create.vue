@@ -346,9 +346,15 @@ onMounted(() => {
                         <label class="block text-gray-600 mb-0.5">Fecha *</label>
                         <select v-model="form.IdFecha" class="w-full border rounded px-2 py-1 text-xs">
                             <option value="">Seleccione</option>
-                            <option v-for="f in fechas" :key="f.id" :value="f.id">{{ f.fecha }}</option>
+                            <option v-for="f in fechas" :key="f.id" :value="f.id">
+                                {{ f.fecha_display }} 
+                            </option>
                         </select>
                         <p v-if="errors.IdFecha" class="text-red-500 text-[10px]">{{ errors.IdFecha }}</p>
+                        <!-- 🔥 Mostrar la fecha seleccionada para depuración -->
+                        <p v-if="form.IdFecha" class="text-xs text-gray-400 mt-1">
+                            ID seleccionado: {{ form.IdFecha }}
+                        </p>
                     </div>
 
                     <div>
