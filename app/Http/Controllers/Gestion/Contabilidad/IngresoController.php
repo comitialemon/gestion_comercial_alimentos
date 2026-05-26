@@ -136,31 +136,91 @@ class IngresoController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
+            // 🔥 OBTENER IDENTIFICADOR DEL OPERADOR
+            $identificadorOperador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->where('IdOperador', $operadorId)
+                ->value('IdIdentificador');
+
+            // 🔥 OBTENER UFV ACTUAL
+            $ufvActual = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_factorcambio')
+                ->where('IdFecha', $request->IdFecha)
+                ->where('IdMoneda', 3)
+                ->value('FactorCambio') ?? 1;
+
+            $totalMontoBolivianos = $request->TotalBolivianos;
+            $totalMontoUFV = round($totalMontoBolivianos / $ufvActual, 2);
+
             if ($request->has('IdIngreso') && $request->IdIngreso) {
-                // Actualización (mismo código que tenías)
+                // ==================== EDITAR INGRESO EXISTENTE ====================
                 $ingreso = Ingreso::porContexto()
                     ->where('ActivoInactivo', 0)
                     ->findOrFail($request->IdIngreso);
 
-                $numeroIngreso = $ingreso->NumeroIngreso;
-                $idDiario = $ingreso->IdDiario;
-
+                // Actualizar fecha en diario
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
-                    ->where('IdDiario', $idDiario)
+                    ->where('IdDiario', $ingreso->IdDiario)
                     ->update(['IdFecha' => $request->IdFecha]);
 
+                // 🔥 ELIMINAR asientos antiguos
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
-                    ->where('IdDiario', $idDiario)
+                    ->where('IdDiario', $ingreso->IdDiario)
                     ->delete();
-            } else {
-                // Nuevo ingreso (mismo código que tenías)
-                $ingreso = new Ingreso();
 
+                // 🔥 INSERTAR NUEVOS ASIENTOS (como en Scriptcase)
+                // Asiento DEBE (Caja)
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $ingreso->IdDiario,
+                        'IdCuenta' => $request->IdCuentaDebe,
+                        'Glosa' => $request->Glosa . ' - CI No ' . $ingreso->NumeroIngreso,
+                        'D_H' => 'D',
+                        'MontoBolivianos' => $totalMontoBolivianos,
+                        'TipoCambio' => 1,
+                        'MontoOtraMoneda' => $totalMontoBolivianos,
+                        'IdIdentificador' => $identificadorOperador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+
+                // Asiento HABER (Ingreso)
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $ingreso->IdDiario,
+                        'IdCuenta' => $request->IdCuentaHaber,
+                        'Glosa' => $request->Glosa . ' - CI No ' . $ingreso->NumeroIngreso,
+                        'D_H' => 'H',
+                        'MontoBolivianos' => $totalMontoBolivianos,
+                        'TipoCambio' => $ufvActual,
+                        'MontoOtraMoneda' => $totalMontoUFV,
+                        'IdIdentificador' => $request->IdIdentificador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+
+                // Actualizar ingreso
+                $ingreso->update([
+                    'IdFecha' => $request->IdFecha,
+                    'IdCuentaDebe' => $request->IdCuentaDebe,
+                    'IdCuentaHaber' => $request->IdCuentaHaber,
+                    'IdIdentificador' => $request->IdIdentificador,
+                    'Glosa' => $request->Glosa,
+                    'TotalBolivianos' => $request->TotalBolivianos,
+                    'ActivoInactivo' => 1,
+                ]);
+
+            } else {
+                // ==================== NUEVO INGRESO ====================
+                // Generar número de ingreso
                 $maxNumero = Ingreso::porContexto()->max('NumeroIngreso');
                 $numeroIngreso = ($maxNumero ?? 0) + 1;
 
+                // Generar número de diario
                 $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->where('IdCliente', $clienteId)
@@ -168,6 +228,7 @@ class IngresoController extends Controller
                     ->max('NumeroDiario');
                 $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
 
+                // Insertar diario
                 $idDiario = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->insertGetId([
@@ -183,27 +244,58 @@ class IngresoController extends Controller
                         'FechaEdita' => now(),
                     ]);
 
-                $ingreso->IdDiario = $idDiario;
-                $ingreso->NumeroIngreso = $numeroIngreso;
-                $ingreso->IdCliente = $clienteId;
-                $ingreso->IdSucursal = $sucursalId;
-                $ingreso->IdOperador = $operadorId;
+                // 🔥 INSERTAR ASIENTOS (como en Scriptcase)
+                // Asiento DEBE (Caja)
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $idDiario,
+                        'IdCuenta' => $request->IdCuentaDebe,
+                        'Glosa' => $request->Glosa . ' - CI No ' . $numeroIngreso,
+                        'D_H' => 'D',
+                        'MontoBolivianos' => $totalMontoBolivianos,
+                        'TipoCambio' => 1,
+                        'MontoOtraMoneda' => $totalMontoBolivianos,
+                        'IdIdentificador' => $identificadorOperador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+
+                // Asiento HABER (Ingreso)
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $idDiario,
+                        'IdCuenta' => $request->IdCuentaHaber,
+                        'Glosa' => $request->Glosa . ' - CI No ' . $numeroIngreso,
+                        'D_H' => 'H',
+                        'MontoBolivianos' => $totalMontoBolivianos,
+                        'TipoCambio' => $ufvActual,
+                        'MontoOtraMoneda' => $totalMontoUFV,
+                        'IdIdentificador' => $request->IdIdentificador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+
+                // Insertar ingreso
+                $ingreso = Ingreso::create([
+                    'IdDiario' => $idDiario,
+                    'NumeroIngreso' => $numeroIngreso,
+                    'IdFecha' => $request->IdFecha,
+                    'IdCuentaDebe' => $request->IdCuentaDebe,
+                    'IdCuentaHaber' => $request->IdCuentaHaber,
+                    'IdIdentificador' => $request->IdIdentificador,
+                    'Glosa' => $request->Glosa,
+                    'TotalBolivianos' => $request->TotalBolivianos,
+                    'ActivoInactivo' => 1,
+                    'IdCliente' => $clienteId,
+                    'IdSucursal' => $sucursalId,
+                    'IdOperador' => $operadorId,
+                ]);
             }
-
-            // ... resto del código de inserción de contabilidad (igual que tenías) ...
-
-            $ingreso->IdFecha = $request->IdFecha;
-            $ingreso->IdCuentaDebe = $request->IdCuentaDebe;
-            $ingreso->IdCuentaHaber = $request->IdCuentaHaber;
-            $ingreso->IdIdentificador = $request->IdIdentificador;
-            $ingreso->Glosa = $request->Glosa;
-            $ingreso->TotalBolivianos = $request->TotalBolivianos;
-            $ingreso->ActivoInactivo = 1;
-            $ingreso->save();
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // 🔥 Devolver JSON con la URL del PDF (como en Ajustes)
             return response()->json([
                 'success' => true,
                 'pdf_url' => route('ingresos.pdf', $ingreso->IdIngreso),
@@ -213,6 +305,7 @@ class IngresoController extends Controller
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             Log::error('Error al guardar ingreso: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
 
             return response()->json([
                 'success' => false,

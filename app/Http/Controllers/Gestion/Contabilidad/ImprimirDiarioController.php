@@ -207,163 +207,222 @@ class ImprimirDiarioController extends Controller
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-        $pdf->SetMargins(14, 20, 60);
+        $pdf->SetMargins(10, 15, 10);
+        $pdf->SetAutoPageBreak(true, 20);
         $pdf->AddPage();
         $pdf->SetFont('courier', '', 8);
         
-        // Encabezado
-        $pdf->SetXY(6, 5);
-        $pdf->Cell(10, 3, $empresa->Nombre ?? '', 0, 1, 'L');
+        // ==================== ENCABEZADO ====================
+        $y = 10;
         
-        $pdf->SetXY(6, 8);
-        $pdf->Cell(10, 3, $diario->sucursal->Nombre ?? '', 0, 1, 'L');
+        // Empresa
+        $pdf->SetXY(10, $y);
+        $pdf->SetFont('courier', 'B', 10);
+        $pdf->Cell(0, 4, $empresa->Nombre ?? '', 0, 1, 'L');
         
-        $pdf->SetXY(195, 5);
-        $pdf->Cell(10, 3, 'Pg. ' . $pdf->PageNo(), 0, 0, 'L');
+        $y = $pdf->GetY();
+        $pdf->SetXY(10, $y-1);
+        $pdf->SetFont('courier', '', 9);
+        $pdf->Cell(0, 4, $diario->sucursal->Nombre ?? '', 0, 1, 'L');
         
-        $pdf->SetXY(6, 11);
-        $pdf->Cell(18, 3, 'NUMERO DIARIO:', 0, 1, 'L');
-        $pdf->SetXY(30, 11);
-        $pdf->Cell(15, 3, $diario->NumeroDiario, 0, 1, 'L');
+        // Número de página
+        $pdf->SetXY(170, 10);
+        $pdf->SetFont('courier', '', 8);
+        $pdf->Cell(30, 4, 'Pag. ' . $pdf->PageNo(), 0, 0, 'R');
         
-        $pdf->SetXY(6, 15);
-        $pdf->Cell(15, 3, 'FECHA DIARIO:', 0, 1, 'L');
-        $pdf->SetXY(30, 15);
-        $pdf->Cell(15, 3, date('d/m/Y', strtotime($diario->fecha->Fecha ?? '')), 0, 1, 'L');
+        // Número y fecha de diario
+        $y = $pdf->GetY() + 6;
+        $pdf->SetXY(10, $y);
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->Cell(25, 5, 'NUMERO DIARIO:', 0, 0, 'L');
+        $pdf->SetFont('courier', '', 8);
+        $pdf->Cell(30, 5, $diario->NumeroDiario, 0, 0, 'L');
         
-        $pdf->SetXY(170, 11);
-        $pdf->Cell(15, 3, 'TIPO DIARIO:', 0, 1, 'C');
-        $pdf->SetXY(190, 11);
-        $pdf->Cell(15, 3, $diario->tipoDiario->TipoDiario ?? '', 0, 1, 'C');
+        $pdf->SetXY(120, $y);
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->Cell(20, 4, 'TIPO DIARIO: ', 0, 0, 'L');
+        $pdf->SetFont('courier', '', 8);
+        $pdf->Cell(40, 4, $diario->tipoDiario->TipoDiario ?? '', 0, 1, 'L');
         
-        $pdf->SetXY(80, 11);
-        $pdf->Cell(15, 3, 'Origen Diario:', 0, 1, 'C');
-        $pdf->SetXY(100, 11);
-        $pdf->Cell(15, 3, $operador->Iniciales ?? ($operador->Nombre ?? ''), 0, 1, 'C');
+        $y = $pdf->GetY();
+        $pdf->SetXY(10, $y);
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->Cell(25, 4, 'FECHA DIARIO:', 0, 0, 'L');
+        $pdf->SetFont('courier', '', 8);
+        $pdf->Cell(30, 4, date('d/m/Y', strtotime($diario->fecha->Fecha ?? '')), 0, 0, 'L');
         
-        // Líneas de cabecera
-        $pdf->SetXY(5, 17);
-        $pdf->Cell(15, 3, '----------------------------------------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->SetXY(120, $y);
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->Cell(20, 4, 'ORIGEN:', 0, 0, 'L');
+        $pdf->SetFont('courier', '', 8);
+        $pdf->Cell(40, 4, $operador->Iniciales ?? ($operador->Nombre ?? ''), 0, 1, 'L');
         
-        $pdf->SetXY(8, 20);
-        $pdf->Cell(15, 3, 'Cuenta', 0, 1, 'L');
-        $pdf->SetXY(10, 22);
-        $pdf->Cell(15, 3, 'Glosa', 0, 1, 'L');
-        $pdf->SetXY(105, 22);
-        $pdf->Cell(15, 3, 'Tipo Cambio', 0, 1, 'L');
-        $pdf->SetXY(160, 22);
-        $pdf->Cell(15, 3, 'Debe', 0, 1, 'L');
-        $pdf->SetXY(190, 22);
-        $pdf->Cell(15, 3, 'Haber', 0, 1, 'L');
-        $pdf->SetXY(12, 24);
-        $pdf->Cell(15, 3, 'Identificador', 0, 1, 'L');
+        // ==================== CABECERA DE TABLA ====================
+        $y = $pdf->GetY() + 8;
         
-        $pdf->SetXY(5, 26);
-        $pdf->Cell(15, 3, '----------------------------------------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->SetDrawColor(0, 0, 0);
+        $pdf->SetLineWidth(0.2);
+        $pdf->Line(10, $y, 200, $y);
         
-        // Asientos - con espacio Y+2 en lugar de Y+1
-        $y = 30; // Empezar un poco más abajo
+        //$y += 1;
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
+        $pdf->SetXY(47, $y);
+        $pdf->Cell(70, 5, 'Glosa', 0, 0, 'L');
+        $pdf->SetXY(119, $y);
+        $pdf->Cell(20, 5, 'Tipo Cambio', 0, 0, 'R');
+        $pdf->SetXY(145, $y);
+        $pdf->Cell(25, 5, 'Debe (Bs.)', 0, 0, 'R');
+        $pdf->SetXY(175, $y);
+        $pdf->Cell(25, 5, 'Haber (Bs.)', 0, 1, 'R');
+        
+        $y += 5;
+        $pdf->SetXY(10, $y);
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->Cell(35, 2, 'Identificador', 0, 1, 'L');
+        
+        $y += 3;
+        $pdf->Line(10, $y, 200, $y);
+        $y += 4;
+        
+        // ==================== ASIENTOS ====================
+        $pdf->SetFont('courier', '', 8);
+
         foreach ($diario->asientos as $asiento) {
             // Verificar espacio en página
-            if ($y > 245) {
+            if ($y > 250) {
                 $pdf->AddPage();
-                $y = 28;
-                // Reimprimir cabecera en nueva página
-                $pdf->SetXY(5, 17);
-                $pdf->Cell(15, 3, '----------------------------------------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
-                $pdf->SetXY(8, 20);
-                $pdf->Cell(15, 3, 'Cuenta', 0, 1, 'L');
-                $pdf->SetXY(10, 22);
-                $pdf->Cell(15, 3, 'Glosa', 0, 1, 'L');
-                $pdf->SetXY(105, 22);
-                $pdf->Cell(15, 3, 'Tipo Cambio', 0, 1, 'L');
-                $pdf->SetXY(160, 22);
-                $pdf->Cell(15, 3, 'Debe', 0, 1, 'L');
-                $pdf->SetXY(190, 22);
-                $pdf->Cell(15, 3, 'Haber', 0, 1, 'L');
-                $pdf->SetXY(12, 24);
-                $pdf->Cell(15, 3, 'Identificador', 0, 1, 'L');
-                $pdf->SetXY(5, 26);
-                $pdf->Cell(15, 3, '----------------------------------------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
-                $y = 30;
+                $y = 20;
+                
+                // Reimprimir cabecera
+                $pdf->SetDrawColor(0, 0, 0);
+                $pdf->Line(10, $y, 200, $y);
+                $y += 3;
+                $pdf->SetFont('courier', 'B', 8);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
+                $pdf->SetXY(25, $y);  // ← GLOSA más a la izquierda
+                $pdf->Cell(80, 5, 'Glosa', 0, 0, 'L');
+                $pdf->SetXY(119, $y);
+                $pdf->Cell(20, 5, 'Tipo Cambio', 0, 0, 'R');
+                $pdf->SetXY(145, $y);
+                $pdf->Cell(25, 5, 'Debe (Bs.)', 0, 0, 'R');
+                $pdf->SetXY(175, $y);
+                $pdf->Cell(25, 5, 'Haber (Bs.)', 0, 1, 'R');
+                $y += 5;
+                $pdf->SetXY(10, $y);
+                $pdf->SetFont('courier', 'B', 8);
+                $pdf->Cell(35, 5, 'Identificador', 0, 1, 'L');
+                $y += 3;
+                $pdf->Line(10, $y, 200, $y);
+                $y += 4;
+                $pdf->SetFont('courier', '', 8);
             }
             
-            // Cuenta (línea 1)
-            $pdf->SetXY(8, $y);
-            $pdf->Cell(14, 3, $asiento->cuenta->Cuenta ?? '', 0, 0, 'L');
-            $pdf->Cell(14, 3, $asiento->cuenta->Descripcion ?? '', 0, 0, 'L');
+            // Calcular altura necesaria para glosa e identificador
+            $glosa = $asiento->Glosa ?? '';
+            $identificador = ($asiento->identificador->CI_NIT ?? '') . ' - ' . ($asiento->identificador->Nombre ?? '');
             
-            // Tipo Cambio
-            $pdf->SetXY(105, $y);
-            $pdf->Cell(14, 3, number_format($asiento->TipoCambio, 4, ',', '.'), 0, 0, 'R');
+            // Altura de glosa (MultiCell) - ANCHO REDUCIDO a 55mm para no chocar con Tipo Cambio
+            $glosaHeight = $pdf->getStringHeight(55, $glosa);
+            $identHeight = $pdf->getStringHeight(150, $identificador);
+            $maxExtraHeight = max($glosaHeight, $identHeight);
             
-            // Debe o Haber
+            // Guardar posición Y actual
+            $currentY = $y;
+            
+            // ===== LÍNEA 1: Cuenta, Tipo Cambio, Debe/Haber =====
+            $cuentaStr = ($asiento->cuenta->Cuenta ?? '') . ' - ' . ($asiento->cuenta->Descripcion ?? '');
+            
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(35, 4, $cuentaStr, 0, 0, 'L');
+            
+            $pdf->SetXY(119, $y);
+            $pdf->Cell(20, 4, number_format($asiento->TipoCambio, 4, ',', '.'), 0, 0, 'R');
+            
             if ($asiento->D_H == 'D') {
-                $pdf->SetXY(160, $y);
-                $pdf->Cell(14, 3, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
+                $pdf->SetXY(145, $y);
+                $pdf->Cell(25, 4, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
+                $pdf->SetXY(175, $y);
+                $pdf->Cell(25, 4, '', 0, 0, 'R');
             } else {
-                $pdf->SetXY(190, $y);
-                $pdf->Cell(14, 3, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
+                $pdf->SetXY(145, $y);
+                $pdf->Cell(25, 4, '', 0, 0, 'R');
+                $pdf->SetXY(175, $y);
+                $pdf->Cell(25, 4, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
             }
             
-            // Glosa (línea 2 - más abajo)
-            $y += 4;
-            $pdf->SetXY(20, $y);
-            $pdf->MultiCell(80, 3, $asiento->Glosa, 0, 'L');
+            // ===== LÍNEA 2: Glosa (MultiLine) - AHORA EN X=25, ancho 55mm =====
+            $y += 5;
+            $pdf->SetXY(25, $y);  // ← MOVIDO DE 47 a 25 (más a la izquierda)
+            $pdf->MultiCell(55, 4, $glosa, 0, 'L');  // ← Ancho reducido de 70 a 55
+            $newY = $pdf->GetY();
             
-            // Identificador (línea 3)
-            $y = $pdf->GetY() + 2;
-            $pdf->SetXY(20, $y);
-            $pdf->Cell(18, 3, $asiento->identificador->CI_NIT ?? '', 0, 0, 'L');
-            $pdf->Cell(78, 3, $asiento->identificador->Nombre ?? '', 0, 0, 'L');
+            // ===== LÍNEA 3: Identificador (MultiLine) - AHORA EN X=25 =====
+            $pdf->SetXY(25, $newY);  // ← MOVIDO DE 47 a 25
+            $pdf->MultiCell(150, 4, $identificador, 0, 'L');
+            $newY2 = $pdf->GetY();
             
-            // Espacio entre asientos (Y+2)
-            $y = $pdf->GetY() + 5;
+            // Avanzar Y según la línea más alta
+            $y = max($newY, $newY2) + 2;
+            
+            // Línea separadora entre asientos
+            $pdf->SetDrawColor(200, 200, 200);
+            $pdf->Line(10, $y, 200, $y);
+            $y += 3;
         }
         
-        // Totales
-        $pdf->SetXY(112, $y + 6);
-        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+        // ==================== TOTALES ====================
+        $y += 6;
         
-        $pdf->SetXY(115, $y + 8);
-        $pdf->Cell(15, 3, 'TOTALES EN BOLIVIANOS ', 0, 1, 'L');
-        $pdf->SetXY(128, $y + 8);
-        $pdf->MultiCell(45, 3, number_format($totalDebe, 2, ',', '.'), 0, 'R');
-        $pdf->SetXY(153, $y + 8);
-        $pdf->MultiCell(45, 3, number_format($totalHaber, 2, ',', '.'), 0, 'R');
+        $pdf->SetDrawColor(0, 0, 0);
+        $pdf->SetLineWidth(0.2);
+        $pdf->Line(10, $y, 200, $y);
+        $y += 4;
         
-        $pdf->SetXY(112, $y + 10);
-        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
-        $pdf->SetXY(112, $y + 11);
-        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->SetFont('courier', 'B', 8);
+        $pdf->SetXY(110, $y);
+        $pdf->Cell(35, 5, 'TOTALES EN BOLIVIANOS:', 0, 0, 'R');
+        $pdf->SetXY(145, $y);
+        $pdf->Cell(25, 5, number_format($totalDebe, 2, ',', '.'), 0, 0, 'R');
+        $pdf->SetXY(175, $y);
+        $pdf->Cell(25, 5, number_format($totalHaber, 2, ',', '.'), 0, 1, 'R');
         
-        // Firmas
-        $yFinal = $y + 11;
+        $y += 6;
+        $pdf->Line(10, $y, 200, $y);
+        $y += 4;
+        $pdf->Line(10, $y, 200, $y);
         
-        // Realizado por (operador)
-        $pdf->SetXY(40, $yFinal + 30);
-        $pdf->Cell(15, 3, $operador->Nombre ?? '', 0, 1, 'C');
-        $pdf->SetXY(40, $yFinal + 33);
-        $pdf->Cell(15, 3, 'Realizado', 0, 1, 'C');
+        // ==================== FIRMAS ====================
+        $y = $y + 25;
+        
+        $pdf->SetFont('courier', '', 8);
+        
+        // Realizado por
+        $pdf->SetXY(25, $y);
+        $pdf->Cell(60, 4, $operador->Nombre ?? '', 0, 1, 'C');
+        $pdf->SetXY(25, $y + 5);
+        $pdf->Cell(60, 4, 'Realizado', 0, 1, 'C');
         
         // Revisado por
         if ($nombreRevisa) {
-            $pdf->SetXY(100, $yFinal + 30);
-            $pdf->Cell(15, 3, $nombreRevisa, 0, 1, 'C');
-            $pdf->SetXY(100, $yFinal + 33);
-            $pdf->Cell(15, 3, $cargoRevisa ?? 'Revisado', 0, 1, 'C');
-            $pdf->SetXY(100, $yFinal + 36);
-            $pdf->Cell(15, 3, 'Revisado', 0, 1, 'C');
+            $pdf->SetXY(95, $y);
+            $pdf->Cell(60, 4, $nombreRevisa, 0, 1, 'C');
+            $pdf->SetXY(95, $y + 5);
+            $pdf->Cell(60, 4, $cargoRevisa ?? 'Revisado', 0, 1, 'C');
+            $pdf->SetXY(95, $y + 10);
+            $pdf->Cell(60, 4, 'Revisado', 0, 1, 'C');
         }
         
         // Aprobado por
         if ($nombreAprueba) {
-            $pdf->SetXY(160, $yFinal + 30);
-            $pdf->Cell(15, 3, $nombreAprueba, 0, 1, 'C');
-            $pdf->SetXY(160, $yFinal + 33);
-            $pdf->Cell(15, 3, $cargoAprueba ?? 'Aprobado', 0, 1, 'C');
-            $pdf->SetXY(160, $yFinal + 36);
-            $pdf->Cell(15, 3, 'Aprobado', 0, 1, 'C');
+            $pdf->SetXY(165, $y);
+            $pdf->Cell(40, 4, $nombreAprueba, 0, 1, 'C');
+            $pdf->SetXY(165, $y + 5);
+            $pdf->Cell(40, 4, $cargoAprueba ?? 'Aprobado', 0, 1, 'C');
+            $pdf->SetXY(165, $y + 10);
+            $pdf->Cell(40, 4, 'Aprobado', 0, 1, 'C');
         }
         
         $pdf->Output("diario_{$diario->NumeroDiario}.pdf", 'I');
