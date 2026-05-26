@@ -53,16 +53,12 @@ class AnularFacturaController extends Controller
         ]);
 
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // Verificar que la factura existe y cumple las condiciones
         $factura = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->where('IdVentas', $request->IdVentas)
             ->where('IdCliente', $clienteId)
-            ->where('IdClienteSucursal', $sucursalId)
-            ->where('IdOperadorIngresa', $operadorId)
             ->where('IdEstado', 1)
             ->where('ActivoInactivo', 1)
             ->where('LiquidadoVendedor', 0)
@@ -78,7 +74,6 @@ class AnularFacturaController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 1. Cambiar estado de la factura a anulada (IdEstado = 2)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $request->IdVentas)
@@ -88,7 +83,6 @@ class AnularFacturaController extends Controller
                     'FechaUltimaActualizcion' => now(),
                 ]);
 
-            // 2. Eliminar movimientos de inventario (TipoOperacion = 2 = Venta)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
                 ->where('IdTipoDeOperacion', 2)
@@ -101,12 +95,11 @@ class AnularFacturaController extends Controller
                 'success' => true,
                 'message' => "La factura N° {$factura->NumeroFactura} fue anulada correctamente.",
                 'numero_factura' => $factura->NumeroFactura,
+                'id_ventas' => $factura->IdVentas,  // 🔥 AGREGAR ESTO
             ]);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-            Log::error('Error al anular factura: ' . $e->getMessage());
-            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al anular la factura: ' . $e->getMessage(),

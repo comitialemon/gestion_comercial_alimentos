@@ -557,6 +557,35 @@ class PagoVentaController extends Controller
             $pdf->SetMargins(4, 4, 4);
             $pdf->SetAutoPageBreak(true, 5);
             $pdf->AddPage();
+            
+            // 🔥 =============================================
+            // 🔥 SELLO DE "ANULADO" si la factura está anulada (IdEstado = 2)
+            // 🔥 =============================================
+            if ($venta->IdEstado == 2) {
+                // Guardar estado actual
+                $pdf->SetAlpha(0.3); // Transparencia 30%
+                $pdf->SetFont('helvetica', 'B', 38);
+                $pdf->SetTextColor(255, 0, 0); // Rojo
+                
+                // Calcular posición centrada
+                $anchoPagina = 72;
+                $anchoTexto = 55;
+                $xCentro = ($anchoPagina - $anchoTexto) / 2;
+                $yCentro = 45;
+                
+              
+                // Sello inclinado -25 grados
+                $pdf->StartTransform();
+                $pdf->Rotate(-25, $anchoPagina / 2, $yCentro);
+                $pdf->SetXY($xCentro, $yCentro);
+                $pdf->Cell($anchoTexto, 15, "ANULADO", 0, 1, 'C');
+                $pdf->StopTransform();
+                
+                // Restaurar valores
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetAlpha(1);
+            }
+            
             $pdf->SetFont('helvetica', '', 8);
             
             $x = 4;

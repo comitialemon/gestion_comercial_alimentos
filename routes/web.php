@@ -68,7 +68,7 @@ use App\Http\Controllers\Gestion\Contabilidad\BalanceGeneralA3Controller;
 use App\Http\Controllers\Gestion\Contabilidad\EstadoResultadosA3Controller;
 use App\Http\Controllers\Gestion\Contabilidad\AnalisisCuentaController;
 use App\Http\Controllers\Gestion\Contabilidad\ImprimirDiarioController;
-
+use App\Http\Controllers\Gestion\Impuestos\AnularFacturaAdminController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -179,11 +179,21 @@ Route::middleware(['auth.operador'])->group(function () {
 
     // ============= IMPUESTOS ===============
     // ==================== ANULAR FACTURA ====================
+    // Vista NORMAL (solo su sucursal)
     Route::get('/gestion/anular-factura', [AnularFacturaController::class, 'index'])
         ->name('gestion.anular-factura.index');
+        
     Route::post('/gestion/anular-factura/anular', [AnularFacturaController::class, 'anular'])
         ->name('gestion.anular-factura.anular');
 
+    // 🔥 Vista ADMIN
+    Route::get('/gestion/anular-factura/admin', [AnularFacturaAdminController::class, 'index'])
+        ->name('gestion.anular-factura.admin');
+
+    // 🔥 API: Obtener operadores por sucursal (para el select dinámico)
+    Route::get('/gestion/anular-factura/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])
+        ->name('gestion.anular-factura.operadores');
+        
     // ==================== MANTENIMIENTO MÉTODOS DE PAGO ====================
     Route::prefix('gestion/mantenimiento-metodos-pago')->group(function () {
         Route::get('/', [MantenimientoMetodosPagoController::class, 'index'])
