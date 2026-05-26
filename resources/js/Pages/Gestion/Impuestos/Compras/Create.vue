@@ -185,6 +185,9 @@ const agregarProducto = async () => {
         })
         
         if (response.data.success) {
+            // 🔥 CORREGIDO: Usar productoSeleccionado (que ya tenemos) para el toast
+            const nombreProducto = productoSeleccionado.value.Descripcion || 'Producto'
+            
             detallesGrid.value.push({
                 IdComprasDetalle: response.data.detalle.IdComprasDetalle,
                 IdProducto: response.data.detalle.IdProducto,
@@ -199,7 +202,8 @@ const agregarProducto = async () => {
             if (unidadesInput) unidadesInput.value = ''
             if (totalInput) totalInput.value = ''
             
-            toast?.success('Producto agregado', `${productoSeleccionado.value.Descripcion}`)
+            // 🔥 AHORA SÍ funcionará porque nombreProducto existe
+            toast?.success('Producto agregado', `${nombreProducto}`)
         }
     } catch (error) {
         console.error('Error:', error)
