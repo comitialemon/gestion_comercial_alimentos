@@ -14,12 +14,27 @@ use Illuminate\Support\Facades\Log;
 
 class IngresoController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $ingresos = Ingreso::porContexto()
-            ->with(['identificador', 'fecha'])
-            ->orderBy('IdIngreso', 'desc')
-            ->paginate(20);
+        $query = Ingreso::porContexto()
+            ->with(['identificador', 'fecha']);
+
+        // 🔥 FILTRAR POR ESTADO
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->where('ActivoInactivo', 1);
+            } elseif ($request->estado === 'inactivos') {
+                $query->where('ActivoInactivo', 0);
+            }
+        }
+
+        // 🔥 BUSCAR POR NÚMERO DE INGRESO
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where('NumeroIngreso', 'LIKE', "%{$buscar}%");
+        }
+
+        $ingresos = $query->orderBy('IdIngreso', 'desc')->paginate(20);
 
         // Agregar datos adicionales para la tabla
         foreach ($ingresos as $ingreso) {
@@ -36,6 +51,8 @@ class IngresoController extends Controller
 
         return Inertia::render('Gestion/Contabilidad/Ingresos/Index', [
             'ingresos' => $ingresos,
+            'filtroEstado' => $request->estado,
+            'buscar' => $request->buscar,
         ]);
     }
 
