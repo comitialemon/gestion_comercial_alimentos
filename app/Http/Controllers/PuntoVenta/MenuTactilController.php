@@ -90,7 +90,8 @@ class MenuTactilController extends Controller
                 $q->where('inventario_producto_categoria.id_categoria', $id);
             })
             ->orderBy('Detalle')
-            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
+            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta', 'ImagenProducto']);  // 🔥 AGREGAR 'ImagenProducto'
+
 
         // Calcular precio real para cada producto
         $productos = [];
@@ -135,7 +136,8 @@ class MenuTactilController extends Controller
                 'nombre' => $producto->nombre,
                 'precio_real' => $precioReal,
                 'precio_normal' => (float) $producto->PrecioVenta,
-                'tipo_precio' => $tipoPrecio
+                'tipo_precio' => $tipoPrecio,
+                'imagen' => $producto->ImagenProducto ? asset($producto->ImagenProducto) : null,
             ];
         }
 

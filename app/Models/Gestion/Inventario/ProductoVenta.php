@@ -11,11 +11,9 @@ class ProductoVenta extends Model
     protected $primaryKey = 'IdDetalleProducto';
     public $timestamps = false;
     
-    // 🔥 ESTADOS COMERCIALES (ActivoInactivo)
+    // CONSTANTES
     const COMERCIAL_ACTIVO = 0;
     const COMERCIAL_INACTIVO = 1;
-    
-    // 🔥 ESTADOS DE APROBACIÓN (estado_aprobacion)
     const APROBACION_BORRADOR = 0;
     const APROBACION_PENDIENTE = 1;
     const APROBACION_APROBADO = 2;
@@ -29,7 +27,7 @@ class ProductoVenta extends Model
         'PrecioVenta',
         'ActivoInactivo',
         'estado_aprobacion',
-        'ImagenProducto',
+        'ImagenProducto',  // 🔥 Cambiado: ahora es VARCHAR
         'IdCliente',
         'IdSucursal',
         'IdOperadorInserta',
@@ -47,10 +45,19 @@ class ProductoVenta extends Model
         'CierrePermanente' => 'integer',
     ];
 
-    protected $attributes = [
-        'CierrePermanente' => 0,
-        'estado_aprobacion' => 0,
-    ];
+    // 🔥 Accessor para obtener la URL completa de la imagen
+    public function getImagenUrlAttribute()
+    {
+        if ($this->ImagenProducto && !empty($this->ImagenProducto)) {
+            // Si la ruta ya tiene /storage/ al inicio, usarla directamente
+            if (str_starts_with($this->ImagenProducto, '/storage/')) {
+                return asset($this->ImagenProducto);
+            }
+            // Si no, asumir que está en storage
+            return asset('/storage/' . ltrim($this->ImagenProducto, '/'));
+        }
+        return null;
+    }
 
     public function scopePorContexto($query)
     {
@@ -72,7 +79,6 @@ class ProductoVenta extends Model
         return $this->belongsTo(CategoriaProducto::class, 'id_categoria', 'id_categoria');
     }
 
-    // 🔥 RELACIÓN PRINCIPAL CON CATEGORÍAS (FILTRA POR SUCURSAL ACTUAL)
     public function categorias()
     {
         return $this->belongsToMany(
@@ -80,7 +86,7 @@ class ProductoVenta extends Model
             'inventario_producto_categoria',
             'id_detalle_producto',
             'id_categoria'
-        )->wherePivot('id_sucursal', session('cliente_sucursal_id')); // 🔥 CLAVE: filtro por sucursal
+        )->wherePivot('id_sucursal', session('cliente_sucursal_id'));
     }
 
     public function solicitudAprobacion()

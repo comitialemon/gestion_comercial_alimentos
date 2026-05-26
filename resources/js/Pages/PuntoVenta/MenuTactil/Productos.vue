@@ -60,7 +60,6 @@ const abrirModal = (producto) => {
     }
     productoSeleccionado.value = producto
     cantidad.value = 1
-    // 🔥 Usar el precio real que ya viene en el producto
     precioUnitario.value = producto.precio_real
     tipoPrecio.value = producto.tipo_precio || 'default'
     modalVisible.value = true
@@ -156,6 +155,12 @@ onMounted(() => cargarCarrito())
                 <div class="text-center">
                     <span class="text-[10px] text-amber-600 font-semibold">COMISIONISTA</span>
                     <span class="text-xs font-medium text-guindo-800 block">{{ comisionista || 'Sin comisionista' }}</span>
+                    <div v-if="ruta.length" class="text-[9px] text-gray-400 mt-0.5">
+                        <span v-for="(item, idx) in ruta" :key="item.id">
+                            <span v-if="idx > 0" class="mx-0.5">/</span>
+                            {{ item.nombre }}
+                        </span>
+                    </div>
                 </div>
                 
                 <div class="flex items-center gap-1.5">
@@ -183,7 +188,7 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
-            <!-- Grid de productos con precio real -->
+            <!-- 🔥 Grid de productos con imágenes -->
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 <div 
                     v-for="prod in productos" 
@@ -191,19 +196,24 @@ onMounted(() => cargarCarrito())
                     @click="abrirModal(prod)"
                     class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100"
                 >
-                    <div class="h-20 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center">
-                        <i class="fas fa-box-open text-2xl text-guindo-400"></i>
+                    <!-- 🔥 IMAGEN DEL PRODUCTO -->
+                    <div class="h-20 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center overflow-hidden">
+                        <img 
+                            v-if="prod.imagen" 
+                            :src="prod.imagen" 
+                            class="w-full h-full object-cover"
+                            :alt="prod.nombre"
+                        >
+                        <i v-else class="fas fa-box-open text-2xl text-guindo-400"></i>
                     </div>
                     <div class="p-2 text-center">
                         <h3 class="font-medium text-xs text-gray-800 line-clamp-2 min-h-[32px]">{{ prod.nombre }}</h3>
                         <div class="mt-1 flex flex-col items-center">
-                            <!-- Precio real (con descuento) -->
                             <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold"
                                 :class="prod.tipo_precio === 'mayorista' ? 'bg-amber-100 text-amber-700' : 'bg-guindo-100 text-guindo-700'"
                             >
                                 {{ Number(prod.precio_real).toFixed(2) }} Bs
                             </span>
-                            <!-- Precio original tachado si es diferente -->
                             <span v-if="prod.precio_real !== prod.precio_normal" class="text-[9px] text-gray-400 line-through mt-0.5">
                                 {{ Number(prod.precio_normal).toFixed(2) }} Bs
                             </span>
@@ -217,15 +227,21 @@ onMounted(() => cargarCarrito())
                 <p class="text-sm">No hay productos en esta categoría</p>
             </div>
 
-            <!-- Modal compacto -->
+            <!-- 🔥 Modal compacto con imagen -->
             <div v-if="modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl max-w-sm w-full overflow-hidden shadow-xl">
                     <div class="bg-guindo-700 px-4 py-3">
                         <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-                                <i class="fas fa-box-open text-guindo-600 text-sm"></i>
+                            <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden">
+                                <img 
+                                    v-if="productoSeleccionado?.imagen" 
+                                    :src="productoSeleccionado.imagen" 
+                                    class="w-full h-full object-cover"
+                                    :alt="productoSeleccionado?.nombre"
+                                >
+                                <i v-else class="fas fa-box-open text-guindo-600 text-sm"></i>
                             </div>
-                            <div class="text-white">
+                            <div class="text-white flex-1">
                                 <h3 class="font-bold text-sm">{{ productoSeleccionado?.nombre }}</h3>
                                 <p class="text-[10px] opacity-75">
                                     {{ tipoPrecio === 'mayorista' ? 'Precio Mayorista' : tipoPrecio === 'sucursal' ? 'Precio Sucursal' : 'Precio Normal' }}

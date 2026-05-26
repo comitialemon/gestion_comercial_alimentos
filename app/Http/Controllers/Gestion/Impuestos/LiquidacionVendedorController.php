@@ -40,7 +40,7 @@ class LiquidacionVendedorController extends Controller
             'fechasPendientes' => $fechasPendientes,
         ]);
     }
-
+    
     /**
      * Obtener datos de liquidación para una fecha específica
      */
@@ -175,17 +175,17 @@ class LiquidacionVendedorController extends Controller
             ], 400);
         }
 
+        // 🔥 OBTENER LA FECHA REAL
         $fecha = Fecha::find($fechaId);
         $fechaStr = $fecha ? $fecha->Fecha : null;
 
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 1. Calcular suma de montos confirmados
             $sumaMontos = array_sum(array_column($request->conceptos, 'monto_confirmacion'));
             $diferencia = round($request->vEntasConfirma - $sumaMontos, 2);
 
-            // 2. Crear liquidación
+            // Crear liquidación
             $liquidacion = LiquidacionVendedor::create([
                 'IdFecha' => $fechaId,
                 'IdDiario' => 0,
@@ -201,7 +201,7 @@ class LiquidacionVendedorController extends Controller
                 'iDoperadorVendedor' => $operadorId,
             ]);
 
-            // 3. Guardar detalles
+            // Guardar detalles
             foreach ($request->conceptos as $concepto) {
                 LiquidacionVendedorDetalle::create([
                     'iDLiquidacionVendedor' => $liquidacion->iDLiquidacionVendedor,
@@ -211,7 +211,34 @@ class LiquidacionVendedorController extends Controller
                 ]);
             }
 
-            // 4. Crear diario contable
+            // =============================================
+            // CREAR DIARIO Y ASIENTOS (como Scriptcase)
+            // =============================================
+            
+            // Parámetros de cuentas
+            $parametrosCuentas = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_parametros_cuentas')
+                ->where('IdCliente', $clienteId)
+                ->first();
+
+            if (!$parametrosCuentas) {
+                throw new \Exception('No se encontraron parámetros de cuentas contables');
+            }
+
+            // UFV actual
+            $ufvActual = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_factorcambio')
+                ->where('IdFecha', $fechaId)
+                ->where('IdMoneda', 3)
+                ->value('FactorCambio') ?? 1;
+
+            // Identificador del operador
+            $identificadorOperador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->where('IdOperador', $operadorId)
+                ->value('IdIdentificador');
+
+            // Número de diario
             $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
                 ->where('IdCliente', $clienteId)
@@ -220,6 +247,7 @@ class LiquidacionVendedorController extends Controller
             
             $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
 
+            // Insertar diario
             $diarioId = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
                 ->insertGetId([
@@ -235,10 +263,235 @@ class LiquidacionVendedorController extends Controller
                     'FechaEdita' => now(),
                 ]);
 
-            // 5. Actualizar liquidación con IdDiario
+            // =============================================
+            // ASIENTOS CONTABLES
+            // =============================================
+            
+            $totalVentaFacturada = round($request->vEntasConfirma, 2);
+            $totalVentaFacturadaUFV = round($totalVentaFacturada / $ufvActual, 2);
+            
+            // Ventas Facturadas (HABER)
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => $parametrosCuentas->VentasFacturadas,
+                    'Glosa' => 'Liquidacion Ventas',
+                    'D_H' => 'H',
+                    'MontoBolivianos' => $totalVentaFacturada,
+                    'TipoCambio' => $ufvActual,
+                    'MontoOtraMoneda' => $totalVentaFacturadaUFV,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // Control Debito Fiscal (DEBE)
+            $ivaDF = round($totalVentaFacturada * 0.13, 2);
+            $ivaDF_UFV = round($ivaDF / $ufvActual, 2);
+            
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => $parametrosCuentas->ControlDFIVA,
+                    'Glosa' => 'Liquidacion Ventas',
+                    'D_H' => 'D',
+                    'MontoBolivianos' => $ivaDF,
+                    'TipoCambio' => $ufvActual,
+                    'MontoOtraMoneda' => $ivaDF_UFV,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // Debito Fiscal IVA (HABER)
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => $parametrosCuentas->DebitoFiscalIVA,
+                    'Glosa' => 'Liquidacion Ventas',
+                    'D_H' => 'H',
+                    'MontoBolivianos' => $ivaDF,
+                    'TipoCambio' => 1,
+                    'MontoOtraMoneda' => $ivaDF,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // IT Pagados (DEBE)
+            $itPagados = round($totalVentaFacturada * 0.03, 2);
+            $itPagados_UFV = round($itPagados / $ufvActual, 2);
+            
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => $parametrosCuentas->ITPagados,
+                    'Glosa' => 'Liquidacion Ventas',
+                    'D_H' => 'D',
+                    'MontoBolivianos' => $itPagados,
+                    'TipoCambio' => $ufvActual,
+                    'MontoOtraMoneda' => $itPagados_UFV,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // IT x Pagar (HABER)
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => $parametrosCuentas->ITxPagar,
+                    'Glosa' => 'Liquidacion Ventas',
+                    'D_H' => 'H',
+                    'MontoBolivianos' => $itPagados,
+                    'TipoCambio' => 1,
+                    'MontoOtraMoneda' => $itPagados,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // =============================================
+            // COSTO DE VENTA
+            // =============================================
+            
+            // Obtener ventas por FECHA (como Scriptcase)
+            $ventasLiquidadas = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdCliente', $clienteId)
+                ->where('IdClienteSucursal', $sucursalId)
+                ->where('IdOperadorIngresa', $operadorId)
+                ->where('LiquidadoVendedor', 0)
+                ->where('IdEstado', 1)
+                ->whereDate('FechaVenta', $fechaStr)
+                ->pluck('IdVentas')
+                ->toArray();
+
+            $totalCostoVentas = 0;
+            
+            foreach ($ventasLiquidadas as $idVenta) {
+                $costoVenta = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->where('IdTipoDeOperacion', 2)
+                    ->where('IdDocumento', $idVenta)
+                    ->sum('Bolivianos') ?? 0;
+                
+                $totalCostoVentas += $costoVenta;
+            }
+            
+            $totalCostoVentasUFV = round($totalCostoVentas / $ufvActual, 2);
+            
+            // Costo de Venta (DEBE)
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => 2618, // Cuenta Costo de Venta (ajustar según tu plan)
+                    'Glosa' => 'Liquidacion Ventas - Costo',
+                    'D_H' => 'D',
+                    'MontoBolivianos' => $totalCostoVentas,
+                    'TipoCambio' => $ufvActual,
+                    'MontoOtraMoneda' => $totalCostoVentasUFV,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // Inventarios (HABER)
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $diarioId,
+                    'IdCuenta' => 2694, // Cuenta Inventarios (ajustar según tu plan)
+                    'Glosa' => 'Liquidacion Ventas - Costo',
+                    'D_H' => 'H',
+                    'MontoBolivianos' => $totalCostoVentas,
+                    'TipoCambio' => 1,
+                    'MontoOtraMoneda' => $totalCostoVentas,
+                    'IdIdentificador' => $identificadorOperador,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // =============================================
+            // MÉTODOS DE PAGO
+            // =============================================
+            foreach ($request->conceptos as $conceptoData) {
+                $monto = $conceptoData['monto_confirmacion'];
+                if ($monto <= 0) continue;
+                
+                $cuentaConcepto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_liquidacion_concepto')
+                    ->where('IdConceptoLiquidacion', $conceptoData['id'])
+                    ->first();
+                
+                if (!$cuentaConcepto) continue;
+                
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $diarioId,
+                        'IdCuenta' => $cuentaConcepto->IdCuenta,
+                        'Glosa' => 'Liquidacion Ventas',
+                        'D_H' => 'D',
+                        'MontoBolivianos' => $monto,
+                        'TipoCambio' => 1,
+                        'MontoOtraMoneda' => $monto,
+                        'IdIdentificador' => $identificadorOperador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+            }
+
+            // =============================================
+            // DIFERENCIA
+            // =============================================
+            $cuentaPersonalVendedor = $parametrosCuentas->CuentaPersonalVendedor ?? 0;
+            $diferenciaAbs = abs($diferencia);
+            
+            if ($diferencia > 0) {
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $diarioId,
+                        'IdCuenta' => $cuentaPersonalVendedor,
+                        'Glosa' => 'Liquidacion Ventas',
+                        'D_H' => 'D',
+                        'MontoBolivianos' => $diferenciaAbs,
+                        'TipoCambio' => 1,
+                        'MontoOtraMoneda' => $diferenciaAbs,
+                        'IdIdentificador' => $identificadorOperador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+            } elseif ($diferencia < 0) {
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->insert([
+                        'IdDiario' => $diarioId,
+                        'IdCuenta' => $cuentaPersonalVendedor,
+                        'Glosa' => 'Liquidacion Ventas',
+                        'D_H' => 'H',
+                        'MontoBolivianos' => $diferenciaAbs,
+                        'TipoCambio' => 1,
+                        'MontoOtraMoneda' => $diferenciaAbs,
+                        'IdIdentificador' => $identificadorOperador,
+                        'IdActividad' => 1,
+                        'Deducible' => 'D',
+                    ]);
+            }
+
+            // =============================================
+            // ACTUALIZAR LIQUIDACIÓN Y VENTAS
+            // =============================================
             $liquidacion->update(['IdDiario' => $diarioId]);
 
-            // 6. Actualizar ventas con LiquidadoVendedor = IdDiario
+            // 🔥 ACTUALIZAR VENTAS POR FECHA (NO por IdFecha)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -251,7 +504,6 @@ class LiquidacionVendedorController extends Controller
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // 🔥 Devolver JSON con la URL del PDF
             return response()->json([
                 'success' => true,
                 'liquidacion_id' => $liquidacion->iDLiquidacionVendedor,
@@ -262,6 +514,7 @@ class LiquidacionVendedorController extends Controller
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             Log::error('Error al liquidar: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             
             return response()->json([
                 'success' => false,
@@ -301,7 +554,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdClienteSucursal', $sucursalId)
                 ->first();
 
-            // Número de diario
+            // 🔥 NÚMERO DE DIARIO (NO el ID)
             $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
                 ->where('IdDiario', $diarioId)
@@ -368,13 +621,10 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // INVENTARIO ACTUALIZADO (CORREGIDO - Como Scriptcase)
-            // Muestra TODOS los productos activos de la sucursal
+            // INVENTARIO ACTUALIZADO
             // =============================================
-            
             $inventarioConSaldo = [];
             
-            // Obtener TODOS los productos ACTIVOS de la sucursal
             $productosActivos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle')
                 ->where('IdCliente', $clienteId)
@@ -384,7 +634,6 @@ class LiquidacionVendedorController extends Controller
                 ->get(['IdProducto', 'Descripcion']);
 
             foreach ($productosActivos as $producto) {
-                // Saldo anterior (todas las operaciones con IdFecha < fecha de corte)
                 $saldoAnterior = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->where('IdProducto', $producto->IdProducto)
@@ -394,7 +643,6 @@ class LiquidacionVendedorController extends Controller
                     ->select(DB::raw('SUM(CASE WHEN D_H = "D" THEN Unidades ELSE 0 END) - SUM(CASE WHEN D_H = "H" THEN Unidades ELSE 0 END) as saldo'))
                     ->value('saldo') ?? 0;
                 
-                // Ingresos del día (compras)
                 $ingresosDia = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->where('IdProducto', $producto->IdProducto)
@@ -404,7 +652,6 @@ class LiquidacionVendedorController extends Controller
                     ->where('D_H', 'D')
                     ->sum('Unidades') ?? 0;
                 
-                // Salidas del día (ventas)
                 $salidasDia = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->where('IdProducto', $producto->IdProducto)
@@ -414,7 +661,6 @@ class LiquidacionVendedorController extends Controller
                     ->where('D_H', 'H')
                     ->sum('Unidades') ?? 0;
                 
-                // Solo mostrar productos que tienen movimiento O saldo diferente de cero
                 if ($ingresosDia != 0 || $salidasDia != 0 || $saldoAnterior != 0) {
                     $inventarioConSaldo[] = [
                         'producto' => $producto->Descripcion,
@@ -426,15 +672,38 @@ class LiquidacionVendedorController extends Controller
                 }
             }
 
-            // Ordenar alfabéticamente
             usort($inventarioConSaldo, function($a, $b) {
                 return strcmp($a['producto'], $b['producto']);
             });
 
             // =============================================
-            // GENERAR PDF (TCPDF TICKET FORMAT)
+            // GENERAR PDF (TAMAÑO DINÁMICO)
             // =============================================
-            $pdf = new \TCPDF('P', 'mm', array(100, 500));
+            
+            // Calcular altura aproximada del contenido
+            $totalAltura = 0;
+            
+            // Cabecera
+            $totalAltura += 60; // Header + tabla resumen
+            
+            // Ventas por comisionista
+            foreach ($ventasPorComisionista as $comisionistaData) {
+                $totalAltura += 15; // Título comisionista
+                foreach ($comisionistaData['items'] as $item) {
+                    $lineasProducto = ceil(strlen($item->producto) / 45);
+                    $totalAltura += $lineasProducto * 5;
+                }
+                $totalAltura += 10; // Total comisionista
+            }
+            
+            // Inventario
+            $totalAltura += 20; // Título inventario + encabezado
+            $totalAltura += count($inventarioConSaldo) * 6;
+            
+            // Altura total estimada (mínimo 150mm, máximo 500mm)
+            $alturaHoja = max(150, min(500, $totalAltura + 10));
+            
+            $pdf = new \TCPDF('P', 'mm', array(100, $alturaHoja));
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
             $pdf->SetMargins(5, 5, 5);
@@ -442,7 +711,9 @@ class LiquidacionVendedorController extends Controller
             $pdf->AddPage();
             $pdf->SetFont('times', '', 8);
 
+            // =============================================
             // CABECERA
+            // =============================================
             $pdf->SetFont('times', 'B', 10);
             $pdf->Cell(90, 5, "Arqueo de Venta", 0, 1, 'C');
             $pdf->Cell(90, 5, "Numero de Diario No " . ($numeroDiario ?? '-'), 0, 1, 'C');
@@ -451,7 +722,9 @@ class LiquidacionVendedorController extends Controller
             $pdf->Cell(90, 5, $fechaFormateada, 0, 1, 'C');
             $pdf->Cell(90, 5, $nombreVendedor, 0, 1, 'C');
 
+            // =============================================
             // TABLA RESUMEN CONCEPTOS
+            // =============================================
             $pdf->Ln(3);
             $pdf->SetFont('times', 'B', 8);
             $pdf->Cell(40, 5, "Concepto", 0, 0, 'L');
@@ -477,9 +750,12 @@ class LiquidacionVendedorController extends Controller
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedor, 2, '.', ''), 0, 0, 'R');
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedorConfirma, 2, '.', ''), 0, 1, 'R');
 
-            // LISTA DE VENTAS POR COMISIONISTA
+            // =============================================
+            // LISTA DE VENTAS POR COMISIONISTA (MULTILÍNEA)
+            // =============================================
             if ($pdf->GetY() > 240) {
                 $pdf->AddPage();
+                $pdf->SetFont('times', '', 8);
             }
             
             $pdf->Ln(5);
@@ -500,42 +776,71 @@ class LiquidacionVendedorController extends Controller
                 if ($pdf->GetY() > 250) {
                     $pdf->AddPage();
                     $pdf->SetFont('times', '', 7);
+                    // Reimprimir encabezado
+                    $pdf->SetFont('times', 'B', 8);
+                    $pdf->Cell(45, 5, "Producto", 0, 0, 'L');
+                    $pdf->Cell(12, 5, "Unid.", 0, 0, 'R');
+                    $pdf->Cell(12, 5, "P.U.", 0, 0, 'R');
+                    $pdf->Cell(15, 5, "Total", 0, 1, 'R');
+                    $pdf->Cell(90, 1, "", 'T', 1);
+                    $pdf->SetFont('times', '', 7);
                 }
                 
                 $pdf->Ln(2);
                 $pdf->SetFont('times', 'B', 8);
-                $nombreComisionista = substr($comisionistaData['nombre'], 0, 35);
+                $nombreComisionista = substr($comisionistaData['nombre'], 0, 40);
                 $pdf->Cell(90, 5, "Comisionista: " . $nombreComisionista, 0, 1, 'L');
                 $pdf->SetFont('times', '', 7);
 
                 foreach ($comisionistaData['items'] as $item) {
+                    // Verificar espacio en página
                     if ($pdf->GetY() > 265) {
                         $pdf->AddPage();
                         $pdf->SetFont('times', '', 7);
+                        // Reimprimir encabezado
+                        $pdf->SetFont('times', 'B', 8);
+                        $pdf->Cell(45, 5, "Producto", 0, 0, 'L');
+                        $pdf->Cell(12, 5, "Unid.", 0, 0, 'R');
+                        $pdf->Cell(12, 5, "P.U.", 0, 0, 'R');
+                        $pdf->Cell(15, 5, "Total", 0, 1, 'R');
+                        $pdf->Cell(90, 1, "", 'T', 1);
+                        $pdf->SetFont('times', '', 7);
                     }
                     
+                    // 🔥 PRODUCTO MULTILÍNEA
                     $productoTexto = '';
                     if ($item->grupo) {
                         $productoTexto = $item->grupo . ' - ';
                     }
                     $productoTexto .= $item->producto;
-                    if (strlen($productoTexto) > 40) {
-                        $productoTexto = substr($productoTexto, 0, 37) . '...';
-                    }
                     
                     $unidades = number_format($item->unidades, 2, '.', '');
                     $precio = number_format($item->preciounidades, 2, '.', '');
                     $totalLinea = number_format($item->total_linea, 2, '.', '');
                     
-                    $pdf->Cell(45, 4, $productoTexto, 0, 0, 'L');
-                    $pdf->Cell(12, 4, $unidades, 0, 0, 'R');
-                    $pdf->Cell(12, 4, $precio, 0, 0, 'R');
-                    $pdf->Cell(15, 4, $totalLinea, 0, 1, 'R');
+                    // Guardar posición Y actual
+                    $yAntes = $pdf->GetY();
+                    
+                    // 🔥 MultiCell para producto (multilínea, ancho 45mm)
+                    $pdf->MultiCell(45, 4, $productoTexto, 0, 'L', false);
+                    
+                    // Obtener la altura que usó MultiCell
+                    $yDespues = $pdf->GetY();
+                    $alturaUsada = $yDespues - $yAntes;
+                    
+                    // Posicionar en la misma fila para los demás campos
+                    $pdf->SetXY(50, $yAntes);
+                    $pdf->Cell(12, $alturaUsada, $unidades, 0, 0, 'R');
+                    $pdf->Cell(12, $alturaUsada, $precio, 0, 0, 'R');
+                    $pdf->Cell(15, $alturaUsada, $totalLinea, 0, 1, 'R');
+                    
                     $totalGeneralVentas += $item->total_linea;
                 }
 
+                // Total por comisionista
                 if ($pdf->GetY() > 265) {
                     $pdf->AddPage();
+                    $pdf->SetFont('times', '', 7);
                 }
                 
                 $pdf->SetFont('times', 'B', 7);
@@ -545,8 +850,10 @@ class LiquidacionVendedorController extends Controller
                 $pdf->SetFont('times', '', 7);
             }
 
+            // Total general
             if ($pdf->GetY() > 265) {
                 $pdf->AddPage();
+                $pdf->SetFont('times', '', 7);
             }
             
             $pdf->SetFont('times', 'B', 8);
@@ -554,10 +861,10 @@ class LiquidacionVendedorController extends Controller
             $pdf->Cell(15, 5, number_format($totalGeneralVentas, 2, '.', ''), 'T', 1, 'R');
 
             // =============================================
-            // INVENTARIO ACTUALIZADO (SECCIÓN DEL PDF)
+            // INVENTARIO ACTUALIZADO
             // =============================================
             if (count($inventarioConSaldo) > 0) {
-                if ($pdf->GetY() > 240) {
+                if ($pdf->GetY() > 230) {
                     $pdf->AddPage();
                 }
                 
@@ -580,7 +887,7 @@ class LiquidacionVendedorController extends Controller
                         $pdf->AddPage();
                         $pdf->SetFont('times', '', 7);
                         
-                        // Reimprimir encabezado
+                        // Reimprimir encabezado inventario
                         $pdf->SetFont('times', 'B', 8);
                         $pdf->Cell(45, 5, "Producto", 0, 0, 'L');
                         $pdf->Cell(12, 5, "Sal.Ini.", 0, 0, 'R');
@@ -591,12 +898,17 @@ class LiquidacionVendedorController extends Controller
                         $pdf->SetFont('times', '', 7);
                     }
                     
-                    $nombreProducto = substr($item['producto'], 0, 40);
-                    $pdf->Cell(45, 4, $nombreProducto, 0, 0, 'L');
-                    $pdf->Cell(12, 4, number_format($item['saldo_anterior'], 2, '.', ''), 0, 0, 'R');
-                    $pdf->Cell(12, 4, number_format($item['ingresos'], 2, '.', ''), 0, 0, 'R');
-                    $pdf->Cell(12, 4, number_format($item['salidas'], 2, '.', ''), 0, 0, 'R');
-                    $pdf->Cell(12, 4, number_format($item['saldo_actual'], 2, '.', ''), 0, 1, 'R');
+                    // 🔥 PRODUCTO MULTILÍNEA PARA INVENTARIO
+                    $yAntes = $pdf->GetY();
+                    $pdf->MultiCell(45, 4, $item['producto'], 0, 'L', false);
+                    $yDespues = $pdf->GetY();
+                    $alturaUsada = $yDespues - $yAntes;
+                    
+                    $pdf->SetXY(50, $yAntes);
+                    $pdf->Cell(12, $alturaUsada, number_format($item['saldo_anterior'], 2, '.', ''), 0, 0, 'R');
+                    $pdf->Cell(12, $alturaUsada, number_format($item['ingresos'], 2, '.', ''), 0, 0, 'R');
+                    $pdf->Cell(12, $alturaUsada, number_format($item['salidas'], 2, '.', ''), 0, 0, 'R');
+                    $pdf->Cell(12, $alturaUsada, number_format($item['saldo_actual'], 2, '.', ''), 0, 1, 'R');
                 }
             }
 
@@ -625,6 +937,11 @@ class LiquidacionVendedorController extends Controller
             ->with(['fecha', 'detalles.concepto'])
             ->orderBy('iDLiquidacionVendedor', 'desc')
             ->paginate(20);
+        
+        // 🔥 AGREGAR NÚMERO DE DIARIO A CADA LIQUIDACIÓN
+        foreach ($liquidaciones as $liquidacion) {
+            $liquidacion->numero_diario = $liquidacion->numero_diario;
+        }
         
         // Obtener el nombre del operador actual
         $operador = DB::connection('mysql_gestion_comercial_alimentos')

@@ -4,6 +4,7 @@ namespace App\Models\Gestion\Impuestos;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Gestion\Todos\Fecha;  // 👈 Importante: está en Todos, no en Impuestos
+use Illuminate\Support\Facades\DB;
 
 class LiquidacionVendedor extends Model
 {
@@ -66,6 +67,20 @@ class LiquidacionVendedor extends Model
     public function scopeContabilizadas($query)
     {
         return $query->where('ActivoInactivo', 1);
+    }
+
+    public function getNumeroDiarioAttribute()
+    {
+        if (!$this->IdDiario || $this->IdDiario == 0) {
+            return null;
+        }
+        
+        $numero = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('conta_diario')
+            ->where('IdDiario', $this->IdDiario)
+            ->value('NumeroDiario');
+        
+        return $numero ?? null;
     }
     
 }

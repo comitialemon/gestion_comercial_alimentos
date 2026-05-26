@@ -20,6 +20,7 @@ class NuevaVentaTactilController extends Controller
             ->where('IdClienteSucursal', session('cliente_sucursal_id'))
             ->where('IdOperadorIngresa', session('operador_id'))
             ->where('ActivoInactivo', 0)
+            ->where('NumeroFactura', 0)
             ->first();
         
         if ($ventaActiva) {
@@ -44,7 +45,6 @@ class NuevaVentaTactilController extends Controller
             ->orderBy('Orden')
             ->get(['IdLugar as id', 'Lugar as nombre']);
 
-        // Obtener NIT de la empresa (cliente logueado)
         $clienteNit = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
             ->where('IdCliente', session('cliente_id'))
@@ -62,9 +62,14 @@ class NuevaVentaTactilController extends Controller
                 'esCliente' => ($c->identificador->CI_NIT ?? null) == $clienteNit,
             ]);
 
+        // 🔥 OBTENER LA FECHA ACTUAL (para mostrar al vendedor)
+        $fechaHoy = date('Y-m-d');
+        $fechaFormateada = date('d/m/Y');
+
         return Inertia::render('PuntoVenta/NuevaVentaTactil', [
             'lugaresVenta' => $lugaresVenta,
             'comisionistas' => $comisionistas,
+            'fechaFormateada' => $fechaFormateada,
         ]);
     }
 
@@ -75,47 +80,55 @@ class NuevaVentaTactilController extends Controller
             'comisionista_id' => 'required|integer|exists:impuestos_ventas_comisionitas,IdComisionista',
         ]);
 
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+
         $comisionista = Comisionista::with('identificador')
             ->findOrFail($request->comisionista_id);
 
-        // Obtener NIT de la empresa (cliente logueado)
+        // Obtener NIT de la empresa
         $clienteNit = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
-            ->where('IdCliente', session('cliente_id'))
+            ->where('IdCliente', $clienteId)
             ->value('NIT');
 
-        // Determinar el IdNIT para la venta
-        // Si el comisionista tiene el mismo NIT que el cliente, usar 0 (sin NIT)
-        // Sino, usar el IdIdentificador del comisionista
+        // Determinar el IdNIT para la venta (como en Scriptcase)
         $idNIT = $comisionista->IdIdentificador;
         if ($comisionista->identificador && $comisionista->identificador->CI_NIT == $clienteNit) {
-            // Buscar o crear identificador con NIT 0
             $identificadorCero = Identificador::where('CI_NIT', 0)->first();
             if (!$identificadorCero) {
                 $identificadorCero = Identificador::create([
                     'CI_NIT' => 0,
                     'Nombre' => 'SIN NIT',
-                    'IdOperadorIngreso' => session('operador_id'),
+                    'IdOperadorIngreso' => $operadorId,
                     'FechaIngreso' => now(),
-                    'IdOperadorEdita' => session('operador_id'),
+                    'IdOperadorEdita' => $operadorId,
                     'FechaEdita' => now(),
                 ]);
             }
             $idNIT = $identificadorCero->IdIdentificador;
         }
 
+        // Determinar lugar de venta (Mayorista o Mostrador)
+        $lugarVentaTexto = 'Mostrador';
+        if ($comisionista->identificador && $comisionista->identificador->CI_NIT != $clienteNit) {
+            $lugarVentaTexto = 'Mayorista';
+        }
+
+        // 🔥 CREAR LA VENTA COMO EN SCRIPTCASE (usando NOW() para FechaVenta)
         $ventaId = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->insertGetId([
-                'IdCliente' => session('cliente_id'),
-                'IdClienteSucursal' => session('cliente_sucursal_id'),
-                'IdOperadorIngresa' => session('operador_id'),
-                'IdOperadorActualiza' => session('operador_id'),
-                'FechaVenta' => now()->format('Y-m-d H:i:s'),
-                'LugarVenta' => $request->lugar_venta_id,
+                'IdCliente' => $clienteId,
+                'IdClienteSucursal' => $sucursalId,
+                'IdOperadorIngresa' => $operadorId,
+                'IdOperadorActualiza' => $operadorId,
+                'FechaVenta' => now(),  // 🔥 COMO EN SCRIPTCASE
+                'LugarVenta' => $lugarVentaTexto,
                 'IdComisionista' => $request->comisionista_id,
                 'IdNIT' => $idNIT,
-                'IdEstado' => 0,
+                'IdEstado' => 1,  // 🔥 COMO EN SCRIPTCASE (1 = activo)
                 'ActivoInactivo' => 0,
                 'NumeroFactura' => 0,
                 'NumeroAutorizacion' => '0',
