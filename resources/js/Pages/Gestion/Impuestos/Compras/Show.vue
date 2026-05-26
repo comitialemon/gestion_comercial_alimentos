@@ -100,13 +100,13 @@ const volver = () => {
                                 <tr v-for="detalle in compra.detalles" :key="detalle.IdComprasDetalle" class="hover:bg-gray-50">
                                     <td class="px-4 py-2 text-sm font-mono">{{ detalle.producto?.Codigo || '-' }}</td>
                                     <td class="px-4 py-2 text-sm">{{ detalle.producto?.Descripcion || '-' }}</td>
-                                    <td class="px-4 py-2 text-sm text-right">{{ detalle.Unidades.toFixed(4) }}</td>
-                                    <td class="px-4 py-2 text-sm text-right">{{ detalle.Precio.toFixed(2) }}</td>
-                                    <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">{{ detalle.TotalBolivianos.toFixed(2) }}</td>
+                                    <td class="px-4 py-2 text-sm text-right">{{ Number(detalle.Unidades || 0).toFixed(4) }}</td>
+                                    <td class="px-4 py-2 text-sm text-right">{{ Number(detalle.Precio || 0).toFixed(2) }}</td>
+                                    <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">{{ Number(detalle.TotalBolivianos || 0).toFixed(2) }}</td>
                                 </tr>
                                 <tr class="bg-gray-50">
                                     <td colspan="4" class="px-4 py-2 text-right font-bold">TOTAL:</td>
-                                    <td class="px-4 py-2 text-right font-bold text-guindo-600">{{ compra.ImporteFactura.toFixed(2) }} Bs</td>
+                                    <td class="px-4 py-2 text-right font-bold text-guindo-600">{{ Number(compra.ImporteFactura || 0).toFixed(2) }} Bs</td>
                                 </tr>
                             </tbody>
                         </table>
