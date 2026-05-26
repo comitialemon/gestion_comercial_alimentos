@@ -372,6 +372,10 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
         Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
         Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
+        
+        // 🔥 NUEVAS RUTAS para gestión de estados
+        Route::get('/gestion-estado', [IngresoController::class, 'gestionEstado'])->name('ingresos.gestion-estado');
+        Route::post('/{id}/cambiar-estado', [IngresoController::class, 'cambiarEstado'])->name('ingresos.cambiar-estado');
     });
 
     // ==================== INVENTARIO - CATÁLOGOS ====================
