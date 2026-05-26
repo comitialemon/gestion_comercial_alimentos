@@ -424,9 +424,19 @@ class CompraController extends Controller
                 'almacen', 
                 'proveedor', 
                 'fecha',
-                'detalles.producto'  // ← Esto es CLAVE: carga la relación producto
+                'detalles.producto'
             ])
             ->findOrFail($id);
+
+        // Obtener el número de diario
+        $numeroDiario = '-';
+        if ($compra->IdDiario) {
+            $diario = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario')
+                ->where('IdDiario', $compra->IdDiario)
+                ->value('NumeroDiario');
+            $numeroDiario = $diario ?? '-';
+        }
 
         // Crear PDF
         $pdf = new \TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
@@ -450,11 +460,22 @@ class CompraController extends Controller
         $pdf->SetFont('courier', 'B', 16);
         $pdf->Cell(18, 3, 'No ' . $compra->NumeroCorrelativo, 0, 1, 'L');
 
-        // Número de diario
+        // Número de diario (CORREGIDO)
         $y = $pdf->GetY();
         $pdf->SetXY(179, $y + 1);
         $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(18, 3, 'Diario : ' . ($compra->IdDiario ?? '-'), 0, 1, 'L');
+        // Obtener el número de diario desde la tabla conta_diario
+        $numeroDiario = $compra->IdDiario ?? '-';
+        if ($compra->IdDiario && $compra->IdDiario > 0) {
+            $numDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario')
+                ->where('IdDiario', $compra->IdDiario)
+                ->value('NumeroDiario');
+            if ($numDiario) {
+                $numeroDiario = $numDiario;
+            }
+        }
+        $pdf->Cell(18, 3, 'Diario : ' . $numeroDiario, 0, 1, 'L');
 
         // Título
         $y = $pdf->GetY();
@@ -526,7 +547,7 @@ class CompraController extends Controller
         
         foreach ($compra->detalles as $detalle) {
             $contador++;
-            $producto = $detalle->producto;  // ← Esto carga el producto relacionado
+            $producto = $detalle->producto;
             
             $codigo = $producto->Codigo ?? 'S/C';
             $descripcion = $producto->Descripcion ?? 'S/D';
