@@ -85,4 +85,11 @@ class Compra extends Model
         return $query->where('ActivoInactivo', 0)
                      ->where('IdOperadorIngresa', session('operador_id'));
     }
+    /**
+     * Relación con el diario contable
+     */
+    public function diario()
+    {
+        return $this->belongsTo(\App\Models\Gestion\Contabilidad\Diario::class, 'IdDiario', 'IdDiario');
+    }
 }

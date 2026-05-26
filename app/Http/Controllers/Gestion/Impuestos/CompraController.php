@@ -19,7 +19,7 @@ class CompraController extends Controller
     public function index()
     {
         $compras = Compra::porContexto()
-            ->with(['almacen', 'proveedor'])
+            ->with(['almacen', 'proveedor', 'diario'])  // ← Agregar 'diario'
             ->orderBy('IdCompras', 'desc')
             ->paginate(20);
 
@@ -408,7 +408,13 @@ class CompraController extends Controller
     public function show($id)
     {
         $compra = Compra::porContexto()
-            ->with(['detalles.producto', 'almacen', 'proveedor', 'fecha'])
+            ->with([
+                'detalles.producto', 
+                'almacen', 
+                'proveedor', 
+                'fecha',
+                'diario'  // ← Agregar la relación con el diario
+            ])
             ->findOrFail($id);
 
         return Inertia::render('Gestion/Impuestos/Compras/Show', [

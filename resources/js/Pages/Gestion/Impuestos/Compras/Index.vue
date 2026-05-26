@@ -38,6 +38,7 @@ const formatearFecha = (fecha) => {
                         <thead class="bg-guindo-50">
                             <tr>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">N° Correlativo</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">N° Diario</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">N° Documento</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Proveedor</th>
@@ -49,7 +50,7 @@ const formatearFecha = (fecha) => {
                         <tbody class="bg-white divide-y divide-gray-200">
                             <tr v-for="compra in compras.data" :key="compra.IdCompras" class="hover:bg-gray-50">
                                 <td class="px-6 py-4 text-sm font-mono text-gray-900">{{ compra.NumeroCorrelativo }}</td>
-                                <td class="px-6 py-4 text-sm text-gray-500">{{ formatearFecha(compra.FechaIngreso) }}</td>
+                                <td class="px-6 py-4 text-sm font-mono text-gray-900">{{ compra.diario?.NumeroDiario || compra.IdDiario || '-' }}</td>                                <td class="px-6 py-4 text-sm text-gray-500">{{ formatearFecha(compra.FechaIngreso) }}</td>
                                 <td class="px-6 py-4 text-sm text-gray-700">{{ compra.NumeroFactura }}</td>
                                 <td class="px-6 py-4 text-sm text-gray-700">{{ compra.proveedor?.Nombre || '-' }}</td>
                                 <td class="px-6 py-4 text-sm text-right font-semibold text-guindo-600">{{ Number(compra.ImporteFactura).toFixed(2) }} Bs</td>
@@ -68,7 +69,7 @@ const formatearFecha = (fecha) => {
                                 </td>
                             </tr>
                             <tr v-if="compras.data.length === 0">
-                                <td colspan="7" class="px-6 py-12 text-center text-gray-500">
+                                <td colspan="8" class="px-6 py-12 text-center text-gray-500">
                                     <i class="fas fa-box-open text-3xl mb-2 block"></i>
                                     No hay compras registradas
                                 </td>

@@ -20,6 +20,11 @@ const generarPDF = () => {
 const volver = () => {
     router.get('/gestion/compras')
 }
+
+// 🔥 Obtener el número de diario (NumeroDiario)
+const numeroDiario = () => {
+    return props.compra.diario?.NumeroDiario || props.compra.IdDiario || '-'
+}
 </script>
 
 <template>
@@ -49,10 +54,14 @@ const volver = () => {
 
                 <!-- Datos de la compra -->
                 <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <p class="text-xs text-gray-500">N° Correlativo</p>
                             <p class="text-lg font-semibold">{{ compra.NumeroCorrelativo }}</p>
+                        </div>
+                        <div>
+                            <p class="text-xs text-gray-500">N° Diario</p>
+                            <p class="text-lg font-semibold">{{ numeroDiario() }}</p>
                         </div>
                         <div>
                             <p class="text-xs text-gray-500">Fecha</p>

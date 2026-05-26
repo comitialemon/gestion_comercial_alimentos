@@ -17,10 +17,22 @@ class ContaCuentaSucursalController extends Controller
     {
         $clienteId = session('cliente_id');
 
+        // 🔥 FORZAR LA CARGA DE LA RELACIÓN 'cuenta'
         $asignaciones = ContaCuentaSucursal::porContexto()
-            ->with(['cuenta', 'sucursal'])
+            ->with(['cuenta', 'sucursal'])  // ← Asegurar que 'cuenta' está aquí
             ->orderBy('Cuenta')
             ->get();
+
+        // 🔥 LOG PARA VERIFICAR QUE LLEGAN DATOS
+        \Log::info('Asignaciones con cuentas:', [
+            'total' => $asignaciones->count(),
+            'primera' => $asignaciones->first() ? [
+                'id' => $asignaciones->first()->IdCuentaSucursales,
+                'cuenta_id' => $asignaciones->first()->IdCuenta,
+                'cuenta_nombre' => $asignaciones->first()->cuenta ? $asignaciones->first()->cuenta->Cuenta : 'NULL',
+                'cuenta_descripcion' => $asignaciones->first()->cuenta ? $asignaciones->first()->cuenta->Descripcion : 'NULL'
+            ] : 'ninguna'
+        ]);
 
         $cuentas = ContaCuenta::porContexto()
             ->where('AbiertoCerrado', 0)
