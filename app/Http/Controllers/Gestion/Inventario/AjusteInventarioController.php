@@ -475,4 +475,163 @@ class AjusteInventarioController extends Controller
             'message' => 'Ajuste creado correctamente'
         ]);
     }
+
+    /**
+     * Vista para gestión de estados (Activar/Inactivar ajustes)
+     */
+    public function gestionEstado(Request $request)
+    {
+        $query = AjusteInventario::porContexto()
+            ->with(['tipoOperacion', 'almacen']);
+
+        // FILTRAR POR ESTADO
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->where('ActivoInactivo', 1);
+            } elseif ($request->estado === 'inactivos') {
+                $query->where('ActivoInactivo', 0);
+            }
+        }
+
+        // BUSCADOR por número de ajuste
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
+        }
+
+        $ajustes = $query->orderBy('IdAjustesPrincipal', 'desc')->paginate(20);
+
+        // Agregar fecha formateada
+        $ajustes->getCollection()->transform(function ($ajuste) {
+            $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_fecha')
+                ->where('IdFecha', $ajuste->IdFecha)
+                ->first();
+            
+            $ajuste->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
+            
+            return $ajuste;
+        });
+
+        return Inertia::render('Gestion/Inventario/AjusteInventario/GestionEstado', [
+            'ajustes' => $ajustes,
+            'filtroEstado' => $request->estado,
+            'buscar' => $request->buscar,
+        ]);
+    }
+
+    /**
+     * Cambiar estado (Activar/Inactivar)
+     */
+    public function cambiarEstado($id)
+    {
+        try {
+            $ajuste = AjusteInventario::porContexto()->findOrFail($id);
+            
+            $nuevoEstado = $ajuste->ActivoInactivo == 1 ? 0 : 1;
+            
+            // Validación al activar
+            if ($nuevoEstado == 1 && $ajuste->ActivoInactivo == 0) {
+                if (!$ajuste->IdFecha || !$ajuste->IdTipoOperacion || !$ajuste->IdAlmacen) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No se puede activar: Faltan datos obligatorios'
+                    ], 400);
+                }
+            }
+            
+            $ajuste->update(['ActivoInactivo' => $nuevoEstado]);
+            
+            $mensaje = $nuevoEstado == 1 ? 'Ajuste activado correctamente' : 'Ajuste desactivado correctamente';
+            
+            return response()->json([
+                'success' => true,
+                'message' => $mensaje,
+                'nuevo_estado' => $nuevoEstado
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error al cambiar estado: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cambiar estado: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Editar ajuste (borrador)
+     */
+    public function edit($id)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        $ajuste = AjusteInventario::porContexto()
+            ->where('ActivoInactivo', 0)
+            ->findOrFail($id);
+
+        $detalles = AjusteInventarioDetalle::where('IdAjustesPrincipal', $id)
+            ->with('producto')
+            ->get();
+
+        $fechas = $this->getFechasDisponibles();
+        
+        $tiposOperacion = TipoOperacion::where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Detalle')
+            ->get(['IdTipoOperacion as id', 'Detalle as nombre', 'Concepto']);
+
+        $almacenes = Almacen::porContexto()
+            ->orderBy('Almacen')
+            ->get(['IdAlmacen as id', 'Almacen as nombre']);
+
+        $personas = Identificador::orderBy('Nombre')
+            ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
+
+        $productos = ProductoDetalle::porContexto()
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Codigo')
+            ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
+
+        return Inertia::render('Gestion/Inventario/AjusteInventario/Create', [
+            'ajuste' => $ajuste,
+            'detalles' => $detalles,
+            'fechas' => $fechas,
+            'tiposOperacion' => $tiposOperacion,
+            'almacenes' => $almacenes,
+            'personas' => $personas,
+            'productos' => $productos,
+        ]);
+    }
+    /**
+     * Actualizar detalle del ajuste
+     */
+    public function actualizarDetalle(Request $request, $id)
+    {
+        $request->validate([
+            'Unidades' => 'required|numeric|min:0.01',
+            'Bolivianos' => 'required|numeric|min:0',
+        ]);
+
+        $detalle = AjusteInventarioDetalle::findOrFail($id);
+        $ajuste = AjusteInventario::findOrFail($detalle->IdAjustesPrincipal);
+
+        if ($ajuste->ActivoInactivo != 0) {
+            return response()->json(['success' => false, 'message' => 'El ajuste ya fue contabilizado'], 400);
+        }
+
+        $detalle->update([
+            'Unidades' => $request->Unidades,
+            'Bolivianos' => $request->Bolivianos,
+        ]);
+
+        $detalle->load('producto');
+
+        return response()->json([
+            'success' => true,
+            'detalle' => $detalle,
+        ]);
+    }
+
 }

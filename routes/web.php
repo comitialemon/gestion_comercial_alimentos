@@ -265,25 +265,27 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('gestion.reportes.lista-precios.exportar');
     });
 
-    // ==================== COMPRAS ====================
-    Route::prefix('gestion/compras')->group(function () {
-        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
-        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
-        
-        // 🔥 AGREGAR ESTA RUTA
-        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
-        
-        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
-        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
-        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
-        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
-        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
-        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
-    });
+// ==================== COMPRAS ====================
+Route::prefix('gestion/compras')->group(function () {
+    Route::get('/', [CompraController::class, 'index'])->name('compras.index');
+    Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+    Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+    Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
+    Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
+    Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
+    Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
+    Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
+    Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
+    Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
+    
+    // 🔥 AGREGAR ESTAS DOS LÍNEAS
+    Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado');
+    Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
+});
 
     // ==================== CONTABILIDAD ====================
 
-// ==================== CONTABILIDAD - DIARIO DE INGRESOS ====================
+    // ==================== CONTABILIDAD - DIARIO DE INGRESOS ====================
     Route::prefix('contabilidad/diario-ingreso')->group(function () {
         Route::get('/', [DiarioIngresoController::class, 'index'])->name('contabilidad.diario-ingreso.index');
         Route::get('/create', [DiarioIngresoController::class, 'create'])->name('contabilidad.diario-ingreso.create');
@@ -364,18 +366,25 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('egresos.cambiar-estado');
     });
 
-    // ==================== INGRESOS ====================
-    Route::prefix('gestion/ingresos')->group(function () {
-        Route::get('/', [IngresoController::class, 'index'])->name('ingresos.index');
-        Route::get('/create', [IngresoController::class, 'create'])->name('ingresos.create');
-        Route::post('/', [IngresoController::class, 'store'])->name('ingresos.store');
-        Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
-        Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
-        Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
+    // ==================== COMPRAS ====================
+    Route::prefix('gestion/compras')->group(function () {
+        // 🔥 PRIMERO: Rutas FIJAS (sin parámetros)
+        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
+        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+        Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado'); // ← MOVER AQUÍ
         
-        // 🔥 NUEVAS RUTAS para gestión de estados
-        Route::get('/gestion-estado', [IngresoController::class, 'gestionEstado'])->name('ingresos.gestion-estado');
-        Route::post('/{id}/cambiar-estado', [IngresoController::class, 'cambiarEstado'])->name('ingresos.cambiar-estado');
+        // 🔥 SEGUNDO: Rutas POST/PUT/DELETE
+        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
+        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
+        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
+        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
+        Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
+        
+        // 🔥 TERCERO: Rutas con parámetros {id} (van al final)
+        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
+        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
+        Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
     });
 
     // ==================== INVENTARIO - CATÁLOGOS ====================
@@ -418,20 +427,31 @@ Route::middleware(['auth.operador'])->group(function () {
 
     // ==================== INVENTARIO - AJUSTES ====================
     Route::prefix('gestion/inventario/ajustes')->group(function () {
+        // Listado y creación
         Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
         Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
-        
-        // 🔥 Ruta para CREAR un nuevo ajuste (borrador)
         Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
         
+        // Gestión de estados
+        Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
+        Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
+        
+        // Cabecera
         Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
-        Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
-        Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
+        
+        // 🔥 Ruta de contabilizar (verifica que esté aquí)
         Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
+        
+        // Rutas de detalle
+        Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
+        Route::put('/detalle/{id}', [AjusteInventarioController::class, 'actualizarDetalle'])->name('ajustes-inventario.detalle.update');
+        Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
+        
+        // Rutas con {id} genérico (deben ir al final)
         Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
+        Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
         Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
     });
-    
     // ==================== PRODUCTOS VENTA ====================
     Route::prefix('gestion/productos-venta')->group(function () {
         Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');

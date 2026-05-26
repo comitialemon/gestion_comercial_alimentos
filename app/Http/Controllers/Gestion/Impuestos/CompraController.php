@@ -16,15 +16,36 @@ use TCPDF;
 
 class CompraController extends Controller
 {
-    public function index()
+
+    /**
+     * Actualizar el método index() para recibir filtros
+     */
+    public function index(Request $request)
     {
-        $compras = Compra::porContexto()
-            ->with(['almacen', 'proveedor', 'diario'])  // ← Agregar 'diario'
-            ->orderBy('IdCompras', 'desc')
-            ->paginate(20);
+        $query = Compra::porContexto()
+            ->with(['almacen', 'proveedor', 'diario']);
+
+        // Filtrar por estado
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->where('ActivoInactivo', 1);
+            } elseif ($request->estado === 'inactivos') {
+                $query->where('ActivoInactivo', 0);
+            }
+        }
+
+        // Buscar por número correlativo
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
+        }
+
+        $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
 
         return Inertia::render('Gestion/Impuestos/Compras/Index', [
             'compras' => $compras,
+            'filtroEstado' => $request->estado,
+            'buscar' => $request->buscar,
         ]);
     }
 
@@ -78,6 +99,54 @@ class CompraController extends Controller
             'proveedores' => $proveedores,
             'fechas' => $fechas,
             'productos' => $productos,
+        ]);
+    }
+
+    /**
+     * Mostrar formulario de edición para una compra en estado borrador
+     */
+    public function edit($id)
+    {
+        // Buscar la compra (solo si está en estado borrador)
+        $compra = Compra::porContexto()
+            ->where('ActivoInactivo', 0)  // Solo borradores
+            ->findOrFail($id);
+
+        // Cargar los detalles (productos) de la compra
+        $detalles = CompraDetalle::where('IdCompras', $compra->IdCompras)
+            ->with('producto')
+            ->get();
+
+        // Datos para los selects (almacenes, tipos factura, etc.)
+        $almacenes = Almacen::porContexto()
+            ->orderBy('Almacen')
+            ->get(['IdAlmacen as id', 'Almacen as nombre']);
+
+        $tiposFactura = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_compras_tipofactura')
+            ->orderBy('IdTipoFactura')
+            ->get();
+
+        $proveedores = Identificador::orderBy('Nombre')
+            ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
+
+        $fechas = $this->getFechasDisponibles();
+
+        $productos = ProductoDetalle::porContexto()
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Codigo')
+            ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
+
+        // Renderizar la misma vista Create pero con datos
+        return Inertia::render('Gestion/Impuestos/Compras/Create', [
+            'compra' => $compra,
+            'detalles' => $detalles,
+            'almacenes' => $almacenes,
+            'tiposFactura' => $tiposFactura,
+            'proveedores' => $proveedores,
+            'fechas' => $fechas,
+            'productos' => $productos,
+            'editando' => true,  // ← Esto indica que estamos editando
         ]);
     }
     /**
@@ -641,6 +710,90 @@ class CompraController extends Controller
         \Log::info('Fechas disponibles para combo:', $todasFechas->toArray());
         
         return $todasFechas;
+    }
+
+    /**
+     * Vista para gestión de estados (Activar/Inactivar compras)
+     */
+    public function gestionEstado(Request $request)
+    {
+        \Log::info('=== gestionEstado COMPRAS: INICIO ===');
+        \Log::info('Parámetros recibidos:', $request->all());
+        
+        try {
+            $query = Compra::porContexto()
+                ->with(['proveedor']);
+
+            if ($request->filled('estado')) {
+                if ($request->estado === 'activos') {
+                    $query->where('ActivoInactivo', 1);
+                } elseif ($request->estado === 'inactivos') {
+                    $query->where('ActivoInactivo', 0);
+                }
+            }
+
+            if ($request->filled('buscar')) {
+                $buscar = $request->buscar;
+                $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
+            }
+
+            $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
+
+            \Log::info('Compras encontradas: ' . $compras->total());
+
+            return Inertia::render('Gestion/Impuestos/Compras/GestionEstado', [
+                'compras' => $compras,
+                'filtroEstado' => $request->estado,
+                'buscar' => $request->buscar,
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en gestionEstado: ' . $e->getMessage());
+            \Log::error('Trace: ' . $e->getTraceAsString());
+            
+            return Inertia::render('Gestion/Impuestos/Compras/GestionEstado', [
+                'compras' => collect(['data' => [], 'total' => 0]),
+                'filtroEstado' => '',
+                'buscar' => '',
+            ]);
+        }
+    }
+    /**
+     * Cambiar estado (Activar/Inactivar)
+     */
+    public function cambiarEstado($id)
+    {
+        try {
+            $compra = Compra::porContexto()->findOrFail($id);
+            
+            $nuevoEstado = $compra->ActivoInactivo == 1 ? 0 : 1;
+            
+            if ($nuevoEstado == 1 && $compra->ActivoInactivo == 0) {
+                if (!$compra->IdFecha || !$compra->IdAlmacen || !$compra->IdTipoFactura || !$compra->NumeroFactura) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No se puede activar: Faltan datos obligatorios'
+                    ], 400);
+                }
+            }
+            
+            $compra->update(['ActivoInactivo' => $nuevoEstado]);
+            
+            $mensaje = $nuevoEstado == 1 ? 'Compra activada correctamente' : 'Compra desactivada correctamente';
+            
+            return response()->json([
+                'success' => true,
+                'message' => $mensaje,
+                'nuevo_estado' => $nuevoEstado
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error al cambiar estado de compra: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cambiar estado: ' . $e->getMessage()
+            ], 500);
+        }
     }
     
 }
