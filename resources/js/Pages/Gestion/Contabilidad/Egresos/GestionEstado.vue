@@ -13,6 +13,8 @@ const props = defineProps({
 
 const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
+const cambiando = ref({})
+const loading = ref(false)
 const isMobile = ref(window.innerWidth < 768)
 
 // Detectar cambios de tamaño de pantalla
@@ -28,24 +30,95 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
 
-// 🔥 Abrir PDF del diario (al hacer clic en el número de diario)
-const abrirPdfDiario = (egreso) => {
-    if (egreso.IdDiario && egreso.IdDiario > 0) {
-        // Construir URL del PDF del diario
-        window.open(`/gestion/imprimir-diario/pdf/${egreso.IdDiario}`, '_blank')
-    } else {
-        // Mostrar mensaje si no tiene diario
-        const toast = document.createElement('div')
-        toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white bg-yellow-500 flex items-center gap-2'
-        toast.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Este egreso no tiene un diario asociado'
-        document.body.appendChild(toast)
-        setTimeout(() => toast.remove(), 2000)
+// Modal de confirmación
+const modalVisible = ref(false)
+const modalData = ref({
+    id: null,
+    numero: null,
+    accion: '',
+    nuevoEstado: null
+})
+
+// Controlar el toggle manualmente
+const toggleSwitch = (egreso) => {
+    if (cambiando.value[egreso.IdEgreso]) return
+    const nuevoEstado = egreso.ActivoInactivo === 1 ? 0 : 1
+    abrirModalConfirmacion(egreso, nuevoEstado)
+}
+
+const abrirModalConfirmacion = (egreso, nuevoEstado) => {
+    modalData.value = {
+        id: egreso.IdEgreso,
+        numero: egreso.NumeroEgreso,
+        accion: nuevoEstado === 1 ? 'activar' : 'desactivar',
+        nuevoEstado: nuevoEstado
     }
+    modalVisible.value = true
+}
+
+const cerrarModal = () => {
+    modalVisible.value = false
+    modalData.value = { id: null, numero: null, accion: '', nuevoEstado: null }
+}
+
+const ejecutarCambioEstado = async () => {
+    if (!modalData.value.id) return
+    
+    cambiando.value[modalData.value.id] = true
+    loading.value = true
+    
+    try {
+        const response = await fetch(`/gestion/egresos/${modalData.value.id}/cambiar-estado`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+            }
+        })
+        
+        const data = await response.json()
+        
+        if (data.success) {
+            mostrarToast(data.message, 'success')
+            
+            const params = new URLSearchParams()
+            if (estadoFiltro.value) params.append('estado', estadoFiltro.value)
+            if (buscador.value) params.append('buscar', buscador.value)
+            
+            window.location.href = `/gestion/egresos/gestion-estado?${params.toString()}`
+        } else {
+            mostrarToast(data.message, 'error')
+            cerrarModal()
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        mostrarToast('Error al cambiar el estado', 'error')
+        cerrarModal()
+    } finally {
+        cambiando.value[modalData.value.id] = false
+        loading.value = false
+    }
+}
+
+const mostrarToast = (mensaje, tipo = 'success') => {
+    const toastAnterior = document.querySelector('.custom-toast')
+    if (toastAnterior) toastAnterior.remove()
+    
+    const toast = document.createElement('div')
+    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${
+        tipo === 'success' ? 'bg-green-500' : 'bg-red-500'
+    }`
+    toast.innerHTML = `<i class="fas ${tipo === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${mensaje}`
+    document.body.appendChild(toast)
+    
+    setTimeout(() => {
+        if (toast && toast.remove) toast.remove()
+    }, 3000)
 }
 
 // APLICAR FILTROS
 const aplicarFiltros = () => {
-    router.get('/gestion/egresos', {
+    router.get('/gestion/egresos/gestion-estado', {
         estado: estadoFiltro.value || undefined,
         buscar: buscador.value || undefined
     }, {
@@ -100,14 +173,18 @@ const getEstadoTexto = (activo) => {
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-money-bill-wave text-guindo-600 text-sm"></i>
+                            <i class="fas fa-toggle-on text-guindo-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Comprobantes de Egreso</h1>
-                            <p class="text-[10px] text-gray-500 hidden xs:block">Historial de egresos realizados</p>
+                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Egresos</h1>
+                            <p class="text-[10px] text-gray-500 hidden xs:block">Activar o desactivar comprobantes de egreso</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
+                        <Link href="/gestion/egresos" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                            <i class="fas fa-list text-[10px]"></i>
+                            <span>Listado</span>
+                        </Link>
                         <Link href="/gestion/egresos/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Egreso</span>
@@ -115,7 +192,7 @@ const getEstadoTexto = (activo) => {
                     </div>
                 </div>
 
-                <!-- Filtros Responsive - Compactos -->
+                <!-- Filtros Responsive - Más compactos -->
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-center gap-3">
                         <!-- Selector de estado -->
@@ -128,7 +205,7 @@ const getEstadoTexto = (activo) => {
                             </select>
                         </div>
                         
-                        <!-- BUSCADOR pequeño -->
+                        <!-- 🔥 BUSCADOR sin lupa, más pequeño -->
                         <div class="flex items-center gap-1">
                             <input 
                                 type="text" 
@@ -152,6 +229,10 @@ const getEstadoTexto = (activo) => {
                         <span class="font-semibold">{{ buscador }}</span>
                         <span class="ml-2">({{ egresos.total || 0 }} resultados)</span>
                     </div>
+                    
+                    <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
+                        <i class="fas fa-info-circle"></i> Toque el switch para cambiar el estado
+                    </div>
                 </div>
 
                 <!-- Vista para MÓVIL (tarjetas) -->
@@ -159,25 +240,14 @@ const getEstadoTexto = (activo) => {
                     <div v-for="egreso in egresos.data" :key="egreso.IdEgreso" class="bg-white rounded-lg shadow-sm p-3">
                         <!-- Cabecera de tarjeta -->
                         <div class="flex justify-between items-start border-b pb-2 mb-2">
-                            <div class="flex flex-col gap-1">
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded self-start">
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
                                     N° {{ egreso.NumeroEgreso }}
                                 </span>
-                                <!-- 🔥 Número de Diario CLICKEABLE -->
-                                <span 
-                                    @click="abrirPdfDiario(egreso)"
-                                    class="text-xs font-mono text-blue-600 cursor-pointer hover:text-blue-800 hover:underline"
-                                    :class="{ 'opacity-50 cursor-not-allowed': !egreso.IdDiario || egreso.IdDiario === 0 }"
-                                >
-                                    <i class="fas fa-book-open mr-1 text-[10px]"></i>
-                                    Diario: {{ egreso.numero_diario || 'Sin diario' }}
-                                </span>
+                                <span class="text-xs text-gray-500">Diario: {{ egreso.numero_diario || '-' }}</span>
                             </div>
                             <div class="flex gap-2">
-                                <Link v-if="egreso.ActivoInactivo === 0" :href="`/gestion/egresos/${egreso.IdEgreso}/edit`" class="text-guindo-600" title="Editar">
-                                    <i class="fas fa-edit text-xs"></i>
-                                </Link>
-                                <a :href="`/gestion/egresos/${egreso.IdEgreso}/pdf`" target="_blank" class="text-red-600" title="PDF">
+                                <a :href="`/gestion/egresos/${egreso.IdEgreso}/pdf`" target="_blank" class="text-red-600" title="Ver PDF">
                                     <i class="fas fa-file-pdf text-sm"></i>
                                 </a>
                             </div>
@@ -205,16 +275,29 @@ const getEstadoTexto = (activo) => {
                                 <span class="text-gray-500">Monto:</span>
                                 <span class="font-bold text-guindo-600">{{ formatearMonto(egreso.TotalBolivianos) }} Bs</span>
                             </div>
-                            <div class="flex justify-end pt-1 border-t mt-1">
+                            <div class="flex justify-between items-center pt-1 border-t mt-1">
                                 <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(egreso.ActivoInactivo)">
                                     <i :class="getEstadoIcono(egreso.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
                                     {{ getEstadoTexto(egreso.ActivoInactivo) }}
                                 </span>
+                                
+                                <!-- SWITCH PERSONALIZADO -->
+                                <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(egreso)">
+                                    <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
+                                        :class="egreso.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                        <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
+                                            :class="egreso.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
+                                        </div>
+                                    </div>
+                                    <span class="ml-2 text-[10px]" :class="cambiando[egreso.IdEgreso] ? 'text-gray-400' : (egreso.ActivoInactivo === 1 ? 'text-green-600' : 'text-gray-500')">
+                                        <i v-if="cambiando[egreso.IdEgreso]" class="fas fa-spinner fa-spin"></i>
+                                        <span v-else>{{ egreso.ActivoInactivo === 1 ? 'Activo' : 'Inactivo' }}</span>
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
                     
-                    <!-- Mensaje sin resultados móvil -->
                     <div v-if="egresos.data?.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
                         <i class="fas fa-receipt text-3xl text-gray-300 mb-2 block"></i>
                         <p class="text-xs text-gray-400">
@@ -237,23 +320,14 @@ const getEstadoTexto = (activo) => {
                                     <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Glosa</th>
                                     <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Monto</th>
                                     <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Cambiar</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">PDF</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="egreso in egresos.data" :key="egreso.IdEgreso" class="hover:bg-gray-50">
                                     <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ egreso.NumeroEgreso }}</td>
-                                    <!-- 🔥 Número de Diario CLICKEABLE -->
-                                    <td class="px-3 py-2 text-xs">
-                                        <span 
-                                            @click="abrirPdfDiario(egreso)"
-                                            class="font-mono text-blue-600 cursor-pointer hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                                            :class="{ 'opacity-50 cursor-not-allowed': !egreso.IdDiario || egreso.IdDiario === 0 }"
-                                        >
-                                            <i class="fas fa-book-open text-[10px]"></i>
-                                            {{ egreso.numero_diario || '-' }}
-                                        </span>
-                                    </td>
+                                    <td class="px-3 py-2 text-xs font-mono text-gray-500">{{ egreso.numero_diario || '-' }}</td>
                                     <td class="px-3 py-2 text-xs text-gray-500">{{ egreso.fecha_formateada || '-' }}</td>
                                     <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="egreso.identificador?.Nombre">
                                         {{ egreso.identificador?.Nombre || '-' }}
@@ -268,17 +342,29 @@ const getEstadoTexto = (activo) => {
                                             {{ getEstadoTexto(egreso.ActivoInactivo) }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 text-right space-x-1 whitespace-nowrap">
-                                        <Link v-if="egreso.ActivoInactivo === 0" :href="`/gestion/egresos/${egreso.IdEgreso}/edit`" class="text-guindo-600 hover:text-guindo-800 text-xs inline-block" title="Editar">
-                                            <i class="fas fa-edit text-xs"></i>
-                                        </Link>
-                                        <a :href="`/gestion/egresos/${egreso.IdEgreso}/pdf`" target="_blank" class="text-red-600 hover:text-red-800 text-xs inline-block" title="Ver PDF">
+                                    <td class="px-3 py-2 text-center">
+                                        <!-- SWITCH PERSONALIZADO -->
+                                        <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(egreso)">
+                                            <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
+                                                :class="egreso.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                                <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
+                                                    :class="egreso.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
+                                                </div>
+                                            </div>
+                                            <span class="ml-2 text-[10px]" :class="cambiando[egreso.IdEgreso] ? 'text-gray-400' : (egreso.ActivoInactivo === 1 ? 'text-green-600' : 'text-gray-500')">
+                                                <i v-if="cambiando[egreso.IdEgreso]" class="fas fa-spinner fa-spin"></i>
+                                                <span v-else>{{ egreso.ActivoInactivo === 1 ? 'Activo' : 'Inactivo' }}</span>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="px-3 py-2 text-right">
+                                        <a :href="`/gestion/egresos/${egreso.IdEgreso}/pdf`" target="_blank" class="text-red-600 hover:text-red-800" title="Ver PDF">
                                             <i class="fas fa-file-pdf text-sm"></i>
                                         </a>
                                     </td>
                                 </tr>
                                 <tr v-if="egresos.data?.length === 0">
-                                    <td colspan="8" class="px-4 py-8 text-center text-gray-400 text-xs">
+                                    <td colspan="9" class="px-4 py-8 text-center text-gray-400 text-xs">
                                         <i class="fas fa-receipt text-2xl mb-1 block"></i>
                                         <span v-if="buscador">No hay egresos que coincidan con "{{ buscador }}"</span>
                                         <span v-else>No hay comprobantes de egreso</span>
@@ -304,6 +390,44 @@ const getEstadoTexto = (activo) => {
                     <div class="flex justify-center gap-0.5 flex-wrap">
                         <Link v-for="link in egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MODAL DE CONFIRMACIÓN -->
+        <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
+            <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
+                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-yellow-50'">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-yellow-100'">
+                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-yellow-600'" class="text-xl"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">
+                                {{ modalData.accion === 'activar' ? 'Activar Egreso' : 'Desactivar Egreso' }}
+                            </h3>
+                            <p class="text-[10px] sm:text-xs text-gray-500">Egreso N° {{ modalData.numero }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="p-4 sm:p-5">
+                    <p class="text-xs sm:text-sm text-gray-700 text-center">
+                        ¿Estás seguro de <span class="font-bold" :class="modalData.accion === 'activar' ? 'text-green-600' : 'text-red-600'">{{ modalData.accion === 'activar' ? 'ACTIVAR' : 'DESACTIVAR' }}</span> 
+                        este egreso?
+                    </p>
+                    <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
+                        {{ modalData.accion === 'activar' ? 'Al activarlo, el egreso se marcará como contabilizado.' : 'Al desactivarlo, el egreso volverá a estado borrador y podrá editarse.' }}
+                    </p>
+                </div>
+                <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
+                    <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">
+                        Cancelar
+                    </button>
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'">
+                        <i v-if="loading" class="fas fa-spinner fa-spin"></i>
+                        <i v-else :class="modalData.accion === 'activar' ? 'fas fa-check' : 'fas fa-ban'"></i>
+                        {{ modalData.accion === 'activar' ? 'Activar' : 'Desactivar' }}
+                    </button>
                 </div>
             </div>
         </div>

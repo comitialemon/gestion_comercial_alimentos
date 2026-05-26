@@ -354,6 +354,14 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])
             ->name('egresos.pdf')
             ->withoutMiddleware([\App\Http\Middleware\VerificarContexto::class]);
+
+        // Gestión de estados de egresos
+        Route::get('/gestion-estado', [EgresoController::class, 'gestionEstado'])
+            ->name('egresos.gestion-estado');
+
+        // Cambiar estado de egreso (Activar/Inactivar)
+        Route::post('/{id}/cambiar-estado', [EgresoController::class, 'cambiarEstado'])
+            ->name('egresos.cambiar-estado');
     });
 
     // ==================== INGRESOS ====================

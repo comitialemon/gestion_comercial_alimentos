@@ -17,7 +17,7 @@ const props = defineProps({
     editando: Boolean,
 })
 
-// Formulario con datos reactivos (sin useForm)
+// Formulario con datos reactivos
 const form = ref({
     IdEgreso: props.egreso?.IdEgreso || null,
     IdFecha: props.egreso?.IdFecha || '',
@@ -47,6 +47,28 @@ const identificadoresFiltrados = computed(() => {
 const modalIdentificadorVisible = ref(false)
 const nuevoIdentificador = ref({ CI_NIT: '', Nombre: '' })
 const guardandoIdentificador = ref(false)
+
+// 🔥 Prevenir teclas de flecha arriba/abajo en el input de monto
+const prevenirFlechas = (event) => {
+    if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault()
+    }
+}
+
+// 🔥 Limpiar formulario
+const limpiarFormulario = () => {
+    form.value = {
+        IdEgreso: null,
+        IdFecha: '',
+        IdIdentificador: '',
+        IdCuentaHaber: '',
+        IdCuentaDebe: '',
+        Glosa: '',
+        TotalBolivianos: '',
+    }
+    busquedaIdentificador.value = ''
+    errors.value = {}
+}
 
 const abrirModalIdentificador = () => {
     nuevoIdentificador.value = { CI_NIT: '', Nombre: '' }
@@ -103,7 +125,7 @@ const validarCampos = () => {
     return Object.keys(nuevosErrors).length === 0
 }
 
-// Enviar formulario con AXIOS (como en Ingresos)
+// Enviar formulario
 const submitForm = async () => {
     if (!validarCampos()) {
         toast?.warning('Datos incompletos', 'Complete todos los campos obligatorios')
@@ -121,15 +143,15 @@ const submitForm = async () => {
         }
         
         if (response.status === 200 || response.status === 201) {
-            const redirectUrl = response.request?.responseURL
-            if (redirectUrl && redirectUrl.includes('/pdf')) {
-                window.open(redirectUrl, '_blank')
-            } else if (response.data?.pdf_url) {
+            // Abrir PDF
+            if (response.data?.pdf_url) {
                 window.open(response.data.pdf_url, '_blank')
             }
             
             toast?.success('Éxito', props.editando ? 'Egreso actualizado correctamente' : 'Egreso guardado correctamente')
-            router.get('/gestion/egresos')
+            
+            // 🔥 SIEMPRE REDIRIGIR A CREATE (formulario de nuevo egreso)
+            window.location.href = '/gestion/egresos/create'
         }
     } catch (error) {
         console.error('Error:', error)
@@ -151,7 +173,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 🔥 Eliminar flechas del input number */
+/* Eliminar flechas del input number */
 .no-spinner::-webkit-inner-spin-button,
 .no-spinner::-webkit-outer-spin-button {
     -webkit-appearance: none;
@@ -249,6 +271,7 @@ onMounted(() => {
                                     v-model.number="form.TotalBolivianos" 
                                     step="0.01" 
                                     min="0" 
+                                    @keydown="prevenirFlechas"
                                     class="no-spinner w-full border rounded-md pl-8 pr-2 py-1.5 text-xs" 
                                     :class="{ 'border-red-500': errors.TotalBolivianos }" 
                                     placeholder="0.00"
@@ -269,6 +292,11 @@ onMounted(() => {
                             </button>
                         </div>
                     </form>
+                </div>
+
+                <!-- Mensaje informativo -->
+                <div class="mt-4 text-center text-[10px] text-gray-400">
+                    <i class="fas fa-info-circle"></i> Después de guardar, el formulario se limpiará automáticamente para seguir ingresando más egresos.
                 </div>
             </div>
         </div>

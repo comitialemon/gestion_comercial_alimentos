@@ -36,7 +36,7 @@ class Egreso extends Model
         'NumeroEgreso' => 'integer',
     ];
 
-    // Relaciones
+    // ==================== RELACIONES ====================
     public function fecha()
     {
         return $this->belongsTo(Fecha::class, 'IdFecha', 'IdFecha');
@@ -57,7 +57,7 @@ class Egreso extends Model
         return $this->belongsTo(ContaCuenta::class, 'IdCuentaHaber', 'IdCuenta');
     }
 
-    // Scopes
+    // ==================== SCOPES ====================
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'))
@@ -74,7 +74,7 @@ class Egreso extends Model
         return $query->where('ActivoInactivo', 0);
     }
 
-    // Accessor para número de diario
+    // ==================== ACCESSORS ====================
     public function getNumeroDiarioAttribute()
     {
         if (!$this->IdDiario) return '-';
@@ -87,7 +87,6 @@ class Egreso extends Model
         return $numero ?? '-';
     }
 
-    // Accessor para fecha formateada
     public function getFechaFormateadaAttribute()
     {
         if ($this->fecha) {
@@ -104,5 +103,20 @@ class Egreso extends Model
         }
         
         return '-';
+    }
+
+    public function getEstadoTextoAttribute()
+    {
+        return $this->ActivoInactivo == 1 ? 'Contabilizado' : 'Borrador';
+    }
+
+    public function getEstadoColorAttribute()
+    {
+        return $this->ActivoInactivo == 1 ? 'green' : 'yellow';
+    }
+
+    public function getEstadoIconoAttribute()
+    {
+        return $this->ActivoInactivo == 1 ? 'fa-check-circle' : 'fa-pencil-alt';
     }
 }
