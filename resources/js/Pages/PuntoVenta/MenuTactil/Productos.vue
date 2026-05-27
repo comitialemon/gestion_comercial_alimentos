@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
 import { ref, computed, inject, onMounted } from 'vue'
 import axios from 'axios'
+import NavBarTactil from '../Components/NavBarTactil.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -17,7 +18,6 @@ const props = defineProps({
 
 const loading = ref(false)
 const carrito = ref([])
-const cargandoCarrito = ref(false)
 
 // Modal
 const modalVisible = ref(false)
@@ -25,14 +25,12 @@ const productoSeleccionado = ref(null)
 const cantidad = ref(1)
 const precioUnitario = ref(0)
 const tipoPrecio = ref('')
-const cargandoPrecio = ref(false)
 
 const totalModal = computed(() => (cantidad.value * precioUnitario.value).toFixed(2))
 const totalCarrito = computed(() => carrito.value.reduce((sum, item) => sum + (item.precio * item.cantidad), 0).toFixed(2))
 const totalItems = computed(() => carrito.value.reduce((sum, item) => sum + item.cantidad, 0))
 
 const cargarCarrito = async () => {
-    cargandoCarrito.value = true
     try {
         const response = await axios.get('/api/venta-tactil/carrito')
         if (response.data?.success) {
@@ -47,9 +45,6 @@ const cargarCarrito = async () => {
         }
     } catch (error) {
         console.error('Error cargando carrito:', error)
-        toast?.error('Error', 'No se pudo cargar el carrito')
-    } finally {
-        cargandoCarrito.value = false
     }
 }
 
@@ -102,42 +97,11 @@ const agregarAlCarrito = async () => {
             toast?.error('Error', response.data.message || 'Error al agregar')
         }
     } catch (error) {
-        let errorMsg = 'Error al agregar el producto'
-        if (error.response?.data?.message) errorMsg = error.response.data.message
-        toast?.error('Error', errorMsg)
+        toast?.error('Error', error.response?.data?.message || 'Error al agregar')
     } finally {
         loading.value = false
     }
 }
-
-const eliminarDelCarrito = async (itemId, nombre) => {
-    if (!confirm(`¿Eliminar "${nombre}" del carrito?`)) return
-    try {
-        const response = await axios.delete(`/api/venta-tactil/carrito/${itemId}`)
-        if (response.data.success) {
-            await cargarCarrito()
-            toast?.success('Producto eliminado', nombre)
-        }
-    } catch (error) {
-        toast?.error('Error', 'No se pudo eliminar')
-    }
-}
-
-const cancelarVenta = async () => {
-    if (!confirm('¿Cancelar toda la venta?')) return
-    try {
-        const response = await axios.delete('/api/venta-tactil/cancelar')
-        if (response.data.success) {
-            toast?.success('Venta cancelada', 'Inicia una nueva venta')
-            setTimeout(() => router.get('/venta-tactil/nueva'), 800)
-        }
-    } catch (error) {
-        toast?.error('Error', 'No se pudo cancelar')
-    }
-}
-
-const irAlCarrito = () => router.get('/venta-tactil/carrito')
-const volver = () => window.history.back()
 
 onMounted(() => cargarCarrito())
 </script>
@@ -146,35 +110,13 @@ onMounted(() => cargarCarrito())
     <div class="min-h-screen bg-gray-50">
         <div class="max-w-7xl mx-auto px-3 py-3">
             
-            <!-- Barra superior compacta -->
-            <div class="bg-white rounded-lg shadow-sm p-2 mb-4 flex items-center justify-between">
-                <button @click="volver" class="px-3 py-1.5 bg-guindo-50 text-guindo-700 rounded-lg hover:bg-guindo-100 text-sm flex items-center gap-1.5 transition">
-                    <i class="fas fa-arrow-left text-xs"></i> Volver
-                </button>
-                
-                <div class="text-center">
-                    <span class="text-[10px] text-amber-600 font-semibold">COMISIONISTA</span>
-                    <span class="text-xs font-medium text-guindo-800 block">{{ comisionista || 'Sin comisionista' }}</span>
-                    <div v-if="ruta.length" class="text-[9px] text-gray-400 mt-0.5">
-                        <span v-for="(item, idx) in ruta" :key="item.id">
-                            <span v-if="idx > 0" class="mx-0.5">/</span>
-                            {{ item.nombre }}
-                        </span>
-                    </div>
-                </div>
-                
-                <div class="flex items-center gap-1.5">
-                    <button @click="cancelarVenta" class="px-2.5 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-sm transition" title="Cancelar">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
-                    <button @click="irAlCarrito" class="relative px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition text-sm flex items-center gap-1.5">
-                        <i class="fas fa-shopping-cart"></i>
-                        <span v-if="totalItems > 0" class="absolute -top-1.5 -right-1.5 bg-guindo-600 text-white text-[10px] rounded-full w-4 h-4 flex items-center justify-center font-bold">
-                            {{ totalItems }}
-                        </span>
-                    </button>
-                </div>
-            </div>
+            <!-- 🔥 USAR COMPONENTE -->
+            <NavBarTactil 
+                :comisionista="comisionista || 'Sin comisionista'"
+                :ruta="ruta"
+                :mostrar-ruta="true"
+                :mostrar-cancelar="true"
+            />
 
             <!-- Categoría con imagen -->
             <div class="flex items-center gap-3 mb-4">
@@ -188,7 +130,7 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
-            <!-- 🔥 Grid de productos con imágenes -->
+            <!-- Grid de productos -->
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 <div 
                     v-for="prod in productos" 
@@ -196,14 +138,8 @@ onMounted(() => cargarCarrito())
                     @click="abrirModal(prod)"
                     class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100"
                 >
-                    <!-- 🔥 IMAGEN DEL PRODUCTO -->
                     <div class="h-20 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center overflow-hidden">
-                        <img 
-                            v-if="prod.imagen" 
-                            :src="prod.imagen" 
-                            class="w-full h-full object-cover"
-                            :alt="prod.nombre"
-                        >
+                        <img v-if="prod.imagen" :src="prod.imagen" class="w-full h-full object-cover">
                         <i v-else class="fas fa-box-open text-2xl text-guindo-400"></i>
                     </div>
                     <div class="p-2 text-center">
@@ -227,18 +163,13 @@ onMounted(() => cargarCarrito())
                 <p class="text-sm">No hay productos en esta categoría</p>
             </div>
 
-            <!-- 🔥 Modal compacto con imagen -->
+            <!-- Modal -->
             <div v-if="modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl max-w-sm w-full overflow-hidden shadow-xl">
                     <div class="bg-guindo-700 px-4 py-3">
                         <div class="flex items-center gap-2">
                             <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                                <img 
-                                    v-if="productoSeleccionado?.imagen" 
-                                    :src="productoSeleccionado.imagen" 
-                                    class="w-full h-full object-cover"
-                                    :alt="productoSeleccionado?.nombre"
-                                >
+                                <img v-if="productoSeleccionado?.imagen" :src="productoSeleccionado.imagen" class="w-full h-full object-cover">
                                 <i v-else class="fas fa-box-open text-guindo-600 text-sm"></i>
                             </div>
                             <div class="text-white flex-1">
@@ -275,7 +206,6 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
-            <!-- Carrito flotante compacto -->
             <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border-l-3 border-guindo-500">
                 <div class="flex items-center gap-2">
                     <div class="bg-guindo-100 rounded-full w-7 h-7 flex items-center justify-center">
@@ -285,14 +215,6 @@ onMounted(() => cargarCarrito())
                         <p class="text-gray-500 leading-tight">Total</p>
                         <p class="font-bold text-guindo-600">{{ totalCarrito }} Bs</p>
                     </div>
-                </div>
-            </div>
-
-            <!-- Loading -->
-            <div v-if="loading && !modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-                <div class="bg-white rounded-lg p-4 flex items-center gap-2">
-                    <i class="fas fa-spinner fa-spin text-guindo-600"></i>
-                    <span class="text-sm">Cargando...</span>
                 </div>
             </div>
         </div>
@@ -305,11 +227,5 @@ onMounted(() => cargarCarrito())
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-}
-
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
 }
 </style>
