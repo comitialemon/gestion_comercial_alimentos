@@ -178,10 +178,52 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
                 'success' => true,
                 'nit' => $identificador ? $identificador->CI_NIT : 0,
                 'nombre' => $identificador ? $identificador->Nombre : '',
+                'id_identificador' => $identificador ? $identificador->IdIdentificador : null
             ]);
         } catch (\Exception $e) {
             \Log::error('Error en nit-predefinido: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     })->name('api.venta.nit-predefinido');
+    
+    // ==================== 🔥 ID DEL COMISIONISTA PARA VENTA (NUEVA) ====================
+    Route::get('/venta/{ventaId}/comisionista-id', function ($ventaId) {
+        try {
+            $venta = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdVentas', $ventaId)
+                ->first();
+            
+            if (!$venta) {
+                return response()->json(['success' => false, 'message' => 'Venta no encontrada']);
+            }
+            
+            $idComisionista = null;
+            
+            if ($venta->IdComisionista && $venta->IdComisionista > 0) {
+                $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_comisionitas')
+                    ->where('IdComisionista', $venta->IdComisionista)
+                    ->first();
+                
+                if ($comisionista) {
+                    $idComisionista = $comisionista->IdIdentificador;
+                }
+            }
+            
+            if (!$idComisionista && $venta->IdNIT && $venta->IdNIT > 0) {
+                $idComisionista = $venta->IdNIT;
+            }
+            
+            return response()->json([
+                'success' => true,
+                'id_comisionista' => $idComisionista
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en comisionista-id: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    })->name('api.venta.comisionista-id');
+    
 });

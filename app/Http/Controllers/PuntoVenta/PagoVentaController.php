@@ -36,6 +36,9 @@ class PagoVentaController extends Controller
         $venta = Venta::with('detalles')->findOrFail($ventaId);
         $deuda = (float) $this->ventaService->getDeuda($ventaId);
         
+        // 🔥 OBTENER EL NIT DE LA EMPRESA ACTUAL
+        $nitEmpresa = session('cliente_nit');
+        
         $productos = [];
         foreach ($venta->detalles as $detalle) {
             $productos[] = [
@@ -52,7 +55,8 @@ class PagoVentaController extends Controller
             'productos' => $productos,
             'ventaId' => $ventaId,
             'tipoVenta' => 'normal',
-            'volverRuta' => '/venta-factura/nueva'
+            'volverRuta' => '/venta-factura/nueva',
+            'clienteNit' => $nitEmpresa, // 🔥 PASAR EL NIT DE LA EMPRESA
         ]);
     }
 
@@ -94,13 +98,17 @@ class PagoVentaController extends Controller
             ->where('idventas', $ventaId)
             ->sum('totalbolivianos');
         
+        // 🔥 OBTENER EL NIT DE LA EMPRESA ACTUAL
+        $nitEmpresa = session('cliente_nit');
+        
         return $this->renderPagoView($tieneFacturacion, [
             'venta' => (object) $venta,
             'deuda' => (float) $deuda,
             'productos' => $productos,
             'ventaId' => $ventaId,
             'tipoVenta' => 'tactil',
-            'volverRuta' => '/venta-tactil/carrito'
+            'volverRuta' => '/venta-tactil/carrito',
+            'clienteNit' => $nitEmpresa, // 🔥 PASAR EL NIT DE LA EMPRESA
         ]);
     }
 
@@ -224,33 +232,30 @@ class PagoVentaController extends Controller
 
             $ventaId = $request->venta_id;
             
-            $identificadorId = $request->id_identificador_cliente;
+            // 🔥 OBTENER EL ID DEL CLIENTE SELECCIONADO
+            $idNIT = $request->id_identificador_cliente;
             
-            if (!$identificadorId) {
-                $identificadorId = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('todos_operador')
-                    ->where('IdOperador', session('operador_id'))
-                    ->value('IdIdentificador');
+            // Si NO se seleccionó cliente, usar CONSUMIDOR FINAL (ID 1)
+            if (!$idNIT || $idNIT == 0) {
+                $idNIT = 1;
             }
-            
-            if (!$identificadorId) {
-                $identificadorId = 1;
-            }
+
+            // 🔥 LOG PARA VER QUÉ LLEGA
+            \Log::info('=== PROCESANDO PAGO ===');
+            \Log::info('Venta ID: ' . $ventaId);
+            \Log::info('id_identificador_cliente recibido: ' . ($request->id_identificador_cliente ?? 'NULL'));
+            \Log::info('ID NIT que se guardará: ' . $idNIT);
 
             $ventaActual = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->first();
             
-            $nombreLugarVenta = null;
-            if ($ventaActual && $ventaActual->LugarVenta) {
-                $lugarVenta = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('impuestos_ventas_lugar_venta')
-                    ->where('IdLugar', $ventaActual->LugarVenta)
-                    ->first();
-                $nombreLugarVenta = $lugarVenta ? $lugarVenta->Lugar : null;
+            if (!$ventaActual) {
+                throw new \Exception('Venta no encontrada');
             }
-
+            
+            // Insertar liquidación (métodos de pago)
             foreach ($request->montos as $conceptoId => $monto) {
                 if ($monto > 0) {
                     $concepto = DB::connection('mysql_gestion_comercial_alimentos')
@@ -265,13 +270,14 @@ class PagoVentaController extends Controller
                         ->insert([
                             'IdVentas' => $ventaId,
                             'IdDiario' => 0,
-                            'IdIdentificador' => $identificadorId,
+                            'IdIdentificador' => $idNIT, // 🔥 ID del cliente
                             'IdCuenta' => $idCuentaReal,
                             'Bolivianos' => $monto,
                         ]);
                 }
             }
 
+            // Obtener último número de factura
             $ultimoNumeroFactura = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', session('cliente_id'))
@@ -280,36 +286,44 @@ class PagoVentaController extends Controller
 
             $nuevoNumeroFactura = ($ultimoNumeroFactura ?? 0) + 1;
 
+            // 🔥 ACTUALIZAR VENTA con el ID del cliente seleccionado
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->update([
                     'ActivoInactivo' => 1,
                     'FechaUltimaActualizcion' => now(),
-                    'IdNIT' => $identificadorId,
+                    'IdNIT' => $idNIT, // 🔥 Guarda el ID del cliente
                     'NumeroFactura' => $nuevoNumeroFactura,
                     'IdEstado' => 1,
-                    'LugarVenta' => $nombreLugarVenta ?? $ventaActual->LugarVenta
+                    'IdOperadorActualiza' => session('operador_id'),
                 ]);
 
+            // Registrar salida de inventario
             $this->registrarSalidaInventario($ventaId);
 
             DB::commit();
 
-            $this->limpiarSesionVenta($request->tipo_venta);
-
-            // Generar URL del PDF
-            $pdfUrl = route('ventas.factura-pdf', $ventaId);
+            // Limpiar sesión
+            if ($request->tipo_venta === 'tactil') {
+                session()->forget('venta_tactil_id');
+                session()->forget('venta_tactil_lugar_id');
+                session()->forget('venta_tactil_comisionista_id');
+                session()->forget('venta_tactil_comisionista_identificador');
+            } else {
+                session()->forget('venta_actual_id');
+            }
 
             return response()->json([
                 'success' => true, 
                 'message' => 'Venta completada',
-                'pdf_url' => $pdfUrl
+                'pdf_url' => route('ventas.factura-pdf', $ventaId),
+                'id_nit_guardado' => $idNIT
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Error procesando pago sin facturación: ' . $e->getMessage());
+            \Log::error('Error procesando pago: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
@@ -434,6 +448,7 @@ class PagoVentaController extends Controller
     /**
      * Generar PDF de factura (sin facturación electrónica)
      */
+
     public function facturaPdf($id)
     {
         \Log::info('=== facturaPdf completo ===');
@@ -462,10 +477,15 @@ class PagoVentaController extends Controller
                 ->where('IdClienteSucursal', session('cliente_sucursal_id'))
                 ->first();
             
+            // 🔥 CLIENTE (quien compró) - CORREGIDO
             $cliente = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_identificador')
                 ->where('IdIdentificador', $venta->IdNIT)
                 ->first();
+            
+            // Si no hay cliente (IdNIT = 0 o nulo), mostrar CONSUMIDOR FINAL
+            $nombreCliente = $cliente ? $cliente->Nombre : 'CONSUMIDOR FINAL';
+            $nitCliente = $cliente ? $cliente->CI_NIT : '0';
             
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle as d')
@@ -490,6 +510,7 @@ class PagoVentaController extends Controller
                     ->first();
             }
             
+            // 🔥 OPERADOR (vendedor) - se muestra aparte
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador as o')
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -558,30 +579,23 @@ class PagoVentaController extends Controller
             $pdf->SetAutoPageBreak(true, 5);
             $pdf->AddPage();
             
-            // 🔥 =============================================
             // 🔥 SELLO DE "ANULADO" si la factura está anulada (IdEstado = 2)
-            // 🔥 =============================================
             if ($venta->IdEstado == 2) {
-                // Guardar estado actual
-                $pdf->SetAlpha(0.3); // Transparencia 30%
+                $pdf->SetAlpha(0.3);
                 $pdf->SetFont('helvetica', 'B', 38);
-                $pdf->SetTextColor(255, 0, 0); // Rojo
+                $pdf->SetTextColor(255, 0, 0);
                 
-                // Calcular posición centrada
                 $anchoPagina = 72;
                 $anchoTexto = 55;
                 $xCentro = ($anchoPagina - $anchoTexto) / 2;
                 $yCentro = 45;
                 
-              
-                // Sello inclinado -25 grados
                 $pdf->StartTransform();
                 $pdf->Rotate(-25, $anchoPagina / 2, $yCentro);
                 $pdf->SetXY($xCentro, $yCentro);
                 $pdf->Cell($anchoTexto, 15, "ANULADO", 0, 1, 'C');
                 $pdf->StopTransform();
                 
-                // Restaurar valores
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetAlpha(1);
             }
@@ -627,17 +641,19 @@ class PagoVentaController extends Controller
             $pdf->Cell($width, 4, "N° " . ($venta->NumeroFactura ?? '0'), 0, 1, 'C');
             $y += 6;
             
-            // Información de la venta
+            // =============================================
+            // DATOS DEL CLIENTE (quien compró) - CORREGIDO
+            // =============================================
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "FECHA: " . date('d/m/Y H:i:s', strtotime($venta->FechaVenta)), 0, 1, 'L');
             $y += 4;
             
             $pdf->SetXY($x, $y);
-            $pdf->Cell($width, 4, "NIT/CI: " . ($cliente->CI_NIT ?? '0'), 0, 1, 'L');
+            $pdf->Cell($width, 4, "NIT/CI: " . $nitCliente, 0, 1, 'L');
             $y += 4;
             
             $pdf->SetXY($x, $y);
-            $pdf->Cell($width, 4, "SR(ES): " . ($cliente->Nombre ?? 'CONSUMIDOR FINAL'), 0, 1, 'L');
+            $pdf->Cell($width, 4, "CLIENTE: " . $nombreCliente, 0, 1, 'L');
             $y += 4;
             
             if ($lugarVenta) {
@@ -719,7 +735,7 @@ class PagoVentaController extends Controller
             $y = $pdf->GetY() + 2;
             
             // =============================================
-            // COMISIONISTA Y OPERADOR
+            // COMISIONISTA Y OPERADOR (VENDEDOR)
             // =============================================
             if ($comisionista) {
                 $pdf->SetXY($x, $y);
@@ -727,8 +743,9 @@ class PagoVentaController extends Controller
                 $y += 4;
             }
             
+            // 🔥 OPERADOR (vendedor) - se muestra aquí, no como cliente
             $pdf->SetXY($x, $y);
-            $pdf->Cell($width, 4, "USUARIO: " . ($operador->Nombre ?? ''), 0, 1, 'L');
+            $pdf->Cell($width, 4, "VENDEDOR: " . ($operador->Nombre ?? ''), 0, 1, 'L');
             $y += 4;
             
             $pdf->SetXY($x, $y);

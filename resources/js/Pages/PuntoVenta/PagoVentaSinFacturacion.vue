@@ -20,6 +20,10 @@ const props = defineProps({
     volverRuta: {
         type: String,
         default: '/venta-factura/nueva'
+    },
+    clienteNit: {
+        type: [String, Number],
+        default: null
     }
 })
 
@@ -37,35 +41,7 @@ const mostrandoListaClientes = ref(false)
 const buscandoCliente = ref(false)
 const cargandoNitPredefinido = ref(false)
 
-// Temporizador para búsqueda
 let searchTimeout = null
-
-// Cargar NIT predefinido desde la venta
-const cargarNitPredefinido = async () => {
-    if (!props.ventaId) return
-    
-    cargandoNitPredefinido.value = true
-    try {
-        const response = await axios.get(`/api/venta/${props.ventaId}/nit-predefinido`)
-        if (response.data.success && response.data.nit !== undefined && response.data.nit !== null) {
-            const nitValue = response.data.nit.toString()
-            nitCliente.value = nitValue
-            
-            if (response.data.nombre && response.data.nombre !== 'SIN NIT') {
-                clienteSeleccionado.value = {
-                    IdIdentificador: response.data.id_identificador,
-                    CI_NIT: response.data.nit,
-                    Nombre: response.data.nombre
-                }
-                nitCliente.value = `${response.data.nit} - ${response.data.nombre}`
-            }
-        }
-    } catch (error) {
-        console.error('Error cargando NIT predefinido:', error)
-    } finally {
-        cargandoNitPredefinido.value = false
-    }
-}
 
 // Totales
 const totalRegistrado = computed(() => {
@@ -97,7 +73,7 @@ const cargarConceptos = async () => {
     }
 }
 
-// Buscar clientes (con debounce)
+// Buscar clientes
 const buscarClientes = () => {
     if (searchTimeout) clearTimeout(searchTimeout)
     
@@ -130,13 +106,16 @@ const buscarClientes = () => {
 
 // Seleccionar cliente
 const seleccionarCliente = (cliente) => {
-    clienteSeleccionado.value = cliente
+    clienteSeleccionado.value = {
+        IdIdentificador: cliente.IdIdentificador,
+        CI_NIT: cliente.CI_NIT,
+        Nombre: cliente.Nombre
+    }
     nitCliente.value = `${cliente.CI_NIT} - ${cliente.Nombre}`
     mostrandoListaClientes.value = false
     clientesLista.value = []
 }
 
-// Limpiar selección de cliente
 const limpiarCliente = () => {
     clienteSeleccionado.value = null
     nitCliente.value = ''
@@ -144,11 +123,66 @@ const limpiarCliente = () => {
     mostrandoListaClientes.value = false
 }
 
-// Cerrar lista al hacer clic fuera
 const handleClickOutside = (event) => {
     const container = document.querySelector('.cliente-autocomplete')
     if (container && !container.contains(event.target)) {
         mostrandoListaClientes.value = false
+    }
+}
+
+// Cargar NIT predefinido desde la venta
+const cargarNitPredefinido = async () => {
+    if (!props.ventaId) return
+    
+    cargandoNitPredefinido.value = true
+    try {
+        const nitEmpresa = props.clienteNit ? props.clienteNit.toString() : null
+        const response = await axios.get(`/api/venta/${props.ventaId}/nit-predefinido`)
+        
+        console.log('=== NIT PREDEFINIDO ===', response.data)
+        console.log('=== NIT DE LA EMPRESA ===', nitEmpresa)
+        
+        if (response.data.success && response.data.nit !== undefined && response.data.nit !== null) {
+            const nitValue = response.data.nit.toString()
+            
+            // DETECTAR SI EL NIT DEL COMISIONISTA ES IGUAL AL NIT DE LA EMPRESA
+            const esNitEmpresa = nitEmpresa && nitValue === nitEmpresa.toString()
+            
+            if (esNitEmpresa) {
+                // Es el comisionista con NIT de empresa, mostrar "0 - SIN NIT"
+                clienteSeleccionado.value = {
+                    IdIdentificador: null,
+                    CI_NIT: 0,
+                    Nombre: 'SIN NIT'
+                }
+                nitCliente.value = '0 - SIN NIT'
+                console.log('✅ NIT igual al de la empresa, mostrando SIN NIT')
+            }
+            // Si el NIT es diferente de la empresa y tiene nombre
+            else if (response.data.nombre && response.data.nombre !== 'SIN NIT' && response.data.nombre !== '') {
+                clienteSeleccionado.value = {
+                    IdIdentificador: response.data.id_identificador,
+                    CI_NIT: response.data.nit,
+                    Nombre: response.data.nombre
+                }
+                nitCliente.value = `${response.data.nit} - ${response.data.nombre}`
+                console.log('✅ Cliente cargado:', clienteSeleccionado.value)
+            }
+            // Si no hay nombre o es SIN NIT
+            else {
+                clienteSeleccionado.value = {
+                    IdIdentificador: response.data.id_identificador || null,
+                    CI_NIT: response.data.nit,
+                    Nombre: 'SIN NOMBRE'
+                }
+                nitCliente.value = `${response.data.nit} - SIN NOMBRE`
+                console.log('⚠️ Sin nombre:', nitCliente.value)
+            }
+        }
+    } catch (error) {
+        console.error('Error cargando NIT predefinido:', error)
+    } finally {
+        cargandoNitPredefinido.value = false
     }
 }
 
@@ -161,16 +195,20 @@ const procesarPago = async () => {
     
     procesando.value = true
     
+    const idCliente = clienteSeleccionado.value?.IdIdentificador || null
+    console.log('=== ENVIANDO AL BACKEND ===')
+    console.log('venta_id:', props.ventaId)
+    console.log('id_identificador_cliente:', idCliente)
+    
     try {
         const response = await axios.post('/api/pago/procesar-sin-facturacion', {
             venta_id: props.ventaId,
             montos: montosPorConcepto.value,
             tipo_venta: props.tipoVenta,
-            id_identificador_cliente: clienteSeleccionado.value?.IdIdentificador || null
+            id_identificador_cliente: idCliente
         })
         
         if (response.data.success) {
-            // Abrir PDF en nueva pestaña
             if (response.data.pdf_url) {
                 window.open(response.data.pdf_url, '_blank')
             }
@@ -301,6 +339,10 @@ onUnmounted(() => {
                                     <i class="fas fa-check-circle text-[10px] mr-1"></i> 
                                     {{ clienteSeleccionado.Nombre }} ({{ clienteSeleccionado.CI_NIT }})
                                 </div>
+                                <div v-if="!clienteSeleccionado && nitCliente === '0 - SIN NIT'" class="mt-1.5 text-[11px] text-amber-600 bg-amber-50 rounded-md px-2 py-1">
+                                    <i class="fas fa-info-circle text-[10px] mr-1"></i> 
+                                    Cliente con NIT 0 (SIN NIT)
+                                </div>
                             </div>
                         </div>
 
@@ -375,7 +417,6 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Footer -->
                 <div class="mt-3 text-center text-[9px] text-gray-400">
                     <i class="fas fa-lock"></i> Datos seguros
                 </div>

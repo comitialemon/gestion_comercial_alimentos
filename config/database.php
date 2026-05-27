@@ -32,6 +32,8 @@ return [
             'prefix' => '',
             'strict' => true,
             'engine' => null,
+            'timezone' => '-04:00',  // Bolivia UTC-4
+
         ],
 
         // ✅ Conexión a la base de datos de FACTURACIÓN (solo lectura de catálogos)
