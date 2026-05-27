@@ -287,7 +287,7 @@ onUnmounted(() => {
                         <div class="border-b pb-2">
                             <h3 class="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
                                 <span class="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[9px] text-blue-600">1</span>
-                                Cliente (Opcional)
+                                NIT / CI del Cliente
                             </h3>
                             <div class="relative cliente-autocomplete">
                                 <div class="flex gap-2">
