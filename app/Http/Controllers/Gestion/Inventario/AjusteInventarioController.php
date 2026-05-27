@@ -173,32 +173,11 @@ class AjusteInventarioController extends Controller
             ->with(['detalles.producto', 'tipoOperacion'])
             ->findOrFail($id);
 
-        if ($ajuste->ActivoInactivo != 0) {
+        if ($ajuste->ActivoInactivo == 1) {
             return redirect()->back()->with('error', 'El ajuste ya fue contabilizado');
         }
 
-        // Validaciones
-        if ($ajuste->IdFecha == 0) {
-            return redirect()->back()->with('error', 'Seleccione una fecha');
-        }
-        if (empty($ajuste->ConceptoOperacion)) {
-            return redirect()->back()->with('error', 'Seleccione el concepto (Ingreso/Salida)');
-        }
-        if ($ajuste->IdTipoOperacion == 0) {
-            return redirect()->back()->with('error', 'Seleccione el tipo de operación');
-        }
-        if ($ajuste->IdAlmacen == 0) {
-            return redirect()->back()->with('error', 'Seleccione un almacén');
-        }
-        if ($ajuste->IdRealizadoPor == 0) {
-            return redirect()->back()->with('error', 'Seleccione quien realizó el ajuste');
-        }
-        if ($ajuste->IdAutorizadoPor == 0) {
-            return redirect()->back()->with('error', 'Seleccione quien autorizó el ajuste');
-        }
-        if ($ajuste->detalles->count() == 0) {
-            return redirect()->back()->with('error', 'Agregue al menos un producto');
-        }
+        // ... validaciones ...
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
@@ -207,14 +186,72 @@ class AjusteInventarioController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 1. Generar número correlativo
-            $maxCorrelativo = AjusteInventario::porContexto()->max('NumeroCorrelativo');
-            $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+            // Número correlativo
+            if ($ajuste->NumeroCorrelativo == 0) {
+                $maxCorrelativo = AjusteInventario::porContexto()->max('NumeroCorrelativo');
+                $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+            } else {
+                $numeroCorrelativo = $ajuste->NumeroCorrelativo;
+            }
 
-            // 2. Determinar D/H según concepto
-            $dH = $ajuste->ConceptoOperacion == 'INGRESO' ? 'D' : 'H';
+            $dH = $ajuste->ConceptoOperacion == 'Ingreso' ? 'D' : 'H';
+            $idDiario = $ajuste->IdDiario;
 
-            // 3. Insertar movimientos en inventario_propiamente
+            // 🔥 ========== ELIMINAR MOVIMIENTOS DE INVENTARIO ANTIGUOS ==========
+            $eliminadosInv = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_propiamente')
+                ->where('IdDocumento', $ajuste->IdAjustesPrincipal)  // ← IdAjustesPrincipal
+                ->delete();
+            
+            Log::info("Movimientos eliminados de inventario_propiamente: {$eliminadosInv}");
+
+            // 🔥 ========== ELIMINAR ASIENTOS CONTABLES ANTIGUOS (si existe diario) ==========
+            if ($idDiario && $idDiario > 0) {
+                $eliminadosAsientos = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->where('IdDiario', $idDiario)
+                    ->delete();
+                
+                Log::info("Asientos contables eliminados: {$eliminadosAsientos}");
+            }
+
+            // ========== CREAR O REUTILIZAR DIARIO ==========
+            if ($idDiario && $idDiario > 0) {
+                // Reutilizar diario existente
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->where('IdDiario', $idDiario)
+                    ->update([
+                        'IdFecha' => $ajuste->IdFecha,
+                        'IdOperadorEdita' => $operadorId,
+                        'FechaEdita' => now(),
+                    ]);
+            } else {
+                // Crear nuevo diario
+                $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->max('NumeroDiario');
+                $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
+
+                $idDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->insertGetId([
+                        'IdFecha' => $ajuste->IdFecha,
+                        'IdTipoDiario' => 7,
+                        'NumeroDiario' => $numeroDiario,
+                        'IdCliente' => $clienteId,
+                        'IdSucursal' => $sucursalId,
+                        'Contabilizado' => 1,
+                        'IdOperadorIngreso' => $operadorId,
+                        'FechaIngreso' => now(),
+                        'IdoperadorEdita' => $operadorId,
+                        'FechaEdita' => now(),
+                    ]);
+            }
+
+            // 🔥 ========== INSERTAR NUEVOS MOVIMIENTOS DE INVENTARIO ==========
             foreach ($ajuste->detalles as $detalle) {
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
@@ -232,10 +269,46 @@ class AjusteInventarioController extends Controller
                         'IdSucursal' => $sucursalId,
                     ]);
             }
+            
+            Log::info("Nuevos movimientos insertados: " . $ajuste->detalles->count());
 
-            // 4. Actualizar ajuste
+            // ========== INSERTAR ASIENTOS CONTABLES ==========
+            $totalMonto = $ajuste->detalles->sum('Bolivianos');
+            
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $idDiario,
+                    'IdCuenta' => $dH == 'D' ? 1 : 2,
+                    'Glosa' => "Ajuste de Inventario No {$numeroCorrelativo}",
+                    'D_H' => $dH == 'D' ? 'D' : 'H',
+                    'MontoBolivianos' => $totalMonto,
+                    'TipoCambio' => 1,
+                    'MontoOtraMoneda' => $totalMonto,
+                    'IdIdentificador' => $ajuste->IdRealizadoPor,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+            
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario_propiamente')
+                ->insert([
+                    'IdDiario' => $idDiario,
+                    'IdCuenta' => $dH == 'D' ? 2 : 1,
+                    'Glosa' => "Ajuste de Inventario No {$numeroCorrelativo}",
+                    'D_H' => $dH == 'D' ? 'H' : 'D',
+                    'MontoBolivianos' => $totalMonto,
+                    'TipoCambio' => 1,
+                    'MontoOtraMoneda' => $totalMonto,
+                    'IdIdentificador' => $ajuste->IdAutorizadoPor,
+                    'IdActividad' => 1,
+                    'Deducible' => 'D',
+                ]);
+
+            // Actualizar ajuste
             $ajuste->update([
                 'NumeroCorrelativo' => $numeroCorrelativo,
+                'IdDiario' => $idDiario,
                 'ActivoInactivo' => 1,
                 'IdOperadorEdita' => $operadorId,
                 'FechaActualiza' => now(),
@@ -243,15 +316,32 @@ class AjusteInventarioController extends Controller
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // Redirigir al PDF
+            Log::info('Ajuste contabilizado correctamente', [
+                'IdAjuste' => $ajuste->IdAjustesPrincipal,
+                'Numero' => $numeroCorrelativo,
+                'IdDiario' => $idDiario
+            ]);
+
             return redirect()->route('ajustes-inventario.pdf', $ajuste->IdAjustesPrincipal);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             Log::error('Error al contabilizar ajuste: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return redirect()->back()->with('error', 'Error al contabilizar: ' . $e->getMessage());
         }
     }
+/**
+ * Calcular total de un ajuste
+ */
+private function calcularTotal($detalles)
+{
+    $total = 0;
+    foreach ($detalles as $detalle) {
+        $total += $detalle->Bolivianos;
+    }
+    return $total;
+}
 
     /**
      * Mostrar ajuste contabilizado

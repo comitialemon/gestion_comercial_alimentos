@@ -132,7 +132,7 @@ const formatearFecha = (fecha) => {
 }
 
 const getEstadoColor = (activo) => {
-    return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+    return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
 }
 
 const getEstadoTexto = (activo) => {
@@ -141,26 +141,26 @@ const getEstadoTexto = (activo) => {
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100 pb-20">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
         <div class="py-3 px-3 sm:py-4 sm:px-5 lg:px-6">
             <div class="max-w-full lg:max-w-7xl mx-auto">
                 <!-- Header -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-toggle-on text-blue-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-toggle-on text-guindo-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Compras</h1>
-                            <p class="text-[10px] text-gray-500 hidden xs:block">Activar o desactivar comprobantes de compra</p>
+                            <p class="text-[10px] text-gray-500">Activar o desactivar comprobantes de compra</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/compras" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                        <Link href="/gestion/compras" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 transition">
                             <i class="fas fa-list text-[10px]"></i>
                             <span>Listado</span>
                         </Link>
-                        <Link href="/gestion/compras/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                        <Link href="/gestion/compras/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 transition">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nueva Compra</span>
                         </Link>
@@ -168,11 +168,11 @@ const getEstadoTexto = (activo) => {
                 </div>
 
                 <!-- Filtros -->
-                <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select v-model="estadoFiltro" class="border rounded-md px-2 py-1 text-xs w-36 sm:w-40">
+                            <select v-model="estadoFiltro" class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-36 sm:w-40 focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200">
                                 <option value="">Todos</option>
                                 <option value="activos">Contabilizadas</option>
                                 <option value="inactivos">Borradores</option>
@@ -185,7 +185,7 @@ const getEstadoTexto = (activo) => {
                                 v-model="buscador" 
                                 @input="buscarCompras"
                                 placeholder="N° Correlativo..."
-                                class="border rounded-md px-2 py-1 text-xs w-28 sm:w-32"
+                                class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-28 sm:w-32 focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200"
                             >
                             <button v-if="buscador" @click="limpiarBusqueda" class="text-gray-400 hover:text-gray-600 text-xs">
                                 <i class="fas fa-times"></i>
@@ -203,14 +203,14 @@ const getEstadoTexto = (activo) => {
 
                 <!-- Vista MÓVIL -->
                 <div v-if="isMobile" class="space-y-3">
-                    <div v-for="compra in compras.data" :key="compra.IdCompras" class="bg-white rounded-lg shadow-sm p-3">
-                        <div class="flex justify-between items-start border-b pb-2 mb-2">
+                    <div v-for="compra in compras.data" :key="compra.IdCompras" class="bg-white rounded-xl shadow-sm p-3">
+                        <div class="flex justify-between items-start border-b border-gray-100 pb-2 mb-2">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
+                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded-lg">
                                     N° {{ compra.NumeroCorrelativo }}
                                 </span>
                             </div>
-                            <a :href="`/gestion/compras/${compra.IdCompras}/pdf`" target="_blank" class="text-red-600" title="PDF">
+                            <a :href="`/gestion/compras/${compra.IdCompras}/pdf`" target="_blank" class="text-red-600 hover:text-red-700" title="PDF">
                                 <i class="fas fa-file-pdf text-sm"></i>
                             </a>
                         </div>
@@ -226,9 +226,9 @@ const getEstadoTexto = (activo) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Monto:</span>
-                                <span class="font-bold text-blue-600">{{ Number(compra.ImporteFactura).toFixed(2) }} Bs</span>
+                                <span class="font-bold text-guindo-600">{{ Number(compra.ImporteFactura).toFixed(2) }} Bs</span>
                             </div>
-                            <div class="flex justify-between items-center pt-1 border-t mt-1">
+                            <div class="flex justify-between items-center pt-1 border-t border-gray-100 mt-1">
                                 <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(compra.ActivoInactivo)">
                                     <i :class="compra.ActivoInactivo === 1 ? 'fas fa-check-circle' : 'fas fa-pencil-alt'" class="mr-0.5 text-[8px]"></i>
                                     {{ getEstadoTexto(compra.ActivoInactivo) }}
@@ -236,7 +236,7 @@ const getEstadoTexto = (activo) => {
                                 
                                 <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
                                     <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                        :class="compra.ActivoInactivo === 1 ? 'bg-blue-600' : 'bg-gray-300'">
+                                        :class="compra.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
                                         <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                             :class="compra.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                         </div>
@@ -250,33 +250,33 @@ const getEstadoTexto = (activo) => {
                         </div>
                     </div>
                     
-                    <div v-if="compras.data?.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+                    <div v-if="compras.data?.length === 0" class="bg-white rounded-xl shadow-sm p-8 text-center">
                         <i class="fas fa-box-open text-3xl text-gray-300 mb-2 block"></i>
-                        <p class="text-xs text-gray-400">No hay compras registradas</p>
+                        <p class="text-sm text-gray-400">No hay compras registradas</p>
                     </div>
                 </div>
 
                 <!-- Vista ESCRITORIO -->
-                <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
+                <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-blue-50">
+                            <thead class="bg-guindo-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-blue-700 uppercase">N° Correlativo</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-blue-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-blue-700 uppercase">Proveedor</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-blue-700 uppercase">Monto</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-blue-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-blue-700 uppercase">Cambiar</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-blue-700 uppercase">PDF</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Correlativo</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Proveedor</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Monto</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Cambiar</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">PDF</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="compra in compras.data" :key="compra.IdCompras" class="hover:bg-gray-50">
+                                <tr v-for="compra in compras.data" :key="compra.IdCompras" class="hover:bg-gray-50 transition">
                                     <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ compra.NumeroCorrelativo }}</td>
                                     <td class="px-3 py-2 text-xs text-gray-500">{{ formatearFecha(compra.FechaIngreso) }}</td>
-                                    <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate">{{ compra.proveedor?.Nombre || '-' }}</td>
-                                    <td class="px-3 py-2 text-xs text-right font-semibold text-blue-600">{{ Number(compra.ImporteFactura).toFixed(2) }} Bs</td>
+                                    <td class="px-3 py-2 text-xs text-gray-700 max-w-[200px] truncate">{{ compra.proveedor?.Nombre || '-' }}</td>
+                                    <td class="px-3 py-2 text-xs text-right font-semibold text-guindo-600">{{ Number(compra.ImporteFactura).toFixed(2) }} Bs</td>
                                     <td class="px-3 py-2 text-center">
                                         <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoColor(compra.ActivoInactivo)">
                                             <i :class="compra.ActivoInactivo === 1 ? 'fas fa-check-circle' : 'fas fa-pencil-alt'" class="mr-0.5 text-[8px]"></i>
@@ -286,7 +286,7 @@ const getEstadoTexto = (activo) => {
                                     <td class="px-3 py-2 text-center">
                                         <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
                                             <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                                :class="compra.ActivoInactivo === 1 ? 'bg-blue-600' : 'bg-gray-300'">
+                                                :class="compra.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
                                                 <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                                     :class="compra.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                                 </div>
@@ -298,14 +298,14 @@ const getEstadoTexto = (activo) => {
                                         </div>
                                     </td>
                                     <td class="px-3 py-2 text-right">
-                                        <a :href="`/gestion/compras/${compra.IdCompras}/pdf`" target="_blank" class="text-red-600 hover:text-red-800" title="PDF">
+                                        <a :href="`/gestion/compras/${compra.IdCompras}/pdf`" target="_blank" class="text-red-600 hover:text-red-700 transition" title="PDF">
                                             <i class="fas fa-file-pdf text-sm"></i>
                                         </a>
                                     </td>
                                 </tr>
                                 <tr v-if="compras.data?.length === 0">
-                                    <td colspan="7" class="px-4 py-8 text-center text-gray-400 text-xs">
-                                        <i class="fas fa-box-open text-2xl mb-1 block"></i>
+                                    <td colspan="7" class="px-4 py-8 text-center text-gray-400 text-sm">
+                                        <i class="fas fa-box-open text-3xl mb-2 block"></i>
                                         No hay compras registradas
                                     </td>
                                 </tr>
@@ -316,16 +316,16 @@ const getEstadoTexto = (activo) => {
                     <div v-if="compras.links && compras.links.length > 1" class="px-3 py-2 border-t border-gray-200 bg-gray-50">
                         <div class="flex justify-between items-center text-xs">
                             <div class="text-gray-500">Mostrando {{ compras.from || 0 }} a {{ compras.to || 0 }} de {{ compras.total || 0 }}</div>
-                            <div class="flex gap-0.5 flex-wrap">
-                                <Link v-for="link in compras.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-blue-600 text-white border-blue-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                            <div class="flex gap-0.5">
+                                <Link v-for="link in compras.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs transition" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div v-if="isMobile && compras.links && compras.links.length > 1" class="mt-3 bg-white rounded-lg shadow-sm p-2">
+                <div v-if="isMobile && compras.links && compras.links.length > 1" class="mt-3 bg-white rounded-xl shadow-sm p-2">
                     <div class="flex justify-center gap-0.5 flex-wrap">
-                        <Link v-for="link in compras.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-blue-600 text-white border-blue-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                        <Link v-for="link in compras.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center transition" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                     </div>
                 </div>
             </div>
@@ -334,10 +334,10 @@ const getEstadoTexto = (activo) => {
         <!-- Modal de confirmación -->
         <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
             <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
-                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-yellow-50'">
+                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-amber-50'">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-yellow-100'">
-                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-yellow-600'" class="text-xl"></i>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-amber-100'">
+                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-amber-600'" class="text-xl"></i>
                         </div>
                         <div class="flex-1">
                             <h3 class="font-bold text-gray-800 text-sm sm:text-base">
@@ -357,8 +357,8 @@ const getEstadoTexto = (activo) => {
                     </p>
                 </div>
                 <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
-                    <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100">Cancelar</button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'">
+                    <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">Cancelar</button>
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
                         <i v-else :class="modalData.accion === 'activar' ? 'fas fa-check' : 'fas fa-ban'"></i>
                         {{ modalData.accion === 'activar' ? 'Activar' : 'Desactivar' }}

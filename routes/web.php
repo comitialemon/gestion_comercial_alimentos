@@ -193,7 +193,7 @@ Route::middleware(['auth.operador'])->group(function () {
     // 🔥 API: Obtener operadores por sucursal (para el select dinámico)
     Route::get('/gestion/anular-factura/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])
         ->name('gestion.anular-factura.operadores');
-        
+
     // ==================== MANTENIMIENTO MÉTODOS DE PAGO ====================
     Route::prefix('gestion/mantenimiento-metodos-pago')->group(function () {
         Route::get('/', [MantenimientoMetodosPagoController::class, 'index'])
@@ -275,23 +275,27 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('gestion.reportes.lista-precios.exportar');
     });
 
-// ==================== COMPRAS ====================
-Route::prefix('gestion/compras')->group(function () {
-    Route::get('/', [CompraController::class, 'index'])->name('compras.index');
-    Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
-    Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
-    Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
-    Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
-    Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
-    Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
-    Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
-    Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
-    Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
-    
-    // 🔥 AGREGAR ESTAS DOS LÍNEAS
-    Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado');
-    Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
-});
+    // ==================== COMPRAS ====================
+    Route::prefix('gestion/compras')->group(function () {
+        // 🔥 PRIMERO: Rutas FIJAS (sin parámetros)
+        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
+        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+        Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado'); // ← MOVER AQUÍ
+        
+        // 🔥 SEGUNDO: Rutas POST/PUT/DELETE
+        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
+        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
+        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
+        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
+        Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
+        
+        // 🔥 TERCERO: Rutas con parámetros {id} (van al final)
+        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
+        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
+        Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
+        Route::put('/actualizar-detalle/{id}', [CompraController::class, 'actualizarDetalle'])->name('compras.actualizar-detalle');
+    });
 
     // ==================== CONTABILIDAD ====================
 
@@ -441,26 +445,23 @@ Route::prefix('gestion/compras')->group(function () {
         Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
         Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
         Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
-        
         // Gestión de estados
         Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
         Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
-        
         // Cabecera
         Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
-        
         // 🔥 Ruta de contabilizar (verifica que esté aquí)
         Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
-        
         // Rutas de detalle
         Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
         Route::put('/detalle/{id}', [AjusteInventarioController::class, 'actualizarDetalle'])->name('ajustes-inventario.detalle.update');
         Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
-        
         // Rutas con {id} genérico (deben ir al final)
         Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
         Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
         Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
+        Route::put('/{id}', [AjusteInventarioController::class, 'update'])
+    ->name('ajustes-inventario.update');
     });
     // ==================== PRODUCTOS VENTA ====================
     Route::prefix('gestion/productos-venta')->group(function () {

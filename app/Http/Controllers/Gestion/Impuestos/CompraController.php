@@ -321,32 +321,76 @@ class CompraController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 1. Generar número correlativo
-            $maxCorrelativo = Compra::porContexto()->max('NumeroCorrelativo');
-            $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+            // 1. Generar o mantener número correlativo
+            if ($compra->NumeroCorrelativo == 0) {
+                $maxCorrelativo = Compra::porContexto()->max('NumeroCorrelativo');
+                $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+            } else {
+                $numeroCorrelativo = $compra->NumeroCorrelativo;
+            }
 
-            // 2. Crear diario contable
-            $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_diario')
-                ->where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->max('NumeroDiario');
-            $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
+            // 2. Verificar si ya tiene diario asociado
+            $idDiario = $compra->IdDiario;
 
-            $diarioId = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_diario')
-                ->insertGetId([
-                    'IdFecha' => $compra->IdFecha,
-                    'IdTipoDiario' => 7,
-                    'NumeroDiario' => $numeroDiario,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId,
-                    'Contabilizado' => 1,
-                    'IdOperadorIngreso' => $operadorId,
-                    'FechaIngreso' => now(),
-                    'IdoperadorEdita' => $operadorId,
-                    'FechaEdita' => now(),
+            if ($idDiario && $idDiario > 0) {
+                // ==================== REUTILIZAR DIARIO EXISTENTE ====================
+                Log::info('Reutilizando diario existente para compra', [
+                    'IdDiario' => $idDiario,
+                    'Compra' => $compra->IdCompras
                 ]);
+                
+                // Actualizar fecha del diario
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->where('IdDiario', $idDiario)
+                    ->update([
+                        'IdFecha' => $compra->IdFecha,
+                        'IdOperadorEdita' => $operadorId,
+                        'FechaEdita' => now(),
+                    ]);
+                
+                // 🔥 ELIMINAR movimientos de inventario ANTIGUOS
+                $eliminadosInv = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->where('IdDocumento', $idDiario)
+                    ->delete();
+                
+                Log::info("Movimientos de inventario eliminados: {$eliminadosInv}");
+                
+                // 🔥 ELIMINAR asientos contables ANTIGUOS
+                $eliminadosAsientos = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario_propiamente')
+                    ->where('IdDiario', $idDiario)
+                    ->delete();
+                
+                Log::info("Asientos contables eliminados: {$eliminadosAsientos}");
+                
+            } else {
+                // ==================== CREAR NUEVO DIARIO ====================
+                $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->max('NumeroDiario');
+                $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
+
+                $idDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario')
+                    ->insertGetId([
+                        'IdFecha' => $compra->IdFecha,
+                        'IdTipoDiario' => 7,
+                        'NumeroDiario' => $numeroDiario,
+                        'IdCliente' => $clienteId,
+                        'IdSucursal' => $sucursalId,
+                        'Contabilizado' => 1,
+                        'IdOperadorIngreso' => $operadorId,
+                        'FechaIngreso' => now(),
+                        'IdoperadorEdita' => $operadorId,
+                        'FechaEdita' => now(),
+                    ]);
+                
+                Log::info('Nuevo diario creado', ['IdDiario' => $idDiario, 'NumeroDiario' => $numeroDiario]);
+            }
 
             // 3. Obtener cuentas de parámetros
             $cuentas = DB::connection('mysql_gestion_comercial_alimentos')
@@ -364,17 +408,17 @@ class CompraController extends Controller
             $tipoDoc = $compra->IdTipoFactura == 1 ? 'Factura' : 'Recibo';
             $glosaBase = "Nota de Ingreso No {$numeroCorrelativo}, {$tipoDoc} No {$compra->NumeroFactura}";
 
-            // 5. Insertar movimientos de inventario
+            // 5. Insertar NUEVOS movimientos de inventario
             foreach ($compra->detalles as $detalle) {
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->insert([
                         'IdTipoDeOperacion' => 1,
-                        'IdDocumento' => $diarioId,
+                        'IdDocumento' => $idDiario,
                         'IdFecha' => $compra->IdFecha,
                         'IdAlmacen' => $compra->IdAlmacen,
                         'IdProducto' => $detalle->IdProducto,
-                        'Glosa' => "Diario No {$numeroDiario}, {$glosaBase}",
+                        'Glosa' => "Diario, {$glosaBase}",
                         'D_H' => 'D',
                         'Unidades' => $detalle->Unidades,
                         'Bolivianos' => $detalle->TotalBolivianos,
@@ -383,7 +427,7 @@ class CompraController extends Controller
                     ]);
             }
 
-            // 6. Insertar asientos contables
+            // 6. Insertar NUEVOS asientos contables
             $totalCompraBolivianos = $compra->ImporteFactura;
             $totalCompraUFV = round($totalCompraBolivianos / $ufvActual, 2);
 
@@ -395,7 +439,7 @@ class CompraController extends Controller
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
-                        'IdDiario' => $diarioId,
+                        'IdDiario' => $idDiario,
                         'IdCuenta' => $cuentas->ComprasFacturadas ?? 1,
                         'Glosa' => $glosaBase,
                         'D_H' => 'D',
@@ -410,7 +454,7 @@ class CompraController extends Controller
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
-                        'IdDiario' => $diarioId,
+                        'IdDiario' => $idDiario,
                         'IdCuenta' => $cuentas->CreditoFiscalIVA ?? 2,
                         'Glosa' => $glosaBase,
                         'D_H' => 'D',
@@ -425,7 +469,7 @@ class CompraController extends Controller
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
-                        'IdDiario' => $diarioId,
+                        'IdDiario' => $idDiario,
                         'IdCuenta' => $cuentas->ComprasNoFacturadas ?? 1,
                         'Glosa' => $glosaBase,
                         'D_H' => 'D',
@@ -441,7 +485,7 @@ class CompraController extends Controller
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario_propiamente')
                 ->insert([
-                    'IdDiario' => $diarioId,
+                    'IdDiario' => $idDiario,
                     'IdCuenta' => $cuentas->Proveedores ?? 3,
                     'Glosa' => $glosaBase,
                     'D_H' => 'H',
@@ -456,7 +500,7 @@ class CompraController extends Controller
             // 7. Actualizar compra
             $compra->update([
                 'NumeroCorrelativo' => $numeroCorrelativo,
-                'IdDiario' => $diarioId,
+                'IdDiario' => $idDiario,
                 'ActivoInactivo' => 1,
                 'IdOperadorActualiza' => $operadorId,
                 'FechaActualiza' => now(),
@@ -464,12 +508,18 @@ class CompraController extends Controller
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // 8. Redirigir al PDF
+            Log::info('Compra contabilizada correctamente', [
+                'IdCompra' => $compra->IdCompras,
+                'Numero' => $numeroCorrelativo,
+                'IdDiario' => $idDiario
+            ]);
+
             return redirect()->route('compras.pdf', $compra->IdCompras);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-            Log::error('Error al contabilizar: ' . $e->getMessage());
+            Log::error('Error al contabilizar compra: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return redirect()->back()->with('error', 'Error al contabilizar: ' . $e->getMessage());
         }
     }
@@ -794,6 +844,40 @@ class CompraController extends Controller
                 'message' => 'Error al cambiar estado: ' . $e->getMessage()
             ], 500);
         }
+    }
+    /**
+     * Actualizar detalle de compra (editar unidades y total)
+     */
+    public function actualizarDetalle(Request $request, $id)
+    {
+        $request->validate([
+            'Unidades' => 'required|numeric|min:0.0001',
+            'TotalBolivianos' => 'required|numeric|min:0',
+        ]);
+
+        $detalle = CompraDetalle::findOrFail($id);
+        $compra = Compra::findOrFail($detalle->IdCompras);
+
+        if ($compra->ActivoInactivo != 0) {
+            return response()->json(['success' => false, 'message' => 'La compra ya fue contabilizada'], 400);
+        }
+
+        $precio = $request->TotalBolivianos / $request->Unidades;
+
+        $detalle->update([
+            'Unidades' => $request->Unidades,
+            'TotalBolivianos' => $request->TotalBolivianos,
+            'Precio' => $precio,
+        ]);
+
+        $nuevoTotal = CompraDetalle::where('IdCompras', $compra->IdCompras)->sum('TotalBolivianos');
+        $compra->update(['ImporteFactura' => $nuevoTotal]);
+
+        return response()->json([
+            'success' => true,
+            'detalle' => $detalle,
+            'total_compra' => $nuevoTotal
+        ]);
     }
     
 }
