@@ -510,6 +510,7 @@ class ProductoVentaController extends Controller
             ], 500);
         }
     }
+    // ==================== CATÁLOGO DE LOS PRODUCTOS ====================
     public function catalogo(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -522,17 +523,17 @@ class ProductoVentaController extends Controller
             $query->where('id_categoria', $request->categoria);
         }
         
-        // Filtro por grupo
+        // Filtro por grupo (si aún lo quieres mantener)
         if ($request->filled('grupo')) {
             $query->where('IdVentaGrupo', $request->grupo);
         }
         
-        // 🔥 Filtro por estado de aprobación
+        // Filtro por estado de aprobación
         if ($request->filled('aprobacion') && $request->aprobacion !== '') {
             $query->where('estado_aprobacion', $request->aprobacion);
         }
         
-        // 🔥 Filtro por estado comercial (Activo/Inactivo)
+        // Filtro por estado comercial (Activo/Inactivo)
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('ActivoInactivo', $request->estado);
         }
@@ -548,6 +549,20 @@ class ProductoVentaController extends Controller
         
         $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
         
+        // 🔥 Asegurar que la imagen tenga la URL completa
+        foreach ($productos as $producto) {
+            if ($producto->ImagenProducto) {
+                // Si ya tiene URL completa, usarla; si no, agregar /storage
+                if (!str_starts_with($producto->ImagenProducto, 'http') && !str_starts_with($producto->ImagenProducto, '/storage')) {
+                    $producto->imagen_url = '/storage/' . ltrim($producto->ImagenProducto, '/');
+                } else {
+                    $producto->imagen_url = $producto->ImagenProducto;
+                }
+            } else {
+                $producto->imagen_url = null;
+            }
+        }
+        
         $categorias = CategoriaProducto::porContexto()
             ->orderBy('orden')
             ->get(['id_categoria as id', 'nombre']);
@@ -556,11 +571,19 @@ class ProductoVentaController extends Controller
             ->orderBy('Detalle')
             ->get(['IdVentaGrupo as id', 'Detalle as nombre']);
         
+        // 🔥 ESTADÍSTICAS (incluyendo Con Imagen / Sin Imagen)
         $totalProductos = ProductoVenta::where('IdCliente', $clienteId)->count();
         $totalConCategoria = ProductoVenta::where('IdCliente', $clienteId)
             ->whereNotNull('id_categoria')
             ->count();
         $totalSinCategoria = $totalProductos - $totalConCategoria;
+        
+        // 🔥 NUEVAS ESTADÍSTICAS
+        $totalConImagen = ProductoVenta::where('IdCliente', $clienteId)
+            ->whereNotNull('ImagenProducto')
+            ->where('ImagenProducto', '!=', '')
+            ->count();
+        $totalSinImagen = $totalProductos - $totalConImagen;
         
         return Inertia::render('Gestion/Inventario/ProductosVenta/Catalogo', [
             'productos' => $productos,
@@ -569,6 +592,8 @@ class ProductoVentaController extends Controller
             'totalProductos' => $totalProductos,
             'totalConCategoria' => $totalConCategoria,
             'totalSinCategoria' => $totalSinCategoria,
+            'totalConImagen' => $totalConImagen,      // 🔥 NUEVO
+            'totalSinImagen' => $totalSinImagen,      // 🔥 NUEVO
             'filtros' => [
                 'categoria' => $request->categoria,
                 'grupo' => $request->grupo,
