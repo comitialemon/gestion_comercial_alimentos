@@ -105,7 +105,6 @@ const getSaldoClass = (saldo) => {
     return 'text-gray-800 font-semibold'
 }
 
-// Detectar dispositivo al montar
 onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
@@ -172,13 +171,10 @@ onUnmounted(() => {
                     <div v-if="isMobile" class="space-y-3">
                         <div v-for="mov in movimientos" :key="mov.id" class="bg-gray-50 rounded-lg p-3 border border-gray-100">
                             <div class="flex justify-between items-start mb-2">
-                                <div>
-                                    <span class="text-xs font-mono text-gray-500">{{ mov.fecha }}</span>
-                                    <span class="ml-2 px-2 py-0.5 text-[10px] rounded-full" :class="mov.tipo === 'D' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
-                                        {{ mov.tipo === 'D' ? 'ENTRADA' : 'SALIDA' }}
-                                    </span>
-                                </div>
-                                <span class="text-xs font-mono text-gray-400">Doc: {{ mov.IdDocumento || '-' }}</span>
+                                <span class="text-xs font-mono text-gray-500">{{ mov.fecha }}</span>
+                                <span class="px-2 py-0.5 text-[10px] rounded-full" :class="mov.tipo === 'D' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
+                                    {{ mov.tipo === 'D' ? 'ENTRADA' : 'SALIDA' }}
+                                </span>
                             </div>
                             <p class="text-sm text-gray-700 leading-tight mb-2">{{ mov.Glosa || 'Sin glosa' }}</p>
                             <div class="flex justify-between items-center pt-2 border-t border-gray-200">
@@ -208,7 +204,6 @@ onUnmounted(() => {
                             <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 uppercase">Fecha</th>
-                                    <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 uppercase">Doc.</th>
                                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 uppercase">Tipo</th>
                                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 uppercase">Glosa</th>
                                     <th class="px-2 py-2 text-right text-xs font-medium text-gray-700 uppercase">Unid.</th>
@@ -218,7 +213,6 @@ onUnmounted(() => {
                             <tbody class="divide-y divide-gray-200 bg-white">
                                 <tr v-for="mov in movimientos" :key="mov.id" class="hover:bg-gray-50">
                                     <td class="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{{ mov.fecha }}</td>
-                                    <td class="px-2 py-2 text-xs text-gray-600 whitespace-nowrap">{{ mov.IdDocumento || '-' }}</td>
                                     <td class="px-2 py-2 text-xs">
                                         <span :class="mov.tipo === 'D' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'">
                                             {{ mov.tipo === 'D' ? 'ENTRADA' : 'SALIDA' }}
@@ -246,7 +240,6 @@ onUnmounted(() => {
                             <thead class="bg-gray-100 sticky top-0 z-10 shadow-sm">
                                 <tr>
                                     <th class="px-3 py-2 text-left text-sm font-medium text-gray-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-sm font-medium text-gray-700 uppercase">Documento</th>
                                     <th class="px-3 py-2 text-left text-sm font-medium text-gray-700 uppercase">Tipo</th>
                                     <th class="px-3 py-2 text-left text-sm font-medium text-gray-700 uppercase">Glosa</th>
                                     <th class="px-3 py-2 text-right text-sm font-medium text-gray-700 uppercase w-24">Unidades</th>
@@ -256,7 +249,6 @@ onUnmounted(() => {
                             <tbody class="divide-y divide-gray-200 bg-white">
                                 <tr v-for="mov in movimientos" :key="mov.id" class="hover:bg-gray-50 transition">
                                     <td class="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{{ mov.fecha }}</td>
-                                    <td class="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">{{ mov.IdDocumento || '-' }}</td>
                                     <td class="px-3 py-2 text-sm">
                                         <span class="px-2 py-0.5 text-xs rounded-full" :class="mov.tipo === 'D' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
                                             {{ mov.tipo === 'D' ? 'ENTRADA' : 'SALIDA' }}

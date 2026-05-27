@@ -252,7 +252,7 @@ class LiquidacionVendedorController extends Controller
                 ->table('conta_diario')
                 ->insertGetId([
                     'IdFecha' => $fechaId,
-                    'IdTipoDiario' => 10,
+                    'IdTipoDiario' => 1,
                     'NumeroDiario' => $numeroDiario,
                     'IdCliente' => $clienteId,
                     'IdSucursal' => $sucursalId,
