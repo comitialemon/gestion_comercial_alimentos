@@ -267,12 +267,19 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::get('/gestion/reporte-listado-facturas/reimprimir/{id}', [ReporteListadoFacturasController::class, 'reimprimir'])
         ->name('gestion.reporte-listado-facturas.reimprimir');
         
-    // Reporte de Lista de Precios
+    // ==================== LISTA DE PRECIOS ====================
     Route::prefix('gestion/reportes/lista-precios')->group(function () {
+        // Reporte GENERAL (todas las sucursales)
         Route::get('/', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'index'])
             ->name('gestion.reportes.lista-precios');
         Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportar'])
             ->name('gestion.reportes.lista-precios.exportar');
+        
+        // 🔥 NUEVO: Reporte por SUCURSAL ACTUAL
+        Route::get('/sucursal', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'indexSucursal'])
+            ->name('gestion.reportes.lista-precios.sucursal');
+        Route::get('/exportar-sucursal', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportarPorSucursal'])
+            ->name('gestion.reportes.lista-precios.exportar-sucursal');
     });
 
     // ==================== COMPRAS ====================
@@ -357,7 +364,24 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/operadores/{sucursalId}', [ImprimirDiarioController::class, 'getOperadoresPorSucursal'])->name('gestion.imprimir-diario.operadores');
         Route::get('/pdf/{id}', [ImprimirDiarioController::class, 'pdf'])->name('gestion.imprimir-diario.pdf');
     });
-
+    // ==================== INGRESOS ====================
+    Route::prefix('gestion/ingresos')->group(function () {
+        
+        // 🔥 RUTAS FIJAS (sin parámetros)
+        Route::get('/', [IngresoController::class, 'index'])->name('ingresos.index');
+        Route::get('/create', [IngresoController::class, 'create'])->name('ingresos.create');
+        Route::get('/gestion-estado', [IngresoController::class, 'gestionEstado'])->name('ingresos.gestion-estado');
+        
+        // 🔥 RUTAS POST/PUT (para crear, actualizar y cambiar estado)
+        Route::post('/', [IngresoController::class, 'store'])->name('ingresos.store');
+        Route::post('/{id}/cambiar-estado', [IngresoController::class, 'cambiarEstado'])->name('ingresos.cambiar-estado');
+        
+        // 🔥 RUTAS CON PARÁMETROS {id} (van al final)
+        Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
+        Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
+        Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
+        Route::get('/{id}', [IngresoController::class, 'show'])->name('ingresos.show'); // si tienes método show
+    });
     // ==================== EGRESOS ====================
     Route::prefix('gestion/egresos')->group(function () {
         Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');

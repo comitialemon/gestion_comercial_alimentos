@@ -28,6 +28,184 @@ class ListaPreciosController extends Controller
             'empresa' => $empresa
         ]);
     }
+    
+    /**
+     * Muestra la vista del reporte por sucursal actual
+     */
+    public function indexSucursal()
+    {
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', session('cliente_id'))
+            ->first(['Nombre', 'NIT']);
+
+        $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', session('cliente_id'))
+            ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+            ->first(['Nombre as nombre']);
+
+        return Inertia::render('Gestion/Reportes/ListaPreciosSucursal', [
+            'empresa' => $empresa,
+            'sucursal' => $sucursal
+        ]);
+    }
+
+    /**
+     * Exporta el reporte SOLO de la sucursal logueada (VERSIÓN SIMPLIFICADA)
+     */
+    public function exportarPorSucursal()
+    {
+        set_time_limit(0);
+        
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // Obtener datos de la sucursal logueada
+        $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first(['Nombre as nombre']);
+        
+        if (!$sucursal) {
+            return redirect()->back()->with('error', 'No se encontró la sucursal seleccionada');
+        }
+        
+        // ==========================================
+        // INICIA EXPORTACION EXCEL
+        // ==========================================
+        $spreadsheet = new Spreadsheet();
+        $worksheet = $spreadsheet->getActiveSheet();
+        
+        // ==========================================
+        // CABECERA DEL REPORTE
+        // ==========================================
+        $datosCabecera = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT']);
+        
+        $nombreEmpresa = $datosCabecera->Nombre ?? '';
+        $nitEmpresa = $datosCabecera->NIT ?? '';
+        
+        $worksheet->setCellValue('A1', $nombreEmpresa);
+        $worksheet->setCellValue('A2', 'NIT: ' . $nitEmpresa);
+        $worksheet->setCellValue('A3', 'LISTA DE PRECIOS - BOLIVIANOS');
+        $worksheet->setCellValue('A4', 'SUCURSAL: ' . ($sucursal->nombre ?? 'No especificada'));
+        $worksheet->setCellValue('A5', 'Fecha: ' . date('d/m/Y H:i:s'));
+        
+        // ==========================================
+        // ENCABEZADOS DE TABLA (fila 7)
+        // ==========================================
+        $worksheet->setCellValue('A7', 'PRODUCTO');
+        $worksheet->setCellValue('B7', 'PRECIO GENERAL');
+        $worksheet->setCellValue('C7', 'PRECIO SUCURSAL');
+        
+        // Estilo para encabezados
+        $headerStyle = [
+            'font' => ['bold' => true],
+            'fill' => [
+                'fillType' => Fill::FILL_SOLID,
+                'startColor' => ['rgb' => '61131a'],
+            ],
+            'font' => ['color' => ['rgb' => 'FFFFFF']],
+            'alignment' => [
+                'horizontal' => Alignment::HORIZONTAL_CENTER,
+                'vertical' => Alignment::VERTICAL_CENTER,
+            ],
+        ];
+        
+        $worksheet->getStyle('A7:C7')->applyFromArray($headerStyle);
+        
+        // ==========================================
+        // LISTA DE PRODUCTOS (solo nombre y precios)
+        // ==========================================
+        $fila = 8;
+        
+        $productos = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_relacion_ventainventario')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Detalle')
+            ->get(['IdDetalleProducto', 'Detalle', 'PrecioVenta']);
+        
+        foreach ($productos as $prod) {
+            $idDetalleProducto = $prod->IdDetalleProducto;
+            $detalle = $prod->Detalle;
+            $precioVentaGeneral = $prod->PrecioVenta;
+            
+            // Precio diferenciado sucursal
+            $precioSucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_preciosucursal')
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdProducto', $idDetalleProducto)
+                ->value('Precio');
+            
+            $worksheet->setCellValue('A' . $fila, $detalle);
+            $worksheet->setCellValue('B' . $fila, $precioVentaGeneral);
+            $worksheet->setCellValue('C' . $fila, $precioSucursal);
+            
+            $fila++;
+        }
+        
+        // ==========================================
+        // FORMATO DE PRECIOS
+        // ==========================================
+        $worksheet->getStyle('B8:C' . ($fila - 1))
+            ->getNumberFormat()
+            ->setFormatCode('"Bs. "#,##0.00');
+        
+        // ==========================================
+        // AJUSTAR ANCHO DE COLUMNAS
+        // ==========================================
+        $worksheet->getColumnDimension('A')->setWidth(50);  // Producto
+        $worksheet->getColumnDimension('B')->setWidth(18);  // Precio General
+        $worksheet->getColumnDimension('C')->setWidth(18);  // Precio Sucursal
+        
+        // ==========================================
+        // BORDES A TODA LA TABLA
+        // ==========================================
+        $borderStyle = [
+            'borders' => [
+                'allBorders' => [
+                    'borderStyle' => Border::BORDER_THIN,
+                    'color' => ['rgb' => '000000'],
+                ],
+            ],
+        ];
+        
+        if ($fila > 8) {
+            $worksheet->getStyle('A7:C' . ($fila - 1))->applyFromArray($borderStyle);
+        }
+        
+        // ==========================================
+        // DESCARGA DEL ARCHIVO
+        // ==========================================
+        $nombreArchivo = 'ListaDePrecios_' . str_replace(' ', '_', $sucursal->nombre) . '.xls';
+        
+        header('Content-Type: application/vnd.ms-excel');
+        header('Content-Disposition: attachment;filename="' . $nombreArchivo . '"');
+        header('Cache-Control: max-age=0');
+        
+        $writer = new Xls($spreadsheet);
+        $writer->save('php://output');
+        exit();
+    }
+
+    /**
+     * Obtener letra de columna para un número (ej: 1->A, 27->AA)
+     */
+    private function getColumnLetter($index)
+    {
+        $letters = '';
+        while ($index > 0) {
+            $index--;
+            $letters = chr(65 + ($index % 26)) . $letters;
+            $index = floor($index / 26);
+        }
+        return $letters;
+    }
 
     /**
      * Exporta el reporte a Excel (misma lógica que Scriptcase)
@@ -247,4 +425,6 @@ class ListaPreciosController extends Controller
         
         return $result;
     }
+
+    
 }
