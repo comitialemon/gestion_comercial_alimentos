@@ -15,14 +15,15 @@ use Illuminate\Support\Facades\Log;
 
 class ImprimirDiarioController extends Controller
 {
-    /**
-     * Mostrar formulario de selección de diario (versión original modificada)
-     * Ahora muestra TODOS los diarios de la sucursal logueada
-     */
+/**
+ * Mostrar formulario de selección de diario
+ * Ahora muestra TODOS los diarios de la sucursal logueada
+ */
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $sucursalNombre = session('cliente_sucursal_nombre'); // 🔥 OBTENER NOMBRE
         $operadorId = session('operador_id');
         $tipoOperador = session('operador_tipo_id');
         
@@ -33,10 +34,16 @@ class ImprimirDiarioController extends Controller
         if ($esSupervisor) {
             $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
                 ->orderBy('Nombre')
-                ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
+                ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         }
         
-        // 🔥 Obtener TODOS los diarios de la sucursal actual (contabilizados)
+        // 🔥 Si no hay nombre de sucursal en sesión, obtenerlo de la BD
+        if (!$sucursalNombre && $sucursalId) {
+            $sucursal = ClienteSucursal::find($sucursalId);
+            $sucursalNombre = $sucursal->Nombre ?? null;
+        }
+        
+        // Obtener TODOS los diarios de la sucursal actual (contabilizados)
         $diariosRecientes = Diario::porContexto()
             ->with(['tipoDiario', 'sucursal'])
             ->where('Contabilizado', 1)
@@ -58,8 +65,9 @@ class ImprimirDiarioController extends Controller
         return Inertia::render('Gestion/Contabilidad/ImprimirDiario/Index', [
             'sucursales' => $sucursales,
             'sucursalId' => $sucursalId,
+            'sucursalNombre' => $sucursalNombre,  // 🔥 NUEVO: pasar nombre de sucursal
             'esSupervisor' => $esSupervisor,
-            'diariosRecientes' => $diariosRecientes,  // 🔥 NUEVO: lista de diarios recientes
+            'diariosRecientes' => $diariosRecientes,
         ]);
     }
 
