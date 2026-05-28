@@ -71,6 +71,8 @@ use App\Http\Controllers\Gestion\Contabilidad\ImprimirDiarioController;
 use App\Http\Controllers\Gestion\Impuestos\AnularFacturaAdminController;
 use App\Http\Controllers\Menu\MenuAdministradorController;
 use App\Http\Controllers\Gestion\Configuracion\TemaClienteController;
+use App\Http\Controllers\Gestion\Reportes\ListaPreciosController;
+use App\Http\Controllers\Gestion\Reportes\MayorCuentaController;
 
 
 // ============================================
@@ -92,7 +94,12 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::prefix('gestion/configuracion/tema')->group(function () {
         // Tema del cliente actual
         Route::get('/', [TemaClienteController::class, 'index'])->name('gestion.configuracion.tema.index');
-    });
+        // Guardar tema
+        Route::post('/{clienteId}', [TemaClienteController::class, 'store'])->name('gestion.configuracion.tema.store');
+        
+        // Restaurar tema por defecto
+        Route::delete('/{clienteId}/reset', [TemaClienteController::class, 'reset'])->name('gestion.configuracion.tema.reset');
+   });
 
     // ==================== MENÚ ADMINISTRADOR ====================
     Route::prefix('gestion/menu-administrador')->group(function () {
@@ -297,6 +304,24 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/exportar-sucursal', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportarPorSucursal'])
             ->name('gestion.reportes.lista-precios.exportar-sucursal');
     });
+
+    // ==================== REPORTE - MAYOR DE CUENTA ====================
+    Route::prefix('gestion/reportes/mayor-cuenta')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'index'])
+            ->name('gestion.reportes.mayor-cuenta.index');
+        
+        // 🔥 NUEVA RUTA: Por sucursal
+        Route::get('/por-sucursal', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'porSucursal'])
+            ->name('gestion.reportes.mayor-cuenta.por-sucursal');
+        
+        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'exportar'])
+            ->name('gestion.reportes.mayor-cuenta.exportar');
+        
+        // 🔥 NUEVA RUTA: Exportar por sucursal específica
+        Route::get('/exportar-por-sucursal', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'exportarPorSucursal'])
+            ->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
+    });
+
 
     // ==================== COMPRAS ====================
     Route::prefix('gestion/compras')->group(function () {
