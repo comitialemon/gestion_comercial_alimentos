@@ -77,8 +77,8 @@ const getEstadoColor = (activo) => {
                 <!-- Header Responsive -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-clipboard-list text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-clipboard-list text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Ajustes de Inventario</h1>
@@ -86,7 +86,7 @@ const getEstadoColor = (activo) => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/inventario/ajustes/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                        <Link href="/gestion/inventario/ajustes/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Ajuste</span>
                         </Link>
@@ -133,12 +133,12 @@ const getEstadoColor = (activo) => {
                     <div v-for="ajuste in ajustes.data" :key="ajuste.IdAjustesPrincipal" class="bg-white rounded-lg shadow-sm p-3">
                         <div class="flex justify-between items-start border-b pb-2 mb-2">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                     N° {{ ajuste.NumeroCorrelativo }}
                                 </span>
                             </div>
                             <div class="flex gap-2">
-                                <Link :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}`" class="text-guindo-600" title="Ver">
+                                <Link :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}`" class="text-primary-600" title="Ver">
                                     <i class="fas fa-eye text-xs"></i>
                                 </Link>
                                 <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600" title="PDF">
@@ -188,15 +188,15 @@ const getEstadoColor = (activo) => {
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Ajuste</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Concepto</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Tipo</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Almacén</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Ajuste</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Concepto</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Tipo</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Almacén</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -217,7 +217,7 @@ const getEstadoColor = (activo) => {
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 text-right space-x-1 whitespace-nowrap">
-                                        <Link :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}`" class="text-guindo-600 hover:text-guindo-800" title="Ver">
+                                        <Link :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}`" class="text-primary-600 hover:text-primary-800" title="Ver">
                                             <i class="fas fa-eye text-xs"></i>
                                         </Link>
                                         <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600 hover:text-red-800" title="PDF">
@@ -241,7 +241,7 @@ const getEstadoColor = (activo) => {
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
                             <div class="text-gray-500">Mostrando {{ ajustes.from || 0 }} a {{ ajustes.to || 0 }} de {{ ajustes.total || 0 }}</div>
                             <div class="flex gap-0.5 flex-wrap justify-center">
-                                <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>
@@ -250,7 +250,7 @@ const getEstadoColor = (activo) => {
                 <!-- Paginación móvil -->
                 <div v-if="isMobile && ajustes.links && ajustes.links.length > 1" class="mt-3 bg-white rounded-lg shadow-sm p-2">
                     <div class="flex justify-center gap-0.5 flex-wrap">
-                        <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                        <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                     </div>
                 </div>
             </div>

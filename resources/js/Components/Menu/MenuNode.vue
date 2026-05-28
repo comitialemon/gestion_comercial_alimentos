@@ -12,6 +12,12 @@ const props = defineProps({
 const page = usePage()
 const open = ref(false)
 
+// 🔥 TEMA DINÁMICO
+const theme = computed(() => page.props?.theme || {
+    primary: '#1f2937',
+    hasCustomTheme: false
+})
+
 const rawHref = computed(() =>
   props.node?.href ?? props.node?.link ?? props.node?.Link ?? ''
 )
@@ -29,7 +35,7 @@ const href = computed(() => {
   return '/' + h.replace(/^\/+/, '')
 })
 
-// 🔥 DETECTAR SI ES UN ENLACE NO MIGRADO (Scriptcase)
+// Detectar si es un enlace no migrado (Scriptcase)
 const isNoMigrado = computed(() => {
   if (!href.value || isExternal.value) return false
   
@@ -59,14 +65,14 @@ const isNoMigrado = computed(() => {
   // Detectar si tiene formato Scriptcase (con guiones bajos)
   const tieneGuionBajo = /[a-z]+_[a-z]+/.test(h)
   
-  // Detectar si no tiene formato Laravel (no empieza con /gestion/ o /facturacion/)
+  // Detectar si no tiene formato Laravel
   const noTieneFormatoLaravel = !h.startsWith('/gestion/') && 
                                  !h.startsWith('/facturacion/') && 
                                  !h.startsWith('/venta-') &&
                                  !h.startsWith('/contexto') &&
                                  !h.startsWith('/oficial')
   
-  // Detectar si es una URL amigable de Scriptcase (solo texto con guiones)
+  // Detectar si es una URL amigable de Scriptcase
   const esScriptcaseAmigable = /^\/[a-z]+[a-z\-]+$/.test(h) && h.length > 5 && !h.includes('gestion')
   
   return tieneGuionBajo || noTieneFormatoLaravel || esScriptcaseAmigable
@@ -101,6 +107,38 @@ const nextVisited = computed(() => {
 const toggle = () => {
   if (!href.value && hasRawChildren.value) open.value = !open.value
 }
+
+// 🔥 CLASES DINÁMICAS BASADAS EN EL TEMA
+const activeClass = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return 'bg-primary-800 text-white font-medium'
+  }
+  return 'bg-gray-800 text-white font-medium'
+})
+
+const hoverClass = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return 'hover:bg-primary-100 hover:text-primary-800'
+  }
+  return 'hover:bg-gray-100 hover:text-gray-800'
+})
+
+const iconColorClass = computed(() => {
+  if (isNoMigrado.value) return 'text-amber-500'
+  if (theme.value.hasCustomTheme) return 'text-primary-500'
+  return 'text-gray-500'
+})
+
+const borderColorClass = computed(() => {
+  if (isNoMigrado.value) return 'border-amber-400'
+  if (theme.value.hasCustomTheme) return 'border-primary-200'
+  return 'border-gray-200'
+})
+
+const activeIconClass = computed(() => {
+  if (isNoMigrado.value) return 'text-amber-500'
+  return 'text-white'
+})
 </script>
 
 <template>
@@ -112,16 +150,14 @@ const toggle = () => {
       :rel="isExternal ? 'noopener' : undefined"
       class="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] leading-4 transition-colors"
       :class="[
-        isActive(href) 
-          ? 'bg-guindo-900 text-white font-medium' 
-          : isNoMigrado
-            ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-l-2 border-amber-400'
-            : 'text-gray-700 hover:bg-guindo-100 hover:text-guindo-800'
+        isActive(href) ? activeClass : isNoMigrado
+          ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-l-2 border-amber-400'
+          : `text-gray-700 ${hoverClass}`
       ]"
       @click="toggle"
     >
       <span class="truncate flex items-center gap-1.5" :title="label">
-        <!-- 🔥 Icono de advertencia para enlaces no migrados -->
+        <!-- Icono de advertencia para enlaces no migrados -->
         <i v-if="isNoMigrado && !collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
         <i v-if="isNoMigrado && collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
         
@@ -134,13 +170,13 @@ const toggle = () => {
         class="fas fa-chevron-right ml-2 text-xs transition-all duration-200"
         :class="[
           open ? 'rotate-90' : '',
-          isActive(href) ? 'text-white' : isNoMigrado ? 'text-amber-500' : 'text-guindo-500'
+          isActive(href) ? activeIconClass : iconColorClass
         ]"
       ></i>
     </component>
 
     <transition name="fade">
-      <ul v-if="children.length && open" class="ml-3 border-l border-guindo-200 pl-2">
+      <ul v-if="children.length && open" class="ml-3 border-l pl-2" :class="borderColorClass">
         <MenuNode
           v-for="c in children"
           :key="c.id ?? c.Id"

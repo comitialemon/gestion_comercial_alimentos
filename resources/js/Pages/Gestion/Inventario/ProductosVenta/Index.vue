@@ -127,7 +127,7 @@ const getCategoriaNombreProducto = (producto) => {
 
 const getCategoriaClase = (producto) => {
     if (producto.categoria) {
-        return 'bg-guindo-100 text-guindo-700'
+        return 'bg-primary-100 text-primary-700'
     }
     return 'bg-gray-100 text-gray-500'
 }
@@ -140,15 +140,15 @@ const getCategoriaClase = (producto) => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-boxes text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-boxes text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base font-bold text-gray-800">Productos de Venta</h1>
                             <p class="text-[10px] text-gray-500">Gestión de productos para punto de venta</p>
                         </div>
                     </div>
-                    <Link href="/gestion/productos-venta/create" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
+                    <Link href="/gestion/productos-venta/create" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
                         <i class="fas fa-plus text-[10px]"></i> Nuevo Producto
                     </Link>
                 </div>
@@ -159,7 +159,7 @@ const getCategoriaClase = (producto) => {
                     <div class="w-64 flex-shrink-0">
                         <div class="bg-white rounded-lg shadow-sm p-3 sticky top-24">
                             <h3 class="text-xs font-semibold text-gray-800 mb-3 flex items-center gap-1">
-                                <i class="fas fa-filter text-guindo-600 text-[10px]"></i> Filtros
+                                <i class="fas fa-filter text-primary-600 text-[10px]"></i> Filtros
                             </h3>
 
                             <!-- Buscar -->
@@ -182,23 +182,23 @@ const getCategoriaClase = (producto) => {
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Estado</label>
                                 <div class="flex flex-col gap-1">
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="" v-model="estado" class="w-3 h-3 text-guindo-600"> 
+                                        <input type="radio" value="" v-model="estado" class="w-3 h-3 text-primary-600"> 
                                         <span class="text-[11px] text-gray-700">Todos</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="0" v-model="estado" class="w-3 h-3 text-guindo-600"> 
+                                        <input type="radio" value="0" v-model="estado" class="w-3 h-3 text-primary-600"> 
                                         <span class="text-[11px] text-gray-700">Activos ({{ totalActivos }})</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="1" v-model="estado" class="w-3 h-3 text-guindo-600"> 
+                                        <input type="radio" value="1" v-model="estado" class="w-3 h-3 text-primary-600"> 
                                         <span class="text-[11px] text-gray-700">Inactivos ({{ totalInactivos }})</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="2" v-model="estado" class="w-3 h-3 text-guindo-600"> 
+                                        <input type="radio" value="2" v-model="estado" class="w-3 h-3 text-primary-600"> 
                                         <span class="text-[11px] text-gray-700">Pendientes</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="3" v-model="estado" class="w-3 h-3 text-guindo-600"> 
+                                        <input type="radio" value="3" v-model="estado" class="w-3 h-3 text-primary-600"> 
                                         <span class="text-[11px] text-gray-700">Rechazados</span>
                                     </label>
                                 </div>
@@ -208,7 +208,7 @@ const getCategoriaClase = (producto) => {
                             <div class="mb-3">
                                 <div class="flex justify-between items-center mb-1">
                                     <label class="text-[10px] font-medium text-gray-700">Categorías</label>
-                                    <span v-if="categoriasSeleccionadas.length > 0" class="text-[9px] text-guindo-600 font-bold">
+                                    <span v-if="categoriasSeleccionadas.length > 0" class="text-[9px] text-primary-600 font-bold">
                                         {{ categoriasSeleccionadas.length }} sel.
                                     </span>
                                 </div>
@@ -223,7 +223,7 @@ const getCategoriaClase = (producto) => {
                                                 type="checkbox" 
                                                 :checked="isCategoriaSelected(categoria)" 
                                                 @change="toggleCategoria(categoria)"
-                                                class="w-3 h-3 rounded border-gray-300 text-guindo-600 focus:ring-0 cursor-pointer"
+                                                class="w-3 h-3 rounded border-gray-300 text-primary-600 focus:ring-0 cursor-pointer"
                                             >
                                             <span class="text-[11px] text-gray-700 truncate">
                                                 {{ getCategoriaNombre(categoria) }}
@@ -241,7 +241,7 @@ const getCategoriaClase = (producto) => {
 
                             <!-- Botonera -->
                             <div class="flex gap-2 pt-2 border-t">
-                                <button @click="aplicarFiltros" class="flex-1 px-2 py-1.5 bg-guindo-600 hover:bg-guindo-700 text-white rounded-md text-[10px] transition flex items-center justify-center gap-1">
+                                <button @click="aplicarFiltros" class="flex-1 px-2 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-[10px] transition flex items-center justify-center gap-1">
                                     <i class="fas fa-search text-[8px]"></i> Filtrar
                                 </button>
                                 <button @click="limpiarFiltros" class="px-2 py-1.5 border border-gray-300 rounded-md text-[10px] text-gray-700 hover:bg-gray-50 transition" title="Limpiar Filtros">
@@ -256,16 +256,16 @@ const getCategoriaClase = (producto) => {
                         <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                             <div class="overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-guindo-50">
+                                    <thead class="bg-primary-50">
                                         <tr>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Código</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Producto</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Grupo</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Categoría</th>
-                                            <th class="px-3 py-2 text-right text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Precio</th>
-                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Estado</th>
-                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Aprobación</th>
-                                            <th class="px-3 py-2 text-right text-[10px] font-semibold text-guindo-700 uppercase tracking-wider">Acciones</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Código</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Producto</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Grupo</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Categoría</th>
+                                            <th class="px-3 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Precio</th>
+                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Estado</th>
+                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Aprobación</th>
+                                            <th class="px-3 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase tracking-wider">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody class="bg-white divide-y divide-gray-200">
@@ -282,7 +282,7 @@ const getCategoriaClase = (producto) => {
                                                     {{ getCategoriaNombreProducto(producto) }}
                                                 </span>
                                             </td>
-                                            <td class="px-3 py-2 text-[11px] text-right font-semibold text-guindo-600">
+                                            <td class="px-3 py-2 text-[11px] text-right font-semibold text-primary-600">
                                                 {{ Number(producto.PrecioVenta).toFixed(2) }} Bs
                                             </td>
                                             <td class="px-3 py-2 text-center">
@@ -297,13 +297,13 @@ const getCategoriaClase = (producto) => {
                                                 <span v-else-if="producto.ActivoInactivo === 3" class="px-1.5 py-0.5 text-[9px] rounded-full bg-red-100 text-red-800">
                                                     <i class="fas fa-times mr-0.5"></i> Rechazado
                                                 </span>
-                                                <button v-else-if="producto.ActivoInactivo === 0" @click="verAprobacion(producto.IdDetalleProducto)" class="text-guindo-600 hover:text-guindo-800" title="Ver aprobación">
+                                                <button v-else-if="producto.ActivoInactivo === 0" @click="verAprobacion(producto.IdDetalleProducto)" class="text-primary-600 hover:text-primary-800" title="Ver aprobación">
                                                     <i class="fas fa-check-circle text-xs"></i>
                                                 </button>
                                                 <span v-else class="text-gray-400 text-[9px]">-</span>
                                             </td>
                                             <td class="px-3 py-2 text-right">
-                                                <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-guindo-600 hover:text-guindo-800 text-[11px]">
+                                                <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800 text-[11px]">
                                                     <i class="fas fa-edit"></i>
                                                 </Link>
                                             </td>
@@ -331,7 +331,7 @@ const getCategoriaClase = (producto) => {
                                             :href="link.url || '#'" 
                                             class="px-2 py-0.5 rounded border text-[9px] transition"
                                             :class="{ 
-                                                'bg-guindo-600 text-white border-guindo-600': link.active, 
+                                                'bg-primary-600 text-white border-primary-600': link.active, 
                                                 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
                                                 'opacity-50 cursor-not-allowed': !link.url 
                                             }" 

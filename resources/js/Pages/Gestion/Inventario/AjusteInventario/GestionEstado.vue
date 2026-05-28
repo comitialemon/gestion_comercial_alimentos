@@ -177,8 +177,8 @@ const getConceptoColor = (concepto) => {
                 <!-- Header Responsive -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-clipboard-list text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-clipboard-list text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Ajustes</h1>
@@ -190,7 +190,7 @@ const getConceptoColor = (concepto) => {
                             <i class="fas fa-list text-[10px]"></i>
                             <span>Listado</span>
                         </Link>
-                        <Link href="/gestion/inventario/ajustes/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                        <Link href="/gestion/inventario/ajustes/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Ajuste</span>
                         </Link>
@@ -246,12 +246,12 @@ const getConceptoColor = (concepto) => {
                         <!-- Cabecera de tarjeta -->
                         <div class="flex justify-between items-start border-b pb-2 mb-2">
                             <div class="flex flex-col gap-1">
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded self-start">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded self-start">
                                     N° {{ ajuste.NumeroCorrelativo }}
                                 </span>
                             </div>
                             <div class="flex gap-2">
-                                <Link v-if="ajuste.ActivoInactivo === 0" :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/edit`" class="text-guindo-600" title="Editar">
+                                <Link v-if="ajuste.ActivoInactivo === 0" :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/edit`" class="text-primary-600" title="Editar">
                                     <i class="fas fa-edit text-xs"></i>
                                 </Link>
                                 <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600" title="PDF">
@@ -289,7 +289,7 @@ const getConceptoColor = (concepto) => {
                                 <!-- SWITCH PERSONALIZADO -->
                                 <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
                                     <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                        :class="ajuste.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                        :class="ajuste.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                         <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                             :class="ajuste.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                         </div>
@@ -316,16 +316,16 @@ const getConceptoColor = (concepto) => {
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Ajuste</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Concepto</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Tipo Operación</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Almacén</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Cambiar</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Ajuste</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Concepto</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Tipo Operación</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Almacén</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Cambiar</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -349,7 +349,7 @@ const getConceptoColor = (concepto) => {
                                         <!-- SWITCH PERSONALIZADO -->
                                         <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
                                             <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                                :class="ajuste.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                                :class="ajuste.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                                 <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                                     :class="ajuste.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                                 </div>
@@ -361,7 +361,7 @@ const getConceptoColor = (concepto) => {
                                         </div>
                                     </td>
                                     <td class="px-3 py-2 text-right space-x-1 whitespace-nowrap">
-                                        <Link v-if="ajuste.ActivoInactivo === 0" :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/edit`" class="text-guindo-600 hover:text-guindo-800 text-xs inline-block" title="Editar">
+                                        <Link v-if="ajuste.ActivoInactivo === 0" :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/edit`" class="text-primary-600 hover:text-primary-800 text-xs inline-block" title="Editar">
                                             <i class="fas fa-edit text-xs"></i>
                                         </Link>
                                         <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600 hover:text-red-800 text-xs inline-block" title="Ver PDF">
@@ -385,7 +385,7 @@ const getConceptoColor = (concepto) => {
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
                             <div class="text-gray-500">Mostrando {{ ajustes.from || 0 }} a {{ ajustes.to || 0 }} de {{ ajustes.total || 0 }}</div>
                             <div class="flex gap-0.5 flex-wrap justify-center">
-                                <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>
@@ -394,7 +394,7 @@ const getConceptoColor = (concepto) => {
                 <!-- Paginación móvil -->
                 <div v-if="isMobile && ajustes.links && ajustes.links.length > 1" class="mt-3 bg-white rounded-lg shadow-sm p-2">
                     <div class="flex justify-center gap-0.5 flex-wrap">
-                        <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                        <Link v-for="link in ajustes.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                     </div>
                 </div>
             </div>

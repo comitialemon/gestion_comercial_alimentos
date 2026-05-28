@@ -95,8 +95,8 @@ const estadoClase = (contabilizado) => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-book-open text-guindo-600 text-base"></i>
+                        <div class="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-book-open text-primary-600 text-base"></i>
                         </div>
                         <div>
                             <h1 class="text-base font-bold text-gray-800">Administrador de Diarios</h1>
@@ -111,11 +111,11 @@ const estadoClase = (contabilizado) => {
                         <!-- Tipo de búsqueda -->
                         <div class="flex items-center gap-2 mr-2">
                             <label class="flex items-center gap-1">
-                                <input type="radio" v-model="tipoBusqueda" value="dia" class="w-3.5 h-3.5 text-guindo-600"> 
+                                <input type="radio" v-model="tipoBusqueda" value="dia" class="w-3.5 h-3.5 text-primary-600"> 
                                 <span class="text-xs">Día</span>
                             </label>
                             <label class="flex items-center gap-1">
-                                <input type="radio" v-model="tipoBusqueda" value="rango" class="w-3.5 h-3.5 text-guindo-600"> 
+                                <input type="radio" v-model="tipoBusqueda" value="rango" class="w-3.5 h-3.5 text-primary-600"> 
                                 <span class="text-xs">Rango</span>
                             </label>
                         </div>
@@ -146,7 +146,7 @@ const estadoClase = (contabilizado) => {
                         <input type="text" v-model="numeroDiario" class="w-28 border rounded-md px-2 py-1.5 text-xs" placeholder="N° Diario">
 
                         <!-- Botones -->
-                        <button @click="aplicarFiltros" class="px-3 py-1.5 text-xs bg-guindo-600 text-white rounded-md hover:bg-guindo-700 transition">
+                        <button @click="aplicarFiltros" class="px-3 py-1.5 text-xs bg-primary-600 text-white rounded-md hover:bg-primary-700 transition">
                             <i class="fas fa-search mr-1 text-[10px]"></i> Buscar
                         </button>
                         <button @click="limpiarFiltros" class="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800 border rounded-md transition">
@@ -165,20 +165,20 @@ const estadoClase = (contabilizado) => {
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-semibold text-guindo-700 uppercase">N° Diario</th>
-                                    <th class="px-4 py-2 text-left text-xs font-semibold text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-4 py-2 text-left text-xs font-semibold text-guindo-700 uppercase">Tipo Diario</th>
-                                    <th class="px-4 py-2 text-left text-xs font-semibold text-guindo-700 uppercase">Sucursal</th>
-                                    <th class="px-4 py-2 text-left text-xs font-semibold text-guindo-700 uppercase">Operador</th>
-                                    <th class="px-4 py-2 text-center text-xs font-semibold text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-4 py-2 text-center text-xs font-semibold text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-4 py-2 text-left text-xs font-semibold text-primary-700 uppercase">N° Diario</th>
+                                    <th class="px-4 py-2 text-left text-xs font-semibold text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-4 py-2 text-left text-xs font-semibold text-primary-700 uppercase">Tipo Diario</th>
+                                    <th class="px-4 py-2 text-left text-xs font-semibold text-primary-700 uppercase">Sucursal</th>
+                                    <th class="px-4 py-2 text-left text-xs font-semibold text-primary-700 uppercase">Operador</th>
+                                    <th class="px-4 py-2 text-center text-xs font-semibold text-primary-700 uppercase">Estado</th>
+                                    <th class="px-4 py-2 text-center text-xs font-semibold text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-100">
                                 <tr v-for="diario in diarios.data" :key="diario.IdDiario" class="hover:bg-gray-50 transition">
-                                    <td class="px-4 py-2 text-sm font-mono text-guindo-700 font-semibold">{{ diario.NumeroDiario }}</td>
+                                    <td class="px-4 py-2 text-sm font-mono text-primary-700 font-semibold">{{ diario.NumeroDiario }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600">{{ formatearFecha(diario.fecha?.Fecha) }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-700">{{ diario.tipo_diario?.TipoDiario || '-' }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-700">{{ diario.sucursal?.Nombre || '-' }}</td>
@@ -191,7 +191,7 @@ const estadoClase = (contabilizado) => {
                                     <td class="px-4 py-2 text-center">
                                         <button 
                                             @click="abrirModalReabrir(diario)" 
-                                            class="text-guindo-600 hover:text-guindo-800"
+                                            class="text-primary-600 hover:text-primary-800"
                                             title="Reabrir diario"
                                         >
                                             <i class="fas fa-pencil-alt"></i>
@@ -215,7 +215,7 @@ const estadoClase = (contabilizado) => {
                                 Mostrando {{ diarios.from || 0 }} a {{ diarios.to || 0 }} de {{ diarios.total || 0 }}
                             </div>
                             <div class="flex gap-1">
-                                <Link v-for="link in diarios.links" :key="link.label" :href="link.url || '#'" class="px-3 py-1 rounded border text-sm" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in diarios.links" :key="link.label" :href="link.url || '#'" class="px-3 py-1 rounded border text-sm" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>

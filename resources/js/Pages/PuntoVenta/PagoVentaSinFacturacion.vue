@@ -251,8 +251,8 @@ onUnmounted(() => {
             <div class="max-w-4xl mx-auto">
                 <!-- Header -->
                 <div class="text-center mb-4">
-                    <div class="inline-flex items-center justify-center w-12 h-12 bg-guindo-100 rounded-xl mb-2">
-                        <i class="fas fa-cash-register text-xl text-guindo-600"></i>
+                    <div class="inline-flex items-center justify-center w-12 h-12 bg-primary-100 rounded-xl mb-2">
+                        <i class="fas fa-cash-register text-xl text-primary-600"></i>
                     </div>
                     <h1 class="text-lg font-bold text-gray-900">Registrar Pago</h1>
                     <p class="text-[11px] text-gray-500">Venta sin facturación electrónica</p>
@@ -300,7 +300,7 @@ onUnmounted(() => {
                                                 @input="buscarClientes"
                                                 @focus="mostrandoListaClientes = true"
                                                 placeholder="Buscar por CI/NIT o nombre..."
-                                                class="w-full border border-gray-200 rounded-md pl-8 pr-3 py-1.5 text-xs focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200"
+                                                class="w-full border border-gray-200 rounded-md pl-8 pr-3 py-1.5 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
                                                 :disabled="cargandoNitPredefinido"
                                             />
                                             <div v-if="cargandoNitPredefinido" class="absolute right-2 top-1.5">
@@ -314,7 +314,7 @@ onUnmounted(() => {
                                                 v-for="cliente in clientesLista" 
                                                 :key="cliente.IdIdentificador"
                                                 @click="seleccionarCliente(cliente)"
-                                                class="px-2 py-1.5 hover:bg-guindo-50 cursor-pointer border-b last:border-b-0 text-xs"
+                                                class="px-2 py-1.5 hover:bg-primary-50 cursor-pointer border-b last:border-b-0 text-xs"
                                             >
                                                 <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded-full">{{ cliente.CI_NIT }}</span>
                                                 <span class="ml-2 text-gray-700">{{ cliente.Nombre }}</span>
@@ -335,7 +335,7 @@ onUnmounted(() => {
                                     </button>
                                 </div>
                                 
-                                <div v-if="clienteSeleccionado" class="mt-1.5 text-[11px] text-guindo-600 bg-guindo-50 rounded-md px-2 py-1">
+                                <div v-if="clienteSeleccionado" class="mt-1.5 text-[11px] text-primary-600 bg-primary-50 rounded-md px-2 py-1">
                                     <i class="fas fa-check-circle text-[10px] mr-1"></i> 
                                     {{ clienteSeleccionado.Nombre }} ({{ clienteSeleccionado.CI_NIT }})
                                 </div>
@@ -354,7 +354,7 @@ onUnmounted(() => {
                             </h3>
                             
                             <div v-if="loadingConceptos" class="text-center py-6">
-                                <i class="fas fa-spinner fa-spin text-xl text-guindo-500"></i>
+                                <i class="fas fa-spinner fa-spin text-xl text-primary-500"></i>
                                 <p class="mt-1 text-[10px] text-gray-400">Cargando métodos de pago...</p>
                             </div>
 
@@ -370,7 +370,7 @@ onUnmounted(() => {
                                             type="number" 
                                             step="0.01" 
                                             min="0" 
-                                            class="no-spinner w-full border border-gray-200 rounded-md pl-6 pr-2 py-1 text-xs font-mono focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200"
+                                            class="no-spinner w-full border border-gray-200 rounded-md pl-6 pr-2 py-1 text-xs font-mono focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
                                             placeholder="0.00"
                                         />
                                     </div>
@@ -382,7 +382,7 @@ onUnmounted(() => {
                         <div class="bg-gray-50 rounded-md p-3">
                             <div class="flex justify-between items-center">
                                 <span class="text-[11px] text-gray-600">Total registrado:</span>
-                                <span class="text-base font-bold" :class="pagoCorrecto ? 'text-guindo-700' : 'text-red-600'">
+                                <span class="text-base font-bold" :class="pagoCorrecto ? 'text-primary-700' : 'text-red-600'">
                                     {{ totalRegistrado.toFixed(2) }} Bs
                                 </span>
                             </div>
@@ -408,7 +408,7 @@ onUnmounted(() => {
                         <button 
                             @click="procesarPago" 
                             :disabled="!pagoCorrecto || procesando || loadingConceptos" 
-                            class="px-4 py-1.5 bg-guindo-600 text-white rounded-md text-xs font-medium hover:bg-guindo-700 transition disabled:opacity-50 flex items-center gap-1"
+                            class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1"
                         >
                             <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-check text-[10px]"></i>

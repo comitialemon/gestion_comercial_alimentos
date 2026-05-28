@@ -47,8 +47,8 @@ const numeroDiario = () => {
             <!-- Header Responsive -->
             <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                 <div class="flex items-center gap-2">
-                    <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-receipt text-guindo-600 text-sm"></i>
+                    <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-receipt text-primary-600 text-sm"></i>
                     </div>
                     <div>
                         <h1 class="text-base sm:text-lg md:text-2xl font-bold text-gray-800">Detalle de Compra</h1>
@@ -147,8 +147,8 @@ const numeroDiario = () => {
 
             <!-- Productos - Versión MÓVIL (tarjetas) -->
             <div v-if="isMobile" class="bg-white rounded-lg shadow-sm overflow-hidden">
-                <div class="p-3 bg-guindo-50 border-b">
-                    <h2 class="text-sm font-semibold text-guindo-700">Productos</h2>
+                <div class="p-3 bg-primary-50 border-b">
+                    <h2 class="text-sm font-semibold text-primary-700">Productos</h2>
                 </div>
                 <div class="divide-y divide-gray-100">
                     <div v-for="detalle in compra.detalles" :key="detalle.IdComprasDetalle" class="p-3 space-y-1">
@@ -170,12 +170,12 @@ const numeroDiario = () => {
                         </div>
                         <div class="flex justify-between pt-1 border-t">
                             <span class="text-[10px] font-semibold text-gray-700">Total:</span>
-                            <span class="text-[10px] font-bold text-guindo-600">{{ Number(detalle.TotalBolivianos || 0).toFixed(2) }} Bs</span>
+                            <span class="text-[10px] font-bold text-primary-600">{{ Number(detalle.TotalBolivianos || 0).toFixed(2) }} Bs</span>
                         </div>
                     </div>
                     <div class="p-3 bg-gray-50 flex justify-between">
                         <span class="text-xs font-bold text-gray-700">TOTAL COMPRA:</span>
-                        <span class="text-xs font-bold text-guindo-600">{{ Number(compra.ImporteFactura || 0).toFixed(2) }} Bs</span>
+                        <span class="text-xs font-bold text-primary-600">{{ Number(compra.ImporteFactura || 0).toFixed(2) }} Bs</span>
                     </div>
                 </div>
                 <div v-if="compra.detalles?.length === 0" class="p-6 text-center text-gray-400 text-xs">
@@ -191,13 +191,13 @@ const numeroDiario = () => {
                         <div class="min-w-full inline-block align-middle">
                             <div class="overflow-hidden">
                                 <table class="min-w-full text-xs sm:text-sm">
-                                    <thead class="bg-guindo-50">
-                                        <tr class="bg-guindo-50">
-                                            <th class="px-2 sm:px-4 py-2 text-left text-[10px] sm:text-xs font-medium text-guindo-700">Código</th>
-                                            <th class="px-2 sm:px-4 py-2 text-left text-[10px] sm:text-xs font-medium text-guindo-700">Producto</th>
-                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-guindo-700">Unidades</th>
-                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-guindo-700">Precio</th>
-                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-guindo-700">Total</th>
+                                    <thead class="bg-primary-50">
+                                        <tr class="bg-primary-50">
+                                            <th class="px-2 sm:px-4 py-2 text-left text-[10px] sm:text-xs font-medium text-primary-700">Código</th>
+                                            <th class="px-2 sm:px-4 py-2 text-left text-[10px] sm:text-xs font-medium text-primary-700">Producto</th>
+                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-primary-700">Unidades</th>
+                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-primary-700">Precio</th>
+                                            <th class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-medium text-primary-700">Total</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-200">
@@ -206,11 +206,11 @@ const numeroDiario = () => {
                                             <td class="px-2 sm:px-4 py-2 text-[10px] sm:text-xs">{{ detalle.producto?.Descripcion || '-' }}</td>
                                             <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs">{{ Number(detalle.Unidades || 0).toFixed(4) }}</td>
                                             <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs">{{ Number(detalle.Precio || 0).toFixed(2) }}</td>
-                                            <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-semibold text-guindo-600">{{ Number(detalle.TotalBolivianos || 0).toFixed(2) }}</td>
+                                            <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-semibold text-primary-600">{{ Number(detalle.TotalBolivianos || 0).toFixed(2) }}</td>
                                         </tr>
                                         <tr class="bg-gray-50">
                                             <td colspan="4" class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-bold">TOTAL:</td>
-                                            <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-bold text-guindo-600">{{ Number(compra.ImporteFactura || 0).toFixed(2) }} Bs</td>
+                                            <td class="px-2 sm:px-4 py-2 text-right text-[10px] sm:text-xs font-bold text-primary-600">{{ Number(compra.ImporteFactura || 0).toFixed(2) }} Bs</td>
                                         </tr>
                                     </tbody>
                                 </table>

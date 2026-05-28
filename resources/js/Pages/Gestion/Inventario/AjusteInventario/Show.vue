@@ -44,8 +44,8 @@ const volver = () => {
                 <!-- Header Responsive -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-clipboard-list text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-clipboard-list text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Detalle de Ajuste</h1>
@@ -123,7 +123,7 @@ const volver = () => {
                                 <span class="text-xs text-gray-500">Unidades:</span>
                                 <span class="text-xs font-semibold">{{ Number(detalle.Unidades).toFixed(2) }}</span>
                                 <span class="text-xs text-gray-500">Monto:</span>
-                                <span class="text-xs font-semibold text-guindo-600">{{ Number(detalle.Bolivianos).toFixed(2) }} Bs</span>
+                                <span class="text-xs font-semibold text-primary-600">{{ Number(detalle.Bolivianos).toFixed(2) }} Bs</span>
                             </div>
                         </div>
                         <div v-if="ajuste.detalles?.length === 0" class="text-center text-gray-400 text-xs py-4">
@@ -134,12 +134,12 @@ const volver = () => {
                     <!-- Vista ESCRITORIO (tabla) -->
                     <div v-else class="overflow-x-auto">
                         <table class="min-w-full">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700">Código</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700">Producto</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700">Unidades</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700">Monto Bs</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700">Código</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700">Producto</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700">Unidades</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700">Monto Bs</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200">
@@ -147,7 +147,7 @@ const volver = () => {
                                     <td class="px-3 py-2 text-xs font-mono">{{ detalle.producto?.Codigo || '-' }}</td>
                                     <td class="px-3 py-2 text-xs">{{ detalle.producto?.Descripcion || '-' }}</td>
                                     <td class="px-3 py-2 text-xs text-right">{{ Number(detalle.Unidades).toFixed(2) }}</td>
-                                    <td class="px-3 py-2 text-xs text-right font-semibold text-guindo-600">{{ Number(detalle.Bolivianos).toFixed(2) }}</td>
+                                    <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600">{{ Number(detalle.Bolivianos).toFixed(2) }}</td>
                                 </tr>
                                 <tr v-if="ajuste.detalles?.length === 0">
                                     <td colspan="4" class="px-3 py-4 text-center text-gray-400 text-xs">No hay productos registrados</td>

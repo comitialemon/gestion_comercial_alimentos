@@ -47,8 +47,8 @@ const submitForm = () => {
             <div class="max-w-3xl mx-auto">
                 <!-- Header -->
                 <div class="flex items-center gap-3 mb-5">
-                    <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-user-circle text-guindo-600 text-xl"></i>
+                    <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-user-circle text-primary-600 text-xl"></i>
                     </div>
                     <div>
                         <h1 class="text-xl font-bold text-gray-800">Mi Perfil</h1>
@@ -63,7 +63,7 @@ const submitForm = () => {
                         <div>
                             <label class="block text-[11px] font-medium text-gray-700 mb-1">Persona (CI/NIT)</label>
                             <div class="bg-gray-100 rounded-lg px-3 py-2 text-sm text-gray-600 border">
-                                <i class="fas fa-id-card text-guindo-500 mr-2 text-xs"></i>
+                                <i class="fas fa-id-card text-primary-500 mr-2 text-xs"></i>
                                 {{ operador?.identificador?.CI_NIT }} - {{ operador?.identificador?.Nombre }}
                             </div>
                             <p class="text-[10px] text-gray-400 mt-1">* No se puede modificar, contacta al administrador si necesitas cambiar</p>
@@ -76,7 +76,7 @@ const submitForm = () => {
                                 <input 
                                     type="text" 
                                     v-model="form.Iniciales" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs uppercase focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs uppercase focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                     :class="{ 'border-red-500': form.errors.Iniciales }"
                                     placeholder="Ej: JPG"
                                     maxlength="5"
@@ -90,7 +90,7 @@ const submitForm = () => {
                                 <input 
                                     type="text" 
                                     v-model="form.NombreAcceso" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                     :class="{ 'border-red-500': form.errors.NombreAcceso }"
                                     placeholder="Usuario para login"
                                 >
@@ -108,7 +108,7 @@ const submitForm = () => {
                                 <input 
                                     :type="mostrarClave ? 'text' : 'password'" 
                                     v-model="form.Clave" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs pr-8 focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs pr-8 focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                     :class="{ 'border-red-500': form.errors.Clave }"
                                     placeholder="••••••••"
                                 >
@@ -129,7 +129,7 @@ const submitForm = () => {
                             <input 
                                 type="text" 
                                 v-model="form.DireccionDomicilio" 
-                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                 :class="{ 'border-red-500': form.errors.DireccionDomicilio }"
                                 placeholder="Dirección completa"
                             >
@@ -143,7 +143,7 @@ const submitForm = () => {
                                 <input 
                                     type="text" 
                                     v-model="form.TelefonoDomicilio" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                     :class="{ 'border-red-500': form.errors.TelefonoDomicilio }"
                                     placeholder="Teléfono fijo"
                                 >
@@ -156,7 +156,7 @@ const submitForm = () => {
                                 <input 
                                     type="text" 
                                     v-model="form.NumeroCelular" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                                     :class="{ 'border-red-500': form.errors.NumeroCelular }"
                                     placeholder="Celular / WhatsApp"
                                 >

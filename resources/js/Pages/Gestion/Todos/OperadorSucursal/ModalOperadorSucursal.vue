@@ -217,7 +217,7 @@ const save = async () => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full mx-auto transform transition-all duration-300">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-4 py-2 border-b bg-guindo-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-4 py-2 border-b bg-primary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         {{ editando ? 'Editar Asignación' : 'Nueva Asignación' }}
                     </h3>
@@ -274,7 +274,7 @@ const save = async () => {
                                         :key="s.id"
                                         @click="seleccionarSucursal(s)"
                                         class="px-2 py-1.5 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-xs"
-                                        :class="{ 'bg-guindo-50': form.IdSucursal == s.id }"
+                                        :class="{ 'bg-primary-50': form.IdSucursal == s.id }"
                                     >
                                         {{ s.nombre }} {{ s.NumeroSucursal ? `(N° ${s.NumeroSucursal})` : '' }}
                                     </div>
@@ -319,7 +319,7 @@ const save = async () => {
                                         :key="op.id"
                                         @click="seleccionarOperador(op)"
                                         class="px-2 py-1.5 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-xs"
-                                        :class="{ 'bg-guindo-50': form.IdOperador == op.id }"
+                                        :class="{ 'bg-primary-50': form.IdOperador == op.id }"
                                     >
                                         <span class="font-mono text-gray-600">{{ op.ci }}</span>
                                         <span class="mx-1 text-gray-400">-</span>

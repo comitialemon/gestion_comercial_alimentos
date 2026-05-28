@@ -58,8 +58,8 @@ const formatearFecha = (fecha) => {
             <div class="max-w-5xl mx-auto">
                 <!-- Header -->
                 <div class="flex items-center gap-3 mb-6">
-                    <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-clock text-guindo-600 text-xl"></i>
+                    <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-clock text-primary-600 text-xl"></i>
                     </div>
                     <div>
                         <h1 class="text-xl font-bold text-gray-800">Productos Pendientes de Aprobación</h1>
@@ -73,7 +73,7 @@ const formatearFecha = (fecha) => {
                             <div class="flex justify-between items-start">
                                 <div class="flex-1">
                                     <div class="flex items-center gap-2 mb-2">
-                                        <i class="fas fa-box text-guindo-500"></i>
+                                        <i class="fas fa-box text-primary-500"></i>
                                         <h2 class="text-lg font-semibold text-gray-800">{{ solicitud.producto?.Detalle || 'Sin nombre' }}</h2>
                                         <span class="px-2 py-0.5 text-xs rounded-full bg-yellow-100 text-yellow-800">Pendiente</span>
                                     </div>

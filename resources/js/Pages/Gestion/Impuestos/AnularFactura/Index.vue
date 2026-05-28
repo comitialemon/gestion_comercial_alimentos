@@ -167,7 +167,7 @@ const formatearNumero = (value) => {
                             <input type="date" v-model="fecha" class="border rounded-md px-2 py-1 text-xs">
                         </div>
                         <div class="flex gap-2">
-                            <button @click="aplicarFiltro" class="px-3 py-1 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700 transition">
+                            <button @click="aplicarFiltro" class="px-3 py-1 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 transition">
                                 <i class="fas fa-search text-[10px] mr-1"></i> Filtrar
                             </button>
                             <button @click="limpiarFiltro" class="px-3 py-1 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-100 transition">
@@ -188,7 +188,7 @@ const formatearNumero = (value) => {
                     >
                         <div class="flex justify-between items-start mb-2">
                             <div>
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                     N° {{ factura.NumeroFactura }}
                                 </span>
                             </div>
@@ -207,7 +207,7 @@ const formatearNumero = (value) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Importe:</span>
-                                <span class="font-bold text-guindo-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
+                                <span class="font-bold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
                             </div>
                         </div>
                     </div>
@@ -240,7 +240,7 @@ const formatearNumero = (value) => {
                                 >
                                     <td class="px-4 py-2 text-sm font-mono text-gray-900">{{ factura.NumeroFactura }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600">{{ formatearFecha(factura.FechaVenta) }}</td>
-                                    <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
+                                    <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
                                     <td class="px-4 py-2 text-center">
                                         <input 
                                             type="radio" 

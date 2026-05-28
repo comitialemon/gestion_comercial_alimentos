@@ -104,12 +104,12 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <div class="bg-white rounded-xl shadow-md p-2 sm:p-3 mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-guindo-200">
+    <div class="bg-white rounded-xl shadow-md p-2 sm:p-3 mb-4 flex flex-wrap items-center justify-between gap-2 border-b-2 border-primary-200">
         
         <!-- Botón Volver -->
         <button 
             @click="volver" 
-            class="px-2 sm:px-4 py-1.5 sm:py-2 bg-guindo-100 text-guindo-700 rounded-lg hover:bg-guindo-200 transition flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm"
+            class="px-2 sm:px-4 py-1.5 sm:py-2 bg-primary-100 text-primary-700 rounded-lg hover:bg-primary-200 transition flex items-center gap-1 sm:gap-2 font-medium text-xs sm:text-sm"
         >
             <i class="fas fa-arrow-left text-xs sm:text-sm"></i>
             <span class="hidden xs:inline">Volver</span>
@@ -118,7 +118,7 @@ onUnmounted(() => {
         <!-- Información central (comisionista y ruta) -->
         <div class="text-center flex-1 min-w-0 px-2">
             <span class="block text-[10px] sm:text-xs text-amber-600 font-bold uppercase tracking-wide">Comisionista</span>
-            <span class="text-xs sm:text-sm font-semibold text-guindo-800 truncate block max-w-[150px] sm:max-w-[250px] mx-auto">
+            <span class="text-xs sm:text-sm font-semibold text-primary-800 truncate block max-w-[150px] sm:max-w-[250px] mx-auto">
                 {{ comisionista }}
             </span>
             <div v-if="mostrarRuta && ruta.length" class="text-[10px] sm:text-xs text-gray-400 mt-0.5 truncate max-w-[200px] sm:max-w-[300px] mx-auto">
@@ -148,15 +148,15 @@ onUnmounted(() => {
                 class="relative px-2 sm:px-4 py-1.5 sm:py-2 bg-amber-400 hover:bg-amber-500 transition rounded-lg flex items-center gap-1 sm:gap-2 font-semibold shadow-md"
                 :class="{ 'bg-amber-500': totalItems > 0 }"
             >
-                <i class="fas fa-shopping-cart text-sm sm:text-lg" :class="{ 'text-guindo-800': totalItems > 0, 'text-amber-800': totalItems === 0 }"></i>
-                <span class="text-xs sm:text-sm font-medium" :class="{ 'text-guindo-800': totalItems > 0, 'text-amber-800': totalItems === 0 }">
+                <i class="fas fa-shopping-cart text-sm sm:text-lg" :class="{ 'text-primary-800': totalItems > 0, 'text-amber-800': totalItems === 0 }"></i>
+                <span class="text-xs sm:text-sm font-medium" :class="{ 'text-primary-800': totalItems > 0, 'text-amber-800': totalItems === 0 }">
                     Carrito
                 </span>
                 
                 <!-- Contador de items -->
                 <span 
                     v-if="totalItems > 0" 
-                    class="absolute -top-2 -right-2 min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 bg-guindo-600 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center px-1 sm:px-1.5 font-bold shadow-lg border-2 border-white"
+                    class="absolute -top-2 -right-2 min-w-[20px] sm:min-w-[24px] h-5 sm:h-6 bg-primary-600 text-white text-[10px] sm:text-xs rounded-full flex items-center justify-center px-1 sm:px-1.5 font-bold shadow-lg border-2 border-white"
                 >
                     {{ totalItems > 99 ? '99+' : totalItems }}
                 </span>

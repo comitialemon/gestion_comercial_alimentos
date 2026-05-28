@@ -115,7 +115,7 @@ const save = async () => {
             <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="closeModal"></div>
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-auto transform transition-all duration-300 scale-100">
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-guindo-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         {{ editando ? 'Editar Sucursal' : 'Nueva Sucursal' }}
                     </h3>

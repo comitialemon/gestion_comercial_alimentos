@@ -8,6 +8,13 @@ const page = usePage()
 const ui = useUiStore()
 const toast = inject('toast')
 
+// 🔥 TEMA DINÁMICO
+const theme = computed(() => page.props?.theme || {
+    primary: '#1f2937',
+    secondary: '#4b5563',
+    hasCustomTheme: false
+})
+
 // Estado para responsive
 const isMobile = ref(window.innerWidth < 768)
 
@@ -47,7 +54,7 @@ const logout = () => {
     router.post('/logout')
 }
 
-// 🔥 Navegar a nueva venta táctil
+// Navegar a nueva venta táctil
 const irANuevaVenta = () => {
     if (!ctxReady.value) {
         toast?.warning('Contexto requerido', 'Primero selecciona empresa y sucursal')
@@ -58,82 +65,115 @@ const irANuevaVenta = () => {
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 w-full shadow-md" style="background-color: #61131a;">
-    <div class="mx-auto flex items-center gap-2 px-2 sm:px-3 py-2">
-      
-      <!-- Botón menú móvil -->
-      <button
-        v-if="ctxReady"
-        class="lg:hidden -ml-1 p-2 rounded hover:bg-opacity-80 transition flex-shrink-0"
-        style="color: white; background-color: rgba(255,255,255,0.1);"
-        @click="openMobileSidebar"
-        type="button"
-      >
-        <i class="fas fa-bars text-base sm:text-lg"></i>
-      </button>
+    <header 
+        class="sticky top-0 z-40 w-full shadow-md transition-colors duration-300"
+        :style="{ backgroundColor: 'var(--color-primary)' }"
+    >
+        <div class="mx-auto flex items-center gap-2 px-2 sm:px-3 py-2">
+            
+            <!-- Botón menú móvil -->
+            <button
+                v-if="ctxReady"
+                class="lg:hidden -ml-1 p-2 rounded transition flex-shrink-0 text-white"
+                :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
+                @click="openMobileSidebar"
+                type="button"
+            >
+                <i class="fas fa-bars text-base sm:text-lg"></i>
+            </button>
 
-      <!-- Botón menú desktop -->
-      <button
-        v-if="ctxReady"
-        class="hidden lg:inline-flex p-2 rounded hover:bg-opacity-80 transition flex-shrink-0"
-        style="color: white; background-color: rgba(255,255,255,0.1);"
-        @click="toggleDesktopSidebar"
-        type="button"
-      >
-        <i class="fas fa-bars text-lg"></i>
-      </button>
+            <!-- Botón menú desktop -->
+            <button
+                v-if="ctxReady"
+                class="hidden lg:inline-flex p-2 rounded transition flex-shrink-0 text-white"
+                :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
+                @click="toggleDesktopSidebar"
+                type="button"
+            >
+                <i class="fas fa-bars text-lg"></i>
+            </button>
 
-      <!-- Información de empresa y sucursal -->
-      <div class="leading-tight select-none text-white min-w-0 flex-shrink">
-        <div class="font-semibold uppercase tracking-wide text-xs sm:text-sm lg:text-base truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
-          {{ empresaNombre || 'SELECCIONE EMPRESA' }}
-        </div>
-        <div class="text-[10px] sm:text-xs opacity-90 truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
-          Sucursal: {{ sucursalNombre || 'SELECCIONE SUCURSAL' }}
-        </div>
-      </div>
+            <!-- Logo / Icono -->
+            <div 
+                class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                :style="{ backgroundColor: 'var(--color-secondary)' }"
+            >
+                <i class="fas fa-store text-white text-sm"></i>
+            </div>
 
-      <!-- 🔥 BOTÓN NUEVA VENTA - COLOR AMARILLO (centrado) -->
-      <button
-        v-if="ctxReady"
-        @click="irANuevaVenta"
-        class="mx-auto px-3 sm:px-4 py-1.5 rounded-lg transition text-guindo-900 font-bold text-xs sm:text-sm flex items-center gap-1 sm:gap-2 flex-shrink-0 shadow-md hover:shadow-lg"
-        style="background: linear-gradient(135deg, #facc15 0%, #eab308 100%);"
-        @mouseenter="e => e.target.style.background = 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)'"
-        @mouseleave="e => e.target.style.background = 'linear-gradient(135deg, #facc15 0%, #eab308 100%)'"
-        title="Nueva venta rápida"
-      >
-        <i class="fas fa-cash-register text-sm sm:text-base"></i>
-        <span class="hidden xs:inline font-medium">Nueva Venta</span>
-      </button>
+            <!-- Información de empresa y sucursal -->
+            <div class="leading-tight select-none text-white min-w-0 flex-shrink">
+                <div class="font-semibold uppercase tracking-wide text-xs sm:text-sm lg:text-base truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
+                    {{ empresaNombre || 'SELECCIONE EMPRESA' }}
+                </div>
+                <div class="text-[10px] sm:text-xs opacity-90 truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
+                    Sucursal: {{ sucursalNombre || 'SELECCIONE SUCURSAL' }}
+                </div>
+            </div>
 
-      <!-- Spacer para mantener equilibrio (solo en desktop) -->
-      <div class="hidden lg:block w-10"></div>
+            <!-- BOTÓN NUEVA VENTA (centrado) -->
+            <button
+                v-if="ctxReady"
+                @click="irANuevaVenta"
+                class="mx-auto px-3 sm:px-4 py-1.5 rounded-lg transition text-primary-900 font-bold text-xs sm:text-sm flex items-center gap-1 sm:gap-2 flex-shrink-0 shadow-md hover:shadow-lg"
+                :style="{ 
+                    background: theme.hasCustomTheme 
+                        ? `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)` 
+                        : 'linear-gradient(135deg, #facc15 0%, #eab308 100%)'
+                }"
+                @mouseenter="e => e.target.style.background = theme.hasCustomTheme 
+                    ? `linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)`
+                    : 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)'"
+                @mouseleave="e => e.target.style.background = theme.hasCustomTheme 
+                    ? `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)`
+                    : 'linear-gradient(135deg, #facc15 0%, #eab308 100%)'"
+                title="Nueva venta rápida"
+            >
+                <i class="fas fa-cash-register text-sm sm:text-base"></i>
+                <span class="hidden xs:inline font-medium">Nueva Venta</span>
+            </button>
 
-      <!-- NOTIFICACIONES -->
-      <Notificaciones v-if="ctxReady" />
+            <!-- Spacer para mantener equilibrio (solo en desktop) -->
+            <div class="hidden lg:block w-10"></div>
 
-      <!-- Operador y Logout -->
-      <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-        <div class="text-[10px] sm:text-xs lg:text-sm flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-white whitespace-nowrap" style="background-color: #4a0f14;">
-          <i class="fas fa-user-circle text-xs sm:text-sm"></i>
-          <span class="hidden sm:inline font-medium max-w-[80px] lg:max-w-[150px] truncate">{{ operadorNombre || 'SIN OPERADOR' }}</span>
+            <!-- NOTIFICACIONES -->
+            <Notificaciones v-if="ctxReady" />
+
+            <!-- Operador y Logout -->
+            <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                <div 
+                    class="text-[10px] sm:text-xs lg:text-sm flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-white whitespace-nowrap transition-colors"
+                    :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
+                >
+                    <i class="fas fa-user-circle text-xs sm:text-sm"></i>
+                    <span class="hidden sm:inline font-medium max-w-[80px] lg:max-w-[150px] truncate">{{ operadorNombre || 'SIN OPERADOR' }}</span>
+                </div>
+                
+                <button 
+                    @click="logout"
+                    class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition text-white text-xs sm:text-sm flex items-center gap-1 sm:gap-2 whitespace-nowrap"
+                    :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
+                    @mouseenter="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.35)'"
+                    @mouseleave="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.2)'"
+                    title="Cerrar sesión"
+                >
+                    <i class="fas fa-sign-out-alt text-xs sm:text-sm"></i>
+                    <span class="hidden sm:inline">Salir</span>
+                </button>
+            </div>
         </div>
         
-        <button 
-          @click="logout"
-          class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition text-white text-xs sm:text-sm flex items-center gap-1 sm:gap-2 whitespace-nowrap"
-          style="background-color: #4a0f14;"
-          @mouseenter="e => e.target.style.backgroundColor = '#3a0a0f'"
-          @mouseleave="e => e.target.style.backgroundColor = '#4a0f14'"
-          title="Cerrar sesión"
+        <!-- 🔥 Indicador de tema default (solo supervisores) -->
+        <div 
+            v-if="!theme.hasCustomTheme && page.props?.auth?.operador?.tipo_id === 1"
+            class="text-center text-[9px] py-0.5 text-white"
+            :style="{ backgroundColor: 'rgba(0,0,0,0.3)' }"
         >
-          <i class="fas fa-sign-out-alt text-xs sm:text-sm"></i>
-          <span class="hidden sm:inline">Salir</span>
-        </button>
-      </div>
-    </div>
-  </header>
+            <i class="fas fa-info-circle mr-1"></i>
+            Esta empresa usa el tema por defecto (gris/negro/blanco). 
+            Personaliza los colores desde Configuración → Tema.
+        </div>
+    </header>
 </template>
 
 <style scoped>

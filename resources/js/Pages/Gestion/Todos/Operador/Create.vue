@@ -105,8 +105,8 @@ onMounted(() => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-user-plus text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-plus text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-2xl font-bold text-gray-800">{{ editando ? 'Editar Operador' : 'Nuevo Operador' }}</h1>
@@ -130,7 +130,7 @@ onMounted(() => {
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" @click="abrirModalIdentificador" class="px-4 py-2 bg-guindo-600 text-white rounded-lg hover:bg-guindo-700 flex items-center gap-2">
+                                <button type="button" @click="abrirModalIdentificador" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 flex items-center gap-2">
                                     <i class="fas fa-plus"></i> Nuevo
                                 </button>
                             </div>
@@ -202,10 +202,10 @@ onMounted(() => {
                             <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
                             <div class="flex items-center gap-4">
                                 <label class="flex items-center gap-2">
-                                    <input type="radio" v-model="form.ActivoInactivo" :value="true" class="w-4 h-4 text-guindo-600"> Activo
+                                    <input type="radio" v-model="form.ActivoInactivo" :value="true" class="w-4 h-4 text-primary-600"> Activo
                                 </label>
                                 <label class="flex items-center gap-2">
-                                    <input type="radio" v-model="form.ActivoInactivo" :value="false" class="w-4 h-4 text-guindo-600"> Inactivo
+                                    <input type="radio" v-model="form.ActivoInactivo" :value="false" class="w-4 h-4 text-primary-600"> Inactivo
                                 </label>
                             </div>
                             <p class="text-xs text-gray-400 mt-1">* Los operadores inactivos no podrán acceder al sistema</p>

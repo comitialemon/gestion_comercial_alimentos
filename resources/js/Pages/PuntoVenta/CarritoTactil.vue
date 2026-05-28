@@ -139,14 +139,14 @@ onMounted(() => cargarCarrito())
 
             <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                 <div v-if="loading" class="text-center py-8">
-                    <i class="fas fa-spinner fa-spin text-2xl text-guindo-500"></i>
+                    <i class="fas fa-spinner fa-spin text-2xl text-primary-500"></i>
                     <p class="mt-2 text-xs text-gray-500">Cargando carrito...</p>
                 </div>
                 
                 <div v-else-if="carrito.length === 0" class="text-center py-10">
                     <i class="fas fa-shopping-cart text-4xl text-gray-300 mb-2 block"></i>
                     <p class="text-sm text-gray-500">Tu carrito está vacío</p>
-                    <button @click="seguirAgregando" class="mt-3 px-4 py-1.5 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700">
+                    <button @click="seguirAgregando" class="mt-3 px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700">
                         Agregar productos
                     </button>
                 </div>
@@ -170,7 +170,7 @@ onMounted(() => cargarCarrito())
                             </div>
                             
                             <div class="min-w-[85px] text-right">
-                                <span class="font-bold text-guindo-600 text-sm">{{ item.subtotal.toFixed(2) }} Bs</span>
+                                <span class="font-bold text-primary-600 text-sm">{{ item.subtotal.toFixed(2) }} Bs</span>
                             </div>
                             
                             <button @click="actualizarCantidad(item, -1)" class="text-red-400 hover:text-red-600 w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-50">
@@ -187,7 +187,7 @@ onMounted(() => cargarCarrito())
                             </div>
                             <div class="text-right">
                                 <p class="text-[10px] text-gray-500">TOTAL</p>
-                                <p class="text-xl font-bold text-guindo-700">{{ total.toFixed(2) }} Bs</p>
+                                <p class="text-xl font-bold text-primary-700">{{ total.toFixed(2) }} Bs</p>
                             </div>
                         </div>
                     </div>
@@ -198,7 +198,7 @@ onMounted(() => cargarCarrito())
                 <button @click="seguirAgregando" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 flex items-center justify-center gap-1">
                     <i class="fas fa-plus text-xs"></i> Seguir agregando
                 </button>
-                <button @click="irAPagar" class="flex-1 py-2 rounded-lg bg-guindo-600 text-white text-sm font-medium hover:bg-guindo-700 flex items-center justify-center gap-1">
+                <button @click="irAPagar" class="flex-1 py-2 rounded-lg bg-primary-600 text-white text-sm font-medium hover:bg-primary-700 flex items-center justify-center gap-1">
                     <i class="fas fa-credit-card text-xs"></i> Ir a pagar
                 </button>
             </div>

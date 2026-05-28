@@ -120,12 +120,12 @@ onMounted(() => cargarCarrito())
 
             <!-- Categoría con imagen -->
             <div class="flex items-center gap-3 mb-4">
-                <div class="w-12 h-12 bg-guindo-100 rounded-xl flex items-center justify-center shadow-sm overflow-hidden">
+                <div class="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center shadow-sm overflow-hidden">
                     <img v-if="categoria?.imagen_url" :src="categoria.imagen_url" class="w-full h-full object-cover rounded-xl">
-                    <i v-else class="fas fa-tag text-guindo-500 text-xl"></i>
+                    <i v-else class="fas fa-tag text-primary-500 text-xl"></i>
                 </div>
                 <div>
-                    <h1 class="text-xl font-bold text-guindo-800">{{ categoria?.nombre }}</h1>
+                    <h1 class="text-xl font-bold text-primary-800">{{ categoria?.nombre }}</h1>
                     <p class="text-[11px] text-gray-400">{{ productos.length }} productos disponibles</p>
                 </div>
             </div>
@@ -140,13 +140,13 @@ onMounted(() => cargarCarrito())
                 >
                     <div class="h-20 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center overflow-hidden">
                         <img v-if="prod.imagen" :src="prod.imagen" class="w-full h-full object-cover">
-                        <i v-else class="fas fa-box-open text-2xl text-guindo-400"></i>
+                        <i v-else class="fas fa-box-open text-2xl text-primary-400"></i>
                     </div>
                     <div class="p-2 text-center">
                         <h3 class="font-medium text-xs text-gray-800 line-clamp-2 min-h-[32px]">{{ prod.nombre }}</h3>
                         <div class="mt-1 flex flex-col items-center">
                             <span class="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold"
-                                :class="prod.tipo_precio === 'mayorista' ? 'bg-amber-100 text-amber-700' : 'bg-guindo-100 text-guindo-700'"
+                                :class="prod.tipo_precio === 'mayorista' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'"
                             >
                                 {{ Number(prod.precio_real).toFixed(2) }} Bs
                             </span>
@@ -166,11 +166,11 @@ onMounted(() => cargarCarrito())
             <!-- Modal -->
             <div v-if="modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl max-w-sm w-full overflow-hidden shadow-xl">
-                    <div class="bg-guindo-700 px-4 py-3">
+                    <div class="bg-primary-700 px-4 py-3">
                         <div class="flex items-center gap-2">
                             <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden">
                                 <img v-if="productoSeleccionado?.imagen" :src="productoSeleccionado.imagen" class="w-full h-full object-cover">
-                                <i v-else class="fas fa-box-open text-guindo-600 text-sm"></i>
+                                <i v-else class="fas fa-box-open text-primary-600 text-sm"></i>
                             </div>
                             <div class="text-white flex-1">
                                 <h3 class="font-bold text-sm">{{ productoSeleccionado?.nombre }}</h3>
@@ -182,21 +182,21 @@ onMounted(() => cargarCarrito())
                     </div>
                     <div class="p-4">
                         <div class="text-center mb-3">
-                            <span class="text-2xl font-bold text-guindo-700">{{ Number(precioUnitario).toFixed(2) }}</span>
+                            <span class="text-2xl font-bold text-primary-700">{{ Number(precioUnitario).toFixed(2) }}</span>
                             <span class="text-gray-400 text-xs ml-0.5">Bs c/u</span>
                         </div>
                         <div class="flex items-center justify-center gap-3 mb-4">
-                            <button @click="decrementarCantidad" class="w-8 h-8 rounded-full bg-guindo-100 text-guindo-700 font-bold hover:bg-guindo-200">-</button>
-                            <input type="number" v-model.number="cantidad" @input="validarCantidad" min="1" class="w-14 text-center text-lg font-bold border rounded-lg py-1 focus:border-guindo-400 focus:outline-none">
-                            <button @click="incrementarCantidad" class="w-8 h-8 rounded-full bg-guindo-100 text-guindo-700 font-bold hover:bg-guindo-200">+</button>
+                            <button @click="decrementarCantidad" class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 font-bold hover:bg-primary-200">-</button>
+                            <input type="number" v-model.number="cantidad" @input="validarCantidad" min="1" class="w-14 text-center text-lg font-bold border rounded-lg py-1 focus:border-primary-400 focus:outline-none">
+                            <button @click="incrementarCantidad" class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 font-bold hover:bg-primary-200">+</button>
                         </div>
                         <div class="bg-amber-50 rounded-lg p-2 mb-4 text-center">
                             <p class="text-[10px] text-amber-700">Total</p>
-                            <p class="text-lg font-bold text-guindo-700">{{ totalModal }} Bs</p>
+                            <p class="text-lg font-bold text-primary-700">{{ totalModal }} Bs</p>
                         </div>
                         <div class="flex gap-2">
                             <button @click="cerrarModal" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm hover:bg-gray-200">Cancelar</button>
-                            <button @click="agregarAlCarrito" :disabled="loading" class="flex-1 py-2 rounded-lg bg-guindo-600 hover:bg-guindo-700 text-white text-sm font-medium flex items-center justify-center gap-1">
+                            <button @click="agregarAlCarrito" :disabled="loading" class="flex-1 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1">
                                 <i v-if="loading" class="fas fa-spinner fa-spin text-xs"></i>
                                 <i v-else class="fas fa-cart-plus text-xs"></i>
                                 {{ loading ? '' : `Agregar (${cantidad})` }}
@@ -206,14 +206,14 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
-            <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border-l-3 border-guindo-500">
+            <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border-l-3 border-primary-500">
                 <div class="flex items-center gap-2">
-                    <div class="bg-guindo-100 rounded-full w-7 h-7 flex items-center justify-center">
-                        <i class="fas fa-shopping-cart text-guindo-600 text-xs"></i>
+                    <div class="bg-primary-100 rounded-full w-7 h-7 flex items-center justify-center">
+                        <i class="fas fa-shopping-cart text-primary-600 text-xs"></i>
                     </div>
                     <div class="text-[11px]">
                         <p class="text-gray-500 leading-tight">Total</p>
-                        <p class="font-bold text-guindo-600">{{ totalCarrito }} Bs</p>
+                        <p class="font-bold text-primary-600">{{ totalCarrito }} Bs</p>
                     </div>
                 </div>
             </div>

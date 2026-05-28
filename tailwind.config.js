@@ -4,41 +4,44 @@ export default {
     "./resources/**/*.blade.php",
     "./resources/**/*.vue",
     "./resources/**/*.js",
-    "./resources/js/Pages/**/*.vue",
-    "./resources/js/Layouts/**/*.vue",
   ],
   theme: {
     extend: {
       colors: {
-        // Colores corporativos
-        guindo: {
-          DEFAULT: '#61131a',
-          50: '#fdf2f2',
-          100: '#fce8e8',
-          200: '#f9d0d0',
-          300: '#f4a9a9',
-          400: '#ec7878',
-          500: '#e04e4e',
-          600: '#c63030',
-          700: '#a62424',
-          800: '#882020',
-          900: '#61131a',
-          950: '#3a0a0f',
+        // 🔥 Variables CSS dinámicas (cambian por cliente)
+        primary: {
+          DEFAULT: 'var(--color-primary)',
+          50: 'var(--color-primary-50)',
+          100: 'var(--color-primary-100)',
+          200: 'var(--color-primary-200)',
+          300: 'var(--color-primary-300)',
+          400: 'var(--color-primary-400)',
+          500: 'var(--color-primary-500)',
+          600: 'var(--color-primary-600)',
+          700: 'var(--color-primary-700)',
+          800: 'var(--color-primary-800)',
+          900: 'var(--color-primary-900)',
+          950: 'var(--color-primary-950)',
         },
-        amarillo: {
-          DEFAULT: '#eab308',
-          50: '#fefce8',
-          100: '#fef9c3',
-          200: '#fef08a',
-          300: '#fde047',
-          400: '#facc15',
-          500: '#eab308',
-          600: '#ca8a04',
-          700: '#a16207',
-          800: '#854d0e',
-          900: '#713f12',
-          950: '#422006',
+        secondary: {
+          DEFAULT: 'var(--color-secondary)',
+          50: 'var(--color-secondary-50)',
+          100: 'var(--color-secondary-100)',
+          200: 'var(--color-secondary-200)',
+          300: 'var(--color-secondary-300)',
+          400: 'var(--color-secondary-400)',
+          500: 'var(--color-secondary-500)',
+          600: 'var(--color-secondary-600)',
+          700: 'var(--color-secondary-700)',
+          800: 'var(--color-secondary-800)',
+          900: 'var(--color-secondary-900)',
+          950: 'var(--color-secondary-950)',
         },
+        // 🔥 Color default (para saber si no tiene tema)
+        default: {
+          primary: '#1f2937',  // gray-800
+          secondary: '#4b5563', // gray-600
+        }
       },
     },
   },

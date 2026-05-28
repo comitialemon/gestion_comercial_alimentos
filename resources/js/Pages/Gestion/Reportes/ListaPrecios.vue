@@ -27,8 +27,8 @@ const exportarExcel = () => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-file-excel text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-file-excel text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Lista de Precios</h1>
@@ -45,7 +45,7 @@ const exportarExcel = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    <i class="fas fa-store mr-1 text-guindo-600"></i> Empresa
+                                    <i class="fas fa-store mr-1 text-primary-600"></i> Empresa
                                 </label>
                                 <div class="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 border">
                                     {{ empresa?.Nombre || 'No registrado' }}
@@ -53,7 +53,7 @@ const exportarExcel = () => {
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    <i class="fas fa-id-card mr-1 text-guindo-600"></i> NIT
+                                    <i class="fas fa-id-card mr-1 text-primary-600"></i> NIT
                                 </label>
                                 <div class="text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 border">
                                     {{ empresa?.NIT || 'No registrado' }}

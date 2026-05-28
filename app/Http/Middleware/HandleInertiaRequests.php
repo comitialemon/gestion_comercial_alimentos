@@ -5,16 +5,19 @@ namespace App\Http\Middleware;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+use App\Services\Gestion\Menu\MenuService;
+use App\Models\Gestion\Todos\ClienteTema; // 🔥 NUEVO: Modelo de tema
 
 class HandleInertiaRequests extends Middleware
 {
     protected $rootView = 'app';
 
-    /** Conexión Gestión */
-    private function g() { return DB::connection('mysql_gestion_comercial_alimentos'); }
+    protected $menuService;
+    
+    public function __construct(MenuService $menuService)
+    {
+        $this->menuService = $menuService;
+    }
     
     public function share(Request $request): array
     {
@@ -30,7 +33,7 @@ class HandleInertiaRequests extends Middleware
             $operadorNombre = $operador->Nombre ?? session('operador_nombre');
         }
 
-        // 🔥 CARGAR EMPRESA Y SUCURSAL DESDE BD SI NO ESTÁN EN SESIÓN 🔥
+        // Cargar empresa y sucursal desde BD si no están en sesión
         $empresaNombre = session('global_empresa_nombre');
         $sucursalNombre = session('global_sucursal_nombre');
         
@@ -40,7 +43,6 @@ class HandleInertiaRequests extends Middleware
                 ->where('IdCliente', session('cliente_id'))
                 ->first();
             $empresaNombre = $empresa->Nombre ?? null;
-            // Guardar en sesión para futuras peticiones
             if ($empresaNombre) session(['global_empresa_nombre' => $empresaNombre]);
         }
         
@@ -52,6 +54,10 @@ class HandleInertiaRequests extends Middleware
             $sucursalNombre = $sucursal->Nombre ?? null;
             if ($sucursalNombre) session(['global_sucursal_nombre' => $sucursalNombre]);
         }
+
+        // 🔥 ==================== TEMA DINÁMICO POR CLIENTE ====================
+        $theme = $this->loadTheme(session('cliente_id'));
+        // ====================================================================
 
         $auth = [
             'operador' => [
@@ -70,10 +76,10 @@ class HandleInertiaRequests extends Middleware
             'ready' => (bool) (session()->has('cliente_id') && session()->has('cliente_sucursal_id')),
         ];
 
-        // Menú
+        // Menú: llamamos al servicio
         $menu = [];
         if ($ctx['ready'] && !empty($auth['operador']['tipo_id'])) {
-            $menu = $this->menuTreeFor(
+            $menu = $this->menuService->obtenerArbol(
                 (int)$auth['operador']['tipo_id'],
                 (int)$auth['operador']['id'],
                 (int)$ctx['cliente_id']
@@ -87,244 +93,90 @@ class HandleInertiaRequests extends Middleware
             'empresaNombre'   => $empresaNombre,
             'sucursalNombre'  => $sucursalNombre,
             'operadorNombre'  => $operadorNombre,
+            'theme'           => $theme, // 🔥 NUEVO: Tema dinámico
         ]);
     }
 
-    /* ====================== MENÚ ====================== */
-
-    private function menuTreeFor(int $tipoId, int $operadorId, int $clienteId): array
+    /**
+     * 🔥 Carga el tema del cliente (colores, logo, etc.)
+     */
+    private function loadTheme($clienteId): array
     {
-        $idsOp = $this->idsMenuPorOperador($operadorId, $clienteId);
-
-        $modo = 'por_columna';
-        if (!empty($idsOp)) $modo = 'por_operador';
-
-        $columna = $modo === 'por_columna'
-            ? $this->resolverColumnaMenu($tipoId)
-            : '__POR_OPERADOR__';
-
-        Log::info('MENU.resolver', [
-            'tipoId'     => $tipoId,
-            'operadorId' => $operadorId,
-            'clienteId'  => $clienteId,
-            'modo'       => $modo,
-            'columna'    => $columna,
-        ]);
-
-        if ($columna === '__NONE__') {
-            return [];
-        }
-
-        $cacheKey = $modo === 'por_operador'
-            ? "menu_tree_op_{$operadorId}_cli_{$clienteId}"
-            : "menu_tree_tipo_{$tipoId}_{$columna}";
-
-        if (session()->has($cacheKey)) {
-            return session($cacheKey);
-        }
-
-        $items = $modo === 'por_operador'
-            ? $this->itemsPorOperadorIds($idsOp)
-            : $this->itemsPorColumna($columna);
-
-        Log::info('MENU.items', [
-            'modo'   => $modo,
-            'col'    => $columna,
-            'count'  => is_array($items) ? count($items) : 0,
-        ]);
-
-        if (empty($items)) {
-            session([$cacheKey => []]);
-            return [];
-        }
-
-        $items = $this->asegurarPadres($items);
-        $tree  = $this->aArbol($items);
-
-        session([$cacheKey => $tree]);
-        return $tree;
-    }
-
-    private function resolverColumnaMenu(int $tipoId): string
-    {
-        $detalle = $this->g()->table('todos_operador_tipo')
-            ->where('IdOperadorTipo', $tipoId)
-            ->value('Detalle');
-
-        $detalle = is_string($detalle) ? trim($detalle) : '';
-
-        $colsReal = $this->columnasMenu();
-        $mapNorm  = [];
-        foreach ($colsReal as $c) $mapNorm[$this->norm($c)] = $c;
-
-        $exc = [
-            $this->norm('SuperUsuario')         => 'Administrador',
-            $this->norm('MenuPorOperador')      => '__POR_OPERADOR__',
-            $this->norm('VentaMayoristas')      => 'VentaMayorista',
-            $this->norm('VentaMonitorCocina')   => 'MonitorCocina',
-            $this->norm('VentaMonitorEntregas') => 'MonitorCocina',
+        // Tema por defecto (negro/gris/blanco)
+        $defaultTheme = [
+            'primary' => '#1f2937',      // gray-800
+            'primary_rgb' => '31, 41, 55',
+            'secondary' => '#4b5563',    // gray-600
+            'secondary_rgb' => '75, 85, 99',
+            'background' => '#ffffff',    // blanco
+            'text' => '#000000',          // negro
+            'accent' => '#6b7280',        // gray-500
+            'accent_rgb' => '107, 114, 128',
+            'logo' => null,
+            'logo_dark' => null,
+            'favicon' => null,
+            'systemName' => 'Sistema Gestion',
+            'hasCustomTheme' => false,
         ];
 
-        $col = null;
-
-        if ($detalle !== '') {
-            $det = $this->norm($detalle);
-            if (isset($exc[$det])) {
-                $col = $exc[$det];
-            } elseif (isset($mapNorm[$det])) {
-                $col = $mapNorm[$det];
-            }
+        if (!$clienteId) {
+            return $defaultTheme;
         }
 
-        if ($col === '__POR_OPERADOR__') {
-            if (!Schema::connection('mysql_gestion_comercial_alimentos')->hasTable('menu_operador')) {
-                return $this->fallbackPreferible($colsReal);
-            }
-            return $col;
-        }
+        try {
+            // Buscar tema personalizado del cliente
+            $tema = ClienteTema::where('id_cliente', $clienteId)
+                ->where('activo', 1)
+                ->first();
 
-        if (!$col || !in_array($col, $colsReal, true)) {
-            return $this->fallbackPreferible($colsReal);
-        }
-
-        return $col;
-    }
-
-    private function fallbackPreferible(array $colsReal): string
-    {
-        $normCols = [];
-        foreach ($colsReal as $c) $normCols[$this->norm($c)] = $c;
-
-        foreach (['Operador', 'Administrador', 'Usuario'] as $pref) {
-            $n = $this->norm($pref);
-            if (isset($normCols[$n])) return $normCols[$n];
-        }
-        return $colsReal[0] ?? '__NONE__';
-    }
-
-    private function norm(string $s): string
-    {
-        return Str::of($s)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', '')->value();
-    }
-
-    private function columnasMenu(): array
-    {
-        $all = Schema::connection('mysql_gestion_comercial_alimentos')
-            ->getColumnListing('menu_administrador');
-
-        $excluir = [
-            'Id','ID','id',
-            'Description','Descripcion','description','descripcion',
-            'Link','link',
-            'Parent','parent',
-            'Node_Order','node_order','Order','Orden',
-        ];
-
-        return array_values(array_filter($all, fn($c) => !in_array($c, $excluir, true)));
-    }
-
-    private function idsMenuPorOperador(int $operadorId, int $clienteId): array
-    {
-        $schema = Schema::connection('mysql_gestion_comercial_alimentos');
-        if (!$schema->hasTable('menu_operador')) return [];
-
-        return $this->g()->table('menu_operador')
-            ->where('IdOperador', $operadorId)
-            ->where('IdCliente',  $clienteId)
-            ->pluck('IdMenu')
-            ->map(fn($x) => (int)$x)
-            ->all();
-    }
-
-    private function itemsPorOperadorIds(array $ids): array
-    {
-        if (empty($ids)) return [];
-
-        $rows = $this->g()->table('menu_administrador')
-            ->select([
-                'Id as id',
-                'Description as title',
-                'Link as href',
-                'Parent as parent',
-                'Node_Order as node_order',
-            ])
-            ->whereIn('Id', $ids)
-            ->orderBy('Parent')->orderBy('Node_Order')
-            ->get();
-
-        return $rows->map(fn($r) => (array)$r)->all();
-    }
-
-    private function itemsPorColumna(string $col): array
-    {
-        $rows = $this->g()->table('menu_administrador')
-            ->select([
-                'Id as id',
-                'Description as title',
-                'Link as href',
-                'Parent as parent',
-                'Node_Order as node_order',
-            ])
-            ->where($col, 1)
-            ->orderBy('Parent')->orderBy('Node_Order')
-            ->get();
-
-        return $rows->map(fn($r) => (array)$r)->all();
-    }
-
-    private function asegurarPadres(array $items): array
-    {
-        $byId = collect($items)->keyBy('id');
-        $conn = $this->g();
-
-        $pending = collect($items)
-            ->pluck('parent')
-            ->filter(fn($p) => $p && !$byId->has($p))
-            ->unique()
-            ->values();
-
-        while ($pending->isNotEmpty()) {
-            $parents = $conn->table('menu_administrador')
-                ->select([
-                    'Id as id',
-                    'Description as title',
-                    'Link as href',
-                    'Parent as parent',
-                    'Node_Order as node_order',
-                ])
-                ->whereIn('Id', $pending)
-                ->get()
-                ->map(fn($r) => (array)$r);
-
-            foreach ($parents as $p) {
-                if (!$byId->has($p['id'])) $byId->put($p['id'], $p);
+            if (!$tema) {
+                return $defaultTheme;
             }
 
-            $pending = collect($parents)
-                ->pluck('parent')
-                ->filter(fn($p) => $p && !$byId->has($p))
-                ->unique()
-                ->values();
-        }
+            // Generar variantes de colores (opcional)
+            $primaryRgb = $this->hexToRgb($tema->color_principal ?? '#1f2937');
+            $secondaryRgb = $this->hexToRgb($tema->color_secundario ?? '#4b5563');
+            $accentRgb = $this->hexToRgb($tema->color_acento ?? '#6b7280');
 
-        return $byId->values()->sortBy(['parent','node_order'])->values()->all();
+            return [
+                'primary' => $tema->color_principal ?? '#1f2937',
+                'primary_rgb' => $primaryRgb,
+                'secondary' => $tema->color_secundario ?? '#4b5563',
+                'secondary_rgb' => $secondaryRgb,
+                'background' => $tema->color_fondo ?? '#ffffff',
+                'text' => $tema->color_texto ?? '#000000',
+                'accent' => $tema->color_acento ?? '#6b7280',
+                'accent_rgb' => $accentRgb,
+                'logo' => $tema->logo_url ?? null,
+                'logo_dark' => $tema->logo_url_dark ?? null,
+                'favicon' => $tema->logo_favicon ?? null,
+                'systemName' => $tema->nombre_sistema ?? 'Sistema Gestion',
+                'hasCustomTheme' => true, // 🔥 Este cliente TIENE tema personalizado
+            ];
+
+        } catch (\Exception $e) {
+            \Log::error('Error cargando tema del cliente: ' . $e->getMessage());
+            return $defaultTheme;
+        }
     }
 
-    private function aArbol(array $items): array
+    /**
+     * 🔥 Convierte color HEX a RGB (para opacidades en CSS)
+     */
+    private function hexToRgb($hex): string
     {
-        $group = collect($items)->groupBy('parent');
-
-        $build = function($parent) use (&$build, $group) {
-            return ($group->get($parent, collect()))
-                ->sortBy('node_order')
-                ->map(fn($i) => [
-                    'id'       => $i['id'],
-                    'title'    => $i['title'],
-                    'href'     => $i['href'],
-                    'children' => $build($i['id']),
-                ])->values()->all();
-        };
-
-        return $build(0);
+        $hex = str_replace('#', '', $hex);
+        
+        if (strlen($hex) == 3) {
+            $r = hexdec(substr($hex, 0, 1) . substr($hex, 0, 1));
+            $g = hexdec(substr($hex, 1, 1) . substr($hex, 1, 1));
+            $b = hexdec(substr($hex, 2, 1) . substr($hex, 2, 1));
+        } else {
+            $r = hexdec(substr($hex, 0, 2));
+            $g = hexdec(substr($hex, 2, 2));
+            $b = hexdec(substr($hex, 4, 2));
+        }
+        
+        return "{$r}, {$g}, {$b}";
     }
 }

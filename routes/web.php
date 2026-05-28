@@ -69,6 +69,8 @@ use App\Http\Controllers\Gestion\Contabilidad\EstadoResultadosA3Controller;
 use App\Http\Controllers\Gestion\Contabilidad\AnalisisCuentaController;
 use App\Http\Controllers\Gestion\Contabilidad\ImprimirDiarioController;
 use App\Http\Controllers\Gestion\Impuestos\AnularFacturaAdminController;
+use App\Http\Controllers\Menu\MenuAdministradorController;
+
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -85,6 +87,12 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // ============================================
 Route::middleware(['auth.operador'])->group(function () {
 
+    Route::prefix('gestion/menu-administrador')->group(function () {
+        Route::get('/', [MenuAdministradorController::class, 'index'])->name('gestion.menu-administrador.index');
+        Route::post('/', [MenuAdministradorController::class, 'store'])->name('gestion.menu-administrador.store');
+        Route::put('/{id}', [MenuAdministradorController::class, 'update'])->name('gestion.menu-administrador.update');
+        Route::delete('/{id}', [MenuAdministradorController::class, 'destroy'])->name('gestion.menu-administrador.destroy');
+    });
     // ==================== HOME / REDIRECCIONES ====================
     Route::get('/', function () {
         if (session('cliente_id') && session('cliente_sucursal_id')) {
@@ -363,6 +371,10 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/buscar', [ImprimirDiarioController::class, 'buscar'])->name('gestion.imprimir-diario.buscar');
         Route::get('/operadores/{sucursalId}', [ImprimirDiarioController::class, 'getOperadoresPorSucursal'])->name('gestion.imprimir-diario.operadores');
         Route::get('/pdf/{id}', [ImprimirDiarioController::class, 'pdf'])->name('gestion.imprimir-diario.pdf');
+        
+        // ========== 🆕 NUEVAS RUTAS (agregar esto) ==========
+        Route::get('/por-sucursal', [ImprimirDiarioController::class, 'porSucursal'])->name('gestion.imprimir-diario.por-sucursal');
+        Route::get('/diarios-por-sucursal', [ImprimirDiarioController::class, 'getDiariosPorSucursal'])->name('gestion.imprimir-diario.diarios-por-sucursal');
     });
     // ==================== INGRESOS ====================
     Route::prefix('gestion/ingresos')->group(function () {

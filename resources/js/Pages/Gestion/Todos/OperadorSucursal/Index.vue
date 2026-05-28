@@ -103,15 +103,15 @@ const eliminarAsignacion = async (asignacion) => {
                 <!-- Header compacto -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-user-tag text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-user-tag text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-lg font-bold text-gray-800">Asignación Operador - Sucursal</h1>
                             <p class="text-[10px] text-gray-500">Gestión de accesos de operadores a sucursales</p>
                         </div>
                     </div>
-                    <button @click="nuevaAsignacion" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
+                    <button @click="nuevaAsignacion" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
                         <i class="fas fa-plus text-[10px]"></i> Nueva Asignación
                     </button>
                 </div>
@@ -120,7 +120,7 @@ const eliminarAsignacion = async (asignacion) => {
                 <div v-if="asignacionesPorSucursal.length === 0" class="bg-white rounded-lg shadow-sm p-6 text-center">
                     <i class="fas fa-store text-3xl text-gray-300 mb-2 block"></i>
                     <p class="text-sm text-gray-500">No hay asignaciones registradas</p>
-                    <button @click="nuevaAsignacion" class="mt-2 text-guindo-600 hover:text-guindo-700 text-xs">
+                    <button @click="nuevaAsignacion" class="mt-2 text-primary-600 hover:text-primary-700 text-xs">
                         <i class="fas fa-plus mr-1 text-[10px]"></i> Crear primera asignación
                     </button>
                 </div>
@@ -130,14 +130,14 @@ const eliminarAsignacion = async (asignacion) => {
                         <!-- Header de sucursal -->
                         <div 
                             @click="toggleSucursal(sucursal.id)" 
-                            class="flex items-center justify-between px-3 py-2 bg-guindo-50 cursor-pointer hover:bg-guindo-100 transition-colors group"
+                            class="flex items-center justify-between px-3 py-2 bg-primary-50 cursor-pointer hover:bg-primary-100 transition-colors group"
                         >
                             <div class="flex items-center gap-2">
-                                <i class="fas fa-chevron-right text-guindo-600 text-[10px] transition-transform duration-200" :class="{ 'rotate-90': isExpanded(sucursal.id) }"></i>
-                                <i class="fas fa-store text-guindo-600 text-xs"></i>
-                                <h2 class="text-sm font-semibold text-guindo-800">{{ sucursal.nombre }}</h2>
-                                <span v-if="sucursal.numero" class="text-[10px] text-guindo-500">(N° {{ sucursal.numero }})</span>
-                                <span class="text-[10px] bg-guindo-100 text-guindo-600 px-1.5 py-0.5 rounded-full">
+                                <i class="fas fa-chevron-right text-primary-600 text-[10px] transition-transform duration-200" :class="{ 'rotate-90': isExpanded(sucursal.id) }"></i>
+                                <i class="fas fa-store text-primary-600 text-xs"></i>
+                                <h2 class="text-sm font-semibold text-primary-800">{{ sucursal.nombre }}</h2>
+                                <span v-if="sucursal.numero" class="text-[10px] text-primary-500">(N° {{ sucursal.numero }})</span>
+                                <span class="text-[10px] bg-primary-100 text-primary-600 px-1.5 py-0.5 rounded-full">
                                     {{ sucursal.asignaciones.length }}
                                 </span>
                             </div>
@@ -169,7 +169,7 @@ const eliminarAsignacion = async (asignacion) => {
                                             {{ asignacion.operador?.Iniciales || '-' }}
                                         </td>
                                         <td class="px-3 py-2 text-right space-x-1">
-                                            <button @click="editarAsignacion(asignacion)" class="text-guindo-600 hover:text-guindo-800 text-xs" title="Editar">
+                                            <button @click="editarAsignacion(asignacion)" class="text-primary-600 hover:text-primary-800 text-xs" title="Editar">
                                                 <i class="fas fa-edit"></i>
                                             </button>
                                             <button @click="eliminarAsignacion(asignacion)" class="text-red-600 hover:text-red-800 text-xs" title="Eliminar">

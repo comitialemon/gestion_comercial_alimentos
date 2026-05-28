@@ -37,7 +37,7 @@ const irACategoria = (id) => {
                 :mostrar-cancelar="true"
             />
 
-            <h1 class="text-xl sm:text-2xl font-bold text-guindo-800 mb-4 sm:mb-6 text-center">{{ titulo }}</h1>
+            <h1 class="text-xl sm:text-2xl font-bold text-primary-800 mb-4 sm:mb-6 text-center">{{ titulo }}</h1>
 
             <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                 <div 
@@ -48,10 +48,10 @@ const irACategoria = (id) => {
                 >
                     <div class="h-28 sm:h-32 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center p-2 sm:p-3">
                         <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
-                        <i v-else class="fas fa-folder-open text-4xl sm:text-5xl text-guindo-300"></i>
+                        <i v-else class="fas fa-folder-open text-4xl sm:text-5xl text-primary-300"></i>
                     </div>
                     <div class="p-2 sm:p-3 text-center">
-                        <h3 class="font-bold text-sm sm:text-md text-guindo-800">{{ cat.nombre }}</h3>
+                        <h3 class="font-bold text-sm sm:text-md text-primary-800">{{ cat.nombre }}</h3>
                         <p class="text-[10px] sm:text-xs text-gray-400 mt-0.5 sm:mt-1">Toca para ver</p>
                     </div>
                 </div>
@@ -64,7 +64,7 @@ const irACategoria = (id) => {
 
             <div v-if="loading" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                 <div class="bg-white rounded-xl p-6 flex items-center gap-3 shadow-xl">
-                    <i class="fas fa-spinner fa-spin text-2xl text-guindo-600"></i>
+                    <i class="fas fa-spinner fa-spin text-2xl text-primary-600"></i>
                     <span class="text-gray-700">Cargando...</span>
                 </div>
             </div>

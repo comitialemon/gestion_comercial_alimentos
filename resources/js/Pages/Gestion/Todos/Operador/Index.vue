@@ -92,15 +92,15 @@ const estadoClase = (activo) => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-users text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-users text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-2xl font-bold text-gray-800">Operadores</h1>
                             <p class="text-sm text-gray-500">Gestión de usuarios del sistema</p>
                         </div>
                     </div>
-                    <button @click="nuevoOperador" class="bg-guindo-600 hover:bg-guindo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+                    <button @click="nuevoOperador" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
                         <i class="fas fa-plus"></i> Nuevo Operador
                     </button>
                 </div>
@@ -146,15 +146,15 @@ const estadoClase = (activo) => {
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">ID</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">CI/NIT</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Nombre</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Usuario</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Tipo</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">ID</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">CI/NIT</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">Nombre</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">Usuario</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">Tipo</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -173,7 +173,7 @@ const estadoClase = (activo) => {
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-right">
-                                        <button @click="editarOperador(operador)" class="text-guindo-600 hover:text-guindo-800" title="Editar">
+                                        <button @click="editarOperador(operador)" class="text-primary-600 hover:text-primary-800" title="Editar">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                     </td>
@@ -201,7 +201,7 @@ const estadoClase = (activo) => {
                                     :href="link.url || '#'" 
                                     class="px-3 py-1 rounded border text-sm"
                                     :class="{ 
-                                        'bg-guindo-600 text-white border-guindo-600': link.active, 
+                                        'bg-primary-600 text-white border-primary-600': link.active, 
                                         'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
                                         'opacity-50 cursor-not-allowed': !link.url 
                                     }" 

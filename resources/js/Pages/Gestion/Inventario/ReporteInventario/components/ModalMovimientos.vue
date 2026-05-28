@@ -148,7 +148,7 @@ onUnmounted(() => {
                 <div v-else-if="errorMessage" class="text-center py-12">
                     <i class="fas fa-exclamation-triangle text-5xl text-red-400 mb-3 block"></i>
                     <p class="text-red-600 text-sm">{{ errorMessage }}</p>
-                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-guindo text-white rounded-lg text-sm hover:bg-guindo-700 transition">
+                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-guindo text-white rounded-lg text-sm hover:bg-primary-700 transition">
                         Reintentar
                     </button>
                 </div>
@@ -282,7 +282,7 @@ onUnmounted(() => {
             
             <!-- Footer -->
             <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0">
-                <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-guindo text-white rounded-lg text-sm hover:bg-guindo-700 transition flex items-center gap-2">
+                <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-guindo text-white rounded-lg text-sm hover:bg-primary-700 transition flex items-center gap-2">
                     <i class="fas fa-times"></i>
                     <span>Cerrar</span>
                 </button>

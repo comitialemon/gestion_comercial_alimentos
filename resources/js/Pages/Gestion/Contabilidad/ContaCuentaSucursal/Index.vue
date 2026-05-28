@@ -267,8 +267,8 @@ const eliminarAsignacion = async (asignacion) => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-link text-guindo-600"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-link text-primary-600"></i>
                         </div>
                         <div>
                             <h1 class="text-lg font-bold text-gray-800">Cuentas por Sucursal</h1>
@@ -280,7 +280,7 @@ const eliminarAsignacion = async (asignacion) => {
                 <!-- Formulario para nueva asignación -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
                     <h2 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <i class="fas fa-plus-circle text-guindo-500 text-xs"></i> Nueva Asignación
+                        <i class="fas fa-plus-circle text-primary-500 text-xs"></i> Nueva Asignación
                     </h2>
                     <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <!-- Sucursal -->
@@ -294,7 +294,7 @@ const eliminarAsignacion = async (asignacion) => {
                                     @blur="cerrarDropdownSucursal" 
                                     placeholder="Buscar sucursal..." 
                                     class="w-full border rounded-md px-2 py-1.5 text-xs"
-                                    :class="{'border-guindo-500 bg-guindo-50': nuevaSucursalId}"
+                                    :class="{'border-primary-500 bg-primary-50': nuevaSucursalId}"
                                 >
                                 <div v-if="nuevaSucursalId" class="absolute right-2 top-1/2 -translate-y-1/2">
                                     <button @click="limpiarSucursalNueva" class="text-gray-400 hover:text-red-500" title="Limpiar selección">
@@ -308,7 +308,7 @@ const eliminarAsignacion = async (asignacion) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="nuevaSucursalId" class="mt-1 text-xs text-guindo-600">
+                            <div v-if="nuevaSucursalId" class="mt-1 text-xs text-primary-600">
                                 <i class="fas fa-check-circle"></i> Sucursal seleccionada: {{ buscarNombreSucursal(nuevaSucursalId) }}
                             </div>
                         </div>
@@ -324,7 +324,7 @@ const eliminarAsignacion = async (asignacion) => {
                                     @blur="cerrarDropdownCuenta" 
                                     placeholder="Buscar cuenta por número o descripción..." 
                                     class="w-full border rounded-md px-2 py-1.5 text-xs font-mono"
-                                    :class="{'border-guindo-500 bg-guindo-50': nuevaCuentaId}"
+                                    :class="{'border-primary-500 bg-primary-50': nuevaCuentaId}"
                                 >
                                 <div v-if="nuevaCuentaId" class="absolute right-2 top-1/2 -translate-y-1/2">
                                     <button @click="limpiarCuenta" class="text-gray-400 hover:text-red-500" title="Limpiar selección">
@@ -337,7 +337,7 @@ const eliminarAsignacion = async (asignacion) => {
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="nuevaCuentaId" class="mt-1 text-xs text-guindo-600">
+                            <div v-if="nuevaCuentaId" class="mt-1 text-xs text-primary-600">
                                 <i class="fas fa-check-circle"></i> Cuenta seleccionada: {{ buscarNombreCuenta(nuevaCuentaId) }}
                             </div>
                         </div>
@@ -350,7 +350,7 @@ const eliminarAsignacion = async (asignacion) => {
                                 v-model="nuevaCuentaNombre" 
                                 placeholder="Ej: Ingreso, Caja Banco, etc." 
                                 class="w-full border rounded-md px-2 py-1.5 text-sm"
-                                :class="{'border-guindo-500 bg-guindo-50': nuevaCuentaNombre}"
+                                :class="{'border-primary-500 bg-primary-50': nuevaCuentaNombre}"
                             >
                             <div v-if="nuevaCuentaNombre" class="mt-1 text-xs text-gray-400">
                                 <i class="fas fa-pencil-alt"></i> Escríbelo como prefieras (sin mayúsculas obligatorias)
@@ -370,7 +370,7 @@ const eliminarAsignacion = async (asignacion) => {
 
                     <!-- Botón fuera del grid -->
                     <div class="mt-3 flex justify-end">
-                        <button @click="agregarAsignacion" :disabled="agregando" class="px-4 py-1.5 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700 transition flex items-center gap-1">
+                        <button @click="agregarAsignacion" :disabled="agregando" class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 transition flex items-center gap-1">
                             <i v-if="agregando" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-plus"></i>
                             Asignar Cuenta
@@ -401,18 +401,18 @@ const eliminarAsignacion = async (asignacion) => {
                         <!-- Header del grupo -->
                         <div 
                             @click="toggleSucursal(grupo.id)"
-                            class="px-4 py-3 bg-guindo-50 border-b border-guindo-100 cursor-pointer hover:bg-guindo-100 transition flex items-center justify-between"
+                            class="px-4 py-3 bg-primary-50 border-b border-primary-100 cursor-pointer hover:bg-primary-100 transition flex items-center justify-between"
                         >
                             <div class="flex items-center gap-3">
                                 <i class="fas" :class="sucursalesExpandidas[grupo.id] ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-                                <i class="fas fa-store text-guindo-500 text-sm"></i>
-                                <h2 class="text-sm font-semibold text-guindo-800">{{ grupo.nombre }}</h2>
-                                <span v-if="grupo.numero" class="text-xs text-guindo-500 bg-guindo-100 px-2 py-0.5 rounded-full">
+                                <i class="fas fa-store text-primary-500 text-sm"></i>
+                                <h2 class="text-sm font-semibold text-primary-800">{{ grupo.nombre }}</h2>
+                                <span v-if="grupo.numero" class="text-xs text-primary-500 bg-primary-100 px-2 py-0.5 rounded-full">
                                     N° {{ grupo.numero }}
                                 </span>
                             </div>
                             <div class="flex items-center gap-2">
-                                <span class="text-xs text-guindo-400">
+                                <span class="text-xs text-primary-400">
                                     {{ grupo.asignaciones.length }} cuenta(s) asignada(s)
                                 </span>
                             </div>
@@ -442,7 +442,7 @@ const eliminarAsignacion = async (asignacion) => {
                                                 <span class="px-2 py-0.5 text-xs rounded-full" :class="asignacion.DinamicaCuenta === 'D' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'">
                                                     {{ asignacion.DinamicaCuenta }}
                                                 </span>
-                                                <button @click.stop="editarDinamica(asignacion)" class="text-guindo-400 hover:text-guindo-600" title="Editar dinámica">
+                                                <button @click.stop="editarDinamica(asignacion)" class="text-primary-400 hover:text-primary-600" title="Editar dinámica">
                                                     <i class="fas fa-edit text-[10px]"></i>
                                                 </button>
                                             </div>

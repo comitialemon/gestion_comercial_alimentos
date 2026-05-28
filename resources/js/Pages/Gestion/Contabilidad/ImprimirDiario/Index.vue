@@ -164,8 +164,8 @@ const volver = () => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-print text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-print text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Imprimir Diario</h1>
@@ -179,7 +179,7 @@ const volver = () => {
                     <!-- Filtros para supervisores -->
                     <div v-if="esSupervisor" class="space-y-4 mb-6 pb-4 border-b">
                         <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                            <i class="fas fa-filter text-guindo-600"></i> Filtros
+                            <i class="fas fa-filter text-primary-600"></i> Filtros
                         </h3>
                         
                         <!-- Sucursal -->
@@ -210,7 +210,7 @@ const volver = () => {
                     <div class="space-y-4">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-hashtag mr-1 text-guindo-600"></i> Número de Diario *
+                                <i class="fas fa-hashtag mr-1 text-primary-600"></i> Número de Diario *
                             </label>
                             <div class="relative autocomplete-container">
                                 <input 
@@ -243,10 +243,10 @@ const volver = () => {
                                         v-for="diario in diariosSugeridos" 
                                         :key="diario.id"
                                         @click="seleccionarDiario(diario)"
-                                        class="px-3 py-2 hover:bg-guindo-50 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
+                                        class="px-3 py-2 hover:bg-primary-50 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                     >
                                         <div>
-                                            <span class="font-mono font-bold text-guindo-700">N° {{ diario.numero }}</span>
+                                            <span class="font-mono font-bold text-primary-700">N° {{ diario.numero }}</span>
                                             <span class="text-xs text-gray-500 ml-2">{{ diario.tipo }}</span>
                                         </div>
                                         <div class="text-xs text-gray-400">{{ diario.fecha }}</div>

@@ -108,8 +108,8 @@ onMounted(() => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-book text-guindo-600 text-sm"></i>
+                        <div class="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-book text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base font-bold text-gray-800">{{ editando ? 'Editar Diario' : 'Nuevo Diario' }}</h1>
@@ -118,10 +118,10 @@ onMounted(() => {
                     </div>
                     
                     <!-- Información de la actividad del cliente -->
-                    <div v-if="editando && actividadCliente" class="flex items-center gap-2 px-2 py-1 bg-guindo-50 rounded-md">
-                        <i class="fas fa-tasks text-guindo-600 text-[10px]"></i>
-                        <span class="text-[10px] font-medium text-guindo-700">Actividad:</span>
-                        <span class="text-[10px] text-guindo-800">{{ actividadCliente }}</span>
+                    <div v-if="editando && actividadCliente" class="flex items-center gap-2 px-2 py-1 bg-primary-50 rounded-md">
+                        <i class="fas fa-tasks text-primary-600 text-[10px]"></i>
+                        <span class="text-[10px] font-medium text-primary-700">Actividad:</span>
+                        <span class="text-[10px] text-primary-800">{{ actividadCliente }}</span>
                     </div>
                     
                     <div class="flex gap-2">
@@ -177,7 +177,7 @@ onMounted(() => {
                     <div v-if="editando && diario?.NumeroDiario > 0" class="mt-3 pt-2 border-t border-gray-100">
                         <div class="flex items-center gap-2 text-xs text-gray-500">
                             <i class="fas fa-hashtag"></i>
-                            <span>N° Diario: <span class="font-semibold text-guindo-600">{{ diario.NumeroDiario }}</span></span>
+                            <span>N° Diario: <span class="font-semibold text-primary-600">{{ diario.NumeroDiario }}</span></span>
                             <span class="mx-1">|</span>
                             <i class="fas fa-check-circle" :class="diario.Contabilizado === 1 ? 'text-green-600' : 'text-yellow-600'"></i>
                             <span>{{ diario.Contabilizado === 1 ? 'Contabilizado' : 'Pendiente' }}</span>

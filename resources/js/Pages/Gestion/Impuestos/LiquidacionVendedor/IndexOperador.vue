@@ -73,13 +73,13 @@ const getDiferenciaIcono = (valor) => {
                 <!-- Header Responsive -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-file-invoice-dollar text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-file-invoice-dollar text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">{{ titulo }}</h1>
                             <p class="text-[10px] text-gray-500 hidden xs:block">{{ subtitulo }}</p>
-                            <p v-if="nombreOperador" class="text-[10px] text-guindo-600">Operador: {{ nombreOperador }}</p>
+                            <p v-if="nombreOperador" class="text-[10px] text-primary-600">Operador: {{ nombreOperador }}</p>
                         </div>
                     </div>
                 </div>
@@ -90,14 +90,14 @@ const getDiferenciaIcono = (valor) => {
                         <!-- Cabecera de tarjeta -->
                         <div class="flex justify-between items-start border-b pb-2 mb-2">
                             <div>
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                     N° {{ liquidacion.iDLiquidacionVendedor }}
                                 </span>
                             </div>
                             <div>
                                 <button 
                                     @click="reimprimirPDF(liquidacion.iDLiquidacionVendedor)" 
-                                    class="text-guindo-600 hover:text-guindo-800"
+                                    class="text-primary-600 hover:text-primary-800"
                                     title="Reimprimir"
                                 >
                                     <i class="fas fa-print text-sm"></i>
@@ -124,7 +124,7 @@ const getDiferenciaIcono = (valor) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Total Ventas:</span>
-                                <span class="font-bold text-guindo-600">{{ formatearNumero(liquidacion.vEntasConfirma) }} Bs</span>
+                                <span class="font-bold text-primary-600">{{ formatearNumero(liquidacion.vEntasConfirma) }} Bs</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Diferencia:</span>
@@ -151,15 +151,15 @@ const getDiferenciaIcono = (valor) => {
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Liquidación</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Diario</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Total Ventas</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Diferencia</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Liquidación</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Diario</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Total Ventas</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Diferencia</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -180,7 +180,7 @@ const getDiferenciaIcono = (valor) => {
                                             {{ liquidacion.numero_diario || '-' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 text-xs text-right font-semibold text-guindo-600">
+                                    <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600">
                                         {{ formatearNumero(liquidacion.vEntasConfirma) }} Bs
                                     </td>
                                     <td class="px-3 py-2 text-xs text-right">
@@ -197,7 +197,7 @@ const getDiferenciaIcono = (valor) => {
                                     <td class="px-3 py-2 text-right">
                                         <button 
                                             @click="reimprimirPDF(liquidacion.iDLiquidacionVendedor)" 
-                                            class="text-guindo-600 hover:text-guindo-800 transition-colors"
+                                            class="text-primary-600 hover:text-primary-800 transition-colors"
                                             title="Reimprimir liquidación"
                                         >
                                             <i class="fas fa-print text-sm"></i>
@@ -225,7 +225,7 @@ const getDiferenciaIcono = (valor) => {
                                     :href="link.url || '#'" 
                                     class="px-2 py-0.5 rounded border text-xs"
                                     :class="{ 
-                                        'bg-guindo-600 text-white border-guindo-600': link.active, 
+                                        'bg-primary-600 text-white border-primary-600': link.active, 
                                         'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
                                         'opacity-50 cursor-not-allowed': !link.url 
                                     }" 
@@ -245,7 +245,7 @@ const getDiferenciaIcono = (valor) => {
                             :href="link.url || '#'" 
                             class="px-2 py-1 rounded border text-xs min-w-[32px] text-center"
                             :class="{ 
-                                'bg-guindo-600 text-white border-guindo-600': link.active, 
+                                'bg-primary-600 text-white border-primary-600': link.active, 
                                 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
                                 'opacity-50 cursor-not-allowed': !link.url 
                             }" 

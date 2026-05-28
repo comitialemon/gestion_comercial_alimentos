@@ -140,8 +140,8 @@ resetForm()
             <div class="max-w-6xl mx-auto">
                 <!-- Header -->
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-guindo-100 rounded-2xl mb-3">
-                        <i class="fas fa-warehouse text-xl text-guindo-600"></i>
+                    <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-100 rounded-2xl mb-3">
+                        <i class="fas fa-warehouse text-xl text-primary-600"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Almacenes</h1>
                     <p class="text-xs text-gray-500">Administra los almacenes por sucursal</p>
@@ -181,7 +181,7 @@ resetForm()
                                         :key="s.id"
                                         @click="seleccionarSucursal(s)"
                                         class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-guindo-50': sucursalId === s.id }"
+                                        :class="{ 'bg-primary-50': sucursalId === s.id }"
                                     >
                                         {{ s.nombre }} {{ s.NumeroSucursal ? `(N° ${s.NumeroSucursal})` : '' }}
                                     </div>
@@ -211,7 +211,7 @@ resetForm()
                                     v-model="formData.AlmacenPrincipal" 
                                     :true-value="1" 
                                     :false-value="0" 
-                                    class="w-4 h-4 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                    class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                 />
                                 <span class="text-sm text-gray-700">Almacén Principal</span>
                             </label>
@@ -222,7 +222,7 @@ resetForm()
                             <button 
                                 @click="guardar" 
                                 :disabled="!formData.sucursal_id"
-                                class="px-4 py-2 bg-guindo-600 text-white rounded-lg text-sm hover:bg-guindo-700 transition disabled:opacity-50 flex items-center gap-1"
+                                class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1"
                             >
                                 <i class="fas" :class="editando ? 'fa-pencil-alt' : 'fa-plus'"></i>
                                 {{ editando ? 'Actualizar' : 'Guardar' }}
@@ -242,23 +242,23 @@ resetForm()
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Sucursal</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Almacén</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Principal</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">Sucursal</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">Almacén</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-primary-700 uppercase">Principal</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="item in almacenes.data" :key="item.IdAlmacen" class="hover:bg-gray-50 transition">
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700">
-                                        <i class="fas fa-store text-guindo-400 mr-2 text-xs"></i>
+                                        <i class="fas fa-store text-primary-400 mr-2 text-xs"></i>
                                         {{ item.sucursal?.Nombre || '-' }} 
                                         <span v-if="item.sucursal?.NumeroSucursal" class="text-gray-400 text-xs">(N° {{ item.sucursal.NumeroSucursal }})</span>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-800 font-medium">
-                                        <i class="fas fa-warehouse text-guindo-400 mr-2 text-xs"></i>
+                                        <i class="fas fa-warehouse text-primary-400 mr-2 text-xs"></i>
                                         {{ item.Almacen }}
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-center">
@@ -270,7 +270,7 @@ resetForm()
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 whitespace-nowrap text-right">
-                                        <button @click="editar(item)" class="text-guindo-600 hover:text-guindo-800 mr-3 transition" title="Editar">
+                                        <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 mr-3 transition" title="Editar">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button @click="eliminar(item.IdAlmacen, item.Almacen)" class="text-red-600 hover:text-red-800 transition" title="Eliminar">
@@ -295,7 +295,7 @@ resetForm()
                                 Mostrando {{ almacenes.from || 0 }} a {{ almacenes.to || 0 }} de {{ almacenes.total || 0 }}
                             </div>
                             <div class="flex gap-1">
-                                <Link v-for="link in almacenes.links" :key="link.label" :href="link.url || '#'" class="px-3 py-1 rounded border text-sm" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in almacenes.links" :key="link.label" :href="link.url || '#'" class="px-3 py-1 rounded border text-sm" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>

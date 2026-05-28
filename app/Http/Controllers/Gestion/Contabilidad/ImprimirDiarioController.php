@@ -16,7 +16,8 @@ use Illuminate\Support\Facades\Log;
 class ImprimirDiarioController extends Controller
 {
     /**
-     * Mostrar formulario de selección de diario
+     * Mostrar formulario de selección de diario (versión original modificada)
+     * Ahora muestra TODOS los diarios de la sucursal logueada
      */
     public function index()
     {
@@ -35,31 +36,107 @@ class ImprimirDiarioController extends Controller
                 ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
         }
         
-        // Obtener operadores (para supervisores)
-        $operadores = [];
-        if ($esSupervisor) {
-            $operadores = Operador::whereHas('empresas', function($q) use ($clienteId) {
-                    $q->where('todos_cliente.IdCliente', $clienteId);
-                })
-                ->with('identificador')
-                ->get()
-                ->map(fn($op) => [
-                    'id' => $op->IdOperador,
-                    'nombre' => $op->identificador?->Nombre ?? 'Sin nombre',
-                ]);
-        }
+        // 🔥 Obtener TODOS los diarios de la sucursal actual (contabilizados)
+        $diariosRecientes = Diario::porContexto()
+            ->with(['tipoDiario', 'sucursal'])
+            ->where('Contabilizado', 1)
+            ->where('NumeroDiario', '>', 0)
+            ->where('IdSucursal', $sucursalId)
+            ->orderBy('NumeroDiario', 'desc')
+            ->limit(50)
+            ->get()
+            ->map(function($diario) {
+                return [
+                    'id' => $diario->IdDiario,
+                    'numero' => $diario->NumeroDiario,
+                    'tipo' => $diario->tipoDiario->TipoDiario ?? 'Diario',
+                    'fecha' => $diario->fecha ? date('d/m/Y', strtotime($diario->fecha->Fecha)) : null,
+                    'sucursal' => $diario->sucursal->Nombre ?? null,
+                ];
+            });
         
         return Inertia::render('Gestion/Contabilidad/ImprimirDiario/Index', [
             'sucursales' => $sucursales,
-            'operadores' => $operadores,
             'sucursalId' => $sucursalId,
-            'operadorId' => $operadorId,
             'esSupervisor' => $esSupervisor,
+            'diariosRecientes' => $diariosRecientes,  // 🔥 NUEVO: lista de diarios recientes
         ]);
     }
 
     /**
-     * Buscar diarios por número (autocompletado)
+     * NUEVA VISTA: Seleccionar sucursal y ver sus diarios
+     */
+    public function porSucursal()
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $tipoOperador = session('operador_tipo_id');
+        
+        $esSupervisor = in_array($tipoOperador, [1, 2, 11]);
+        
+        // Obtener todas las sucursales del cliente
+        $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        // Si hay sucursal en sesión, cargar sus diarios
+        $diarios = [];
+        if ($sucursalId) {
+            $diarios = $this->obtenerDiariosPorSucursal($sucursalId);
+        }
+        
+        return Inertia::render('Gestion/Contabilidad/ImprimirDiario/PorSucursal', [
+            'sucursales' => $sucursales,
+            'sucursalSeleccionada' => $sucursalId,
+            'diarios' => $diarios,
+            'esSupervisor' => $esSupervisor,
+        ]);
+    }
+    
+    /**
+     * Obtener diarios de una sucursal específica (AJAX)
+     */
+    public function getDiariosPorSucursal(Request $request)
+    {
+        $request->validate([
+            'sucursal_id' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal'
+        ]);
+        
+        $diarios = $this->obtenerDiariosPorSucursal($request->sucursal_id);
+        
+        return response()->json([
+            'success' => true,
+            'diarios' => $diarios
+        ]);
+    }
+    
+    /**
+     * Método auxiliar para obtener diarios de una sucursal
+     */
+    private function obtenerDiariosPorSucursal($sucursalId)
+    {
+        return Diario::porContexto()
+            ->with(['tipoDiario'])
+            ->where('Contabilizado', 1)
+            ->where('NumeroDiario', '>', 0)
+            ->where('IdSucursal', $sucursalId)
+            ->orderBy('NumeroDiario', 'desc')
+            ->limit(100)
+            ->get()
+            ->map(function($diario) {
+                return [
+                    'id' => $diario->IdDiario,
+                    'numero' => $diario->NumeroDiario,
+                    'tipo' => $diario->tipoDiario->TipoDiario ?? 'Diario',
+                    'fecha' => $diario->fecha ? date('d/m/Y', strtotime($diario->fecha->Fecha)) : null,
+                    'operador' => $diario->operadorIngreso?->identificador?->Nombre ?? 'Desconocido',
+                ];
+            });
+    }
+
+    /**
+     * Buscar diarios por número (autocompletado) - MODIFICADO
+     * Ahora muestra TODOS los diarios de la sucursal (sin filtrar por operador)
      */
     public function buscar(Request $request)
     {
@@ -68,6 +145,7 @@ class ImprimirDiarioController extends Controller
         ]);
         
         $q = $request->get('q', '');
+        $sucursalId = $request->sucursal_id ?? session('cliente_sucursal_id');
         
         // Si no hay término de búsqueda, devolver vacío
         if (empty($q)) {
@@ -78,33 +156,22 @@ class ImprimirDiarioController extends Controller
         }
         
         $clienteId = session('cliente_id');
-        $sucursalId = $request->sucursal_id ?? session('cliente_sucursal_id');
-        $operadorId = $request->operador_id;
         $tipoOperador = session('operador_tipo_id');
         $esSupervisor = in_array($tipoOperador, [1, 2, 11]);
         
         $query = Diario::porContexto()
             ->with('tipoDiario')
             ->where('Contabilizado', 1)
-            ->where('NumeroDiario', '>', 0);
+            ->where('NumeroDiario', '>', 0)
+            ->where('IdSucursal', $sucursalId);  // 🔥 SOLO por sucursal actual
         
-        // Buscar por número (como string para que funcione con LIKE)
+        // Buscar por número
         $query->where('NumeroDiario', 'LIKE', $q . '%');
         
-        // Filtrar por sucursal (solo supervisores)
-        if ($esSupervisor && $sucursalId) {
-            $query->where('IdSucursal', $sucursalId);
-        }
-        
-        // Filtrar por operador
-        if ($operadorId) {
-            $query->where('IdOperadorIngreso', $operadorId);
-        } elseif (!$esSupervisor) {
-            $query->where('IdOperadorIngreso', session('operador_id'));
-        }
+        // 🔥 ELIMINADO el filtro por operador - ahora muestra TODOS de la sucursal
         
         $diarios = $query
-            ->orderBy('NumeroDiario')
+            ->orderBy('NumeroDiario', 'desc')
             ->limit(10)
             ->get(['IdDiario', 'NumeroDiario', 'IdTipoDiario', 'IdFecha']);
         
@@ -125,7 +192,7 @@ class ImprimirDiarioController extends Controller
     }
     
     /**
-     * Obtener operadores por sucursal (AJAX)
+     * Obtener operadores por sucursal (AJAX) - se mantiene igual
      */
     public function getOperadoresPorSucursal($sucursalId)
     {

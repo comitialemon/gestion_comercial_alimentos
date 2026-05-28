@@ -391,7 +391,7 @@ const formatearNumero = (value) => {
                         :class="{ 'ring-2 ring-red-500 bg-red-50': facturaSeleccionada == factura.IdVentas }"
                     >
                         <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
+                            <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                 N° {{ factura.NumeroFactura }}
                             </span>
                             <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center"
@@ -415,7 +415,7 @@ const formatearNumero = (value) => {
                             </div>
                             <div class="flex justify-between pt-1 border-t mt-1">
                                 <span class="text-gray-500">Importe:</span>
-                                <span class="font-bold text-guindo-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
+                                <span class="font-bold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
                             </div>
                         </div>
                     </div>
@@ -452,7 +452,7 @@ const formatearNumero = (value) => {
                                     <td class="px-4 py-2 text-sm text-gray-600">{{ formatearFecha(factura.FechaVenta) }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600">{{ factura.sucursal_nombre }}</td>
                                     <td class="px-4 py-2 text-sm text-gray-600">{{ factura.operador_nombre }}</td>
-                                    <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
+                                    <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
                                     <td class="px-4 py-2 text-center">
                                         <input 
                                             type="radio" 

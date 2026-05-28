@@ -137,15 +137,15 @@ const hayOperadoresDisponibles = computed(() => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-user-check text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-check text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Aprobadores de Productos</h1>
                             <p class="text-xs text-gray-500">Configura qué operadores deben aprobar los nuevos productos</p>
                         </div>
                     </div>
-                    <button @click="abrirModal" class="bg-guindo-600 hover:bg-guindo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
+                    <button @click="abrirModal" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition">
                         <i class="fas fa-plus"></i> Agregar Aprobador
                     </button>
                 </div>
@@ -153,12 +153,12 @@ const hayOperadoresDisponibles = computed(() => {
                 <!-- Lista de aprobadores -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <table class="min-w-full divide-y divide-gray-200">
-                        <thead class="bg-guindo-50">
+                        <thead class="bg-primary-50">
                             <tr>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">CI / NIT</th>
-                                <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Nombre</th>
-                                <th class="px-6 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                <th class="px-6 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">CI / NIT</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">Nombre</th>
+                                <th class="px-6 py-3 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                <th class="px-6 py-3 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
@@ -204,7 +204,7 @@ const hayOperadoresDisponibles = computed(() => {
             <div class="flex items-center justify-center min-h-screen p-4">
                 <div class="fixed inset-0 bg-black bg-opacity-50" @click="modalOpen = false"></div>
                 <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full">
-                    <div class="flex items-center justify-between px-5 py-3 border-b bg-guindo-600 rounded-t-lg">
+                    <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-lg">
                         <h3 class="text-sm font-semibold text-white">Agregar Aprobador</h3>
                         <button @click="modalOpen = false" class="text-white/80 hover:text-white">✕</button>
                     </div>
@@ -221,7 +221,7 @@ const hayOperadoresDisponibles = computed(() => {
                                     @focus="showDropdown = true"
                                     @blur="cerrarDropdown"
                                     placeholder="Buscar por CI o nombre..."
-                                    class="w-full border rounded-lg px-3 py-2 pr-8 text-sm focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border rounded-lg px-3 py-2 pr-8 text-sm focus:ring-primary-500 focus:border-primary-500"
                                 >
                                 <button 
                                     v-if="searchTerm"
@@ -241,7 +241,7 @@ const hayOperadoresDisponibles = computed(() => {
                                         :key="op.id"
                                         @click="seleccionarOperador(op)"
                                         class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-guindo-50': operadorSeleccionado == op.id }"
+                                        :class="{ 'bg-primary-50': operadorSeleccionado == op.id }"
                                     >
                                         <span class="font-mono text-gray-600">{{ op.ci }}</span>
                                         <span class="mx-2 text-gray-300">-</span>
@@ -271,7 +271,7 @@ const hayOperadoresDisponibles = computed(() => {
                             <button @click="modalOpen = false" class="px-4 py-2 border rounded-lg text-gray-700 hover:bg-gray-100 transition">
                                 Cancelar
                             </button>
-                            <button @click="guardarAprobador" :disabled="loading" class="px-4 py-2 bg-guindo-600 text-white rounded-lg hover:bg-guindo-700 transition flex items-center gap-2">
+                            <button @click="guardarAprobador" :disabled="loading" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition flex items-center gap-2">
                                 <i v-if="loading" class="fas fa-spinner fa-spin"></i>
                                 <i v-else class="fas fa-save"></i>
                                 {{ loading ? 'Guardando...' : 'Guardar' }}

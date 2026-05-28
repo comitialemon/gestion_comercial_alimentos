@@ -235,8 +235,8 @@ onMounted(() => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-tasks text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-tasks text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Asignar Menús por Operador</h1>
@@ -259,7 +259,7 @@ onMounted(() => {
                                     @focus="showDropdown = true"
                                     @blur="cerrarDropdown"
                                     placeholder="Buscar por CI o nombre..."
-                                    class="w-full rounded-lg border-gray-300 focus:ring-guindo-500 focus:border-guindo-500 py-2 px-3 pr-8"
+                                    class="w-full rounded-lg border-gray-300 focus:ring-primary-500 focus:border-primary-500 py-2 px-3 pr-8"
                                 >
                                 <button 
                                     v-if="searchTerm"
@@ -281,7 +281,7 @@ onMounted(() => {
                                 :key="op.id"
                                 @click="seleccionarOperador(op)"
                                 class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 transition-colors"
-                                :class="{ 'bg-guindo-50': selectedOperador == op.id }"
+                                :class="{ 'bg-primary-50': selectedOperador == op.id }"
                             >
                                 <span class="font-mono text-sm text-gray-600">{{ op.ci }}</span>
                                 <span class="mx-2 text-gray-400">-</span>
@@ -298,7 +298,7 @@ onMounted(() => {
                     </div>
                     
                     <!-- Operador seleccionado actualmente -->
-                    <div v-if="selectedOperador" class="mt-3 text-sm text-guindo-600 flex items-center gap-2">
+                    <div v-if="selectedOperador" class="mt-3 text-sm text-primary-600 flex items-center gap-2">
                         <i class="fas fa-check-circle"></i>
                         Operador seleccionado: <span class="font-semibold">{{ searchTerm }}</span>
                     </div>
@@ -312,7 +312,7 @@ onMounted(() => {
                 <div v-if="selectedOperador" class="bg-white rounded-xl shadow-sm p-5">
                     <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h2 class="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                            <i class="fas fa-sitemap text-guindo-600"></i> Menús disponibles
+                            <i class="fas fa-sitemap text-primary-600"></i> Menús disponibles
                         </h2>
                         <div class="space-x-2">
                             <button 
@@ -345,7 +345,7 @@ onMounted(() => {
                                         <span 
                                             v-if="item.hasChildren"
                                             @click.stop="toggleFolder(item.id)"
-                                            class="folder-toggle w-6 h-6 flex items-center justify-center cursor-pointer text-gray-400 hover:text-guindo-600 transition"
+                                            class="folder-toggle w-6 h-6 flex items-center justify-center cursor-pointer text-gray-400 hover:text-primary-600 transition"
                                         >
                                             <i :class="isExpanded(item.id) ? 'fas fa-chevron-down text-xs' : 'fas fa-chevron-right text-xs'"></i>
                                         </span>
@@ -358,7 +358,7 @@ onMounted(() => {
                                                 :checked="item.checked"
                                                 :indeterminate.prop="item.indeterminate"
                                                 @change="onCheckboxChange(item, $event)"
-                                                class="w-4 h-4 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                                class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                             >
                                             <i :class="item.hasChildren ? 'fas fa-folder text-amber-500' : 'fas fa-file-alt text-blue-400'"></i>
                                             <span class="text-sm text-gray-700">{{ item.title }}</span>
@@ -372,7 +372,7 @@ onMounted(() => {
                                                 <span 
                                                     v-if="child.hasChildren"
                                                     @click.stop="toggleFolder(child.id)"
-                                                    class="folder-toggle w-6 h-6 flex items-center justify-center cursor-pointer text-gray-400 hover:text-guindo-600 transition"
+                                                    class="folder-toggle w-6 h-6 flex items-center justify-center cursor-pointer text-gray-400 hover:text-primary-600 transition"
                                                 >
                                                     <i :class="isExpanded(child.id) ? 'fas fa-chevron-down text-xs' : 'fas fa-chevron-right text-xs'"></i>
                                                 </span>
@@ -384,7 +384,7 @@ onMounted(() => {
                                                         :checked="child.checked"
                                                         :indeterminate.prop="child.indeterminate"
                                                         @change="onCheckboxChange(child, $event)"
-                                                        class="w-4 h-4 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                                        class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                                     >
                                                     <i :class="child.hasChildren ? 'fas fa-folder text-amber-500' : 'fas fa-file-alt text-blue-400'"></i>
                                                     <span class="text-sm text-gray-700">{{ child.title }}</span>
@@ -400,7 +400,7 @@ onMounted(() => {
                                                             type="checkbox"
                                                             :checked="grandchild.checked"
                                                             @change="onCheckboxChange(grandchild, $event)"
-                                                            class="w-4 h-4 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                                            class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                                         >
                                                         <i class="fas fa-file-alt text-blue-400"></i>
                                                         <span class="text-sm text-gray-700">{{ grandchild.title }}</span>
@@ -418,7 +418,7 @@ onMounted(() => {
                         <button 
                             @click="guardarAsignacion"
                             :disabled="saving"
-                            class="px-6 py-2 bg-guindo-600 hover:bg-guindo-700 text-white font-medium rounded-lg shadow-md transition disabled:opacity-50 flex items-center gap-2"
+                            class="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white font-medium rounded-lg shadow-md transition disabled:opacity-50 flex items-center gap-2"
                         >
                             <i v-if="saving" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-save"></i>

@@ -81,7 +81,7 @@ const formatearFecha = (fecha) => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-6xl w-full mx-auto transform transition-all duration-300">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-4 py-2.5 border-b bg-guindo-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-4 py-2.5 border-b bg-primary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         <i class="fas fa-box mr-1 text-xs"></i> Detalle de Ventas - {{ producto }}
                     </h3>
@@ -93,7 +93,7 @@ const formatearFecha = (fecha) => {
                 <!-- Body -->
                 <div class="p-4">
                     <div v-if="cargando" class="flex justify-center py-10">
-                        <i class="fas fa-spinner fa-spin text-guindo-500 text-xl"></i>
+                        <i class="fas fa-spinner fa-spin text-primary-500 text-xl"></i>
                     </div>
 
                     <div v-else>
@@ -120,7 +120,7 @@ const formatearFecha = (fecha) => {
                                         <td class="px-3 py-2 text-sm text-gray-600">{{ detalle.ProductoInventario }}</td>
                                         <td class="px-3 py-2 text-sm text-right text-gray-700">{{ formatearNumero(detalle.unidades, 4) }}</td>
                                         <td class="px-3 py-2 text-sm text-right text-gray-700">{{ formatearNumero(detalle.PrecioUnidades, 2) }}</td>
-                                        <td class="px-3 py-2 text-sm text-right font-semibold text-guindo-600">{{ formatearNumero(detalle.Total, 2) }}</td>
+                                        <td class="px-3 py-2 text-sm text-right font-semibold text-primary-600">{{ formatearNumero(detalle.Total, 2) }}</td>
                                     </tr>
                                     <tr v-if="detalles.length === 0">
                                         <td colspan="8" class="px-3 py-10 text-center text-gray-500">
@@ -133,7 +133,7 @@ const formatearFecha = (fecha) => {
                                         <td colspan="5" class="px-3 py-2 text-sm font-bold text-gray-800">TOTAL ACUMULADO</td>
                                         <td class="px-3 py-2 text-sm text-right font-bold text-gray-800">{{ formatearNumero(totalUnidades, 4) }}</td>
                                         <td class="px-3 py-2 text-sm"></td>
-                                        <td class="px-3 py-2 text-sm text-right font-bold text-guindo-700">{{ formatearNumero(totalBolivianos, 2) }}</td>
+                                        <td class="px-3 py-2 text-sm text-right font-bold text-primary-700">{{ formatearNumero(totalBolivianos, 2) }}</td>
                                     </tr>
                                 </tfoot>
                             </table>

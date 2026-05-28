@@ -119,15 +119,15 @@ onUnmounted(() => {
                 <!-- Header -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-5">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-boxes text-guindo-600 text-lg"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-boxes text-primary-600 text-lg"></i>
                         </div>
                         <div>
                             <h1 class="text-lg lg:text-xl font-bold text-gray-800">Catálogo de Productos</h1>
                             <p class="text-xs text-gray-500">Todos los productos con su categoría asignada</p>
                         </div>
                     </div>
-                    <Link href="/gestion/productos-venta/create" class="bg-guindo-600 hover:bg-guindo-700 text-white px-4 py-2 rounded-lg text-sm lg:text-[15px] font-medium flex items-center gap-2 transition w-full sm:w-auto justify-center">
+                    <Link href="/gestion/productos-venta/create" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm lg:text-[15px] font-medium flex items-center gap-2 transition w-full sm:w-auto justify-center">
                         <i class="fas fa-plus text-sm"></i> Nuevo Producto
                     </Link>
                 </div>
@@ -140,7 +140,7 @@ onUnmounted(() => {
                             <p class="text-xs text-gray-500">Total Productos</p>
                             <p class="text-xl lg:text-2xl font-bold text-gray-800">{{ totalProductos }}</p>
                         </div>
-                        <i class="fas fa-boxes text-3xl text-guindo-200"></i>
+                        <i class="fas fa-boxes text-3xl text-primary-200"></i>
                     </div>
                     
                     <!-- Con Categoría -->
@@ -188,19 +188,19 @@ onUnmounted(() => {
                             <div class="relative">
                                 <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
                                 <input type="text" v-model="search" placeholder="Código o nombre..." 
-                                    class="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                                    class="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                             </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">Categoría</label>
-                            <select v-model="categoria" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                            <select v-model="categoria" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                                 <option value="">Todas las categorías</option>
                                 <option v-for="cat in categorias" :key="cat.id" :value="cat.id">{{ cat.nombre }}</option>
                             </select>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">Estado</label>
-                            <select v-model="estado" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                            <select v-model="estado" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                                 <option value="">Todos</option>
                                 <option value="0">Activo</option>
                                 <option value="1">Borrador</option>
@@ -245,7 +245,7 @@ onUnmounted(() => {
                                         </div>
                                         <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
                                             <div>
-                                                <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-guindo-100 text-guindo-700">
+                                                <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-primary-100 text-primary-700">
                                                     <i class="fas fa-tag mr-1 text-[9px]"></i> {{ producto.categoria.nombre }}
                                                 </span>
                                                 <span v-else class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
@@ -254,11 +254,11 @@ onUnmounted(() => {
                                             </div>
                                             <div class="text-right">
                                                 <p class="text-xs text-gray-400">Precio</p>
-                                                <p class="text-sm font-bold text-guindo-600">{{ Number(producto.PrecioVenta).toFixed(2) }} Bs</p>
+                                                <p class="text-sm font-bold text-primary-600">{{ Number(producto.PrecioVenta).toFixed(2) }} Bs</p>
                                             </div>
                                         </div>
                                         <div class="flex gap-3 mt-2 pt-2 border-t border-gray-200">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-guindo-600 hover:text-guindo-800 text-sm" title="Editar">
+                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800 text-sm" title="Editar">
                                                 <i class="fas fa-edit"></i> Editar
                                             </Link>
                                         </div>
@@ -274,15 +274,15 @@ onUnmounted(() => {
                         <!-- VISTA TABLET (tabla compacta) -->
                         <div v-else-if="isTablet" class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-guindo-50 sticky top-0 z-10">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
                                     <tr>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Imagen</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Código</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Producto</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Categoría</th>
-                                        <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Precio</th>
-                                        <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                        <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Imagen</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Código</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Producto</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Categoría</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Precio</th>
+                                        <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                        <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
@@ -298,21 +298,21 @@ onUnmounted(() => {
                                         <td class="px-3 py-2 text-xs font-mono text-gray-600">{{ producto.Codigo }}</td>
                                         <td class="px-3 py-2 text-xs text-gray-800 max-w-[180px] truncate">{{ producto.Detalle }}</td>
                                         <td class="px-3 py-2">
-                                            <span v-if="producto.categoria" class="px-1.5 py-0.5 text-[10px] rounded-full bg-guindo-100 text-guindo-700">
+                                            <span v-if="producto.categoria" class="px-1.5 py-0.5 text-[10px] rounded-full bg-primary-100 text-primary-700">
                                                 {{ producto.categoria.nombre }}
                                             </span>
                                             <span v-else class="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-100 text-amber-700">
                                                 Sin categoría
                                             </span>
                                         </td>
-                                        <td class="px-3 py-2 text-right text-xs font-semibold text-guindo-600">{{ Number(producto.PrecioVenta).toFixed(2) }}</td>
+                                        <td class="px-3 py-2 text-right text-xs font-semibold text-primary-600">{{ Number(producto.PrecioVenta).toFixed(2) }}</td>
                                         <td class="px-3 py-2 text-center">
                                             <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
                                                 {{ estadoTexto(producto.ActivoInactivo) }}
                                             </span>
                                         </td>
                                         <td class="px-3 py-2 text-center">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-guindo-600 hover:text-guindo-800" title="Editar">
+                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
                                                 <i class="fas fa-edit"></i>
                                             </Link>
                                         </td>
@@ -324,15 +324,15 @@ onUnmounted(() => {
                         <!-- VISTA ESCRITORIO (tabla completa) -->
                         <div v-else class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-guindo-50 sticky top-0 z-10">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
                                     <tr>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Imagen</th>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Código</th>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Producto</th>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Categoría</th>
-                                        <th class="px-4 py-3 text-right text-sm font-medium text-guindo-700 uppercase">Precio</th>
-                                        <th class="px-4 py-3 text-center text-sm font-medium text-guindo-700 uppercase">Estado</th>
-                                        <th class="px-4 py-3 text-center text-sm font-medium text-guindo-700 uppercase">Acciones</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Imagen</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Código</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Producto</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Categoría</th>
+                                        <th class="px-4 py-3 text-right text-sm font-medium text-primary-700 uppercase">Precio</th>
+                                        <th class="px-4 py-3 text-center text-sm font-medium text-primary-700 uppercase">Estado</th>
+                                        <th class="px-4 py-3 text-center text-sm font-medium text-primary-700 uppercase">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
@@ -348,21 +348,21 @@ onUnmounted(() => {
                                         <td class="px-4 py-3 text-sm font-mono text-gray-600">{{ producto.Codigo }}</td>
                                         <td class="px-4 py-3 text-sm text-gray-800">{{ producto.Detalle }}</td>
                                         <td class="px-4 py-3">
-                                            <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-guindo-100 text-guindo-700">
+                                            <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-primary-100 text-primary-700">
                                                 <i class="fas fa-tag mr-1 text-[9px]"></i> {{ producto.categoria.nombre }}
                                             </span>
                                             <span v-else class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
                                                 <i class="fas fa-exclamation-triangle mr-1 text-[9px]"></i> Sin categoría
                                             </span>
                                         </td>
-                                        <td class="px-4 py-3 text-right text-sm font-semibold text-guindo-600">{{ Number(producto.PrecioVenta).toFixed(2) }} Bs</td>
+                                        <td class="px-4 py-3 text-right text-sm font-semibold text-primary-600">{{ Number(producto.PrecioVenta).toFixed(2) }} Bs</td>
                                         <td class="px-4 py-3 text-center">
                                             <span class="px-2 py-0.5 text-xs rounded-full" :class="estadoClase(producto.ActivoInactivo)">
                                                 {{ estadoTexto(producto.ActivoInactivo) }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 text-center">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-guindo-600 hover:text-guindo-800" title="Editar">
+                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
                                                 <i class="fas fa-edit text-base"></i>
                                             </Link>
                                         </td>
@@ -388,7 +388,7 @@ onUnmounted(() => {
                                 <Link v-for="link in productos.links" :key="link.label" :href="link.url || '#'" 
                                     class="px-3 py-1.5 rounded-lg border text-sm transition"
                                     :class="{
-                                        'bg-guindo-600 text-white border-guindo-600': link.active,
+                                        'bg-primary-600 text-white border-primary-600': link.active,
                                         'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,
                                         'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url
                                     }"

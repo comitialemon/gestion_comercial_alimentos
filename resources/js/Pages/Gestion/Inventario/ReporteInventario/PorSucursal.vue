@@ -111,14 +111,14 @@ onUnmounted(() => {
             <div class="max-w-full mx-auto">
                 <!-- Header -->
                 <div class="flex flex-col items-center text-center mb-5">
-                    <div class="w-12 h-12 lg:w-14 lg:h-14 bg-guindo-100 rounded-xl flex items-center justify-center mb-2">
-                        <i class="fas fa-chart-line text-guindo-600 text-lg lg:text-xl"></i>
+                    <div class="w-12 h-12 lg:w-14 lg:h-14 bg-primary-100 rounded-xl flex items-center justify-center mb-2">
+                        <i class="fas fa-chart-line text-primary-600 text-lg lg:text-xl"></i>
                     </div>
                     <h1 class="text-lg lg:text-xl font-bold text-gray-800">Reporte de Inventario</h1>
                     <p class="text-xs text-gray-500">Movimientos por rango de fechas</p>
-                    <div class="mt-2 inline-flex items-center gap-2 bg-guindo-50 px-3 py-1.5 rounded-full">
-                        <i class="fas fa-store text-guindo-600 text-xs"></i>
-                        <span class="text-sm lg:text-[15px] font-medium text-guindo-700">{{ nombreSucursal }}</span>
+                    <div class="mt-2 inline-flex items-center gap-2 bg-primary-50 px-3 py-1.5 rounded-full">
+                        <i class="fas fa-store text-primary-600 text-xs"></i>
+                        <span class="text-sm lg:text-[15px] font-medium text-primary-700">{{ nombreSucursal }}</span>
                     </div>
                 </div>
 
@@ -128,29 +128,29 @@ onUnmounted(() => {
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">Fecha Inicial</label>
                             <input type="date" v-model="fechaInicial" @change="aplicarFiltros" 
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">Fecha Final</label>
                             <input type="date" v-model="fechaFinal" @change="aplicarFiltros" 
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1.5">Buscar producto</label>
                             <input type="text" v-model="search" placeholder="Código o descripción..." 
-                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-guindo-500 focus:border-guindo-500">
+                                class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500">
                         </div>
                     </div>
                     
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                         <label class="flex items-center gap-2 text-sm text-gray-600">
                             <input type="checkbox" v-model="soloConMovimiento" @change="aplicarFiltros" 
-                                class="w-4 h-4 rounded border-gray-300 focus:ring-guindo-500">
+                                class="w-4 h-4 rounded border-gray-300 focus:ring-primary-500">
                             <span>Mostrar solo productos con movimiento</span>
                         </label>
                         <div class="flex gap-3 w-full sm:w-auto">
                             <button @click="aplicarFiltros" 
-                                class="flex-1 sm:flex-initial px-4 py-2 bg-guindo-600 text-white rounded-lg text-sm lg:text-[15px] font-medium hover:bg-guindo-700 transition flex items-center justify-center gap-2">
+                                class="flex-1 sm:flex-initial px-4 py-2 bg-primary-600 text-white rounded-lg text-sm lg:text-[15px] font-medium hover:bg-primary-700 transition flex items-center justify-center gap-2">
                                 <i class="fas fa-search text-sm"></i>
                                 <span>Buscar</span>
                             </button>
@@ -176,7 +176,7 @@ onUnmounted(() => {
                                         <p class="text-xs font-mono text-gray-500 mb-1">{{ item.Codigo || '-' }}</p>
                                         <p class="text-sm font-medium text-gray-800 leading-tight">{{ item.Descripcion || 'Sin descripción' }}</p>
                                     </div>
-                                    <button @click="verMovimientos(item)" class="text-guindo-600 hover:text-guindo-800 p-2 -mt-1 -mr-1" title="Ver movimientos">
+                                    <button @click="verMovimientos(item)" class="text-primary-600 hover:text-primary-800 p-2 -mt-1 -mr-1" title="Ver movimientos">
                                         <i class="fas fa-list-ul text-base"></i>
                                     </button>
                                 </div>
@@ -208,15 +208,15 @@ onUnmounted(() => {
                         <!-- VISTA TABLET (tabla compacta) -->
                         <div v-else-if="isTablet" class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-guindo-50 sticky top-0 z-10">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
                                     <tr>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Código</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Producto</th>
-                                        <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Saldo Ant.</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Código</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Producto</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Saldo Ant.</th>
                                         <th class="px-3 py-2 text-right text-xs font-medium text-emerald-600 uppercase">Ing.</th>
                                         <th class="px-3 py-2 text-right text-xs font-medium text-red-600 uppercase">Sal.</th>
                                         <th class="px-3 py-2 text-right text-xs font-medium text-blue-600 uppercase">Saldo Act.</th>
-                                        <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase w-10"></th>
+                                        <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
@@ -230,7 +230,7 @@ onUnmounted(() => {
                                             {{ formatNumber(item.saldo_actual) }}
                                         </td>
                                         <td class="px-3 py-2 text-center">
-                                            <button @click="verMovimientos(item)" class="text-guindo-600 hover:text-guindo-800">
+                                            <button @click="verMovimientos(item)" class="text-primary-600 hover:text-primary-800">
                                                 <i class="fas fa-list-ul"></i>
                                             </button>
                                         </td>
@@ -245,15 +245,15 @@ onUnmounted(() => {
                         <!-- VISTA ESCRITORIO (tabla completa) -->
                         <div v-else class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-guindo-50 sticky top-0 z-10">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
                                     <tr>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Código</th>
-                                        <th class="px-4 py-3 text-left text-sm font-medium text-guindo-700 uppercase">Producto</th>
-                                        <th class="px-4 py-3 text-right text-sm font-medium text-guindo-700 uppercase w-28">Saldo Anterior</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Código</th>
+                                        <th class="px-4 py-3 text-left text-sm font-medium text-primary-700 uppercase">Producto</th>
+                                        <th class="px-4 py-3 text-right text-sm font-medium text-primary-700 uppercase w-28">Saldo Anterior</th>
                                         <th class="px-4 py-3 text-right text-sm font-medium text-emerald-600 uppercase w-24">Ingresos</th>
                                         <th class="px-4 py-3 text-right text-sm font-medium text-red-600 uppercase w-24">Salidas</th>
                                         <th class="px-4 py-3 text-right text-sm font-medium text-blue-600 uppercase w-28">Saldo Actual</th>
-                                        <th class="px-4 py-3 text-center text-sm font-medium text-guindo-700 uppercase w-12">Detalle</th>
+                                        <th class="px-4 py-3 text-center text-sm font-medium text-primary-700 uppercase w-12">Detalle</th>
                                     </tr>
                                 </thead>
                                 <tbody class="bg-white divide-y divide-gray-200">
@@ -267,7 +267,7 @@ onUnmounted(() => {
                                             {{ formatNumber(item.saldo_actual) }}
                                         </td>
                                         <td class="px-4 py-3 text-center">
-                                            <button @click="verMovimientos(item)" class="text-guindo-600 hover:text-guindo-800 transition" title="Ver movimientos">
+                                            <button @click="verMovimientos(item)" class="text-primary-600 hover:text-primary-800 transition" title="Ver movimientos">
                                                 <i class="fas fa-list-ul text-base"></i>
                                             </button>
                                         </td>
@@ -293,7 +293,7 @@ onUnmounted(() => {
                                 <Link v-for="link in productos.links" :key="link.label" :href="link.url || '#'" 
                                     class="px-3 py-1.5 rounded-lg border text-sm transition"
                                     :class="{
-                                        'bg-guindo-600 text-white border-guindo-600': link.active,
+                                        'bg-primary-600 text-white border-primary-600': link.active,
                                         'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,
                                         'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url
                                     }"
@@ -306,7 +306,7 @@ onUnmounted(() => {
                 <!-- Footer informativo -->
                 <div class="mt-4 text-center text-xs text-gray-400">
                     <i class="fas fa-info-circle mr-1"></i>
-                    Reporte de la sucursal: <span class="font-medium text-guindo-600">{{ nombreSucursal }}</span>
+                    Reporte de la sucursal: <span class="font-medium text-primary-600">{{ nombreSucursal }}</span>
                 </div>
             </div>
         </div>

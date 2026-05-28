@@ -97,8 +97,8 @@ const generarReporte = () => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-chart-line text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-chart-line text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Análisis de Cuenta</h1>
@@ -113,7 +113,7 @@ const generarReporte = () => {
                         <!-- Sucursal (solo para supervisores) -->
                         <div v-if="tieneMultiplesSucursales && esSupervisor">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-store mr-1 text-guindo-600"></i> Sucursal
+                                <i class="fas fa-store mr-1 text-primary-600"></i> Sucursal
                             </label>
                             <select v-model="form.SucursalId" class="w-full border rounded-lg px-3 py-2 text-sm">
                                 <option value="">Todas las sucursales</option>
@@ -124,7 +124,7 @@ const generarReporte = () => {
                         <!-- Cuenta con Buscador Predictivo -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-book mr-1 text-guindo-600"></i> Cuenta *
+                                <i class="fas fa-book mr-1 text-primary-600"></i> Cuenta *
                             </label>
                             <div class="relative">
                                 <input 
@@ -152,13 +152,13 @@ const generarReporte = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    <i class="fas fa-calendar-alt mr-1 text-guindo-600"></i> Fecha Inicial *
+                                    <i class="fas fa-calendar-alt mr-1 text-primary-600"></i> Fecha Inicial *
                                 </label>
                                 <input type="date" v-model="form.Fecha" class="w-full border rounded-lg px-3 py-2 text-sm">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                                    <i class="fas fa-calendar-alt mr-1 text-guindo-600"></i> Fecha Final *
+                                    <i class="fas fa-calendar-alt mr-1 text-primary-600"></i> Fecha Final *
                                 </label>
                                 <input type="date" v-model="form.FechaFinal" class="w-full border rounded-lg px-3 py-2 text-sm">
                             </div>

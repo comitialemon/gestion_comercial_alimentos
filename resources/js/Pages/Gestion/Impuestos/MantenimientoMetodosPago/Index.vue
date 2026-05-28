@@ -38,8 +38,8 @@ const formatearNumero = (value) => {
             <div class="max-w-5xl mx-auto">
                 <!-- Header -->
                 <div class="flex items-center gap-2 mb-4">
-                    <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                        <i class="fas fa-credit-card text-guindo-600"></i>
+                    <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                        <i class="fas fa-credit-card text-primary-600"></i>
                     </div>
                     <div>
                         <h1 class="text-lg font-bold text-gray-800">Mantenimiento de Métodos de Pago</h1>
@@ -51,12 +51,12 @@ const formatearNumero = (value) => {
                 <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-guindo-700 uppercase">N° Factura</th>
-                                    <th class="px-6 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Total</th>
-                                    <th class="px-6 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-primary-700 uppercase">N° Factura</th>
+                                    <th class="px-6 py-3 text-right text-xs font-medium text-primary-700 uppercase">Total</th>
+                                    <th class="px-6 py-3 text-center text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-100">
@@ -68,13 +68,13 @@ const formatearNumero = (value) => {
                                 >
                                     <td class="px-6 py-3 text-sm text-gray-600">{{ formatearFecha(factura.FechaVenta) }}</td>
                                     <td class="px-6 py-3 text-sm font-mono text-gray-900">{{ factura.NumeroFactura }}</td>
-                                    <td class="px-6 py-3 text-sm text-right font-semibold text-guindo-600">
+                                    <td class="px-6 py-3 text-sm text-right font-semibold text-primary-600">
                                         {{ formatearNumero(factura.ImporteVenta) }} Bs
                                     </td>
                                     <td class="px-6 py-3 text-center">
                                         <button 
                                             @click.stop="abrirModal(factura)" 
-                                            class="text-guindo-600 hover:text-guindo-800"
+                                            class="text-primary-600 hover:text-primary-800"
                                             title="Editar métodos de pago"
                                         >
                                             <i class="fas fa-edit text-sm"></i>

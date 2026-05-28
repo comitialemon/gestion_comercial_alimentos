@@ -36,14 +36,14 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
             <div class="max-w-6xl mx-auto">
                 <!-- Header con volver -->
                 <div class="flex items-center gap-3 mb-6">
-                    <button @click="volver" class="text-guindo-600 hover:text-guindo-800 flex items-center gap-2 text-sm">
+                    <button @click="volver" class="text-primary-600 hover:text-primary-800 flex items-center gap-2 text-sm">
                         <i class="fas fa-arrow-left"></i> Volver a pendientes
                     </button>
                 </div>
 
                 <!-- Datos del producto -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-                    <div class="bg-guindo-600 px-6 py-4">
+                    <div class="bg-primary-600 px-6 py-4">
                         <h2 class="text-lg font-bold text-white flex items-center gap-2">
                             <i class="fas fa-box"></i> Datos del Producto
                         </h2>
@@ -64,7 +64,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                             </div>
                             <div>
                                 <p class="text-xs text-gray-500">Precio Venta</p>
-                                <p class="text-lg font-bold text-guindo-600">{{ Number(producto?.PrecioVenta).toFixed(2) }} Bs</p>
+                                <p class="text-lg font-bold text-primary-600">{{ Number(producto?.PrecioVenta).toFixed(2) }} Bs</p>
                             </div>
                             <div>
                                 <p class="text-xs text-gray-500">Grupo</p>
@@ -139,7 +139,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                             <button 
                                 @click="activeTab = 0" 
                                 class="px-6 py-3 text-sm font-medium transition"
-                                :class="activeTab === 0 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'"
+                                :class="activeTab === 0 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'"
                             >
                                 <i class="fas fa-store mr-2"></i> Precio Sucursal
                                 <span v-if="totalPreciosSucursal > 0" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-600">{{ totalPreciosSucursal }}</span>
@@ -147,7 +147,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                             <button 
                                 @click="activeTab = 1" 
                                 class="px-6 py-3 text-sm font-medium transition"
-                                :class="activeTab === 1 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'"
+                                :class="activeTab === 1 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'"
                             >
                                 <i class="fas fa-chart-line mr-2"></i> Precio Mayorista
                                 <span v-if="totalPreciosMayorista > 0" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-600">{{ totalPreciosMayorista }}</span>
@@ -155,7 +155,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                             <button 
                                 @click="activeTab = 2" 
                                 class="px-6 py-3 text-sm font-medium transition"
-                                :class="activeTab === 2 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'"
+                                :class="activeTab === 2 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'"
                             >
                                 <i class="fas fa-cubes mr-2"></i> Inventario Detalle
                                 <span v-if="totalDetallesInventario > 0" class="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-600">{{ totalDetallesInventario }}</span>
@@ -184,7 +184,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                                                 <i class="fas fa-store text-gray-400 mr-2"></i>
                                                 {{ precio.sucursal?.Nombre || '-' }}
                                             </td>
-                                            <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">
+                                            <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">
                                                 {{ Number(precio.Precio).toFixed(2) }}
                                             </td>
                                         </tr>
@@ -219,7 +219,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                                                 {{ precio.identificador?.Nombre || '-' }}
                                                 <span class="text-xs text-gray-400 ml-1">({{ precio.identificador?.CI_NIT }})</span>
                                             </td>
-                                            <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">
+                                            <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">
                                                 {{ Number(precio.Precio).toFixed(2) }}
                                             </td>
                                         </tr>
@@ -252,7 +252,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
                                                 <i class="fas fa-box text-gray-400 mr-2"></i>
                                                 {{ detalle.producto?.Descripcion || '-' }}
                                             </td>
-                                            <td class="px-4 py-2 text-sm text-right font-semibold text-guindo-600">
+                                            <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">
                                                 {{ Number(detalle.Porcion).toFixed(6) }}
                                             </td>
                                         </tr>

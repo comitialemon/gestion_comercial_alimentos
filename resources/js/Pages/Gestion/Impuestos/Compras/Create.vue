@@ -440,8 +440,8 @@ onUnmounted(() => {
                 <!-- Header -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-shopping-cart text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-shopping-cart text-primary-600 text-sm"></i>
                         </div>
                         <h1 class="text-base sm:text-lg font-bold text-gray-800">
                             {{ editando ? 'Editar Compra' : 'Nueva Compra' }}
@@ -451,7 +451,7 @@ onUnmounted(() => {
                         <button 
                             @click="guardarCabecera"
                             :disabled="guardandoCabecera"
-                            class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 sm:flex-initial justify-center"
+                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 sm:flex-initial justify-center"
                         >
                             <i v-if="guardandoCabecera" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-save"></i>
@@ -615,7 +615,7 @@ onUnmounted(() => {
                                     </div>
                                     <div>
                                         <p class="text-[10px] text-gray-400">Total</p>
-                                        <p class="text-sm font-semibold text-guindo-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</p>
+                                        <p class="text-sm font-semibold text-primary-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</p>
                                     </div>
                                 </div>
                             </div>
@@ -628,14 +628,14 @@ onUnmounted(() => {
                         <!-- Vista ESCRITORIO -->
                         <div v-else>
                             <table class="min-w-full text-xs border">
-                                <thead class="bg-guindo-50">
+                                <thead class="bg-primary-50">
                                     <tr>
-                                        <th class="px-3 py-2 text-left text-guindo-700">Código</th>
-                                        <th class="px-3 py-2 text-left text-guindo-700">Producto</th>
-                                        <th class="px-3 py-2 text-right text-guindo-700">Unidades</th>
-                                        <th class="px-3 py-2 text-right text-guindo-700">Precio</th>
-                                        <th class="px-3 py-2 text-right text-guindo-700">Total Bs</th>
-                                        <th class="px-3 py-2 text-center text-guindo-700">Acciones</th>
+                                        <th class="px-3 py-2 text-left text-primary-700">Código</th>
+                                        <th class="px-3 py-2 text-left text-primary-700">Producto</th>
+                                        <th class="px-3 py-2 text-right text-primary-700">Unidades</th>
+                                        <th class="px-3 py-2 text-right text-primary-700">Precio</th>
+                                        <th class="px-3 py-2 text-right text-primary-700">Total Bs</th>
+                                        <th class="px-3 py-2 text-center text-primary-700">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y">
@@ -644,7 +644,7 @@ onUnmounted(() => {
                                         <td class="px-3 py-2">{{ item.Descripcion }}</td>
                                         <td class="px-3 py-2 text-right">{{ Number(item.Unidades).toFixed(4) }}</td>
                                         <td class="px-3 py-2 text-right">{{ Number(item.Precio).toFixed(2) }}</td>
-                                        <td class="px-3 py-2 text-right font-semibold text-guindo-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</td>
+                                        <td class="px-3 py-2 text-right font-semibold text-primary-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</td>
                                         <td class="px-3 py-2 text-center">
                                             <div class="flex gap-2 justify-center">
                                                 <button @click="editarProducto(index)" class="text-amber-500 hover:text-amber-700" title="Editar">
@@ -666,7 +666,7 @@ onUnmounted(() => {
                                 <tfoot v-if="detallesGrid.length > 0" class="bg-gray-50 font-semibold">
                                     <tr>
                                         <td colspan="4" class="px-3 py-2 text-right">TOTAL:</td>
-                                        <td class="px-3 py-2 text-right text-guindo-600">{{ totalFactura }} Bs</td>
+                                        <td class="px-3 py-2 text-right text-primary-600">{{ totalFactura }} Bs</td>
                                         <td class="px-3 py-2"></td>
                                     </tr>
                                 </tfoot>
@@ -675,7 +675,7 @@ onUnmounted(() => {
                     </div>
 
                     <div class="mt-3 flex justify-end">
-                        <button @click="contabilizar" :disabled="contabilizando || detallesGrid.length === 0" class="bg-guindo-600 hover:bg-guindo-700 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-1">
+                        <button @click="contabilizar" :disabled="contabilizando || detallesGrid.length === 0" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-1">
                             <i v-if="contabilizando" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-check-circle"></i>
                             {{ contabilizando ? 'Contabilizando...' : 'CONTABILIZAR' }}

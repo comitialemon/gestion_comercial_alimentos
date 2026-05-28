@@ -114,19 +114,19 @@ const guardarAsignaciones = () => {
             <div class="max-w-6xl mx-auto">
                 <!-- Header -->
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-guindo-100 rounded-2xl mb-3">
-                        <i class="fas fa-store text-xl text-guindo-600"></i>
+                    <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-100 rounded-2xl mb-3">
+                        <i class="fas fa-store text-xl text-primary-600"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Habilitar Productos para Sucursal</h1>
                     <p class="text-xs text-gray-500">
                         Selecciona qué productos estarán disponibles en el menú táctil para esta sucursal
                     </p>
-                    <p class="text-xs text-guindo-600 font-medium mt-1">
+                    <p class="text-xs text-primary-600 font-medium mt-1">
                         📍 Sucursal actual: <strong>{{ sucursalNombre }} (ID: {{ sucursalId }})</strong>
                     </p>
                     <div class="flex justify-center gap-4 mt-2 text-xs">
                         <span class="text-gray-500">Total productos: <strong>{{ totalProductos }}</strong></span>
-                        <span class="text-guindo-600">Habilitados: <strong>{{ productosSeleccionados.length }}</strong></span>
+                        <span class="text-primary-600">Habilitados: <strong>{{ productosSeleccionados.length }}</strong></span>
                     </div>
                 </div>
 
@@ -151,10 +151,10 @@ const guardarAsignaciones = () => {
                         </div>
                         <div class="flex gap-3">
                             <label class="flex items-center gap-2 text-xs">
-                                <input type="checkbox" v-model="mostrarSoloHabilitados" class="rounded border-gray-300 text-guindo-600">
+                                <input type="checkbox" v-model="mostrarSoloHabilitados" class="rounded border-gray-300 text-primary-600">
                                 Mostrar solo habilitados
                             </label>
-                            <button @click="seleccionarTodos" class="text-xs text-guindo-600 hover:text-guindo-700">
+                            <button @click="seleccionarTodos" class="text-xs text-primary-600 hover:text-primary-700">
                                 <i class="fas fa-check-square mr-1"></i> Seleccionar visibles
                             </button>
                             <button @click="deseleccionarTodos" class="text-xs text-gray-500 hover:text-gray-700">
@@ -171,10 +171,10 @@ const guardarAsignaciones = () => {
                             class="border rounded-lg overflow-hidden"
                         >
                             <!-- Header de categoría -->
-                            <div class="bg-guindo-50 px-3 py-2 border-b flex justify-between items-center">
+                            <div class="bg-primary-50 px-3 py-2 border-b flex justify-between items-center">
                                 <div class="flex items-center gap-2">
-                                    <i class="fas fa-folder-open text-guindo-600 text-sm"></i>
-                                    <span class="text-sm font-semibold text-guindo-700">{{ categoria.nombre }}</span>
+                                    <i class="fas fa-folder-open text-primary-600 text-sm"></i>
+                                    <span class="text-sm font-semibold text-primary-700">{{ categoria.nombre }}</span>
                                 </div>
                                 <span class="text-xs text-gray-500">
                                     {{ categoria.productos.filter(p => productosSeleccionados.includes(p.id)).length }}/{{ categoria.productos.length }} habilitados
@@ -190,20 +190,20 @@ const guardarAsignaciones = () => {
                                         :class="[
                                             'flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all',
                                             estaSeleccionado(producto.id) 
-                                                ? 'border-guindo-400 bg-guindo-50' 
+                                                ? 'border-primary-400 bg-primary-50' 
                                                 : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                                         ]"
                                         @click="toggleProducto(producto.id)"
                                     >
                                         <div class="w-5 h-5 rounded border flex items-center justify-center flex-shrink-0"
-                                            :class="estaSeleccionado(producto.id) ? 'bg-guindo-500 border-guindo-500' : 'border-gray-300 bg-white'">
+                                            :class="estaSeleccionado(producto.id) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 bg-white'">
                                             <i v-if="estaSeleccionado(producto.id)" class="fas fa-check text-white text-xs"></i>
                                         </div>
                                         <div class="flex-1 min-w-0">
                                             <div class="text-sm font-medium text-gray-800 truncate" :title="producto.nombre">
                                                 {{ producto.nombre }}
                                             </div>
-                                            <div class="text-xs text-guindo-600 font-semibold">
+                                            <div class="text-xs text-primary-600 font-semibold">
                                                 {{ Number(producto.PrecioVenta).toFixed(2) }} Bs
                                             </div>
                                         </div>
@@ -224,7 +224,7 @@ const guardarAsignaciones = () => {
                     <!-- Botón guardar -->
                     <div class="mt-4 pt-3 border-t flex justify-end">
                         <button @click="guardarAsignaciones" :disabled="guardando"
-                            class="px-5 py-2 bg-guindo-600 text-white rounded-lg text-sm font-medium hover:bg-guindo-700 disabled:opacity-50 flex items-center gap-2">
+                            class="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2">
                             <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-save"></i>
                             {{ guardando ? 'Guardando...' : 'Guardar Habilitaciones' }}

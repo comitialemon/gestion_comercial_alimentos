@@ -192,8 +192,8 @@ onMounted(() => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-money-bill-wave text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-money-bill-wave text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-lg font-bold text-gray-800">{{ editando ? 'Editar Ingreso' : 'Nuevo Ingreso' }}</h1>
@@ -227,7 +227,7 @@ onMounted(() => {
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" @click="abrirModalIdentificador" class="px-3 py-1.5 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700 flex items-center gap-1">
+                                <button type="button" @click="abrirModalIdentificador" class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 flex items-center gap-1">
                                     <i class="fas fa-plus text-[10px]"></i> Nuevo
                                 </button>
                             </div>
@@ -304,7 +304,7 @@ onMounted(() => {
         <!-- Modal Nuevo Identificador -->
         <div v-if="modalIdentificadorVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-lg max-w-sm w-full overflow-hidden shadow-xl">
-                <div class="bg-guindo-600 p-3">
+                <div class="bg-primary-600 p-3">
                     <h3 class="text-white font-bold text-sm">Nuevo Identificador</h3>
                 </div>
                 <div class="p-4 space-y-3">

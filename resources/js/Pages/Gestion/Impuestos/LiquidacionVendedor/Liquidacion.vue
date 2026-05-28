@@ -104,7 +104,7 @@ const formatearNumero = (value) => {
                             <p class="text-[10px] text-gray-500">Fecha: {{ fechaStr }}</p>
                         </div>
                     </div>
-                    <button @click="volver" class="text-guindo-600 hover:text-guindo-800 text-xs flex items-center gap-1">
+                    <button @click="volver" class="text-primary-600 hover:text-primary-800 text-xs flex items-center gap-1">
                         <i class="fas fa-arrow-left"></i> Volver a fechas
                     </button>
                 </div>

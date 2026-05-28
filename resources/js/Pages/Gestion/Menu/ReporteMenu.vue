@@ -102,8 +102,8 @@ const MenuTreeNode = defineComponent({
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-tree text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-tree text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Menús Asignados por Operador</h1>
@@ -135,7 +135,7 @@ const MenuTreeNode = defineComponent({
                                         class="fas text-gray-500 text-sm transition-transform duration-200"
                                         :class="operadoresExpandidos[operadorId] ? 'fa-chevron-down' : 'fa-chevron-right'"
                                     ></i>
-                                    <i class="fas fa-user-circle text-guindo-500 text-lg"></i>
+                                    <i class="fas fa-user-circle text-primary-500 text-lg"></i>
                                     <span class="font-semibold text-gray-800">{{ nombre.toUpperCase() }}</span>
                                     <span class="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
                                         ID: {{ operadorId }}
@@ -152,7 +152,7 @@ const MenuTreeNode = defineComponent({
                                 <div class="p-4">
                                     <!-- Loading -->
                                     <div v-if="cargando[operadorId]" class="flex items-center justify-center py-8">
-                                        <i class="fas fa-spinner fa-spin text-guindo-500 text-lg mr-2"></i>
+                                        <i class="fas fa-spinner fa-spin text-primary-500 text-lg mr-2"></i>
                                         <span class="text-sm text-gray-500">Cargando menús...</span>
                                     </div>
                                     

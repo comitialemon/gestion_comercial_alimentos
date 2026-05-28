@@ -98,7 +98,7 @@ const totalMontos = () => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-3xl w-full mx-auto transform transition-all duration-300">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-guindo-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         <i class="fas fa-credit-card mr-2"></i> Modificar Métodos de Pago
                     </h3>
@@ -110,7 +110,7 @@ const totalMontos = () => {
                 <!-- Body -->
                 <div class="p-5">
                     <div v-if="cargando" class="flex justify-center py-10">
-                        <i class="fas fa-spinner fa-spin text-guindo-500 text-xl"></i>
+                        <i class="fas fa-spinner fa-spin text-primary-500 text-xl"></i>
                     </div>
 
                     <div v-else>
@@ -123,7 +123,7 @@ const totalMontos = () => {
                                 </div>
                                 <div>
                                     <span class="font-medium text-gray-600">Total Factura:</span>
-                                    <span class="ml-2 text-guindo-600 font-semibold">{{ formatearNumero(totalVenta) }} Bs</span>
+                                    <span class="ml-2 text-primary-600 font-semibold">{{ formatearNumero(totalVenta) }} Bs</span>
                                 </div>
                             </div>
                         </div>
@@ -131,10 +131,10 @@ const totalMontos = () => {
                         <!-- Tabla de métodos de pago -->
                         <div class="overflow-x-auto">
                             <table class="min-w-full divide-y divide-gray-200">
-                                <thead class="bg-guindo-50">
+                                <thead class="bg-primary-50">
                                     <tr>
-                                        <th class="px-4 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Método de Pago</th>
-                                        <th class="px-4 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Monto (Bs)</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-primary-700 uppercase">Método de Pago</th>
+                                        <th class="px-4 py-2 text-right text-xs font-medium text-primary-700 uppercase">Monto (Bs)</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
@@ -160,7 +160,7 @@ const totalMontos = () => {
                                 <tfoot class="bg-gray-50">
                                     <tr class="border-t border-gray-200">
                                         <td class="px-4 py-2 text-sm font-bold text-gray-700">TOTAL</td>
-                                        <td class="px-4 py-2 text-sm font-bold text-guindo-600 text-right">
+                                        <td class="px-4 py-2 text-sm font-bold text-primary-600 text-right">
                                             {{ formatearNumero(totalMontos()) }} Bs
                                         </td>
                                     </tr>
@@ -191,7 +191,7 @@ const totalMontos = () => {
                     <button 
                         @click="guardarCambios" 
                         :disabled="guardando"
-                        class="px-4 py-1.5 bg-guindo-600 text-white rounded-md text-sm hover:bg-guindo-700 transition disabled:opacity-50 flex items-center gap-2"
+                        class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-2"
                     >
                         <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
                         <i v-else class="fas fa-save"></i>

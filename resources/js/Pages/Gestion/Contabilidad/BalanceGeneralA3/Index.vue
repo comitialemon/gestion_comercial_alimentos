@@ -43,8 +43,8 @@ const generarReporte = () => {
         <div class="py-4 px-3 sm:px-5 lg:px-6">
             <div class="max-w-2xl mx-auto">
                 <div class="flex items-center gap-2 mb-6">
-                    <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-chart-line text-guindo-600 text-xl"></i>
+                    <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-chart-line text-primary-600 text-xl"></i>
                     </div>
                     <div>
                         <h1 class="text-xl font-bold text-gray-800">Balance General A3</h1>
@@ -59,7 +59,7 @@ const generarReporte = () => {
                             <select 
                                 v-model="sucursal" 
                                 :disabled="sucursalBloqueada"
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-guindo-500 focus:border-guindo-500"
+                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
                                 :class="{ 'bg-gray-100': sucursalBloqueada }"
                             >
                                 <option value="">Seleccione una sucursal</option>
@@ -72,7 +72,7 @@ const generarReporte = () => {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-1">Fecha *</label>
-                            <input type="date" v-model="fecha" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-guindo-500 focus:border-guindo-500">
+                            <input type="date" v-model="fecha" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500">
                         </div>
 
                         <div v-if="error" class="bg-red-50 border border-red-200 rounded-lg p-2">
@@ -80,7 +80,7 @@ const generarReporte = () => {
                         </div>
 
                         <div class="flex justify-end pt-2">
-                            <button @click="generarReporte" :disabled="generando || !sucursal || !fecha" class="px-5 py-2 bg-guindo-600 hover:bg-guindo-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                            <button @click="generarReporte" :disabled="generando || !sucursal || !fecha" class="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
                                 <i v-if="generando" class="fas fa-spinner fa-spin"></i>
                                 <i v-else class="fas fa-chart-line"></i>
                                 {{ generando ? 'Generando...' : 'Generar Balance' }}

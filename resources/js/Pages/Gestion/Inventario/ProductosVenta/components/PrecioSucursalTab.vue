@@ -116,10 +116,10 @@ const nombreSucursal = (sucursal) => {
     <div>
         <div class="flex justify-between items-center mb-4">
             <div class="flex items-center gap-2">
-                <i class="fas fa-store text-guindo-500 text-sm"></i>
+                <i class="fas fa-store text-primary-500 text-sm"></i>
                 <span class="text-xs font-medium text-gray-600">Precios diferenciados por sucursal</span>
             </div>
-            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 transition shadow-sm">
+            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 transition shadow-sm">
                 <i class="fas fa-plus text-[9px]"></i> Nuevo precio
             </button>
         </div>
@@ -127,18 +127,18 @@ const nombreSucursal = (sucursal) => {
         <!-- Tabla sin altura máxima -->
         <div class="overflow-x-auto rounded-lg border border-gray-200">
             <table class="min-w-full">
-                <thead class="bg-guindo-50">
+                <thead class="bg-primary-50">
                     <tr>
-                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Sucursal</th>
-                        <th class="px-4 py-2 text-right text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Precio (Bs)</th>
-                        <th class="px-4 py-2 text-center text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-24">Acciones</th>
+                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-primary-700 uppercase tracking-wider">Sucursal</th>
+                        <th class="px-4 py-2 text-right text-[11px] font-semibold text-primary-700 uppercase tracking-wider">Precio (Bs)</th>
+                        <th class="px-4 py-2 text-center text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-24">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <!-- Nueva fila -->
                     <tr v-if="nuevaFila.editando" class="bg-amber-50">
                         <td class="px-4 py-2">
-                            <select v-model="nuevaFila.IdSucursal" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500">
+                            <select v-model="nuevaFila.IdSucursal" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500">
                                 <option value="">-- Seleccione una sucursal --</option>
                                 <option v-for="s in sucursales" :key="s.id" :value="s.id">
                                     {{ s.nombre }} {{ s.NumeroSucursal ? `(N° ${s.NumeroSucursal})` : '' }}
@@ -154,7 +154,7 @@ const nombreSucursal = (sucursal) => {
                                     v-model.number="nuevaFila.Precio" 
                                     step="0.01" 
                                     min="0" 
-                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 >
                             </div>
                             <p v-if="errors.Precio" class="text-red-500 text-[9px] mt-1">{{ errors.Precio }}</p>
@@ -172,11 +172,11 @@ const nombreSucursal = (sucursal) => {
                     <!-- Filas existentes -->
                     <tr v-for="precio in precios" :key="precio.IdPrecio" class="hover:bg-gray-50 transition">
                         <td class="px-4 py-2 text-sm text-gray-700">
-                            <i class="fas fa-store text-guindo-400 text-[10px] mr-2"></i>
+                            <i class="fas fa-store text-primary-400 text-[10px] mr-2"></i>
                             {{ nombreSucursal(precio.sucursal) }}
                         </td>
                         <td class="px-4 py-2">
-                            <div v-if="editandoId !== precio.IdPrecio" class="text-right font-semibold text-guindo-600 text-sm">
+                            <div v-if="editandoId !== precio.IdPrecio" class="text-right font-semibold text-primary-600 text-sm">
                                 {{ Number(precio.Precio).toFixed(2) }} Bs
                             </div>
                             <div v-else class="relative">
@@ -186,13 +186,13 @@ const nombreSucursal = (sucursal) => {
                                     v-model.number="editPrecioValue" 
                                     step="0.01" 
                                     min="0" 
-                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-sm focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-sm focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 >
                             </div>
                         </td>
                         <td class="px-4 py-2 text-center">
                             <div v-if="editandoId !== precio.IdPrecio">
-                                <button @click="editarFila(precio)" class="text-guindo-600 hover:text-guindo-800 mr-2 transition" title="Editar">
+                                <button @click="editarFila(precio)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
                                     <i class="fas fa-edit text-sm"></i>
                                 </button>
                                 <button @click="eliminarFila(precio)" class="text-red-500 hover:text-red-700 transition" title="Eliminar">
@@ -214,7 +214,7 @@ const nombreSucursal = (sucursal) => {
                         <td colspan="3" class="px-4 py-8 text-center">
                             <i class="fas fa-store text-gray-300 text-2xl mb-2 block"></i>
                             <p class="text-gray-400 text-xs">No hay precios configurados</p>
-                            <button @click="agregarFila" class="mt-2 text-guindo-600 hover:text-guindo-700 text-xs font-medium">+ Agregar precio</button>
+                            <button @click="agregarFila" class="mt-2 text-primary-600 hover:text-primary-700 text-xs font-medium">+ Agregar precio</button>
                         </td>
                     </tr>
                 </tbody>

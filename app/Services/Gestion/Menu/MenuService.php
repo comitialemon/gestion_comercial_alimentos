@@ -8,6 +8,7 @@ use App\Models\Gestion\Todos\OperadorTipo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;  // 🔥 ESTA LÍNEA ES LA QUE FALTA
 
 class MenuService
 {
@@ -251,4 +252,62 @@ class MenuService
 
         return $tree;
     }
+
+    /**
+     * 🔥 NUEVO: Obtiene el árbol de menú con CACHÉ POR VERSIÓN
+     * Este es el método que llama el middleware
+     */
+    public function obtenerArbol(int $tipoId, int $operadorId, int $clienteId): array
+    {
+        // Verificar si tiene menús asignados individualmente
+        $menuOperador = $this->getMenuIdsPorOperador($operadorId, $clienteId);
+        $modo = !empty($menuOperador) ? 'por_operador' : 'por_columna';
+
+        $columna = $modo === 'por_columna'
+            ? $this->resolverColumnaPorTipo($tipoId)
+            : '__POR_OPERADOR__';
+
+        if ($columna === '__NONE__') {
+            return [];
+        }
+
+        // 🔥 CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
+        $version = Cache::rememberForever('menu_global_version', fn() => time());
+        
+        $cacheKey = "menu_v{$version}_{$modo}_" . (
+            $modo === 'por_operador' 
+                ? "op_{$operadorId}_cli_{$clienteId}" 
+                : "tipo_{$tipoId}_{$columna}"
+        );
+
+        // Cache por 24 horas (86400 segundos)
+        return Cache::remember($cacheKey, 86400, function () use ($modo, $menuOperador, $columna) {
+            Log::info('MENU.regenerando_cache', ['modo' => $modo]);
+            
+            if ($modo === 'por_operador') {
+                $items = $this->getItemsPorIds($menuOperador);
+            } else {
+                $items = $this->getItemsPorColumna($columna);
+            }
+
+            if (empty($items)) {
+                return [];
+            }
+
+            $items = $this->asegurarPadres($items);
+            return $this->buildTree($items);
+        });
+    }
+
+    /**
+     * 🔥 NUEVO: Invalida la caché del menú globalmente
+     * Solo incrementa la versión, no necesita borrar claves una por una
+     */
+    public static function invalidarCache(): void
+    {
+        $nuevaVersion = time();
+        Cache::forever('menu_global_version', $nuevaVersion);
+        Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
+    }
+
 }

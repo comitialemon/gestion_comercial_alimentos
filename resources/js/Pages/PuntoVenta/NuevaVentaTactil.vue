@@ -58,12 +58,12 @@ const submitForm = () => {
       <div class="bg-white rounded-xl shadow-md overflow-hidden">
         
         <!-- Header -->
-        <div class="bg-guindo-700 px-4 py-4 text-center">
+        <div class="bg-primary-700 px-4 py-4 text-center">
           <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-2">
             <i class="fas fa-hand-peace text-white text-xl"></i>
           </div>
           <h1 class="text-lg font-bold text-white">Venta Táctil</h1>
-          <p class="text-guindo-200 text-xs mt-0.5">Selecciona los datos</p>
+          <p class="text-primary-200 text-xs mt-0.5">Selecciona los datos</p>
         </div>
 
         <!-- Info Fecha -->
@@ -93,12 +93,12 @@ const submitForm = () => {
           <!-- Lugar de Venta -->
           <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">
-              <i class="fas fa-store text-guindo-500 mr-1 text-[10px]"></i>
+              <i class="fas fa-store text-primary-500 mr-1 text-[10px]"></i>
               Lugar de Venta <span class="text-rose-500">*</span>
             </label>
             <select
               v-model="form.lugar_venta_id"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200 bg-white"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white"
               :class="{ 'border-rose-400 bg-rose-50': errors.lugar_venta_id }"
             >
               <option value="" disabled>📌 Selecciona</option>
@@ -114,12 +114,12 @@ const submitForm = () => {
           <!-- Comisionista -->
           <div>
             <label class="block text-xs font-medium text-gray-700 mb-1">
-              <i class="fas fa-user-tie text-guindo-500 mr-1 text-[10px]"></i>
+              <i class="fas fa-user-tie text-primary-500 mr-1 text-[10px]"></i>
               Comisionista <span class="text-rose-500">*</span>
             </label>
             <select
               v-model="form.comisionista_id"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-guindo-400 focus:ring-1 focus:ring-guindo-200 bg-white"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white"
               :class="{ 'border-rose-400 bg-rose-50': errors.comisionista_id }"
             >
               <option value="" disabled>👤 Selecciona</option>
@@ -133,8 +133,8 @@ const submitForm = () => {
           </div>
 
           <!-- Mensaje info -->
-          <div class="bg-guindo-50 rounded-lg p-2 text-center">
-            <p class="text-[10px] text-guindo-600 flex items-center justify-center gap-1">
+          <div class="bg-primary-50 rounded-lg p-2 text-center">
+            <p class="text-[10px] text-primary-600 flex items-center justify-center gap-1">
               <i class="fas fa-check-circle text-[9px]"></i>
               Completa todos los campos
             </p>
@@ -147,7 +147,7 @@ const submitForm = () => {
             type="button"
             @click="submitForm"
             :disabled="loading"
-            class="w-full py-2.5 rounded-lg bg-guindo-600 hover:bg-guindo-700 text-white font-medium text-sm shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            class="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <i v-if="loading" class="fas fa-spinner fa-spin"></i>
             <i v-else class="fas fa-play text-xs"></i>
@@ -165,7 +165,7 @@ const submitForm = () => {
         <div class="px-4 pb-4 pt-2 text-center">
           <router-link 
             :to="{ name: 'ventas.crear' }" 
-            class="text-xs text-gray-400 hover:text-guindo-500 transition-colors inline-flex items-center gap-1"
+            class="text-xs text-gray-400 hover:text-primary-500 transition-colors inline-flex items-center gap-1"
           >
             <i class="fas fa-arrow-left text-[9px]"></i>
             Usar venta normal

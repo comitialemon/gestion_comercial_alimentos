@@ -172,8 +172,8 @@ const getEstadoTexto = (activo) => {
                 <!-- Header Responsive -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-toggle-on text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-toggle-on text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Egresos</h1>
@@ -185,7 +185,7 @@ const getEstadoTexto = (activo) => {
                             <i class="fas fa-list text-[10px]"></i>
                             <span>Listado</span>
                         </Link>
-                        <Link href="/gestion/egresos/create" class="flex-1 sm:flex-initial bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                        <Link href="/gestion/egresos/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Egreso</span>
                         </Link>
@@ -241,7 +241,7 @@ const getEstadoTexto = (activo) => {
                         <!-- Cabecera de tarjeta -->
                         <div class="flex justify-between items-start border-b pb-2 mb-2">
                             <div class="flex items-center gap-2">
-                                <span class="text-xs font-mono font-bold text-guindo-600 bg-guindo-50 px-2 py-0.5 rounded">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                     N° {{ egreso.NumeroEgreso }}
                                 </span>
                                 <span class="text-xs text-gray-500">Diario: {{ egreso.numero_diario || '-' }}</span>
@@ -273,7 +273,7 @@ const getEstadoTexto = (activo) => {
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Monto:</span>
-                                <span class="font-bold text-guindo-600">{{ formatearMonto(egreso.TotalBolivianos) }} Bs</span>
+                                <span class="font-bold text-primary-600">{{ formatearMonto(egreso.TotalBolivianos) }} Bs</span>
                             </div>
                             <div class="flex justify-between items-center pt-1 border-t mt-1">
                                 <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(egreso.ActivoInactivo)">
@@ -284,7 +284,7 @@ const getEstadoTexto = (activo) => {
                                 <!-- SWITCH PERSONALIZADO -->
                                 <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(egreso)">
                                     <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                        :class="egreso.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                        :class="egreso.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                         <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                             :class="egreso.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                         </div>
@@ -311,17 +311,17 @@ const getEstadoTexto = (activo) => {
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Egreso</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">N° Diario</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Entregado a</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-guindo-700 uppercase">Glosa</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">Monto</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-guindo-700 uppercase">Cambiar</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-guindo-700 uppercase">PDF</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Egreso</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">N° Diario</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Entregado a</th>
+                                    <th class="px-3 py-2 text-left text-xs font-medium text-primary-700 uppercase">Glosa</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">Monto</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-center text-xs font-medium text-primary-700 uppercase">Cambiar</th>
+                                    <th class="px-3 py-2 text-right text-xs font-medium text-primary-700 uppercase">PDF</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -335,7 +335,7 @@ const getEstadoTexto = (activo) => {
                                     <td class="px-3 py-2 text-xs text-gray-600 max-w-[200px] truncate" :title="egreso.Glosa">
                                         {{ egreso.Glosa || '-' }}
                                     </td>
-                                    <td class="px-3 py-2 text-xs text-right font-semibold text-guindo-600">{{ formatearMonto(egreso.TotalBolivianos) }} Bs</td>
+                                    <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600">{{ formatearMonto(egreso.TotalBolivianos) }} Bs</td>
                                     <td class="px-3 py-2 text-center">
                                         <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoColor(egreso.ActivoInactivo)">
                                             <i :class="getEstadoIcono(egreso.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
@@ -346,7 +346,7 @@ const getEstadoTexto = (activo) => {
                                         <!-- SWITCH PERSONALIZADO -->
                                         <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(egreso)">
                                             <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
-                                                :class="egreso.ActivoInactivo === 1 ? 'bg-guindo-600' : 'bg-gray-300'">
+                                                :class="egreso.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                                 <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
                                                     :class="egreso.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                                 </div>
@@ -379,7 +379,7 @@ const getEstadoTexto = (activo) => {
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
                             <div class="text-gray-500">Mostrando {{ egresos.from || 0 }} a {{ egresos.to || 0 }} de {{ egresos.total || 0 }}</div>
                             <div class="flex gap-0.5 flex-wrap justify-center">
-                                <Link v-for="link in egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>
@@ -388,7 +388,7 @@ const getEstadoTexto = (activo) => {
                 <!-- Paginación móvil -->
                 <div v-if="isMobile && egresos.links && egresos.links.length > 1" class="mt-3 bg-white rounded-lg shadow-sm p-2">
                     <div class="flex justify-center gap-0.5 flex-wrap">
-                        <Link v-for="link in egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                        <Link v-for="link in egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 py-1 rounded border text-xs min-w-[32px] text-center" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                     </div>
                 </div>
             </div>

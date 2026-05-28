@@ -61,8 +61,8 @@ const submitForm = () => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-store text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-store text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-lg font-bold text-gray-800">{{ editando ? 'Editar Sucursal' : 'Nueva Sucursal' }}</h1>

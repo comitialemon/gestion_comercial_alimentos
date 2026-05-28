@@ -206,7 +206,7 @@ const save = async () => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-auto transform transition-all duration-300 scale-100">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-guindo-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         {{ editando ? 'Editar Operador' : 'Nuevo Operador' }}
                     </h3>
@@ -242,7 +242,7 @@ const save = async () => {
                                         </div>
                                     </div>
                                 </div>
-                                <button type="button" @click="abrirModalIdentificador" class="px-3 py-1.5 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700 flex items-center gap-1">
+                                <button type="button" @click="abrirModalIdentificador" class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 flex items-center gap-1">
                                     <i class="fas fa-plus text-[10px]"></i> Nuevo
                                 </button>
                             </div>
@@ -345,7 +345,7 @@ const save = async () => {
         <div class="flex items-center justify-center min-h-screen p-4">
             <div class="fixed inset-0 bg-black bg-opacity-50"></div>
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full">
-                <div class="bg-guindo-600 rounded-t-lg px-4 py-3">
+                <div class="bg-primary-600 rounded-t-lg px-4 py-3">
                     <h3 class="text-white font-semibold text-sm">Nuevo Identificador</h3>
                 </div>
                 <div class="p-4 space-y-3">

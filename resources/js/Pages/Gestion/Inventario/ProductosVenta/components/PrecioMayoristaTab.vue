@@ -262,10 +262,10 @@ const eliminarFila = async (precio) => {
     <div>
         <div class="flex justify-between items-center mb-4">
             <div class="flex items-center gap-2">
-                <i class="fas fa-chart-line text-guindo-500 text-sm"></i>
+                <i class="fas fa-chart-line text-primary-500 text-sm"></i>
                 <span class="text-xs font-medium text-gray-600">Precios especiales por comisionista</span>
             </div>
-            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 transition shadow-sm">
+            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 transition shadow-sm">
                 <i class="fas fa-plus text-[9px]"></i> Nuevo precio
             </button>
         </div>
@@ -273,16 +273,16 @@ const eliminarFila = async (precio) => {
         <!-- Contenedor con altura mínima -->
         <div class="overflow-x-auto rounded-lg border border-gray-200" style="min-height: 300px;">
             <table class="min-w-full">
-                <thead class="bg-guindo-50 sticky top-0">
+                <thead class="bg-primary-50 sticky top-0">
                     <tr>
                         <!-- Sucursal: ancho 220px -->
-                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[220px]">Sucursal</th>
+                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-[220px]">Sucursal</th>
                         <!-- Comisionista: ancho flexible -->
-                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Comisionista</th>
+                        <th class="px-3 py-2 text-left text-[11px] font-semibold text-primary-700 uppercase tracking-wider">Comisionista</th>
                         <!-- Precio: ancho 100px -->
-                        <th class="px-3 py-2 text-right text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[100px]">Precio (Bs)</th>
+                        <th class="px-3 py-2 text-right text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-[100px]">Precio (Bs)</th>
                         <!-- Acciones: ancho 80px -->
-                        <th class="px-3 py-2 text-center text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-[80px]">Acciones</th>
+                        <th class="px-3 py-2 text-center text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-[80px]">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -298,7 +298,7 @@ const eliminarFila = async (precio) => {
                                     @focus="abrirSucursalDropdown"
                                     @blur="cerrarSucursalDropdown"
                                     @input="abrirSucursalDropdown"
-                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500"
                                     placeholder="Buscar sucursal..."
                                 >
                                 <button 
@@ -347,7 +347,7 @@ const eliminarFila = async (precio) => {
                                     @focus="abrirDropdown"
                                     @blur="cerrarDropdown"
                                     @input="abrirDropdown"
-                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500"
                                     placeholder="Buscar por CI o nombre..."
                                 >
                                 <button 
@@ -372,7 +372,7 @@ const eliminarFila = async (precio) => {
                                         @mousedown.prevent
                                         class="px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-xs border-b last:border-b-0 flex items-center gap-2"
                                     >
-                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-guindo-600">{{ item.ci || item.CI_NIT }}</span>
+                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-primary-600">{{ item.ci || item.CI_NIT }}</span>
                                         <span class="text-gray-700 truncate">{{ item.nombre || item.Nombre }}</span>
                                     </div>
                                 </div>
@@ -395,7 +395,7 @@ const eliminarFila = async (precio) => {
                                     v-model.number="nuevaFila.Precio" 
                                     step="0.01" 
                                     min="0" 
-                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 >
                             </div>
                             <p v-if="errors.Precio" class="text-red-500 text-[9px] mt-1">{{ errors.Precio }}</p>
@@ -413,16 +413,16 @@ const eliminarFila = async (precio) => {
                     <!-- Filas existentes -->
                     <tr v-for="precio in precios" :key="precio.IdPrecioMayorista" class="hover:bg-gray-50 transition">
                         <td class="px-3 py-2 text-xs text-gray-700">
-                            <i class="fas fa-store text-guindo-400 text-[10px] mr-1"></i>
+                            <i class="fas fa-store text-primary-400 text-[10px] mr-1"></i>
                             {{ precio.sucursal?.Nombre || '-' }}
                         </td>
                         <td class="px-3 py-2 text-xs text-gray-700">
-                            <i class="fas fa-user text-guindo-400 text-[10px] mr-1"></i>
+                            <i class="fas fa-user text-primary-400 text-[10px] mr-1"></i>
                             <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded mr-1">{{ precio.identificador?.CI_NIT }}</span>
                             <span class="truncate">{{ precio.identificador?.Nombre }}</span>
                         </td>
                         <td class="px-3 py-2">
-                            <div v-if="editandoId !== precio.IdPrecioMayorista" class="text-right font-semibold text-guindo-600 text-xs">
+                            <div v-if="editandoId !== precio.IdPrecioMayorista" class="text-right font-semibold text-primary-600 text-xs">
                                 {{ Number(precio.Precio).toFixed(2) }}
                             </div>
                             <div v-else class="relative">
@@ -432,13 +432,13 @@ const eliminarFila = async (precio) => {
                                     v-model.number="editPrecioValue" 
                                     step="0.01" 
                                     min="0" 
-                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    class="w-full pl-7 pr-2 py-1 border border-gray-300 rounded-md text-right text-xs focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 >
                             </div>
                         </td>
                         <td class="px-3 py-2 text-center">
                             <div v-if="editandoId !== precio.IdPrecioMayorista">
-                                <button @click="editarFila(precio)" class="text-guindo-600 hover:text-guindo-800 mr-2 transition" title="Editar">
+                                <button @click="editarFila(precio)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
                                     <i class="fas fa-edit text-sm"></i>
                                 </button>
                                 <button @click="eliminarFila(precio)" class="text-red-500 hover:text-red-700 transition" title="Eliminar">
@@ -460,7 +460,7 @@ const eliminarFila = async (precio) => {
                         <td colspan="4" class="px-3 py-8 text-center">
                             <i class="fas fa-chart-line text-gray-300 text-2xl mb-2 block"></i>
                             <p class="text-gray-400 text-xs">No hay precios mayoristas configurados</p>
-                            <button @click="agregarFila" class="mt-2 text-guindo-600 hover:text-guindo-700 text-xs font-medium">+ Agregar precio</button>
+                            <button @click="agregarFila" class="mt-2 text-primary-600 hover:text-primary-700 text-xs font-medium">+ Agregar precio</button>
                         </td>
                     </tr>
                 </tbody>

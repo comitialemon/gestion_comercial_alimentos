@@ -151,7 +151,7 @@ const getPrefix = (level) => {
             
             <div class="relative bg-white rounded-xl shadow-xl max-w-lg w-full mx-auto transform transition-all duration-300">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-guindo-600 rounded-t-xl">
+                <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-xl">
                     <h3 class="text-white font-semibold text-sm flex items-center gap-2">
                         <i class="fas fa-tree"></i> Seleccionar Categoría
                     </h3>
@@ -196,7 +196,7 @@ const getPrefix = (level) => {
                                 v-for="cat in categoriasPlanas"
                                 :key="cat.id_categoria"
                                 class="flex items-center py-1.5 hover:bg-gray-100 rounded-lg px-2 transition-colors cursor-pointer group"
-                                :class="{ 'bg-guindo-50 border-l-4 border-guindo-500': selectedCategoria?.id_categoria === cat.id_categoria }"
+                                :class="{ 'bg-primary-50 border-l-4 border-primary-500': selectedCategoria?.id_categoria === cat.id_categoria }"
                                 @click="seleccionarCategoria(cat)"
                             >
                                 <!-- Espaciador según nivel -->
@@ -206,14 +206,14 @@ const getPrefix = (level) => {
                                 <span 
                                     v-if="cat.hasChildren"
                                     @click.stop="toggleFolder(cat.id_categoria, cat.hasChildren)"
-                                    class="folder-toggle w-5 h-5 flex items-center justify-center cursor-pointer text-gray-400 hover:text-guindo-600 transition rounded"
+                                    class="folder-toggle w-5 h-5 flex items-center justify-center cursor-pointer text-gray-400 hover:text-primary-600 transition rounded"
                                 >
                                     <i :class="cat.isExpanded ? 'fas fa-chevron-down text-[9px]' : 'fas fa-chevron-right text-[9px]'"></i>
                                 </span>
                                 <span v-else class="w-5"></span>
                                 
                                 <!-- Icono -->
-                                <i :class="cat.hasChildren ? 'fas fa-folder-open text-amber-500' : 'fas fa-tag text-guindo-400'"></i>
+                                <i :class="cat.hasChildren ? 'fas fa-folder-open text-amber-500' : 'fas fa-tag text-primary-400'"></i>
                                 
                                 <!-- Nombre -->
                                 <span class="ml-2 text-sm text-gray-700 flex-1">
@@ -222,7 +222,7 @@ const getPrefix = (level) => {
                                 </span>
                                 
                                 <!-- Indicador de selección -->
-                                <i v-if="selectedCategoria?.id_categoria === cat.id_categoria" class="fas fa-check-circle text-guindo-600 text-xs mr-1"></i>
+                                <i v-if="selectedCategoria?.id_categoria === cat.id_categoria" class="fas fa-check-circle text-primary-600 text-xs mr-1"></i>
                             </div>
                         </div>
                     </div>
@@ -232,8 +232,8 @@ const getPrefix = (level) => {
                         <div class="text-xs text-gray-500 mb-1">Categoría seleccionada:</div>
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-2">
-                                <i class="fas fa-tag text-guindo-500 text-sm"></i>
-                                <span class="text-sm font-semibold text-guindo-700">
+                                <i class="fas fa-tag text-primary-500 text-sm"></i>
+                                <span class="text-sm font-semibold text-primary-700">
                                     {{ selectedCategoria?.nombre || 'Ninguna' }}
                                 </span>
                             </div>
@@ -256,7 +256,7 @@ const getPrefix = (level) => {
                     <button 
                         @click="confirmarSeleccion" 
                         :disabled="!selectedCategoria"
-                        class="px-4 py-1.5 bg-guindo-600 text-white rounded-md text-xs hover:bg-guindo-700 transition disabled:opacity-50 flex items-center gap-1"
+                        class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1"
                     >
                         <i class="fas fa-check-circle text-[10px]"></i>
                         Seleccionar

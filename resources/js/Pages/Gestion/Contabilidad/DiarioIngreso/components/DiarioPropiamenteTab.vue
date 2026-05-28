@@ -374,25 +374,25 @@ emitirEstado()
         </div>
 
         <!-- Información de la actividad del cliente -->
-        <div v-if="actividadCliente" class="mb-3 p-2 bg-guindo-50 rounded-md border border-guindo-200">
+        <div v-if="actividadCliente" class="mb-3 p-2 bg-primary-50 rounded-md border border-primary-200">
             <div class="flex items-center gap-2">
-                <i class="fas fa-tasks text-guindo-600 text-[10px]"></i>
-                <span class="text-[10px] font-medium text-guindo-700">Actividad del Cliente:</span>
-                <span class="text-[11px] font-semibold text-guindo-800">{{ actividadCliente }}</span>
+                <i class="fas fa-tasks text-primary-600 text-[10px]"></i>
+                <span class="text-[10px] font-medium text-primary-700">Actividad del Cliente:</span>
+                <span class="text-[11px] font-semibold text-primary-800">{{ actividadCliente }}</span>
             </div>
         </div>
 
         <!-- Botón Nuevo Asiento -->
         <div class="flex justify-end mb-3">
-            <button v-if="!mostrarFormulario" @click="mostrarNuevoAsiento" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded-md text-[11px] flex items-center gap-1">
+            <button v-if="!mostrarFormulario" @click="mostrarNuevoAsiento" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 rounded-md text-[11px] flex items-center gap-1">
                 <i class="fas fa-plus text-[10px]"></i> Nuevo Asiento
             </button>
         </div>
 
         <!-- Formulario para nuevo asiento -->
-        <div v-if="mostrarFormulario" class="bg-white rounded-md border border-guindo-200 shadow-sm overflow-hidden mb-4">
-            <div class="bg-guindo-50 px-3 py-1.5 border-b border-guindo-100">
-                <span class="text-[11px] font-semibold text-guindo-700">Nuevo Asiento</span>
+        <div v-if="mostrarFormulario" class="bg-white rounded-md border border-primary-200 shadow-sm overflow-hidden mb-4">
+            <div class="bg-primary-50 px-3 py-1.5 border-b border-primary-100">
+                <span class="text-[11px] font-semibold text-primary-700">Nuevo Asiento</span>
             </div>
             <div class="p-3">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -453,7 +453,7 @@ emitirEstado()
                                         </div>
                                     </div>
                                 </div>
-                                <button @click="abrirModalIdentificador" class="px-2 py-1 bg-guindo-600 text-white rounded text-[11px] hover:bg-guindo-700">+</button>
+                                <button @click="abrirModalIdentificador" class="px-2 py-1 bg-primary-600 text-white rounded text-[11px] hover:bg-primary-700">+</button>
                             </div>
                         </div>
 
@@ -499,7 +499,7 @@ emitirEstado()
                 <div class="bg-gray-50 px-3 py-1.5 border-b border-gray-200 flex justify-between items-center">
                     <span class="text-[11px] font-semibold text-gray-600">Asiento #{{ asiento.IdContaPropiamente }}</span>
                     <div class="flex gap-2">
-                        <button v-if="!asiento.editando" @click="editarAsiento(asiento)" class="text-guindo-600 hover:text-guindo-800" title="Editar">
+                        <button v-if="!asiento.editando" @click="editarAsiento(asiento)" class="text-primary-600 hover:text-primary-800" title="Editar">
                             <i class="fas fa-edit text-[11px]"></i>
                         </button>
                         <button @click="eliminarAsiento(asiento)" class="text-red-500 hover:text-red-700" title="Eliminar">
@@ -615,7 +615,7 @@ emitirEstado()
             <div class="flex items-center justify-center min-h-screen p-4">
                 <div class="fixed inset-0 bg-black bg-opacity-50" @click="modalIdentificadorVisible = false"></div>
                 <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full">
-                    <div class="flex items-center justify-between px-4 py-2 border-b bg-guindo-600 rounded-t-lg">
+                    <div class="flex items-center justify-between px-4 py-2 border-b bg-primary-600 rounded-t-lg">
                         <h3 class="text-sm font-semibold text-white">Nuevo Identificador</h3>
                         <button @click="modalIdentificadorVisible = false" class="text-white/80 hover:text-white">✕</button>
                     </div>

@@ -188,8 +188,8 @@ watch(() => props.fechas.data, () => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-5">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-lock text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-lock text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Cierre de Fechas</h1>
@@ -214,7 +214,7 @@ watch(() => props.fechas.data, () => {
                             </select>
                         </div>
                         <div class="flex gap-2">
-                            <button @click="aplicarFiltro" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition">
+                            <button @click="aplicarFiltro" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition">
                                 <i class="fas fa-search text-[10px]"></i> Filtrar
                             </button>
                             <button @click="limpiarFiltro" class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition">
@@ -227,7 +227,7 @@ watch(() => props.fechas.data, () => {
                 <!-- Acciones múltiples -->
                 <div v-if="selectedIds.length > 0" class="bg-white rounded-lg shadow-sm p-3 mb-4 flex flex-wrap items-center justify-between gap-2">
                     <div class="text-xs text-gray-600">
-                        <i class="fas fa-check-circle text-guindo-500 mr-1"></i>
+                        <i class="fas fa-check-circle text-primary-500 mr-1"></i>
                         {{ selectedIds.length }} fecha(s) seleccionada(s)
                     </div>
                     <div class="flex flex-wrap gap-2">
@@ -274,19 +274,19 @@ watch(() => props.fechas.data, () => {
                 <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
                                     <th class="px-3 py-2 w-8">
                                         <input 
                                             type="checkbox" 
                                             v-model="selectAll"
                                             @change="toggleSelectAll"
-                                            class="w-3.5 h-3.5 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                            class="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                         >
                                     </th>
-                                    <th class="px-3 py-2 text-left text-[11px] font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-center text-[11px] font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-3 py-2 text-center text-[11px] font-medium text-guindo-700 uppercase">Cierre</th>
+                                    <th class="px-3 py-2 text-left text-[11px] font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-3 py-2 text-center text-[11px] font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-3 py-2 text-center text-[11px] font-medium text-primary-700 uppercase">Cierre</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -297,7 +297,7 @@ watch(() => props.fechas.data, () => {
                                             :value="fecha.IdFecha"
                                             v-model="selectedIds"
                                             @change="checkSelectAll"
-                                            class="w-3.5 h-3.5 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500"
+                                            class="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                         >
                                     </td>
                                     <td class="px-3 py-2 text-xs font-mono text-gray-700">{{ formatearFecha(fecha.Fecha) }}</td>
@@ -308,7 +308,7 @@ watch(() => props.fechas.data, () => {
                                             </span>
                                             <button 
                                                 @click="cambiarEstado(fecha, 'ActivoInactivo', fecha.ActivoInactivo !== 0)"
-                                                class="text-[10px] text-gray-400 hover:text-guindo-600"
+                                                class="text-[10px] text-gray-400 hover:text-primary-600"
                                                 :title="fecha.ActivoInactivo === 0 ? 'Desactivar' : 'Activar'"
                                             >
                                                 <i :class="fecha.ActivoInactivo === 0 ? 'fas fa-toggle-on' : 'fas fa-toggle-off'"></i>
@@ -354,7 +354,7 @@ watch(() => props.fechas.data, () => {
                         <div class="flex justify-between items-center text-xs">
                             <div class="text-gray-500">Mostrando {{ fechas.from || 0 }} a {{ fechas.to || 0 }} de {{ fechas.total || 0 }}</div>
                             <div class="flex gap-1">
-                                <Link v-for="link in fechas.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in fechas.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>

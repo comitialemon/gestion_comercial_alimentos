@@ -176,10 +176,10 @@ const eliminarFila = async (detalle) => {
     <div>
         <div class="flex justify-between items-center mb-4">
             <div class="flex items-center gap-2">
-                <i class="fas fa-cubes text-guindo-500 text-sm"></i>
+                <i class="fas fa-cubes text-primary-500 text-sm"></i>
                 <span class="text-[11px] font-medium text-gray-600">Productos que componen este item (porciones)</span>
             </div>
-            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1 rounded-md text-[11px] flex items-center gap-1 transition shadow-sm">
+            <button v-if="!nuevaFila.editando" @click="agregarFila" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 rounded-md text-[11px] flex items-center gap-1 transition shadow-sm">
                 <i class="fas fa-plus text-[10px]"></i> Agregar producto
             </button>
         </div>
@@ -187,11 +187,11 @@ const eliminarFila = async (detalle) => {
         <!-- Contenedor con altura mínima -->
         <div class="overflow-x-auto rounded-lg border border-gray-200" style="min-height: 300px;">
             <table class="min-w-full">
-                <thead class="bg-guindo-50 sticky top-0">
+                <thead class="bg-primary-50 sticky top-0">
                     <tr>
-                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-guindo-700 uppercase tracking-wider">Producto (Código - Descripción)</th>
-                        <th class="px-4 py-2 text-right text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-28">Porción</th>
-                        <th class="px-4 py-2 text-center text-[11px] font-semibold text-guindo-700 uppercase tracking-wider w-20">Acciones</th>
+                        <th class="px-4 py-2 text-left text-[11px] font-semibold text-primary-700 uppercase tracking-wider">Producto (Código - Descripción)</th>
+                        <th class="px-4 py-2 text-right text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-28">Porción</th>
+                        <th class="px-4 py-2 text-center text-[11px] font-semibold text-primary-700 uppercase tracking-wider w-20">Acciones</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100">
@@ -206,7 +206,7 @@ const eliminarFila = async (detalle) => {
                                     @focus="abrirDropdown"
                                     @blur="cerrarDropdown"
                                     @input="showDropdown = true"
-                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-[11px] focus:ring-guindo-500 focus:border-guindo-500"
+                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-[11px] focus:ring-primary-500 focus:border-primary-500"
                                     placeholder="Buscar producto por código o descripción..."
                                 >
                                 <button 
@@ -230,7 +230,7 @@ const eliminarFila = async (detalle) => {
                                         @mousedown.prevent
                                         class="px-3 py-1.5 hover:bg-gray-100 cursor-pointer text-[11px] border-b last:border-b-0 flex items-center gap-2"
                                     >
-                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-guindo-600">{{ p.Codigo }}</span>
+                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-primary-600">{{ p.Codigo }}</span>
                                         <span class="text-gray-700">{{ p.Descripcion }}</span>
                                     </div>
                                 </div>
@@ -250,7 +250,7 @@ const eliminarFila = async (detalle) => {
                                 v-model.number="nuevaFila.Porcion" 
                                 step="0.000001" 
                                 min="0" 
-                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             >
                             <p v-if="errors.Porcion" class="text-red-500 text-[10px] mt-1">{{ errors.Porcion }}</p>
                         </td>
@@ -267,12 +267,12 @@ const eliminarFila = async (detalle) => {
                     <!-- Filas existentes -->
                     <tr v-for="detalle in detalles" :key="detalle.IdDetalleProductoPorcion" class="hover:bg-gray-50 transition">
                         <td class="px-4 py-2 text-[11px] text-gray-700">
-                            <i class="fas fa-box text-guindo-400 text-[10px] mr-2"></i>
+                            <i class="fas fa-box text-primary-400 text-[10px] mr-2"></i>
                             <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded mr-2">{{ detalle.producto?.Codigo || '-' }}</span>
                             {{ detalle.producto?.Descripcion || '-' }}
                         </td>
                         <td class="px-4 py-2">
-                            <div v-if="!detalle.editando" class="text-right font-semibold text-guindo-600 text-[11px]">
+                            <div v-if="!detalle.editando" class="text-right font-semibold text-primary-600 text-[11px]">
                                 {{ Number(detalle.Porcion).toFixed(6) }}
                             </div>
                             <input 
@@ -281,11 +281,11 @@ const eliminarFila = async (detalle) => {
                                 v-model.number="detalle.Porcion" 
                                 step="0.000001" 
                                 min="0" 
-                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-guindo-500 focus:border-guindo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                class="w-24 ml-auto border border-gray-300 rounded-md px-2 py-1 text-right text-[11px] focus:ring-primary-500 focus:border-primary-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             >
                         </td>
                         <td class="px-4 py-2 text-center">
-                            <button v-if="!detalle.editando" @click="editarFila(detalle)" class="text-guindo-600 hover:text-guindo-800 mr-2 transition" title="Editar">
+                            <button v-if="!detalle.editando" @click="editarFila(detalle)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
                                 <i class="fas fa-edit text-[12px]"></i>
                             </button>
                             <button v-if="detalle.editando" @click="guardarEdicion(detalle)" class="text-green-600 hover:text-green-800 mr-2 transition" title="Guardar">
@@ -301,7 +301,7 @@ const eliminarFila = async (detalle) => {
                         <td colspan="3" class="px-4 py-8 text-center">
                             <i class="fas fa-cubes text-gray-300 text-2xl mb-2 block"></i>
                             <p class="text-gray-400 text-[11px]">No hay productos agregados al detalle</p>
-                            <button @click="agregarFila" class="mt-2 text-guindo-600 hover:text-guindo-700 text-[11px] font-medium">+ Agregar producto</button>
+                            <button @click="agregarFila" class="mt-2 text-primary-600 hover:text-primary-700 text-[11px] font-medium">+ Agregar producto</button>
                         </td>
                     </tr>
                 </tbody>

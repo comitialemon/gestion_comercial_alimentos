@@ -407,8 +407,8 @@ const toggleEstado = async () => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
                     <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-box text-guindo-600 text-sm"></i>
+                        <div class="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-box text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base font-bold text-gray-800">{{ editando ? 'Editar Producto' : 'Nuevo Producto' }}</h1>
@@ -490,7 +490,7 @@ const toggleEstado = async () => {
                             <div class="flex gap-2">
                                 <div 
                                     @click="abrirModalCategorias"
-                                    class="flex-1 border rounded-md px-2 py-1.5 text-xs cursor-pointer hover:border-guindo-400 transition flex items-center justify-between"
+                                    class="flex-1 border rounded-md px-2 py-1.5 text-xs cursor-pointer hover:border-primary-400 transition flex items-center justify-between"
                                     :class="{ 'border-red-500': form.errors.id_categoria, 'bg-gray-100 cursor-not-allowed': editando && props.producto?.ActivoInactivo === 2 }"
                                 >
                                     <span :class="{ 'text-gray-400': !categoriaNombre }">
@@ -564,13 +564,13 @@ const toggleEstado = async () => {
                 <div v-if="editando || productoGuardado" class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="border-b border-gray-200">
                         <nav class="flex justify-center -mb-px">
-                            <button @click="activeTab = 0" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 0 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'">
+                            <button @click="activeTab = 0" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 0 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'">
                                 <i class="fas fa-store mr-1 text-[10px]"></i> Precio Sucursal
                             </button>
-                            <button @click="activeTab = 1" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 1 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'">
+                            <button @click="activeTab = 1" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 1 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'">
                                 <i class="fas fa-chart-line mr-1 text-[10px]"></i> Precio Mayorista
                             </button>
-                            <button @click="activeTab = 2" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 2 ? 'border-b-2 border-guindo-600 text-guindo-600' : 'text-gray-500 hover:text-gray-700'">
+                            <button @click="activeTab = 2" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 2 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'">
                                 <i class="fas fa-cubes mr-1 text-[10px]"></i> Inventario Detalle
                             </button>
                         </nav>

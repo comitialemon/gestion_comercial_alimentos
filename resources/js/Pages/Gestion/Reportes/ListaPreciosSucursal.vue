@@ -47,8 +47,8 @@ onUnmounted(() => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-4 sm:p-5 mb-5">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                            <i class="fas fa-location-dot text-guindo-600 text-lg sm:text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-location-dot text-primary-600 text-lg sm:text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg lg:text-xl font-bold text-gray-800">Lista de Precios por Sucursal</h1>
@@ -64,7 +64,7 @@ onUnmounted(() => {
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-5">
                         <div>
                             <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-store mr-1 text-guindo-600"></i> Empresa
+                                <i class="fas fa-store mr-1 text-primary-600"></i> Empresa
                             </label>
                             <div class="text-xs sm:text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
                                 {{ empresa?.Nombre || 'No registrado' }}
@@ -72,7 +72,7 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
-                                <i class="fas fa-id-card mr-1 text-guindo-600"></i> NIT
+                                <i class="fas fa-id-card mr-1 text-primary-600"></i> NIT
                             </label>
                             <div class="text-xs sm:text-sm text-gray-800 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">
                                 {{ empresa?.NIT || 'No registrado' }}
@@ -81,15 +81,15 @@ onUnmounted(() => {
                     </div>
 
                     <!-- Sucursal actual destacada -->
-                    <div class="mb-5 p-3 sm:p-4 bg-guindo-50 rounded-xl border border-guindo-200">
+                    <div class="mb-5 p-3 sm:p-4 bg-primary-50 rounded-xl border border-primary-200">
                         <div class="flex items-center gap-2 mb-2">
-                            <i class="fas fa-check-circle text-guindo-600 text-sm"></i>
-                            <span class="text-xs sm:text-sm font-semibold text-guindo-700">Sucursal Seleccionada</span>
+                            <i class="fas fa-check-circle text-primary-600 text-sm"></i>
+                            <span class="text-xs sm:text-sm font-semibold text-primary-700">Sucursal Seleccionada</span>
                         </div>
                         <div class="text-sm sm:text-base lg:text-lg font-bold text-gray-800 break-words">
                             {{ sucursal?.nombre || 'No registrado' }}
                         </div>
-                        <p class="text-[10px] sm:text-xs text-guindo-600 mt-1">El reporte incluirá SOLO esta sucursal</p>
+                        <p class="text-[10px] sm:text-xs text-primary-600 mt-1">El reporte incluirá SOLO esta sucursal</p>
                     </div>
 
                     <!-- Botones -->

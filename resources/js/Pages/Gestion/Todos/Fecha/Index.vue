@@ -212,15 +212,15 @@ onMounted(() => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-5">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-calendar-alt text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-calendar-alt text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Fechas y Tipos de Cambio</h1>
                             <p class="text-[11px] text-gray-500">Gestión de fechas contables y factores de cambio</p>
                         </div>
                     </div>
-                    <button @click="nuevaFecha" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
+                    <button @click="nuevaFecha" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
                         <i class="fas fa-plus text-[10px]"></i> Nueva Fecha
                     </button>
                 </div>
@@ -236,7 +236,7 @@ onMounted(() => {
                                 :value="searchFecha"
                                 @input="formatearFechaInput"
                                 placeholder="dd/mm/aaaa"
-                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500"
+                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500"
                             >
                             <p class="text-[9px] text-gray-400 mt-0.5">Ej: 26/05/2025</p>
                         </div>
@@ -244,7 +244,7 @@ onMounted(() => {
                         <!-- Filtro por tipo de cierre -->
                         <div>
                             <label class="block text-[10px] font-medium text-gray-600 mb-0.5">Tipo de cierre</label>
-                            <select v-model="searchCierre" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500">
+                            <select v-model="searchCierre" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500">
                                 <option v-for="op in opcionesCierre" :key="op.value" :value="op.value">
                                     {{ op.label }}
                                 </option>
@@ -255,7 +255,7 @@ onMounted(() => {
                         <div class="flex items-end gap-2">
                             <button 
                                 @click="aplicarFiltros" 
-                                class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition"
+                                class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 transition"
                             >
                                 <i class="fas fa-search text-[9px]"></i> Buscar
                             </button>
@@ -273,12 +273,12 @@ onMounted(() => {
                 <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-4 py-2 text-left text-[11px] font-medium text-guindo-700 uppercase">Fecha</th>
-                                    <th class="px-4 py-2 text-center text-[11px] font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-4 py-2 text-center text-[11px] font-medium text-guindo-700 uppercase">Cierre</th>
-                                    <th class="px-4 py-2 text-right text-[11px] font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-4 py-2 text-left text-[11px] font-medium text-primary-700 uppercase">Fecha</th>
+                                    <th class="px-4 py-2 text-center text-[11px] font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-4 py-2 text-center text-[11px] font-medium text-primary-700 uppercase">Cierre</th>
+                                    <th class="px-4 py-2 text-right text-[11px] font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -295,7 +295,7 @@ onMounted(() => {
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-right">
-                                        <button @click="editarFecha(fecha)" class="text-guindo-600 hover:text-guindo-800 text-xs" title="Editar">
+                                        <button @click="editarFecha(fecha)" class="text-primary-600 hover:text-primary-800 text-xs" title="Editar">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                     </td>
@@ -315,7 +315,7 @@ onMounted(() => {
                         <div class="flex justify-between items-center text-xs">
                             <div class="text-gray-500">Mostrando {{ fechas.from || 0 }} a {{ fechas.to || 0 }} de {{ fechas.total || 0 }}</div>
                             <div class="flex gap-1">
-                                <Link v-for="link in fechas.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-guindo-600 text-white border-guindo-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                                <Link v-for="link in fechas.links" :key="link.label" :href="link.url || '#'" class="px-2 py-0.5 rounded border text-xs" :class="{ 'bg-primary-600 text-white border-primary-600': link.active, 'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
                             </div>
                         </div>
                     </div>
@@ -329,7 +329,7 @@ onMounted(() => {
                 <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="modalOpen = false"></div>
                 
                 <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-auto transform transition-all duration-300">
-                    <div class="flex items-center justify-between px-4 py-2.5 border-b bg-guindo-600 rounded-t-lg">
+                    <div class="flex items-center justify-between px-4 py-2.5 border-b bg-primary-600 rounded-t-lg">
                         <h3 class="text-sm font-semibold text-white">
                             {{ editando ? 'Editar Fecha' : 'Nueva Fecha' }}
                         </h3>
@@ -343,7 +343,7 @@ onMounted(() => {
                             <!-- Fecha -->
                             <div>
                                 <label class="block text-[11px] font-medium text-gray-700 mb-1">Fecha *</label>
-                                <input type="date" v-model="form.Fecha" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500" :class="{ 'border-red-500': form.errors.Fecha }">
+                                <input type="date" v-model="form.Fecha" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500" :class="{ 'border-red-500': form.errors.Fecha }">
                                 <p v-if="form.errors.Fecha" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Fecha }}</p>
                             </div>
 
@@ -351,7 +351,7 @@ onMounted(() => {
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" v-model="form.ActivoInactivo" class="w-3.5 h-3.5 rounded border-gray-300 text-guindo-600 focus:ring-guindo-500">
+                                        <input type="checkbox" v-model="form.ActivoInactivo" class="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500">
                                         <span class="text-[11px] text-gray-700">Activo</span>
                                     </label>
                                 </div>
@@ -382,7 +382,7 @@ onMounted(() => {
                                                 type="number" 
                                                 v-model.number="factor.FactorCambio" 
                                                 step="0.000001"
-                                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-guindo-500"
+                                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500"
                                                 placeholder="Factor de cambio"
                                             >
                                         </div>

@@ -99,15 +99,15 @@ const estadoClase = (activo) => {
                 <!-- Header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-guindo-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-store text-guindo-600 text-sm"></i>
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                            <i class="fas fa-store text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-lg font-bold text-gray-800">Sucursales</h1>
                             <p class="text-[10px] text-gray-500">Administración de sucursales agrupadas por plaza</p>
                         </div>
                     </div>
-                    <button @click="nuevaSucursal" class="bg-guindo-600 hover:bg-guindo-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
+                    <button @click="nuevaSucursal" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
                         <i class="fas fa-plus text-[10px]"></i> Nueva Sucursal
                     </button>
                 </div>
@@ -118,17 +118,17 @@ const estadoClase = (activo) => {
                         <!-- Header del grupo -->
                         <div 
                             @click="togglePlaza(plaza.id)" 
-                            class="flex items-center justify-between px-4 py-2.5 bg-guindo-50 cursor-pointer hover:bg-guindo-100 transition-all duration-200 group"
+                            class="flex items-center justify-between px-4 py-2.5 bg-primary-50 cursor-pointer hover:bg-primary-100 transition-all duration-200 group"
                         >
                             <div class="flex items-center gap-2">
-                                <i class="fas fa-chevron-right text-guindo-600 text-[10px] transition-transform duration-300" :class="{ 'rotate-90': isExpanded(plaza.id) }"></i>
-                                <i class="fas fa-map-marker-alt text-guindo-600 text-xs"></i>
-                                <h2 class="text-sm font-semibold text-guindo-800">{{ plaza.nombre }}</h2>
-                                <span class="text-[10px] text-guindo-500 bg-guindo-100 px-1.5 py-0.5 rounded-full">
+                                <i class="fas fa-chevron-right text-primary-600 text-[10px] transition-transform duration-300" :class="{ 'rotate-90': isExpanded(plaza.id) }"></i>
+                                <i class="fas fa-map-marker-alt text-primary-600 text-xs"></i>
+                                <h2 class="text-sm font-semibold text-primary-800">{{ plaza.nombre }}</h2>
+                                <span class="text-[10px] text-primary-500 bg-primary-100 px-1.5 py-0.5 rounded-full">
                                     {{ plaza.sucursales.length }} sucursal(es)
                                 </span>
                             </div>
-                            <i class="fas fa-store text-guindo-400 text-xs opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                            <i class="fas fa-store text-primary-400 text-xs opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         </div>
 
                         <!-- Tabla de sucursales -->
@@ -165,7 +165,7 @@ const estadoClase = (activo) => {
                                                 </span>
                                             </td>
                                             <td class="px-4 py-2 text-right">
-                                                <button @click="editarSucursal(sucursal)" class="text-guindo-600 hover:text-guindo-800 text-xs transition" title="Editar">
+                                                <button @click="editarSucursal(sucursal)" class="text-primary-600 hover:text-primary-800 text-xs transition" title="Editar">
                                                     <i class="fas fa-edit text-xs"></i>
                                                 </button>
                                             </td>
@@ -181,7 +181,7 @@ const estadoClase = (activo) => {
                 <div v-if="sucursalesPorPlaza.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
                     <i class="fas fa-store text-4xl text-gray-300 mb-2 block"></i>
                     <p class="text-gray-500 text-sm">No hay sucursales registradas</p>
-                    <button @click="nuevaSucursal" class="inline-block mt-3 bg-guindo-600 hover:bg-guindo-700 text-white px-4 py-1.5 rounded-lg text-xs transition">
+                    <button @click="nuevaSucursal" class="inline-block mt-3 bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs transition">
                         <i class="fas fa-plus text-[10px]"></i> Crear primera sucursal
                     </button>
                 </div>

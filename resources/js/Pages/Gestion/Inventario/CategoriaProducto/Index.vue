@@ -191,8 +191,8 @@ resetForm()
             <div class="max-w-6xl mx-auto">
                 <!-- Header -->
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-guindo-100 rounded-2xl mb-3">
-                        <i class="fas fa-tree text-xl text-guindo-600"></i>
+                    <div class="inline-flex items-center justify-center w-14 h-14 bg-primary-100 rounded-2xl mb-3">
+                        <i class="fas fa-tree text-xl text-primary-600"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Categorías de Productos</h1>
                     <p class="text-xs text-gray-500">Menú táctil con imágenes - Organización jerárquica (compartido por todas las sucursales)</p>
@@ -255,7 +255,7 @@ resetForm()
                         <!-- Botones -->
                         <div class="flex items-end gap-2">
                             <button @click="guardar" 
-                                class="px-4 py-2 bg-guindo-600 text-white rounded-lg text-sm hover:bg-guindo-700">
+                                class="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
                                 <i class="fas" :class="editando ? 'fa-pencil-alt' : 'fa-plus'"></i>
                                 {{ editando ? 'Actualizar' : 'Guardar' }}
                             </button>
@@ -271,15 +271,15 @@ resetForm()
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-guindo-50">
+                            <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Imagen</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">ID</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Categoría</th>
-                                    <th class="px-4 py-3 text-left text-xs font-medium text-guindo-700 uppercase">Padre</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Orden</th>
-                                    <th class="px-4 py-3 text-center text-xs font-medium text-guindo-700 uppercase">Estado</th>
-                                    <th class="px-4 py-3 text-right text-xs font-medium text-guindo-700 uppercase">Acciones</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">Imagen</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">ID</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">Categoría</th>
+                                    <th class="px-4 py-3 text-left text-xs font-medium text-primary-700 uppercase">Padre</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-primary-700 uppercase">Orden</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-primary-700 uppercase">Estado</th>
+                                    <th class="px-4 py-3 text-right text-xs font-medium text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -304,7 +304,7 @@ resetForm()
                                         </span>
                                     </td>
                                     <td class="px-4 py-3 text-right text-sm font-medium">
-                                        <button @click="editar(cat)" class="text-guindo-600 hover:text-guindo-900 mr-3">
+                                        <button @click="editar(cat)" class="text-primary-600 hover:text-primary-900 mr-3">
                                             <i class="fas fa-edit"></i>
                                         </button>
                                         <button @click="eliminar(cat.id_categoria, cat.nombre)" class="text-red-600 hover:text-red-900">

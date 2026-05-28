@@ -68,8 +68,8 @@ const volver = () => {
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-guindo-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-chart-line text-guindo-600 text-xl"></i>
+                        <div class="w-10 h-10 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-chart-line text-primary-600 text-xl"></i>
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Liquidación de Ventas</h1>
@@ -98,7 +98,7 @@ const volver = () => {
                     <button 
                         @click="seleccionarFecha" 
                         :disabled="!fechaSeleccionada || loading"
-                        class="w-full bg-guindo-600 hover:bg-guindo-700 text-white py-2 rounded-lg transition disabled:opacity-50"
+                        class="w-full bg-primary-600 hover:bg-primary-700 text-white py-2 rounded-lg transition disabled:opacity-50"
                     >
                         <i v-if="loading" class="fas fa-spinner fa-spin mr-2"></i>
                         {{ loading ? 'Cargando...' : 'Continuar' }}
