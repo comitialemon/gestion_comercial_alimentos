@@ -195,7 +195,7 @@ const cierreTexto = (cierreSucursal, cierrePermanente) => {
 
 const cierreClase = (cierreSucursal, cierrePermanente) => {
     if (cierrePermanente === 1) return 'bg-red-100 text-red-800'
-    if (cierreSucursal === 1) return 'bg-amber-100 text-amber-800'
+    if (cierreSucursal === 1) return 'bg-secondary-100 text-secondary-800'
     return 'bg-green-100 text-green-800'
 }
 
@@ -357,7 +357,7 @@ onMounted(() => {
                                 </div>
                                 <div>
                                     <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" v-model="form.CierreSucursal" class="w-3.5 h-3.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500">
+                                        <input type="checkbox" v-model="form.CierreSucursal" class="w-3.5 h-3.5 rounded border-gray-300 text-secondary-600 focus:ring-secondary-500">
                                         <span class="text-[11px] text-gray-700">Cierre de Sucursal</span>
                                     </label>
                                 </div>

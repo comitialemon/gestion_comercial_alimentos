@@ -60,7 +60,7 @@ const confirmarReabrir = async () => {
             
             <div class="relative bg-white rounded-lg shadow-xl max-w-md w-full transform transition-all duration-300">
                 <!-- Header -->
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-amber-600 rounded-t-lg">
+                <div class="flex items-center justify-between px-5 py-3 border-b bg-secondary-600 rounded-t-lg">
                     <h3 class="text-sm font-semibold text-white">
                         <i class="fas fa-unlock-alt mr-2"></i> Reabrir Diario
                     </h3>
@@ -76,9 +76,9 @@ const confirmarReabrir = async () => {
                     </div>
                     
                     <div class="text-center">
-                        <i class="fas fa-exclamation-triangle text-amber-500 text-3xl mb-3 block"></i>
+                        <i class="fas fa-exclamation-triangle text-secondary-500 text-3xl mb-3 block"></i>
                         <p class="text-sm text-gray-700 mb-2">
-                            ¿Está seguro de que desea <strong class="text-amber-600">reabrir</strong> el diario?
+                            ¿Está seguro de que desea <strong class="text-secondary-600">reabrir</strong> el diario?
                         </p>
                         <div class="bg-gray-50 rounded-lg p-3 mb-4 text-left">
                             <p class="text-xs text-gray-600 mb-1"><strong>N° Diario:</strong> {{ diario?.NumeroDiario }}</p>
@@ -95,7 +95,7 @@ const confirmarReabrir = async () => {
                         <button @click="cerrarModal" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 text-sm hover:bg-gray-100 transition">
                             Cancelar
                         </button>
-                        <button @click="confirmarReabrir" :disabled="loading" class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition flex items-center gap-2">
+                        <button @click="confirmarReabrir" :disabled="loading" class="px-4 py-2 bg-secondary-600 text-white rounded-lg text-sm hover:bg-secondary-700 transition flex items-center gap-2">
                             <i v-if="loading" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-unlock-alt"></i>
                             {{ loading ? 'Procesando...' : 'Reabrir Diario' }}

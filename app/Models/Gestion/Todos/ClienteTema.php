@@ -15,11 +15,11 @@ class ClienteTema extends Model
         'id_cliente',
         'color_principal',
         'color_secundario',
-        'color_fondo',
-        'color_texto',
         'color_acento',
+        'color_fondo',
+        'color_texto_oscuro',
+        'color_texto_claro',
         'logo_url',
-        'logo_favicon',
         'nombre_sistema',
         'activo'
     ];
@@ -43,7 +43,6 @@ class ClienteTema extends Model
             ->first();
 
         if (!$tema) {
-            // 🔥 Tema por defecto: NEGRO, GRIS, BLANCO
             return self::getDefaultTheme();
         }
 
@@ -51,24 +50,24 @@ class ClienteTema extends Model
     }
 
     /**
-     * Tema por defecto (colores NEUTROS - negro/gris/blanco)
-     * Así sabemos que el cliente NO tiene tema personalizado
+     * Tema por defecto (colores NEUTROS)
      */
     public static function getDefaultTheme()
     {
         $theme = new self();
-        $theme->color_principal = '#1f2937';     // gray-800 (negro/gris oscuro)
-        $theme->color_secundario = '#4b5563';    // gray-600 (gris medio)
-        $theme->color_fondo = '#ffffff';         // blanco
-        $theme->color_texto = '#000000';         // negro
-        $theme->color_acento = '#6b7280';        // gray-500 (gris claro)
+        $theme->color_principal = '#1f2937';      // gray-800
+        $theme->color_secundario = '#4b5563';     // gray-600
+        $theme->color_acento = '#6b7280';         // gray-500
+        $theme->color_fondo = '#ffffff';          // blanco
+        $theme->color_texto_oscuro = '#111827';   // gray-900 (negro)
+        $theme->color_texto_claro = '#ffffff';    // blanco
         $theme->nombre_sistema = 'Sistema Gestion';
         
         return $theme;
     }
 
     /**
-     * Verificar si el cliente tiene tema personalizado (no es default)
+     * Verificar si el cliente tiene tema personalizado
      */
     public static function tieneTemaPersonalizado($clienteId)
     {

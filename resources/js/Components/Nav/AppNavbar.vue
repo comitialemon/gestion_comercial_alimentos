@@ -11,14 +11,15 @@ const toast = inject('toast')
 // 🔥 TEMA DINÁMICO
 const theme = computed(() => page.props?.theme || {
     primary: '#1f2937',
+    primary_rgb: '31, 41, 55',
     secondary: '#4b5563',
-    hasCustomTheme: false
+    hasCustomTheme: false,
+    logo: null
 })
 
 // Estado para responsive
 const isMobile = ref(window.innerWidth < 768)
 
-// Detectar cambios de tamaño
 const handleResize = () => {
     isMobile.value = window.innerWidth < 768
 }
@@ -37,7 +38,6 @@ const sucursalNombre = computed(() => page.props?.sucursalNombre || sessionStora
 const operadorNombre = computed(() => page.props?.operadorNombre || sessionStorage.getItem('operadorNombre') || '')
 const ctxReady       = computed(() => page.props?.ctx?.ready === true)
 
-// Guardar en sessionStorage para persistencia
 const setStorage = () => {
     if (page.props?.empresaNombre) sessionStorage.setItem('empresaNombre', page.props.empresaNombre)
     if (page.props?.sucursalNombre) sessionStorage.setItem('sucursalNombre', page.props.sucursalNombre)
@@ -54,7 +54,6 @@ const logout = () => {
     router.post('/logout')
 }
 
-// Navegar a nueva venta táctil
 const irANuevaVenta = () => {
     if (!ctxReady.value) {
         toast?.warning('Contexto requerido', 'Primero selecciona empresa y sucursal')
@@ -62,125 +61,156 @@ const irANuevaVenta = () => {
     }
     router.get('/venta-tactil/nueva')
 }
+
+const navbarBgStyle = computed(() => {
+    if (theme.value.hasCustomTheme) {
+        return { backgroundColor: 'var(--color-primary-800)' }
+    }
+    return { backgroundColor: '#1f2937' }
+})
 </script>
 
 <template>
     <header 
         class="sticky top-0 z-40 w-full shadow-md transition-colors duration-300"
-        :style="{ backgroundColor: 'var(--color-primary)' }"
+        :style="navbarBgStyle"
     >
-        <div class="mx-auto flex items-center gap-2 px-2 sm:px-3 py-2">
+        <div class="mx-auto flex items-center justify-between gap-2 px-3 sm:px-4 py-2">
             
-            <!-- Botón menú móvil -->
-            <button
-                v-if="ctxReady"
-                class="lg:hidden -ml-1 p-2 rounded transition flex-shrink-0 text-white"
-                :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
-                @click="openMobileSidebar"
-                type="button"
-            >
-                <i class="fas fa-bars text-base sm:text-lg"></i>
-            </button>
+            <!-- 🔹 SECCIÓN IZQUIERDA: Botón menú + Logo + Info empresa -->
+            <div class="flex items-center gap-2 flex-shrink-0 min-w-0">
+                <!-- Botón menú -->
+                <button
+                    v-if="ctxReady"
+                    class="lg:hidden p-2 rounded-lg transition flex-shrink-0 text-white"
+                    :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
+                    @click="openMobileSidebar"
+                    type="button"
+                >
+                    <i class="fas fa-bars text-base"></i>
+                </button>
 
-            <!-- Botón menú desktop -->
-            <button
-                v-if="ctxReady"
-                class="hidden lg:inline-flex p-2 rounded transition flex-shrink-0 text-white"
-                :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
-                @click="toggleDesktopSidebar"
-                type="button"
-            >
-                <i class="fas fa-bars text-lg"></i>
-            </button>
+                <button
+                    v-if="ctxReady"
+                    class="hidden lg:inline-flex p-2 rounded-lg transition flex-shrink-0 text-white"
+                    :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
+                    @click="toggleDesktopSidebar"
+                    type="button"
+                >
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
 
-            <!-- Logo / Icono -->
-            <div 
-                class="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-                :style="{ backgroundColor: 'var(--color-secondary)' }"
-            >
-                <i class="fas fa-store text-white text-sm"></i>
-            </div>
-
-            <!-- Información de empresa y sucursal -->
-            <div class="leading-tight select-none text-white min-w-0 flex-shrink">
-                <div class="font-semibold uppercase tracking-wide text-xs sm:text-sm lg:text-base truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
-                    {{ empresaNombre || 'SELECCIONE EMPRESA' }}
+                <!-- Logo -->
+                <div v-if="theme.logo" class="flex-shrink-0">
+                    <img 
+                        :src="theme.logo" 
+                        alt="Logo" 
+                        class="h-10 md:h-12 w-auto object-contain"
+                    />
                 </div>
-                <div class="text-[10px] sm:text-xs opacity-90 truncate max-w-[120px] sm:max-w-[200px] lg:max-w-[300px]">
-                    Sucursal: {{ sucursalNombre || 'SELECCIONE SUCURSAL' }}
-                </div>
-            </div>
-
-            <!-- BOTÓN NUEVA VENTA (centrado) -->
-            <button
-                v-if="ctxReady"
-                @click="irANuevaVenta"
-                class="mx-auto px-3 sm:px-4 py-1.5 rounded-lg transition text-primary-900 font-bold text-xs sm:text-sm flex items-center gap-1 sm:gap-2 flex-shrink-0 shadow-md hover:shadow-lg"
-                :style="{ 
-                    background: theme.hasCustomTheme 
-                        ? `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)` 
-                        : 'linear-gradient(135deg, #facc15 0%, #eab308 100%)'
-                }"
-                @mouseenter="e => e.target.style.background = theme.hasCustomTheme 
-                    ? `linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)`
-                    : 'linear-gradient(135deg, #eab308 0%, #ca8a04 100%)'"
-                @mouseleave="e => e.target.style.background = theme.hasCustomTheme 
-                    ? `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)`
-                    : 'linear-gradient(135deg, #facc15 0%, #eab308 100%)'"
-                title="Nueva venta rápida"
-            >
-                <i class="fas fa-cash-register text-sm sm:text-base"></i>
-                <span class="hidden xs:inline font-medium">Nueva Venta</span>
-            </button>
-
-            <!-- Spacer para mantener equilibrio (solo en desktop) -->
-            <div class="hidden lg:block w-10"></div>
-
-            <!-- NOTIFICACIONES -->
-            <Notificaciones v-if="ctxReady" />
-
-            <!-- Operador y Logout -->
-            <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                
+                <!-- Icono por defecto -->
                 <div 
-                    class="text-[10px] sm:text-xs lg:text-sm flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-white whitespace-nowrap transition-colors"
+                    v-else
+                    class="w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    :style="{ backgroundColor: 'var(--color-secondary)' }"
+                >
+                    <i class="fas fa-store text-white text-sm md:text-base"></i>
+                </div>
+
+                <!-- Info empresa y sucursal -->
+                <div class="leading-tight select-none text-white">
+                    <div class="font-semibold uppercase tracking-wide text-xs sm:text-sm whitespace-nowrap">
+                        {{ empresaNombre || 'SELECCIONE EMPRESA' }}
+                    </div>
+                    <div class="text-[10px] sm:text-xs opacity-90 whitespace-nowrap">
+                        {{ sucursalNombre || 'SELECCIONE SUCURSAL' }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔹 SECCIÓN CENTRO: Botón Nueva Venta -->
+            <div class="flex-1 flex justify-center">
+                <button
+                    v-if="ctxReady"
+                    @click="irANuevaVenta"
+                    class="px-4 sm:px-6 py-2 rounded-xl transition text-white font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-md hover:shadow-lg whitespace-nowrap"
+                    :style="{ 
+                        background: `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)`
+                    }"
+                    @mouseenter="e => e.target.style.background = `linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%)`"
+                    @mouseleave="e => e.target.style.background = `linear-gradient(135deg, var(--color-secondary) 0%, var(--color-primary) 100%)`"
+                    title="Nueva venta rápida"
+                >
+                    <i class="fas fa-cash-register text-sm sm:text-base"></i>
+                    <span class="font-medium hidden sm:inline">Nueva Venta</span>
+                    <span class="font-medium sm:hidden">Venta</span>
+                </button>
+            </div>
+
+            <!-- 🔹 SECCIÓN DERECHA: Notificaciones + Operador + Logout -->
+            <div class="flex items-center gap-2 flex-shrink-0">
+                <Notificaciones v-if="ctxReady" />
+
+                <!-- 🔥 OPERADOR - TEXTO MÁS PEQUEÑO Y MÁS ANCHO -->
+                <div 
+                    class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-white"
                     :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
                 >
                     <i class="fas fa-user-circle text-xs sm:text-sm"></i>
-                    <span class="hidden sm:inline font-medium max-w-[80px] lg:max-w-[150px] truncate">{{ operadorNombre || 'SIN OPERADOR' }}</span>
+                    <span class="font-medium text-[11px] sm:text-xs max-w-[180px] md:max-w-[250px] truncate">
+                        {{ operadorNombre || 'Operador' }}
+                    </span>
+                </div>
+                
+                <!-- Ícono de usuario en móvil -->
+                <div 
+                    class="flex sm:hidden items-center justify-center w-8 h-8 rounded-full text-white"
+                    :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
+                    :title="operadorNombre"
+                >
+                    <i class="fas fa-user-circle text-sm"></i>
                 </div>
                 
                 <button 
                     @click="logout"
-                    class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg transition text-white text-xs sm:text-sm flex items-center gap-1 sm:gap-2 whitespace-nowrap"
+                    class="p-2 rounded-lg transition text-white"
                     :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
                     @mouseenter="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.35)'"
                     @mouseleave="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.2)'"
                     title="Cerrar sesión"
                 >
-                    <i class="fas fa-sign-out-alt text-xs sm:text-sm"></i>
-                    <span class="hidden sm:inline">Salir</span>
+                    <i class="fas fa-sign-out-alt text-sm sm:text-base"></i>
                 </button>
             </div>
         </div>
         
-        <!-- 🔥 Indicador de tema default (solo supervisores) -->
+        <!-- Indicador de tema default -->
         <div 
             v-if="!theme.hasCustomTheme && page.props?.auth?.operador?.tipo_id === 1"
             class="text-center text-[9px] py-0.5 text-white"
             :style="{ backgroundColor: 'rgba(0,0,0,0.3)' }"
         >
             <i class="fas fa-info-circle mr-1"></i>
-            Esta empresa usa el tema por defecto (gris/negro/blanco). 
-            Personaliza los colores desde Configuración → Tema.
+            Esta empresa usa el tema por defecto. Personaliza los colores en Configuración → Tema.
         </div>
     </header>
 </template>
 
 <style scoped>
-/* Clase para pantallas extra pequeñas (menos de 480px) */
-@media (min-width: 480px) {
-    .xs\:inline {
-        display: inline;
+img {
+    max-height: 48px;
+    width: auto;
+    object-fit: contain;
+}
+
+@media (max-width: 640px) {
+    img {
+        max-height: 40px;
     }
+}
+
+button {
+    transition: all 0.2s ease;
 }
 </style>

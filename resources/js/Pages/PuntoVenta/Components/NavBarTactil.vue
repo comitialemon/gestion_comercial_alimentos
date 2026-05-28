@@ -117,7 +117,7 @@ onUnmounted(() => {
         
         <!-- Información central (comisionista y ruta) -->
         <div class="text-center flex-1 min-w-0 px-2">
-            <span class="block text-[10px] sm:text-xs text-amber-600 font-bold uppercase tracking-wide">Comisionista</span>
+            <span class="block text-[10px] sm:text-xs text-secondary-600 font-bold uppercase tracking-wide">Comisionista</span>
             <span class="text-xs sm:text-sm font-semibold text-primary-800 truncate block max-w-[150px] sm:max-w-[250px] mx-auto">
                 {{ comisionista }}
             </span>
@@ -145,11 +145,11 @@ onUnmounted(() => {
             <!-- Botón Carrito -->
             <button 
                 @click="irAlCarrito"
-                class="relative px-2 sm:px-4 py-1.5 sm:py-2 bg-amber-400 hover:bg-amber-500 transition rounded-lg flex items-center gap-1 sm:gap-2 font-semibold shadow-md"
-                :class="{ 'bg-amber-500': totalItems > 0 }"
+                class="relative px-2 sm:px-4 py-1.5 sm:py-2 bg-secondary-400 hover:bg-secondary-500 transition rounded-lg flex items-center gap-1 sm:gap-2 font-semibold shadow-md"
+                :class="{ 'bg-secondary-500': totalItems > 0 }"
             >
-                <i class="fas fa-shopping-cart text-sm sm:text-lg" :class="{ 'text-primary-800': totalItems > 0, 'text-amber-800': totalItems === 0 }"></i>
-                <span class="text-xs sm:text-sm font-medium" :class="{ 'text-primary-800': totalItems > 0, 'text-amber-800': totalItems === 0 }">
+                <i class="fas fa-shopping-cart text-sm sm:text-lg" :class="{ 'text-primary-800': totalItems > 0, 'text-secondary-800': totalItems === 0 }"></i>
+                <span class="text-xs sm:text-sm font-medium" :class="{ 'text-primary-800': totalItems > 0, 'text-secondary-800': totalItems === 0 }">
                     Carrito
                 </span>
                 

@@ -46,7 +46,7 @@ const irACategoria = (id) => {
                     @click="irACategoria(cat.id_categoria)"
                     class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all hover:scale-105 cursor-pointer overflow-hidden border border-gray-100"
                 >
-                    <div class="h-28 sm:h-32 bg-gradient-to-br from-guindo-50 to-amber-50 flex items-center justify-center p-2 sm:p-3">
+                    <div class="h-28 sm:h-32 bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center p-2 sm:p-3">
                         <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
                         <i v-else class="fas fa-folder-open text-4xl sm:text-5xl text-primary-300"></i>
                     </div>

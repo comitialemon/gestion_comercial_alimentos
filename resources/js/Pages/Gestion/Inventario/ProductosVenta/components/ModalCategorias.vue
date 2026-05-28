@@ -213,7 +213,7 @@ const getPrefix = (level) => {
                                 <span v-else class="w-5"></span>
                                 
                                 <!-- Icono -->
-                                <i :class="cat.hasChildren ? 'fas fa-folder-open text-amber-500' : 'fas fa-tag text-primary-400'"></i>
+                                <i :class="cat.hasChildren ? 'fas fa-folder-open text-secondary-500' : 'fas fa-tag text-primary-400'"></i>
                                 
                                 <!-- Nombre -->
                                 <span class="ml-2 text-sm text-gray-700 flex-1">

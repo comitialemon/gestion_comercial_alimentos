@@ -606,9 +606,9 @@ const toggleEstado = async () => {
                     </div>
                 </div>
 
-                <div v-else class="bg-amber-50 rounded-lg border border-amber-200 p-4 text-center">
-                    <i class="fas fa-info-circle text-amber-500 text-sm mb-2 block"></i>
-                    <p class="text-xs text-amber-700">Complete los datos del producto y presione "Guardar" para poder configurar precios por sucursal, precios mayorista y detalle de inventario.</p>
+                <div v-else class="bg-secondary-50 rounded-lg border border-secondary-200 p-4 text-center">
+                    <i class="fas fa-info-circle text-secondary-500 text-sm mb-2 block"></i>
+                    <p class="text-xs text-secondary-700">Complete los datos del producto y presione "Guardar" para poder configurar precios por sucursal, precios mayorista y detalle de inventario.</p>
                 </div>
             </div>
         </div>

@@ -120,7 +120,7 @@ onUnmounted(() => {
         <div class="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             
             <!-- Header -->
-            <div class="bg-guindo text-white p-3 sm:p-4 flex-shrink-0">
+            <div class="bg-primary text-white p-3 sm:p-4 flex-shrink-0">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
                         <h3 class="text-white font-bold text-sm sm:text-base lg:text-lg">
@@ -141,14 +141,14 @@ onUnmounted(() => {
             <!-- Cuerpo -->
             <div class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
                 <div v-if="cargandoMovimientos" class="text-center py-12">
-                    <i class="fas fa-spinner fa-spin text-3xl text-guindo"></i>
+                    <i class="fas fa-spinner fa-spin text-3xl text-primary"></i>
                     <p class="mt-3 text-gray-500 text-sm">Cargando movimientos...</p>
                 </div>
                 
                 <div v-else-if="errorMessage" class="text-center py-12">
                     <i class="fas fa-exclamation-triangle text-5xl text-red-400 mb-3 block"></i>
                     <p class="text-red-600 text-sm">{{ errorMessage }}</p>
-                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-guindo text-white rounded-lg text-sm hover:bg-primary-700 transition">
+                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-700 transition">
                         Reintentar
                     </button>
                 </div>
@@ -282,7 +282,7 @@ onUnmounted(() => {
             
             <!-- Footer -->
             <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0">
-                <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-guindo text-white rounded-lg text-sm hover:bg-primary-700 transition flex items-center gap-2">
+                <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-700 transition flex items-center gap-2">
                     <i class="fas fa-times"></i>
                     <span>Cerrar</span>
                 </button>
@@ -292,13 +292,13 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-.bg-guindo {
+.bg-primary {
     background-color: #61131a;
 }
-.text-guindo {
+.text-primary {
     color: #61131a;
 }
-.border-guindo {
+.border-primary {
     border-color: #61131a;
 }
 

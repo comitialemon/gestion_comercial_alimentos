@@ -216,11 +216,11 @@ onMounted(() => {
         </div>
         
         <!-- CUIS del PDV 0 (alternativa) -->
-        <div v-if="infoCuis.cuis_del_pdv_cero" class="bg-white rounded-lg p-3 border-l-4 border-amber-400">
+        <div v-if="infoCuis.cuis_del_pdv_cero" class="bg-white rounded-lg p-3 border-l-4 border-secondary-400">
           <div class="flex justify-between items-center">
             <div>
               <span class="text-xs text-gray-500">CUIS del PDV 0 (Base)</span>
-              <div class="font-mono text-sm font-bold text-amber-600">
+              <div class="font-mono text-sm font-bold text-secondary-600">
                 {{ infoCuis.cuis_del_pdv_cero?.codigo }}
               </div>
               <div class="text-xs text-gray-400">
@@ -260,22 +260,22 @@ onMounted(() => {
     </div>
 
     <!-- ADVERTENCIA: Falta CUIS -->
-    <div v-if="faltaCuis" class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+    <div v-if="faltaCuis" class="mb-6 p-4 bg-secondary-50 border border-secondary-200 rounded-lg">
       <div class="flex items-start gap-3">
         <div class="flex-shrink-0">
-          <svg class="w-6 h-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-6 h-6 text-secondary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
         </div>
         <div class="flex-1">
-          <h3 class="font-semibold text-amber-800">⚠️ No hay CUIS activo</h3>
-          <p class="text-sm text-amber-700 mt-1">
+          <h3 class="font-semibold text-secondary-800">⚠️ No hay CUIS activo</h3>
+          <p class="text-sm text-secondary-700 mt-1">
             Para solicitar un CUFD, primero debes tener un CUIS activo para este punto de venta.
           </p>
           <button 
             @click="solicitarCuisPrimero"
             :disabled="solicitandoCuis"
-            class="mt-3 px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+            class="mt-3 px-4 py-2 bg-secondary-600 text-white rounded-lg text-sm hover:bg-secondary-700 disabled:opacity-50 flex items-center gap-2"
           >
             <svg v-if="solicitandoCuis" class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />

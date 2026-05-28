@@ -230,7 +230,7 @@ onMounted(() => {
         <!-- Modal Nuevo Identificador -->
         <div v-if="modalIdentificadorVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-xl max-w-md w-full overflow-hidden shadow-xl">
-                <div class="bg-gradient-to-r from-guindo-600 to-guindo-700 p-4">
+                <div class="bg-gradient-to-r from-primary-600 to-primary-700 p-4">
                     <h3 class="text-white font-bold text-lg">Nuevo Identificador</h3>
                 </div>
                 <div class="p-6 space-y-4">

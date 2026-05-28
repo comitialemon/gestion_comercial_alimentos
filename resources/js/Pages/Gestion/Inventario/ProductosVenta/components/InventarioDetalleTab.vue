@@ -196,7 +196,7 @@ const eliminarFila = async (detalle) => {
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <!-- Nueva fila con buscador -->
-                    <tr v-if="nuevaFila.editando" class="bg-amber-50">
+                    <tr v-if="nuevaFila.editando" class="bg-secondary-50">
                         <td class="px-4 py-2 relative">
                             <div class="relative">
                                 <input 

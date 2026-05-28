@@ -247,7 +247,7 @@ onMounted(async () => {
                         <div class="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-800 truncate">{{ datosCabecera.sucursal }}</div>
                     </div>
                     <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-2 sm:p-3 md:p-4 border border-gray-100">
-                        <div class="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs text-amber-600 font-medium">🤝 Consignador</div>
+                        <div class="text-[8px] sm:text-[9px] md:text-[10px] lg:text-xs text-secondary-600 font-medium">🤝 Consignador</div>
                         <div class="font-semibold text-[10px] sm:text-xs md:text-sm text-gray-800 truncate">{{ datosCabecera.consignador }}</div>
                     </div>
                     <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-2 sm:p-3 md:p-4 border border-gray-100">

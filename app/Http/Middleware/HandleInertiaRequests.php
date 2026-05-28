@@ -102,19 +102,18 @@ class HandleInertiaRequests extends Middleware
      */
     private function loadTheme($clienteId): array
     {
-        // Tema por defecto (negro/gris/blanco)
+        // Tema por defecto
         $defaultTheme = [
-            'primary' => '#1f2937',      // gray-800
+            'primary' => '#1f2937',
             'primary_rgb' => '31, 41, 55',
-            'secondary' => '#4b5563',    // gray-600
+            'secondary' => '#4b5563',
             'secondary_rgb' => '75, 85, 99',
-            'background' => '#ffffff',    // blanco
-            'text' => '#000000',          // negro
-            'accent' => '#6b7280',        // gray-500
+            'accent' => '#6b7280',
             'accent_rgb' => '107, 114, 128',
+            'background' => '#ffffff',
+            'text_dark' => '#111827',   // Para fondos claros
+            'text_light' => '#ffffff',   // Para fondos oscuros
             'logo' => null,
-            'logo_dark' => null,
-            'favicon' => null,
             'systemName' => 'Sistema Gestion',
             'hasCustomTheme' => false,
         ];
@@ -124,7 +123,6 @@ class HandleInertiaRequests extends Middleware
         }
 
         try {
-            // Buscar tema personalizado del cliente
             $tema = ClienteTema::where('id_cliente', $clienteId)
                 ->where('activo', 1)
                 ->first();
@@ -133,36 +131,27 @@ class HandleInertiaRequests extends Middleware
                 return $defaultTheme;
             }
 
-            // Generar variantes de colores (opcional)
-            $primaryRgb = $this->hexToRgb($tema->color_principal ?? '#1f2937');
-            $secondaryRgb = $this->hexToRgb($tema->color_secundario ?? '#4b5563');
-            $accentRgb = $this->hexToRgb($tema->color_acento ?? '#6b7280');
-
             return [
                 'primary' => $tema->color_principal ?? '#1f2937',
-                'primary_rgb' => $primaryRgb,
+                'primary_rgb' => $this->hexToRgb($tema->color_principal ?? '#1f2937'),
                 'secondary' => $tema->color_secundario ?? '#4b5563',
-                'secondary_rgb' => $secondaryRgb,
-                'background' => $tema->color_fondo ?? '#ffffff',
-                'text' => $tema->color_texto ?? '#000000',
+                'secondary_rgb' => $this->hexToRgb($tema->color_secundario ?? '#4b5563'),
                 'accent' => $tema->color_acento ?? '#6b7280',
-                'accent_rgb' => $accentRgb,
+                'accent_rgb' => $this->hexToRgb($tema->color_acento ?? '#6b7280'),
+                'background' => $tema->color_fondo ?? '#ffffff',
+                'text_dark' => $tema->color_texto_oscuro ?? '#111827',
+                'text_light' => $tema->color_texto_claro ?? '#ffffff',
                 'logo' => $tema->logo_url ?? null,
-                'logo_dark' => $tema->logo_url_dark ?? null,
-                'favicon' => $tema->logo_favicon ?? null,
                 'systemName' => $tema->nombre_sistema ?? 'Sistema Gestion',
-                'hasCustomTheme' => true, // 🔥 Este cliente TIENE tema personalizado
+                'hasCustomTheme' => true,
             ];
 
         } catch (\Exception $e) {
-            \Log::error('Error cargando tema del cliente: ' . $e->getMessage());
+            \Log::error('Error cargando tema: ' . $e->getMessage());
             return $defaultTheme;
         }
     }
 
-    /**
-     * 🔥 Convierte color HEX a RGB (para opacidades en CSS)
-     */
     private function hexToRgb($hex): string
     {
         $hex = str_replace('#', '', $hex);

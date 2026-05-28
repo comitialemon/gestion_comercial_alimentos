@@ -7,7 +7,7 @@
       :class="{
         'bg-emerald-500': toast.type === 'success',
         'bg-red-500': toast.type === 'error',
-        'bg-amber-500': toast.type === 'warning',
+        'bg-secondary-500': toast.type === 'warning',
         'bg-blue-500': toast.type === 'info'
       }"
     >

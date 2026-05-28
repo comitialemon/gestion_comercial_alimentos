@@ -48,7 +48,7 @@ const cierreTexto = (cierreSucursal, cierrePermanente) => {
 
 const cierreClase = (cierreSucursal, cierrePermanente) => {
     if (cierrePermanente === 1) return 'bg-red-100 text-red-800'
-    if (cierreSucursal === 1) return 'bg-amber-100 text-amber-800'
+    if (cierreSucursal === 1) return 'bg-secondary-100 text-secondary-800'
     return 'bg-green-100 text-green-800'
 }
 
@@ -245,7 +245,7 @@ watch(() => props.fechas.data, () => {
                         </button>
                         <button 
                             @click="cambiarEstadoMultiple('CierreSucursal', true)"
-                            class="px-2.5 py-1 bg-amber-100 text-amber-700 rounded-md text-[11px] hover:bg-amber-200 transition"
+                            class="px-2.5 py-1 bg-secondary-100 text-secondary-700 rounded-md text-[11px] hover:bg-secondary-200 transition"
                         >
                             Cerrar Sucursal
                         </button>
@@ -323,7 +323,7 @@ watch(() => props.fechas.data, () => {
                                             <button 
                                                 v-if="fecha.CierrePermanente !== 1"
                                                 @click="cambiarEstado(fecha, 'CierreSucursal', fecha.CierreSucursal !== 1)"
-                                                class="text-[10px] text-gray-400 hover:text-amber-600"
+                                                class="text-[10px] text-gray-400 hover:text-secondary-600"
                                                 :title="fecha.CierreSucursal === 1 ? 'Abrir sucursal' : 'Cerrar sucursal'"
                                             >
                                                 <i :class="fecha.CierreSucursal === 1 ? 'fas fa-toggle-on' : 'fas fa-toggle-off'"></i>

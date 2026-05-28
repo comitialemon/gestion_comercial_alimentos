@@ -171,7 +171,7 @@ const hayOperadoresDisponibles = computed(() => {
                                     </span>
                                 </td>
                                 <td class="px-6 py-4 text-right space-x-2">
-                                    <button @click="toggleEstado(conf.IdProductoAprobacionConfig, conf.operador?.identificador?.Nombre, conf.ActivoInactivo)" class="text-amber-600 hover:text-amber-800" :title="conf.ActivoInactivo === 0 ? 'Desactivar' : 'Activar'">
+                                    <button @click="toggleEstado(conf.IdProductoAprobacionConfig, conf.operador?.identificador?.Nombre, conf.ActivoInactivo)" class="text-secondary-600 hover:text-secondary-800" :title="conf.ActivoInactivo === 0 ? 'Desactivar' : 'Activar'">
                                         <i :class="conf.ActivoInactivo === 0 ? 'fas fa-ban' : 'fas fa-check-circle'"></i>
                                     </button>
                                     <button 
@@ -256,7 +256,7 @@ const hayOperadoresDisponibles = computed(() => {
                                     No se encontraron operadores
                                 </div>
                             </div>
-                            <p v-if="!hayOperadoresDisponibles" class="text-xs text-amber-600 mt-1">
+                            <p v-if="!hayOperadoresDisponibles" class="text-xs text-secondary-600 mt-1">
                                 No hay operadores disponibles para agregar. Todos los operadores de la empresa ya están configurados.
                             </p>
                         </div>

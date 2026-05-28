@@ -136,7 +136,7 @@ const nombreSucursal = (sucursal) => {
                 </thead>
                 <tbody class="divide-y divide-gray-100">
                     <!-- Nueva fila -->
-                    <tr v-if="nuevaFila.editando" class="bg-amber-50">
+                    <tr v-if="nuevaFila.editando" class="bg-secondary-50">
                         <td class="px-4 py-2">
                             <select v-model="nuevaFila.IdSucursal" class="w-full border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500">
                                 <option value="">-- Seleccione una sucursal --</option>

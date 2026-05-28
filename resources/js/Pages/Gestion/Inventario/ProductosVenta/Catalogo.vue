@@ -156,9 +156,9 @@ onUnmounted(() => {
                     <div class="bg-white rounded-xl shadow-sm p-3 flex justify-between items-center">
                         <div>
                             <p class="text-xs text-gray-500">Sin Categoría</p>
-                            <p class="text-xl lg:text-2xl font-bold text-amber-600">{{ totalSinCategoria }}</p>
+                            <p class="text-xl lg:text-2xl font-bold text-secondary-600">{{ totalSinCategoria }}</p>
                         </div>
-                        <i class="fas fa-exclamation-triangle text-3xl text-amber-200"></i>
+                        <i class="fas fa-exclamation-triangle text-3xl text-secondary-200"></i>
                     </div>
                     
                     <!-- 🔥 Con Imagen -->
@@ -248,7 +248,7 @@ onUnmounted(() => {
                                                 <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-primary-100 text-primary-700">
                                                     <i class="fas fa-tag mr-1 text-[9px]"></i> {{ producto.categoria.nombre }}
                                                 </span>
-                                                <span v-else class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
+                                                <span v-else class="px-2 py-0.5 text-xs rounded-full bg-secondary-100 text-secondary-700">
                                                     <i class="fas fa-exclamation-triangle mr-1 text-[9px]"></i> Sin categoría
                                                 </span>
                                             </div>
@@ -301,7 +301,7 @@ onUnmounted(() => {
                                             <span v-if="producto.categoria" class="px-1.5 py-0.5 text-[10px] rounded-full bg-primary-100 text-primary-700">
                                                 {{ producto.categoria.nombre }}
                                             </span>
-                                            <span v-else class="px-1.5 py-0.5 text-[10px] rounded-full bg-amber-100 text-amber-700">
+                                            <span v-else class="px-1.5 py-0.5 text-[10px] rounded-full bg-secondary-100 text-secondary-700">
                                                 Sin categoría
                                             </span>
                                         </td>
@@ -351,7 +351,7 @@ onUnmounted(() => {
                                             <span v-if="producto.categoria" class="px-2 py-0.5 text-xs rounded-full bg-primary-100 text-primary-700">
                                                 <i class="fas fa-tag mr-1 text-[9px]"></i> {{ producto.categoria.nombre }}
                                             </span>
-                                            <span v-else class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-700">
+                                            <span v-else class="px-2 py-0.5 text-xs rounded-full bg-secondary-100 text-secondary-700">
                                                 <i class="fas fa-exclamation-triangle mr-1 text-[9px]"></i> Sin categoría
                                             </span>
                                         </td>

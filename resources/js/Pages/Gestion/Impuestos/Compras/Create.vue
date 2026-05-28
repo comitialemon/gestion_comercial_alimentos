@@ -461,8 +461,8 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Alerta de edición -->
-                <div v-if="editando" class="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-4">
-                    <div class="flex items-center gap-2 text-amber-700 text-xs">
+                <div v-if="editando" class="bg-secondary-50 border border-secondary-200 rounded-lg p-2 mb-4">
+                    <div class="flex items-center gap-2 text-secondary-700 text-xs">
                         <i class="fas fa-edit"></i>
                         <span>Editando compra N° {{ compra?.NumeroCorrelativo || 'Sin número' }}</span>
                     </div>
@@ -573,7 +573,7 @@ onUnmounted(() => {
                                 {{ guardandoDetalle ? 'Agregando...' : 'Agregar' }}
                             </button>
                             <div v-else class="flex gap-2 w-full">
-                                <button @click="actualizarProducto" :disabled="guardandoDetalle" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center">
+                                <button @click="actualizarProducto" :disabled="guardandoDetalle" class="bg-secondary-600 hover:bg-secondary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center">
                                     <i v-if="guardandoDetalle" class="fas fa-spinner fa-spin"></i>
                                     <i v-else class="fas fa-save"></i>
                                     {{ guardandoDetalle ? 'Actualizando...' : 'Actualizar' }}
@@ -596,7 +596,7 @@ onUnmounted(() => {
                                         <p class="text-sm font-medium text-gray-800">{{ item.Descripcion }}</p>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button @click="editarProducto(index)" class="text-amber-500 hover:text-amber-700" title="Editar">
+                                        <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
                                             <i class="fas fa-edit text-sm"></i>
                                         </button>
                                         <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
@@ -647,7 +647,7 @@ onUnmounted(() => {
                                         <td class="px-3 py-2 text-right font-semibold text-primary-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</td>
                                         <td class="px-3 py-2 text-center">
                                             <div class="flex gap-2 justify-center">
-                                                <button @click="editarProducto(index)" class="text-amber-500 hover:text-amber-700" title="Editar">
+                                                <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
                                                     <i class="fas fa-edit text-sm"></i>
                                                 </button>
                                                 <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
@@ -684,7 +684,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Mensaje si cabecera no guardada -->
-                <div v-else class="bg-amber-50 rounded-lg p-4 text-amber-800 text-sm text-center">
+                <div v-else class="bg-secondary-50 rounded-lg p-4 text-secondary-800 text-sm text-center">
                     <i class="fas fa-info-circle mr-1"></i>
                     Complete todos los campos de la cabecera y presione "Guardar Cabecera" para comenzar a agregar productos.
                 </div>
@@ -692,7 +692,7 @@ onUnmounted(() => {
                 <!-- Modal de Confirmación -->
                 <div v-if="mostrarConfirmacion" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div class="bg-white rounded-lg max-w-sm w-full">
-                        <div class="bg-amber-500 p-3 rounded-t-lg">
+                        <div class="bg-secondary-500 p-3 rounded-t-lg">
                             <div class="flex items-center gap-2">
                                 <i class="fas fa-exclamation-triangle text-white text-lg"></i>
                                 <h3 class="text-white font-semibold text-sm">Confirmar Contabilización</h3>

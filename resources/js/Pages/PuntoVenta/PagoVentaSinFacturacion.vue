@@ -266,7 +266,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Resumen de venta -->
-                <div class="bg-gradient-to-r from-guindo-700 to-guindo-800 rounded-lg shadow-md p-3 mb-4 text-white">
+                <div class="bg-gradient-to-r from-primary-700 to-primary-800 rounded-lg shadow-md p-3 mb-4 text-white">
                     <div class="flex justify-between items-center">
                         <div>
                             <p class="text-[10px] opacity-80">Total a pagar</p>
@@ -339,7 +339,7 @@ onUnmounted(() => {
                                     <i class="fas fa-check-circle text-[10px] mr-1"></i> 
                                     {{ clienteSeleccionado.Nombre }} ({{ clienteSeleccionado.CI_NIT }})
                                 </div>
-                                <div v-if="!clienteSeleccionado && nitCliente === '0 - SIN NIT'" class="mt-1.5 text-[11px] text-amber-600 bg-amber-50 rounded-md px-2 py-1">
+                                <div v-if="!clienteSeleccionado && nitCliente === '0 - SIN NIT'" class="mt-1.5 text-[11px] text-secondary-600 bg-secondary-50 rounded-md px-2 py-1">
                                     <i class="fas fa-info-circle text-[10px] mr-1"></i> 
                                     Cliente con NIT 0 (SIN NIT)
                                 </div>
@@ -349,7 +349,7 @@ onUnmounted(() => {
                         <!-- Sección: Métodos de Pago -->
                         <div>
                             <h3 class="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
-                                <span class="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[9px] text-amber-600">2</span>
+                                <span class="w-5 h-5 rounded-full bg-secondary-100 flex items-center justify-center text-[9px] text-secondary-600">2</span>
                                 Métodos de Pago
                             </h3>
                             
@@ -390,7 +390,7 @@ onUnmounted(() => {
                                 <i class="fas fa-exclamation-circle mr-0.5"></i>
                                 Faltan {{ (deuda - totalRegistrado).toFixed(2) }} Bs
                             </div>
-                            <div v-if="totalRegistrado > deuda" class="text-[10px] text-amber-500 mt-1">
+                            <div v-if="totalRegistrado > deuda" class="text-[10px] text-secondary-500 mt-1">
                                 <i class="fas fa-exchange-alt mr-0.5"></i>
                                 Cambio: {{ (totalRegistrado - deuda).toFixed(2) }} Bs
                             </div>

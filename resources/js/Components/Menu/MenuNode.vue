@@ -35,13 +35,12 @@ const href = computed(() => {
   return '/' + h.replace(/^\/+/, '')
 })
 
-// Detectar si es un enlace no migrado (Scriptcase)
+// Detectar si es un enlace no migrado
 const isNoMigrado = computed(() => {
   if (!href.value || isExternal.value) return false
   
   const h = href.value.toLowerCase()
   
-  // Excluir rutas que ya migramos
   const rutasMigradas = [
     '/gestion/inventario/ajustes',
     '/gestion/inventario/reporte-inventario',
@@ -57,22 +56,16 @@ const isNoMigrado = computed(() => {
     '/gestion/inventario/categorias-producto',
   ]
   
-  // Si es una ruta migrada, NO es no migrado
   if (rutasMigradas.some(ruta => h === ruta || h.startsWith(ruta + '/'))) {
     return false
   }
   
-  // Detectar si tiene formato Scriptcase (con guiones bajos)
   const tieneGuionBajo = /[a-z]+_[a-z]+/.test(h)
-  
-  // Detectar si no tiene formato Laravel
   const noTieneFormatoLaravel = !h.startsWith('/gestion/') && 
                                  !h.startsWith('/facturacion/') && 
                                  !h.startsWith('/venta-') &&
                                  !h.startsWith('/contexto') &&
                                  !h.startsWith('/oficial')
-  
-  // Detectar si es una URL amigable de Scriptcase
   const esScriptcaseAmigable = /^\/[a-z]+[a-z\-]+$/.test(h) && h.length > 5 && !h.includes('gestion')
   
   return tieneGuionBajo || noTieneFormatoLaravel || esScriptcaseAmigable
@@ -108,36 +101,104 @@ const toggle = () => {
   if (!href.value && hasRawChildren.value) open.value = !open.value
 }
 
-// 🔥 CLASES DINÁMICAS BASADAS EN EL TEMA
+// 🔥 ESTILOS DINÁMICOS COMPLETOS
 const activeClass = computed(() => {
   if (theme.value.hasCustomTheme) {
-    return 'bg-primary-800 text-white font-medium'
+    return 'active-custom-theme'
   }
-  return 'bg-gray-800 text-white font-medium'
+  return 'active-default-theme'
 })
 
-const hoverClass = computed(() => {
+const parentClass = computed(() => {
   if (theme.value.hasCustomTheme) {
-    return 'hover:bg-primary-100 hover:text-primary-800'
+    return 'parent-custom-theme'
   }
-  return 'hover:bg-gray-100 hover:text-gray-800'
+  return 'parent-default-theme'
 })
 
-const iconColorClass = computed(() => {
-  if (isNoMigrado.value) return 'text-amber-500'
-  if (theme.value.hasCustomTheme) return 'text-primary-500'
-  return 'text-gray-500'
+const childClass = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return 'child-custom-theme'
+  }
+  return 'child-default-theme'
 })
 
-const borderColorClass = computed(() => {
-  if (isNoMigrado.value) return 'border-amber-400'
-  if (theme.value.hasCustomTheme) return 'border-primary-200'
-  return 'border-gray-200'
+const noMigradoClass = computed(() => {
+  return 'no-migrado-item'
 })
 
-const activeIconClass = computed(() => {
-  if (isNoMigrado.value) return 'text-amber-500'
-  return 'text-white'
+const activeStyle = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return {
+      backgroundColor: `var(--color-primary-700)`,
+      color: '#ffffff'
+    }
+  }
+  return {
+    backgroundColor: '#374151',
+    color: '#ffffff'
+  }
+})
+
+const parentStyle = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return {
+      color: `var(--color-primary-200)`
+    }
+  }
+  return {
+    color: '#e5e5e5'
+  }
+})
+
+const childStyle = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return {
+      color: `var(--color-primary-300)`
+    }
+  }
+  return {
+    color: '#d1d5db'
+  }
+})
+
+const hoverStyle = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return {
+      backgroundColor: `var(--color-primary-800)`,
+      color: `var(--color-primary-100)`
+    }
+  }
+  return {
+    backgroundColor: '#4b5563',
+    color: '#ffffff'
+  }
+})
+
+const noMigradoStyle = computed(() => {
+  if (theme.value.hasCustomTheme) {
+    return {
+      color: `var(--color-secondary)`,
+      borderLeftColor: `var(--color-secondary)`
+    }
+  }
+  return {
+    color: '#6b7280',
+    borderLeftColor: '#6b7280'
+  }
+})
+
+const iconStyle = computed(() => {
+  if (isNoMigrado.value) {
+    return noMigradoStyle.value
+  }
+  if (isActive(href.value)) {
+    return { color: '#ffffff' }
+  }
+  if (hasRawChildren.value) {
+    return parentStyle.value
+  }
+  return childStyle.value
 })
 </script>
 
@@ -148,18 +209,18 @@ const activeIconClass = computed(() => {
       :href="href || undefined"
       :target="isExternal ? '_blank' : undefined"
       :rel="isExternal ? 'noopener' : undefined"
-      class="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] leading-4 transition-colors"
+      class="group flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[13px] leading-4 transition-all duration-200"
       :class="[
-        isActive(href) ? activeClass : isNoMigrado
-          ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 border-l-2 border-amber-400'
-          : `text-gray-700 ${hoverClass}`
+        isActive(href) ? 'active-item' : '',
+        isNoMigrado ? 'no-migrado-item' : '',
+        !isActive(href) && !isNoMigrado ? 'normal-item' : ''
       ]"
+      :style="isActive(href) ? activeStyle : (isNoMigrado ? noMigradoStyle : (hasRawChildren ? parentStyle : childStyle))"
       @click="toggle"
     >
       <span class="truncate flex items-center gap-1.5" :title="label">
-        <!-- Icono de advertencia para enlaces no migrados -->
-        <i v-if="isNoMigrado && !collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
-        <i v-if="isNoMigrado && collapsed" class="fas fa-exclamation-triangle text-amber-500 text-xs"></i>
+        <i v-if="isNoMigrado && !collapsed" class="fas fa-exclamation-triangle text-xs" :style="{ color: `var(--color-secondary)` }"></i>
+        <i v-if="isNoMigrado && collapsed" class="fas fa-exclamation-triangle text-xs" :style="{ color: `var(--color-secondary)` }"></i>
         
         <span v-if="!collapsed">{{ label }}</span>
         <span v-else class="font-semibold">{{ String(label || '').slice(0,1) }}</span>
@@ -168,15 +229,13 @@ const activeIconClass = computed(() => {
       <i 
         v-if="children.length" 
         class="fas fa-chevron-right ml-2 text-xs transition-all duration-200"
-        :class="[
-          open ? 'rotate-90' : '',
-          isActive(href) ? activeIconClass : iconColorClass
-        ]"
+        :class="[open ? 'rotate-90' : '']"
+        :style="iconStyle"
       ></i>
     </component>
 
     <transition name="fade">
-      <ul v-if="children.length && open" class="ml-3 border-l pl-2" :class="borderColorClass">
+      <ul v-if="children.length && open" class="ml-3 border-l pl-2" :style="{ borderColor: `var(--color-primary-700)` }">
         <MenuNode
           v-for="c in children"
           :key="c.id ?? c.Id"
@@ -191,6 +250,35 @@ const activeIconClass = computed(() => {
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: all 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; transform: translateY(-4px); }
+/* Transición */
+.fade-enter-active, .fade-leave-active { 
+  transition: all 0.15s ease; 
+}
+.fade-enter-from, .fade-leave-to { 
+  opacity: 0; 
+  transform: translateY(-4px); 
+}
+
+/* Estilos hover generales */
+.normal-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Para tema default */
+:root {
+  --default-hover-bg: #4b5563;
+}
+
+/* Scrollbar personalizado */
+aside::-webkit-scrollbar {
+  width: 4px;
+}
+aside::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+}
+aside::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
 </style>

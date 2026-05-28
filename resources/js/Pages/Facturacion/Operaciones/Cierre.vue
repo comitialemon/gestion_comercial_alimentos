@@ -155,15 +155,15 @@ onMounted(() => {
     </div>
 
     <!-- CUIS que se va a invalidar -->
-    <div class="mb-6 p-4 bg-amber-50 rounded-xl border border-amber-200">
+    <div class="mb-6 p-4 bg-secondary-50 rounded-xl border border-secondary-200">
       <div class="flex items-center gap-2 mb-3">
-        <svg class="w-5 h-5 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 text-secondary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <h3 class="text-sm font-semibold text-amber-800">CUIS que será invalidado</h3>
+        <h3 class="text-sm font-semibold text-secondary-800">CUIS que será invalidado</h3>
       </div>
       
-      <div v-if="cargandoCuis" class="text-sm text-amber-600">
+      <div v-if="cargandoCuis" class="text-sm text-secondary-600">
         Cargando información del CUIS...
       </div>
       
@@ -171,7 +171,7 @@ onMounted(() => {
         <div class="flex justify-between items-center">
           <div>
             <span class="text-xs text-gray-500">Código CUIS</span>
-            <div class="font-mono text-lg font-bold text-amber-600">
+            <div class="font-mono text-lg font-bold text-secondary-600">
               {{ cuisActual.cuis_actual.codigo }}
             </div>
             <div class="text-xs text-gray-400 mt-1">
@@ -181,7 +181,7 @@ onMounted(() => {
               Asociado al PDV: {{ cuisActual.pdv_cero?.nombre }} (Código: {{ cuisActual.pdv_cero?.codigo }})
             </div>
           </div>
-          <div class="px-3 py-1 bg-amber-100 text-amber-700 text-xs rounded-full">
+          <div class="px-3 py-1 bg-secondary-100 text-secondary-700 text-xs rounded-full">
             Activo
           </div>
         </div>

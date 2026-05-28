@@ -9,16 +9,22 @@ import { computed, ref, provide, onMounted, onBeforeUnmount, watch } from 'vue'
 const page = usePage()
 const ui = useUiStore()
 
-// 🔥 TEMA DINÁMICO DEL CLIENTE
+// Asegurar que ui store existe y tiene sidebarOpen
+if (!ui.sidebarOpen) {
+    ui.sidebarOpen = false
+}
+
+// 🔥 TEMA DINÁMICO DEL CLIENTE (con los dos tipos de texto)
 const theme = computed(() => page.props.theme || {
     primary: '#1f2937',
     primary_rgb: '31, 41, 55',
     secondary: '#4b5563',
     secondary_rgb: '75, 85, 99',
-    background: '#ffffff',
-    text: '#000000',
     accent: '#6b7280',
     accent_rgb: '107, 114, 128',
+    background: '#ffffff',
+    text_dark: '#111827',   // Texto sobre fondos claros
+    text_light: '#ffffff',   // Texto sobre fondos oscuros
     systemName: 'Sistema Gestion',
     hasCustomTheme: false
 })
@@ -32,12 +38,15 @@ const applyTheme = () => {
     root.style.setProperty('--color-primary-rgb', theme.value.primary_rgb)
     root.style.setProperty('--color-secondary', theme.value.secondary)
     root.style.setProperty('--color-secondary-rgb', theme.value.secondary_rgb)
-    root.style.setProperty('--color-background', theme.value.background)
-    root.style.setProperty('--color-text', theme.value.text)
     root.style.setProperty('--color-accent', theme.value.accent)
     root.style.setProperty('--color-accent-rgb', theme.value.accent_rgb)
+    root.style.setProperty('--color-background', theme.value.background)
     
-    // Generar variantes del color primario (si no tiene tema custom, usar grises)
+    // 🔥 DOS TIPOS DE TEXTO
+    root.style.setProperty('--color-text-dark', theme.value.text_dark)
+    root.style.setProperty('--color-text-light', theme.value.text_light)
+    
+    // Generar variantes del color primario
     if (theme.value.hasCustomTheme) {
         root.style.setProperty('--color-primary-50', lightenColor(theme.value.primary, 0.95))
         root.style.setProperty('--color-primary-100', lightenColor(theme.value.primary, 0.9))
@@ -68,7 +77,6 @@ const applyTheme = () => {
 
 // Funciones auxiliares para claros/oscuros
 function lightenColor(hex, percent) {
-    // Simplificado - convierte HEX a RGB y aplica porcentaje
     const rgb = hexToRgb(hex)
     if (!rgb) return hex
     
@@ -120,45 +128,37 @@ const tieneContexto = computed(() => page.props?.ctx?.ready === true)
 const tienePuntoVenta = computed(() => page.props?.ctx?.punto_venta_id > 0)
 const tieneFacturacion = computed(() => page.props?.ctx?.tiene_facturacion === true)
 
-// 🔥 CONTROL DE HISTORIAL - Evita que pueda ir atrás
+// 🔥 CONTROL DE HISTORIAL
 let historialBloqueado = false
 
 const bloquearHistorial = () => {
     if (historialBloqueado) return
     
-    // Agregar una entrada falsa en el historial para evitar que salga de la app
     if (tieneContexto.value && tienePuntoVenta.value) {
         window.history.pushState({ pagina: 'bloqueo' }, '', window.location.href)
         historialBloqueado = true
     }
 }
 
-const handlePopState = (event) => {
-    // Si ya tiene contexto completo
+const handlePopState = () => {
     if (tieneContexto.value && tienePuntoVenta.value) {
         const path = window.location.pathname
         
-        // Si intenta ir a contexto o PDV, redirigir a oficial
         if (path === '/contexto' || path === '/contexto/pdv' || path.startsWith('/contexto/')) {
             router.get('/oficial')
             return
         }
         
-        // Si intenta salir de la app (ir a página anterior fuera de la app)
-        // Agregar una nueva entrada para mantenerlo dentro
         window.history.pushState({ pagina: 'bloqueo' }, '', '/oficial')
     }
 }
 
-// Prevenir navegación con teclas (backspace, Alt+Izquierda, etc.)
 const prevenirNavegacionTeclado = (event) => {
     if (tieneContexto.value && tienePuntoVenta.value) {
-        // Backspace
         if (event.key === 'Backspace') {
             event.preventDefault()
             return false
         }
-        // Alt + Izquierda (atajo de navegador)
         if (event.altKey && event.key === 'ArrowLeft') {
             event.preventDefault()
             return false
@@ -167,13 +167,8 @@ const prevenirNavegacionTeclado = (event) => {
 }
 
 onMounted(() => {
-    // Aplicar tema al montar
     applyTheme()
-    
-    // Agregar entrada de bloqueo al cargar
     bloquearHistorial()
-    
-    // Escuchar eventos
     window.addEventListener('popstate', handlePopState)
     window.addEventListener('keydown', prevenirNavegacionTeclado)
 })
@@ -199,7 +194,7 @@ provide('toast', {
         class="min-h-screen"
         :style="{ 
             backgroundColor: 'var(--color-background)', 
-            color: 'var(--color-text)' 
+            color: 'var(--color-text-dark)' 
         }"
     >
         <AppNavbar />
@@ -220,10 +215,11 @@ provide('toast', {
     --color-primary-rgb: 31, 41, 55;
     --color-secondary: #4b5563;
     --color-secondary-rgb: 75, 85, 99;
-    --color-background: #ffffff;
-    --color-text: #000000;
     --color-accent: #6b7280;
     --color-accent-rgb: 107, 114, 128;
+    --color-background: #ffffff;
+    --color-text-dark: #111827;
+    --color-text-light: #ffffff;
 }
 
 /* Clases utilitarias usando CSS variables */
@@ -260,6 +256,9 @@ provide('toast', {
 .bg-primary-900 {
     background-color: var(--color-primary-900);
 }
+.bg-primary-950 {
+    background-color: var(--color-primary-950);
+}
 
 .text-primary {
     color: var(--color-primary);
@@ -274,6 +273,15 @@ provide('toast', {
     color: var(--color-primary-700);
 }
 
+/* 🔥 CLASES PARA TEXTOS */
+.text-dark {
+    color: var(--color-text-dark);
+}
+.text-light {
+    color: var(--color-text-light);
+}
+
+/* Hovers */
 .hover\:bg-primary-600:hover {
     background-color: var(--color-primary-600);
 }
@@ -288,10 +296,34 @@ provide('toast', {
 .border-primary {
     border-color: var(--color-primary);
 }
+.border-primary-200 {
+    border-color: var(--color-primary-200);
+}
+.border-primary-300 {
+    border-color: var(--color-primary-300);
+}
+
+/* Focus */
 .focus\:ring-primary-500:focus {
     --tw-ring-color: var(--color-primary-500);
 }
 .focus\:border-primary-500:focus {
     border-color: var(--color-primary-500);
+}
+
+/* Scrollbar personalizada para el sidebar */
+aside::-webkit-scrollbar {
+    width: 4px;
+}
+aside::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+aside::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+}
+aside::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.5);
 }
 </style>

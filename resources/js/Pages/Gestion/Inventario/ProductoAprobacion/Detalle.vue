@@ -90,7 +90,7 @@ const totalDetallesInventario = props.detallesInventario?.length || 0
 
                 <!-- Estado de aprobación -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
-                    <div class="bg-amber-600 px-6 py-4">
+                    <div class="bg-secondary-600 px-6 py-4">
                         <h2 class="text-lg font-bold text-white flex items-center gap-2">
                             <i class="fas fa-clipboard-list"></i> Estado de Aprobación
                         </h2>

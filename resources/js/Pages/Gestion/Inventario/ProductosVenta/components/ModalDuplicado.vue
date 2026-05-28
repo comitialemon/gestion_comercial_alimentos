@@ -3,10 +3,10 @@
         <div class="bg-white rounded-xl max-w-md w-full overflow-hidden shadow-xl transform transition-all">
             
             <!-- Header con color de advertencia -->
-            <div class="bg-amber-500 text-white p-4">
+            <div class="bg-secondary-500 text-white p-4">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                        <i class="fas fa-exclamation-triangle text-amber-500 text-xl"></i>
+                        <i class="fas fa-exclamation-triangle text-secondary-500 text-xl"></i>
                     </div>
                     <h3 class="text-lg font-bold">{{ titulo || 'Producto Duplicado' }}</h3>
                 </div>

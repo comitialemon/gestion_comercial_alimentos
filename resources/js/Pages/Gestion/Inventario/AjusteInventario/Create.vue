@@ -488,7 +488,7 @@ onUnmounted(() => {
                                 <option v-for="t in tiposFiltrados" :key="t.id" :value="t.id">{{ t.nombre }}</option>
                             </select>
                             <p v-if="errors.IdTipoOperacion" class="text-red-500 text-[10px] mt-0.5">{{ errors.IdTipoOperacion }}</p>
-                            <p v-if="form.ConceptoOperacion && tiposFiltrados.length === 0" class="text-amber-500 text-[10px] mt-0.5">No hay tipos para este concepto</p>
+                            <p v-if="form.ConceptoOperacion && tiposFiltrados.length === 0" class="text-secondary-500 text-[10px] mt-0.5">No hay tipos para este concepto</p>
                         </div>
 
                         <!-- Almacén -->
@@ -572,7 +572,7 @@ onUnmounted(() => {
                                 {{ guardandoDetalle ? 'Agregando...' : 'Agregar' }}
                             </button>
                             <div v-else class="flex gap-2 w-full">
-                                <button @click="actualizarProducto" :disabled="guardandoDetalle || !nuevoProducto.IdProducto" class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center">
+                                <button @click="actualizarProducto" :disabled="guardandoDetalle || !nuevoProducto.IdProducto" class="bg-secondary-600 hover:bg-secondary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center">
                                     <i v-if="guardandoDetalle" class="fas fa-spinner fa-spin"></i>
                                     <i v-else class="fas fa-edit"></i>
                                     {{ guardandoDetalle ? 'Actualizando...' : 'Actualizar' }}
@@ -595,7 +595,7 @@ onUnmounted(() => {
                                         <p class="text-sm font-medium text-gray-800">{{ item.Descripcion }}</p>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button @click="editarProducto(index)" class="text-amber-500 hover:text-amber-700" title="Editar">
+                                        <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
                                             <i class="fas fa-edit text-sm"></i>
                                         </button>
                                         <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
@@ -640,7 +640,7 @@ onUnmounted(() => {
                                         <td class="px-3 py-2 text-right font-semibold text-primary-600">{{ Number(item.Bolivianos).toFixed(2) }}</td>
                                         <td class="px-3 py-2 text-center">
                                             <div class="flex gap-2 justify-center">
-                                                <button @click="editarProducto(index)" class="text-amber-500 hover:text-amber-700" title="Editar">
+                                                <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
                                                     <i class="fas fa-edit text-sm"></i>
                                                 </button>
                                                 <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
@@ -686,7 +686,7 @@ onUnmounted(() => {
                 <!-- Modal de Confirmación -->
                 <div v-if="mostrarConfirmacion" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                     <div class="bg-white rounded-lg max-w-sm w-full">
-                        <div class="bg-amber-500 p-3 rounded-t-lg">
+                        <div class="bg-secondary-500 p-3 rounded-t-lg">
                             <div class="flex items-center gap-2">
                                 <i class="fas fa-exclamation-triangle text-white text-lg"></i>
                                 <h3 class="text-white font-semibold text-sm">Confirmar Contabilización</h3>

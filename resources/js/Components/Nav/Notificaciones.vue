@@ -1,7 +1,20 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, inject } from 'vue'
 import { Link } from '@inertiajs/vue3'
 import axios from 'axios'
+import { usePage } from '@inertiajs/vue3'
+
+const page = usePage()
+const toast = inject('toast')
+
+// 🔥 TEMA DINÁMICO
+const theme = computed(() => page.props?.theme || {
+    primary: '#1f2937',
+    primary_rgb: '31, 41, 55',
+    secondary: '#4b5563',
+    hasCustomTheme: false,
+    text_light: '#ffffff'
+})
 
 const notificaciones = ref([])
 const cargando = ref(false)
@@ -18,10 +31,52 @@ const totalPendientes = computed(() => {
     return notificaciones.value.length
 })
 
-// Verificar si hay notificaciones no vistas (efecto visual)
+// Verificar si hay notificaciones no vistas
 const hayNotificaciones = computed(() => {
     return totalPendientes.value > 0
 })
+
+// 🔥 ESTILOS DINÁMICOS
+const buttonStyle = computed(() => ({
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    color: 'var(--color-text-light)'
+}))
+
+const buttonActiveStyle = computed(() => ({
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    color: 'var(--color-text-light)'
+}))
+
+const headerStyle = computed(() => ({
+    backgroundColor: `rgba(var(--color-primary-rgb), 0.1)`,
+    borderBottomColor: `rgba(var(--color-primary-rgb), 0.2)`
+}))
+
+const headerTextStyle = computed(() => ({
+    color: `var(--color-primary)`
+}))
+
+const badgeStyle = computed(() => ({
+    backgroundColor: `var(--color-primary)`,
+    color: `var(--color-text-light)`
+}))
+
+const badgePendienteStyle = computed(() => ({
+    backgroundColor: `var(--color-primary)`,
+    color: `var(--color-text-light)`
+}))
+
+const precioStyle = computed(() => ({
+    color: `var(--color-primary)`
+}))
+
+const footerLinkStyle = computed(() => ({
+    color: `var(--color-primary)`
+}))
+
+const spinnerStyle = computed(() => ({
+    color: `var(--color-primary)`
+}))
 
 // Cargar notificaciones pendientes
 const cargarNotificaciones = async () => {
@@ -46,10 +101,10 @@ const aprobarProducto = async (votoId) => {
         if (notificaciones.value.length === 0) {
             abierto.value = false
         }
-        mostrarToast('Producto aprobado correctamente', 'success')
+        toast?.success('✅ Aprobado', 'Producto aprobado correctamente')
     } catch (error) {
         console.error('Error al aprobar:', error)
-        mostrarToast('Error al aprobar el producto', 'error')
+        toast?.error('❌ Error', 'Error al aprobar el producto')
     }
 }
 
@@ -65,22 +120,11 @@ const rechazarProducto = async (votoId) => {
         if (notificaciones.value.length === 0) {
             abierto.value = false
         }
-        mostrarToast('Producto rechazado correctamente', 'success')
+        toast?.success('✅ Rechazado', 'Producto rechazado correctamente')
     } catch (error) {
         console.error('Error al rechazar:', error)
-        mostrarToast('Error al rechazar el producto', 'error')
+        toast?.error('❌ Error', 'Error al rechazar el producto')
     }
-}
-
-// Mostrar toast temporal
-const mostrarToast = (mensaje, tipo = 'success') => {
-    const toast = document.createElement('div')
-    toast.className = `fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${
-        tipo === 'success' ? 'bg-green-500' : 'bg-red-500'
-    }`
-    toast.innerHTML = `<i class="fas ${tipo === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${mensaje}`
-    document.body.appendChild(toast)
-    setTimeout(() => toast.remove(), 3000)
 }
 
 // Alternar dropdown
@@ -113,25 +157,21 @@ const formatearFecha = (fecha) => {
     return date.toLocaleDateString('es-BO')
 }
 
-// Escuchar clics fuera del dropdown
+// Recargar notificaciones cada 30 segundos
+let intervalo
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
     window.addEventListener('resize', handleResize)
     cargarNotificaciones()
+    intervalo = setInterval(() => {
+        cargarNotificaciones()
+    }, 30000)
 })
 
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside)
     window.removeEventListener('resize', handleResize)
     if (intervalo) clearInterval(intervalo)
-})
-
-// Recargar notificaciones cada 30 segundos
-let intervalo
-onMounted(() => {
-    intervalo = setInterval(() => {
-        cargarNotificaciones()
-    }, 30000)
 })
 </script>
 
@@ -145,33 +185,33 @@ onMounted(() => {
                 'animate-pulse ring-2 ring-yellow-400 ring-opacity-75': hayNotificaciones,
                 'hover:bg-white/10': true
             }"
-            style="color: white; background-color: rgba(255,255,255,0.1);"
-            :style="hayNotificaciones ? { backgroundColor: 'rgba(255,255,255,0.25)' } : {}"
+            :style="hayNotificaciones ? buttonActiveStyle : buttonStyle"
             :title="isMobile ? 'Notificaciones' : 'Notificaciones de aprobación'"
         >
             <i class="fas fa-bell text-xs sm:text-sm"></i>
             <span 
                 v-if="totalPendientes > 0" 
-                class="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] sm:text-[10px] font-bold rounded-full min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] flex items-center justify-center px-0.5 sm:px-1 animate-bounce"
+                class="absolute -top-1 -right-1 text-white text-[9px] sm:text-[10px] font-bold rounded-full min-w-[16px] sm:min-w-[18px] h-[16px] sm:h-[18px] flex items-center justify-center px-0.5 sm:px-1 animate-bounce"
+                :style="badgePendienteStyle"
             >
                 {{ totalPendientes > 99 ? '99+' : totalPendientes }}
             </span>
         </button>
 
-        <!-- 🔥 DROPDOWN CORREGIDO - Centrado en móvil -->
+        <!-- Dropdown -->
         <div 
             v-if="abierto"
             class="fixed sm:absolute top-16 sm:top-auto sm:right-0 sm:mt-2 w-[calc(100vw-2rem)] sm:w-96 bg-white rounded-lg shadow-xl z-50 overflow-hidden border border-gray-200"
             :class="isMobile ? 'left-1/2 -translate-x-1/2' : 'absolute right-0 mt-2'"
         >
-            <!-- Header -->
-            <div class="px-3 sm:px-4 py-2.5 sm:py-3 border-b" style="background-color: #fdf2f2;">
+            <!-- Header con colores dinámicos -->
+            <div class="px-3 sm:px-4 py-2.5 sm:py-3 border-b" :style="headerStyle">
                 <div class="flex items-center justify-between">
-                    <h3 class="text-xs sm:text-sm font-semibold" style="color: #61131a;">
+                    <h3 class="text-xs sm:text-sm font-semibold" :style="headerTextStyle">
                         <i class="fas fa-bell mr-1 sm:mr-2 text-xs sm:text-sm"></i>
                         Notificaciones
                     </h3>
-                    <span v-if="totalPendientes > 0" class="text-[10px] sm:text-xs text-white px-1.5 sm:px-2 py-0.5 rounded-full" style="background-color: #61131a;">
+                    <span v-if="totalPendientes > 0" class="text-[10px] sm:text-xs text-white px-1.5 sm:px-2 py-0.5 rounded-full" :style="badgeStyle">
                         {{ totalPendientes }} pendiente(s)
                     </span>
                 </div>
@@ -181,7 +221,7 @@ onMounted(() => {
             <div class="max-h-80 sm:max-h-96 overflow-y-auto">
                 <!-- Cargando -->
                 <div v-if="cargando" class="flex justify-center py-6 sm:py-8">
-                    <i class="fas fa-spinner fa-spin text-base sm:text-lg" style="color: #61131a;"></i>
+                    <i class="fas fa-spinner fa-spin text-base sm:text-lg" :style="spinnerStyle"></i>
                 </div>
 
                 <!-- Sin notificaciones -->
@@ -211,7 +251,7 @@ onMounted(() => {
                                 <p class="text-[10px] sm:text-xs text-gray-400 mt-1">
                                     <i class="far fa-clock mr-1"></i> {{ formatearFecha(notif.FechaSolicitud) }}
                                 </p>
-                                <p class="text-[10px] sm:text-xs font-semibold mt-1" style="color: #61131a;">
+                                <p class="text-[10px] sm:text-xs font-semibold mt-1" :style="precioStyle">
                                     Precio: {{ Number(notif.producto?.PrecioVenta).toFixed(2) }} Bs
                                 </p>
                             </div>
@@ -236,12 +276,12 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- Footer con enlace a lista completa -->
+            <!-- Footer con enlace -->
             <div class="px-3 sm:px-4 py-2 sm:py-2.5 border-t bg-gray-50 text-center">
                 <Link 
                     href="/gestion/productos-aprobacion/pendientes" 
                     class="text-[10px] sm:text-xs font-medium transition hover:underline"
-                    style="color: #61131a;"
+                    :style="footerLinkStyle"
                 >
                     Ver todos los pendientes 
                     <i class="fas fa-arrow-right ml-1 text-[8px] sm:text-[10px]"></i>
@@ -284,7 +324,7 @@ onMounted(() => {
     animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* 🔥 Ajuste para que el dropdown no se salga en móvil */
+/* Ajuste para que el dropdown no se salga en móvil */
 @media (max-width: 768px) {
     .notificaciones-dropdown .fixed {
         top: 56px;

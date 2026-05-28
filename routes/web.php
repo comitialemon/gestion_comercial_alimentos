@@ -70,6 +70,7 @@ use App\Http\Controllers\Gestion\Contabilidad\AnalisisCuentaController;
 use App\Http\Controllers\Gestion\Contabilidad\ImprimirDiarioController;
 use App\Http\Controllers\Gestion\Impuestos\AnularFacturaAdminController;
 use App\Http\Controllers\Menu\MenuAdministradorController;
+use App\Http\Controllers\Gestion\Configuracion\TemaClienteController;
 
 
 // ============================================
@@ -87,6 +88,13 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // ============================================
 Route::middleware(['auth.operador'])->group(function () {
 
+    // ==================== CONFIGURACIÓN DE TEMA ====================
+    Route::prefix('gestion/configuracion/tema')->group(function () {
+        // Tema del cliente actual
+        Route::get('/', [TemaClienteController::class, 'index'])->name('gestion.configuracion.tema.index');
+    });
+
+    // ==================== MENÚ ADMINISTRADOR ====================
     Route::prefix('gestion/menu-administrador')->group(function () {
         Route::get('/', [MenuAdministradorController::class, 'index'])->name('gestion.menu-administrador.index');
         Route::post('/', [MenuAdministradorController::class, 'store'])->name('gestion.menu-administrador.store');

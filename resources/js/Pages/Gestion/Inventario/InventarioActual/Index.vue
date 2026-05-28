@@ -74,7 +74,7 @@ const verMovimientos = async (producto) => {
 const getStockClass = (stock) => {
     const stockNum = Number(stock) || 0
     if (stockNum <= 0) return 'text-red-600 font-bold'
-    if (stockNum < 10) return 'text-amber-600 font-semibold'
+    if (stockNum < 10) return 'text-secondary-600 font-semibold'
     return 'text-emerald-600'
 }
 

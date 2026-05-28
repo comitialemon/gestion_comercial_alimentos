@@ -25,14 +25,14 @@ const sidebarBgColor = computed(() => {
     if (theme.value.hasCustomTheme) {
         return 'var(--color-primary-800)'
     }
-    return '#1f2937' // gray-800 (default)
+    return '#1f2937'
 })
 
-const sidebarHoverColor = computed(() => {
+const footerBgColor = computed(() => {
     if (theme.value.hasCustomTheme) {
-        return 'var(--color-primary-700)'
+        return 'var(--color-primary-900)'
     }
-    return '#374151' // gray-700 (default)
+    return '#111827'
 })
 </script>
 
@@ -45,16 +45,17 @@ const sidebarHoverColor = computed(() => {
             @click="ui.closeMobile()"
         />
         
-        <!-- Sidebar -->
+        <!-- 🔥 SIDEBAR CON ALTURA DINÁMICA (top-16 = 64px) -->
         <aside
-            class="fixed top-[56px] z-50 h-[calc(100vh-56px)] w-64 overflow-y-auto shadow-lg transition-transform duration-200 ease-out"
+            class="fixed top-16 z-50 h-[calc(100vh-4rem)] w-64 overflow-y-auto shadow-lg transition-transform duration-200 ease-out"
             :class="[
                 ui.sidebarMobileOpen ? 'translate-x-0' : '-translate-x-full',
                 ui.sidebarOpen ? 'lg:translate-x-0' : 'lg:-translate-x-full',
             ]"
             :style="{ backgroundColor: sidebarBgColor }"
         >
-            <nav class="p-2">
+            <!-- Contenido del menú -->
+            <nav class="p-2 pb-20">
                 <ul class="space-y-0.5">
                     <MenuNode
                         v-for="it in menuItems"
@@ -63,14 +64,15 @@ const sidebarHoverColor = computed(() => {
                         :collapsed="false"
                         :depth="0"
                         :visited="new Set()"
-                        :hover-bg="sidebarHoverColor"
                     />
                 </ul>
             </nav>
             
-            <!-- Footer del sidebar con información del tema -->
-            <div class="absolute bottom-0 left-0 right-0 p-3 text-center border-t text-xs"
+            <!-- Footer -->
+            <div 
+                class="mt-auto p-3 text-center border-t text-xs"
                 :style="{ 
+                    backgroundColor: footerBgColor,
                     borderColor: 'rgba(255,255,255,0.1)',
                     color: 'rgba(255,255,255,0.5)'
                 }"
@@ -101,5 +103,15 @@ aside::-webkit-scrollbar-thumb {
 
 aside::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.5);
+}
+
+/* Hacer que el sidebar use flex para empujar el footer hacia abajo */
+aside {
+    display: flex;
+    flex-direction: column;
+}
+
+nav {
+    flex: 1;
 }
 </style>

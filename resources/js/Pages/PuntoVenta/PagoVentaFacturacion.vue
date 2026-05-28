@@ -284,7 +284,7 @@ onMounted(() => {
                                     </div>
                                     <p v-if="mensajeNit" class="text-[11px] mt-1" :class="{
                                         'text-green-600': tipoMensaje === 'success',
-                                        'text-amber-600': tipoMensaje === 'warning',
+                                        'text-secondary-600': tipoMensaje === 'warning',
                                         'text-red-600': tipoMensaje === 'error'
                                     }">{{ mensajeNit }}</p>
                                 </div>
@@ -322,7 +322,7 @@ onMounted(() => {
                                 </option>
                             </select>
                             <p v-if="loadingCatalogos" class="text-xs text-gray-400 mt-1">Cargando...</p>
-                            <p v-else-if="metodosPago.length === 0" class="text-xs text-amber-600 mt-1">⚠️ No hay métodos configurados</p>
+                            <p v-else-if="metodosPago.length === 0" class="text-xs text-secondary-600 mt-1">⚠️ No hay métodos configurados</p>
                         </div>
 
                         <div v-if="metodoSeleccionado?.cuentas?.length">

@@ -63,9 +63,9 @@ const getColorClasses = () => {
             }
         default:
             return {
-                button: 'bg-amber-600 hover:bg-amber-700 focus:ring-amber-500',
-                icon: 'text-amber-600',
-                bg: 'bg-amber-100'
+                button: 'bg-secondary-600 hover:bg-secondary-700 focus:ring-secondary-500',
+                icon: 'text-secondary-600',
+                bg: 'bg-secondary-100'
             }
     }
 }

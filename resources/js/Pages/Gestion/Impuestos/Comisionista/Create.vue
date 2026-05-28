@@ -160,8 +160,8 @@ const volver = () => {
             <div class="max-w-2xl mx-auto">
                 <!-- Header -->
                 <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-3" :class="editando ? 'bg-amber-100' : 'bg-emerald-100'">
-                        <i class="fas" :class="editando ? 'fa-pencil-alt text-amber-600' : 'fa-plus text-emerald-600'"></i>
+                    <div class="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-3" :class="editando ? 'bg-secondary-100' : 'bg-emerald-100'">
+                        <i class="fas" :class="editando ? 'fa-pencil-alt text-secondary-600' : 'fa-plus text-emerald-600'"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">
                         {{ editando ? 'Editar Comisionista' : 'Nuevo Comisionista' }}

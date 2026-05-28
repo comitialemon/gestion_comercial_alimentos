@@ -360,7 +360,7 @@ onMounted(() => {
                                                 @change="onCheckboxChange(item, $event)"
                                                 class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                             >
-                                            <i :class="item.hasChildren ? 'fas fa-folder text-amber-500' : 'fas fa-file-alt text-blue-400'"></i>
+                                            <i :class="item.hasChildren ? 'fas fa-folder text-secondary-500' : 'fas fa-file-alt text-blue-400'"></i>
                                             <span class="text-sm text-gray-700">{{ item.title }}</span>
                                         </label>
                                     </div>
@@ -386,7 +386,7 @@ onMounted(() => {
                                                         @change="onCheckboxChange(child, $event)"
                                                         class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                                     >
-                                                    <i :class="child.hasChildren ? 'fas fa-folder text-amber-500' : 'fas fa-file-alt text-blue-400'"></i>
+                                                    <i :class="child.hasChildren ? 'fas fa-folder text-secondary-500' : 'fas fa-file-alt text-blue-400'"></i>
                                                     <span class="text-sm text-gray-700">{{ child.title }}</span>
                                                 </label>
                                             </div>
