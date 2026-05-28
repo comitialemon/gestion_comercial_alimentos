@@ -276,6 +276,16 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
     });
 
+    // ==================== REPORTE VENTAS POR OPERADOR - ADMINISTRADOR ====================
+    Route::get('/gestion/reportes/ventas-por-operador', [App\Http\Controllers\Gestion\Reportes\ReporteVentasSupervisorPorOperadorController::class, 'index'])->name('gestion.reportes.ventas-por-operador');
+
+    // ==================== REPORTE UNIDADES VENDIDAS ====================
+    Route::prefix('gestion/reportes/unidades-ventas')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController::class, 'index'])
+            ->name('gestion.reportes.unidades-ventas.index');
+        Route::get('/data', [App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController::class, 'getData'])
+            ->name('gestion.reportes.unidades-ventas.data');
+    });
 
     // ==================== REPORTE DE VENTAS POR SUCURSAL ====================
     Route::get('/gestion/reporte-ventas-sucursal', [ReporteVentasSucursalController::class, 'index'])
