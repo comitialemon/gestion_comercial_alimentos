@@ -33,4 +33,18 @@ class FactorCambio extends Model
     {
         return $this->belongsTo(Moneda::class, 'IdMoneda', 'IdMoneda');
     }
+
+    // 🔥 NUEVO: Scope para obtener factor de cambio vigente en una fecha
+    public function scopeVigenteEnFecha($query, $fecha)
+    {
+        return $query->whereHas('fecha', function($q) use ($fecha) {
+            $q->where('Fecha', '<=', $fecha);
+        })->orderBy('fecha.Fecha', 'desc');
+    }
+
+    // 🔥 NUEVO: Scope para obtener factor de cambio más reciente
+    public function scopeReciente($query)
+    {
+        return $query->orderBy('IdFactor', 'desc');
+    }
 }

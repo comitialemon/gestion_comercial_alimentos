@@ -20,4 +20,23 @@ class Moneda extends Model
     {
         return $this->hasMany(FactorCambio::class, 'IdMoneda', 'IdMoneda');
     }
+
+    // 🔥 NUEVO: Helper para obtener factor de cambio vigente en una fecha
+    public function factorCambioVigente($fecha)
+    {
+        return $this->factoresCambio()
+            ->whereHas('fecha', function($q) use ($fecha) {
+                $q->where('Fecha', '<=', $fecha);
+            })
+            ->orderBy('IdFactor', 'desc')
+            ->first();
+    }
+
+    // 🔥 NUEVO: Helper para obtener factor de cambio más reciente
+    public function factorCambioReciente()
+    {
+        return $this->factoresCambio()
+            ->orderBy('IdFactor', 'desc')
+            ->first();
+    }
 }

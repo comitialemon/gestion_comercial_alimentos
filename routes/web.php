@@ -322,6 +322,16 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
     });
 
+    // ==================== LISTADO PLAN DE CUENTAS ====================
+    Route::prefix('gestion/contabilidad/cuentas')->group(function () {
+        // Vista de solo lectura
+        Route::get('/', [App\Http\Controllers\Gestion\Contabilidad\CuentaController::class, 'index'])->name('gestion.contabilidad.cuentas.index');
+    });
+    // ==================== REPORTE DE RESULTADOS COMPARATIVO ====================
+    Route::prefix('gestion/reportes/resultados-comparativo')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ResultadosComparativoController::class, 'index'])->name('gestion.reportes.resultados-comparativo.index');
+        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\ResultadosComparativoController::class, 'exportar'])->name('gestion.reportes.resultados-comparativo.exportar');
+    });
 
     // ==================== COMPRAS ====================
     Route::prefix('gestion/compras')->group(function () {

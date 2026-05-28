@@ -25,8 +25,24 @@ class ContaCuenta extends Model
         'FechaActualiza',
     ];
 
+    protected $casts = [
+        'ActivoFijo' => 'integer',
+        'AbiertoCerrado' => 'integer',
+    ];
+
+    /**
+     * Scope para filtrar por cliente actual
+     */
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
+    }
+
+    /**
+     * Relación con la moneda
+     */
+    public function moneda()
+    {
+        return $this->belongsTo(Moneda::class, 'IdMoneda', 'IdMoneda');
     }
 }
