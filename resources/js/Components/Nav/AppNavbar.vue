@@ -8,6 +8,21 @@ const page = usePage()
 const ui = useUiStore()
 const toast = inject('toast')
 
+// 🔥 Computed para saber si es vendedor de mostrador (tipo_detalle = 'VentaMostrador')
+const esVendedorMostrador = computed(() => {
+    return page.props?.auth?.operador?.tipo_detalle === 'VentaMostrador'
+})
+
+// Alternativa por ID (IdOperadorTipo = 6)
+const esTipoVendedor = computed(() => {
+    return page.props?.auth?.operador?.tipo_id === 6
+})
+
+// Puedes usar cualquiera de las dos, o combinarlas
+const puedeMostrarBotonVenta = computed(() => {
+    return ctxReady.value && (esVendedorMostrador.value || esTipoVendedor.value)
+})
+
 // 🔥 TEMA DINÁMICO
 const theme = computed(() => page.props?.theme || {
     primary: '#1f2937',
@@ -129,10 +144,10 @@ const navbarBgStyle = computed(() => {
                 </div>
             </div>
 
-            <!-- 🔹 SECCIÓN CENTRO: Botón Nueva Venta -->
+            <!-- 🔹 SECCIÓN CENTRO: Botón Nueva Venta (SOLO para vendedores) -->
             <div class="flex-1 flex justify-center">
                 <button
-                    v-if="ctxReady"
+                    v-if="ctxReady && puedeMostrarBotonVenta"
                     @click="irANuevaVenta"
                     class="px-4 sm:px-6 py-2 rounded-xl transition text-white font-semibold text-xs sm:text-sm flex items-center gap-2 shadow-md hover:shadow-lg whitespace-nowrap"
                     :style="{ 

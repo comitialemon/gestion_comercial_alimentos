@@ -59,11 +59,22 @@ class HandleInertiaRequests extends Middleware
         $theme = $this->loadTheme(session('cliente_id'));
         // ====================================================================
 
+        // 🔥 Obtener el detalle del tipo de operador (para saber si es vendedor)
+        $operadorTipoDetalle = null;
+        if (session('operador_tipo_id')) {
+            $tipo = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador_tipo')
+                ->where('IdOperadorTipo', session('operador_tipo_id'))
+                ->first();
+            $operadorTipoDetalle = $tipo->Detalle ?? null;
+        }
+
         $auth = [
             'operador' => [
                 'id'      => (int) session('operador_id'),
                 'nombre'  => (string) $operadorNombre,
                 'tipo_id' => (int) session('operador_tipo_id'),
+                'tipo_detalle' => $operadorTipoDetalle, // 🔥 NUEVO: "VentaMostrador", "Administrador", etc.
             ],
         ];
 
@@ -93,7 +104,7 @@ class HandleInertiaRequests extends Middleware
             'empresaNombre'   => $empresaNombre,
             'sucursalNombre'  => $sucursalNombre,
             'operadorNombre'  => $operadorNombre,
-            'theme'           => $theme, // 🔥 NUEVO: Tema dinámico
+            'theme'           => $theme, // 🔥 Tema dinámico
         ]);
     }
 
