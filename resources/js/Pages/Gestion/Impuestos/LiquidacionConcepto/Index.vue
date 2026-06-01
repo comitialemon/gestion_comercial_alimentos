@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -24,7 +24,9 @@ const editId = ref(null)
 const formData = ref({
     Concepto: '',
     IdCuenta: '',
-    activo: 1
+    activo: 1,
+    requiere_identificador: 0,
+    usa_identificador_factura: 0
 })
 const errors = ref({})
 const guardando = ref(false)
@@ -60,25 +62,35 @@ const resetForm = () => {
     formData.value = {
         Concepto: '',
         IdCuenta: '',
-        activo: 1
+        activo: 1,
+        requiere_identificador: 0,
+        usa_identificador_factura: 0
     }
     busquedaCuenta.value = ''
     errors.value = {}
 }
 
-// Editar
+// Editar - CORREGIDO para jalar todos los campos
 const editar = (item) => {
     if (!item) return
     editando.value = true
     editId.value = item.IdConceptoLiquidacion
+    
+    // 🔥 CORREGIDO: Asignar todos los valores correctamente
     formData.value = {
         Concepto: item.Concepto || '',
         IdCuenta: item.IdCuenta || '',
-        activo: item.activo !== undefined ? item.activo : 1
+        activo: item.activo !== undefined ? item.activo : 1,
+        requiere_identificador: item.requiere_identificador !== undefined ? item.requiere_identificador : 0,
+        usa_identificador_factura: item.usa_identificador_factura !== undefined ? item.usa_identificador_factura : 0
     }
+    
+    // Mostrar la cuenta seleccionada en el buscador
     const cuenta = props.cuentasContables?.find(c => c?.id === item.IdCuenta)
     if (cuenta) {
         busquedaCuenta.value = `${cuenta.nombre} - ${cuenta.descripcion || ''}`
+    } else {
+        busquedaCuenta.value = ''
     }
 }
 
@@ -92,7 +104,9 @@ const guardar = async () => {
         const dataToSend = {
             Concepto: formData.value.Concepto,
             IdCuenta: formData.value.IdCuenta,
-            activo: formData.value.activo
+            activo: formData.value.activo,
+            requiere_identificador: formData.value.requiere_identificador,
+            usa_identificador_factura: formData.value.usa_identificador_factura
         }
         
         if (editando.value) {
@@ -124,9 +138,9 @@ const guardar = async () => {
         guardando.value = false
     }
 }
-//eliminar
+
+// Eliminar
 const eliminar = async (id, nombre) => {
-    
     if (!id) {
         toast?.error('Error', 'No se pudo identificar el registro')
         return
@@ -136,7 +150,6 @@ const eliminar = async (id, nombre) => {
     
     eliminando.value = true
     try {
-        // 🔥 Usar DELETE directamente
         const response = await axios.delete(`/gestion/impuestos/liquidacion-concepto/${id}`)
                 
         if (response.data.success) {
@@ -149,7 +162,6 @@ const eliminar = async (id, nombre) => {
         }
     } catch (error) {
         console.error('Error:', error)
-        // Si el error es 405 pero igual eliminó, recargar
         if (error.response?.status === 405) {
             toast?.success('Éxito', 'Concepto eliminado correctamente')
             setTimeout(() => {
@@ -192,45 +204,52 @@ onUnmounted(() => {
 <template>
     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
         <div class="py-6 px-4 sm:px-6 lg:px-8">
-            <div class="max-w-5xl mx-auto">
+            <div class="max-w-7xl mx-auto">
                 <div class="text-center mb-6">
                     <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-2xl mb-3">
                         <i class="fas fa-coins text-xl text-blue-600"></i>
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Conceptos de Liquidación</h1>
-                    <p class="text-xs text-gray-500">Configurar métodos de pago para sucursales SIN facturación</p>
+                    <p class="text-xs text-gray-500">Configurar métodos de pago</p>
                     <p class="text-xs text-blue-600 mt-1">
                         <i class="fas fa-globe mr-1"></i> Los conceptos aplican a TODAS las sucursales de la empresa
                     </p>
                 </div>
 
-                <!-- Formulario -->
+                <!-- FORMULARIO EN UNA SOLA FILA -->
                 <div class="bg-white rounded-xl shadow-sm p-4 mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                        <div>
+                    <!-- Fila 1: Concepto + Cuenta + Estado -->
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-3 mb-4">
+                        <!-- Concepto (3 columnas) -->
+                        <div class="md:col-span-3">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Concepto *</label>
                             <input 
                                 type="text" 
                                 v-model="formData.Concepto" 
-                                placeholder="Ej: Efectivo, Tarjeta, QR"
+                                placeholder="Ej: Efectivo, Tarjeta, QR, Clientes"
                                 class="w-full border rounded-lg px-3 py-2 text-sm"
                                 :class="{ 'border-red-500': errors.Concepto }"
                             />
                             <p v-if="errors.Concepto" class="text-xs text-red-500 mt-1">{{ errors.Concepto }}</p>
                         </div>
                         
-                        <div class="relative cuentas-autocomplete">
+                        <!-- Cuenta Contable (5 columnas) -->
+                        <div class="md:col-span-5 relative cuentas-autocomplete">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Cuenta Contable *</label>
                             <div class="relative">
                                 <input 
                                     type="text"
                                     v-model="busquedaCuenta"
                                     @focus="mostrarListaCuentas = true"
+                                    :disabled="editando"
                                     placeholder="Buscar por número, nombre o descripción..."
                                     class="w-full border rounded-lg px-3 py-2 text-sm"
-                                    :class="{ 'border-red-500': errors.IdCuenta }"
+                                    :class="{ 
+                                        'border-red-500': errors.IdCuenta,
+                                        'bg-gray-100 cursor-not-allowed': editando
+                                    }"
                                 />
-                                <div v-if="mostrarListaCuentas && cuentasFiltradas.length > 0" 
+                                <div v-if="mostrarListaCuentas && cuentasFiltradas.length > 0 && !editando" 
                                     class="absolute z-50 w-full max-h-48 overflow-y-auto bg-white border rounded-lg shadow-lg mt-1">
                                     <div 
                                         v-for="cuenta in cuentasFiltradas" 
@@ -244,26 +263,35 @@ onUnmounted(() => {
                                         <div v-if="cuenta.descripcion" class="text-xs text-gray-500">{{ cuenta.descripcion }}</div>
                                     </div>
                                 </div>
-                                <div v-if="mostrarListaCuentas && cuentasFiltradas.length === 0 && busquedaCuenta" 
+                                <div v-if="mostrarListaCuentas && cuentasFiltradas.length === 0 && busquedaCuenta && !editando" 
                                     class="absolute z-50 w-full bg-white border rounded-lg shadow-lg mt-1 p-3 text-center text-gray-500 text-sm">
                                     No se encontraron cuentas
                                 </div>
                             </div>
                             <p v-if="errors.IdCuenta" class="text-xs text-red-500 mt-1">{{ errors.IdCuenta }}</p>
                             <div v-if="formData.IdCuenta && nombreCuentaSeleccionada" class="text-xs text-green-600 mt-1">
-                                <i class="fas fa-check-circle"></i> Seleccionada: {{ nombreCuentaSeleccionada }}
+                                <i class="fas fa-check-circle"></i> {{ nombreCuentaSeleccionada }}
+                            </div>
+                            <div v-if="editando" class="text-xs text-amber-600 mt-1">
+                                <i class="fas fa-lock"></i> La cuenta no se puede editar
                             </div>
                         </div>
                         
-                        <div class="flex gap-2">
-                            <select v-model.number="formData.activo" class="border rounded-lg px-3 py-2 text-sm">
+                        <!-- Estado (2 columnas) -->
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Estado</label>
+                            <select v-model.number="formData.activo" class="w-full border rounded-lg px-3 py-2 text-sm">
                                 <option :value="1">✓ Activo</option>
                                 <option :value="0">✗ Inactivo</option>
                             </select>
+                        </div>
+
+                        <!-- Botones (2 columnas) -->
+                        <div class="md:col-span-2 flex gap-2 items-end">
                             <button 
                                 @click="guardar" 
                                 :disabled="guardando"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                                class="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
                             >
                                 <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
                                 <i v-else class="fas" :class="editando ? 'fa-pencil-alt' : 'fa-plus'"></i>
@@ -272,12 +300,62 @@ onUnmounted(() => {
                             <button 
                                 v-if="editando" 
                                 @click="resetForm" 
-                                class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 text-sm"
                                 :disabled="guardando"
                             >
-                                <i class="fas fa-times"></i> Cancelar
+                                <i class="fas fa-times"></i>
                             </button>
                         </div>
+                    </div>
+
+                    <!-- Fila 2: Checkboxes (Requiere Identificador / Usa ID Factura) -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-3 border-t">
+                        <!-- Requiere Identificador (Clientes) -->
+                        <div>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border rounded-lg px-3 py-2">
+                                <input 
+                                    type="checkbox" 
+                                    v-model="formData.requiere_identificador"
+                                    :true-value="1"
+                                    :false-value="0"
+                                    @change="formData.usa_identificador_factura = 0"
+                                    class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                />
+                                <span class="text-xs font-medium text-gray-700">
+                                    <i class="fas fa-users mr-1"></i>
+                                    Requiere Seleccionar Cliente
+                                </span>
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">
+                                El vendedor debe elegir un cliente de la base de datos
+                            </p>
+                        </div>
+
+                        <!-- Usa Identificador de Factura (QR) -->
+                        <div>
+                            <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border rounded-lg px-3 py-2">
+                                <input 
+                                    type="checkbox" 
+                                    v-model="formData.usa_identificador_factura"
+                                    :true-value="1"
+                                    :false-value="0"
+                                    @change="formData.requiere_identificador = 0"
+                                    class="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                                />
+                                <span class="text-xs font-medium text-gray-700">
+                                    <i class="fas fa-qrcode mr-1"></i>
+                                    Usar Identificador de la Factura
+                                </span>
+                            </label>
+                            <p class="text-xs text-gray-400 mt-1">
+                                Usa el NIT/CI del cliente que está pagando la factura
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Mensaje de error por selección múltiple -->
+                    <div v-if="errors.requiere_identificador" class="mt-3">
+                        <p class="text-xs text-red-500">{{ errors.requiere_identificador }}</p>
                     </div>
                 </div>
 
@@ -290,6 +368,8 @@ onUnmounted(() => {
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Concepto</th>
                                     <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Cuenta</th>
                                     <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Seleccionar Cliente</th>
+                                    <th class="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Usar ID Factura</th>
                                     <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                                 </tr>
                             </thead>
@@ -312,6 +392,22 @@ onUnmounted(() => {
                                             {{ item.activo ? 'Activo' : 'Inactivo' }}
                                         </span>
                                     </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span v-if="item.requiere_identificador" class="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
+                                            <i class="fas fa-users mr-1"></i> Sí
+                                        </span>
+                                        <span v-else class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-500">
+                                            No
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span v-if="item.usa_identificador_factura" class="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-800">
+                                            <i class="fas fa-qrcode mr-1"></i> Sí
+                                        </span>
+                                        <span v-else class="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-500">
+                                            No
+                                        </span>
+                                    </td>
                                     <td class="px-4 py-3 text-right">
                                         <button 
                                             @click="editar(item)" 
@@ -330,7 +426,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr v-if="!conceptos || conceptos.length === 0">
-                                    <td colspan="4" class="px-4 py-8 text-center text-gray-400">
+                                    <td colspan="6" class="px-4 py-8 text-center text-gray-400">
                                         <i class="fas fa-info-circle mr-1"></i>
                                         No hay conceptos configurados para esta empresa
                                     </td>
@@ -342,7 +438,9 @@ onUnmounted(() => {
 
                 <div class="mt-4 text-xs text-gray-400 text-center">
                     <i class="fas fa-info-circle"></i> 
-                    Estos conceptos se mostrarán en la pantalla de pago para TODAS las sucursales SIN facturación electrónica.
+                    <strong>Seleccionar Cliente:</strong> Para métodos como "Cuentas por Cobrar" - el vendedor elige un cliente de la BD.
+                    <strong>Usar ID Factura:</strong> Para métodos como "QR" - usa automáticamente el NIT/CI del cliente que paga.
+                    <strong class="text-amber-600">La cuenta contable no se puede editar después de crear el concepto.</strong>
                 </div>
             </div>
         </div>

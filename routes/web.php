@@ -73,8 +73,12 @@ use App\Http\Controllers\Menu\MenuAdministradorController;
 use App\Http\Controllers\Gestion\Configuracion\TemaClienteController;
 use App\Http\Controllers\Gestion\Reportes\ListaPreciosController;
 use App\Http\Controllers\Gestion\Reportes\MayorCuentaController;
-
-
+use App\Http\Controllers\Operacion\Produccion\CronogramaController;
+use App\Http\Controllers\Gestion\Reportes\ResultadosComparativoController;
+use App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController;
+use App\Http\Controllers\Gestion\Reportes\ReporteVentasSupervisorPorOperadorController;
+use App\Http\Controllers\Operacion\Pedidos\PedidoController;
+use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -549,8 +553,7 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
         Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
         Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
-        Route::put('/{id}', [AjusteInventarioController::class, 'update'])
-    ->name('ajustes-inventario.update');
+        Route::put('/{id}', [AjusteInventarioController::class, 'update'])->name('ajustes-inventario.update');
     });
     // ==================== PRODUCTOS VENTA ====================
     Route::prefix('gestion/productos-venta')->group(function () {
@@ -763,5 +766,54 @@ Route::middleware(['auth.operador'])->group(function () {
         return response()->json([
             'has_session' => session()->has('operador_id') && session('operador_id') > 0
         ]);
+    });
+    // ====================== OPERACIÓN ====================
+    // ==================== PRODUCCIÓN ====================
+    // ==================== OPERACIONES - PRODUCCIÓN ====================
+    Route::prefix('operacion/produccion')->middleware(['auth.operador', 'contexto.requerido'])->group(function () {
+        
+        // ==================== CRONOGRAMA ====================
+        Route::prefix('cronograma')->group(function () {
+            // Vista editable (con botones)
+            Route::get('/', [CronogramaController::class, 'index'])
+                ->name('operacion.produccion.cronograma.index');
+            
+            // Vista solo lectura (para consulta)
+            Route::get('/ver', [CronogramaController::class, 'show'])
+                ->name('operacion.produccion.cronograma.show');
+            
+            // Guardar cambios
+            Route::post('/', [CronogramaController::class, 'store'])
+                ->name('operacion.produccion.cronograma.store');
+            
+            // Eliminar fila
+            Route::delete('/{id}', [CronogramaController::class, 'destroy'])
+                ->name('operacion.produccion.cronograma.destroy');
+        });
+        
+    });
+
+    // ==================== OPERACIONES - PEDIDOS ====================
+    Route::prefix('operacion/pedidos')->group(function () {
+        
+        // Hora Límite
+        Route::prefix('hora-limite')->group(function () {
+            Route::get('/', [HoraLimiteController::class, 'index'])->name('operacion.pedidos.hora-limite.index');
+            Route::post('/', [HoraLimiteController::class, 'store'])->name('operacion.pedidos.hora-limite.store');
+            Route::put('/{id}', [HoraLimiteController::class, 'update'])->name('operacion.pedidos.hora-limite.update');
+            Route::delete('/{id}', [HoraLimiteController::class, 'destroy'])->name('operacion.pedidos.hora-limite.destroy');
+        });
+
+        // Pedidos (GRID)
+        Route::prefix('pedido')->group(function () {
+            Route::get('/', [PedidoController::class, 'index'])->name('operacion.pedidos.pedido.index');
+            Route::post('/', [PedidoController::class, 'store'])->name('operacion.pedidos.pedido.store');
+            Route::delete('/{id}', [PedidoController::class, 'destroy'])->name('operacion.pedidos.pedido.destroy');
+            
+            Route::post('/api/validar-producto', [PedidoController::class, 'apiValidarProducto']);
+            Route::post('/api/validar-hora-limite', [PedidoController::class, 'apiValidarHoraLimite']);
+            Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
+        });
+        
     });
 });

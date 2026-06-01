@@ -8,6 +8,8 @@ use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 use App\Models\Gestion\Contabilidad\ContaCuenta;
 use App\Models\Gestion\Contabilidad\FactorCambio;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
+use App\Http\Controllers\Operacion\Produccion\CronogramaController; // 🔥 AGREGAR ESTO
+use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 
 // Middleware web + auth para tener sesión
 Route::middleware(['web', 'auth.operador'])->group(function () {
@@ -24,15 +26,10 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
     
     // ==================== PAGO - ENDPOINTS COMPARTIDOS ====================
     Route::prefix('pago')->group(function () {
-        // Con facturación
         Route::get('/metodos-con-facturacion', [PagoController::class, 'getMetodosPagoConFacturacion']);
         Route::post('/procesar-con-facturacion', [PagoController::class, 'procesarPagoConFacturacion']);
-        
-        // Sin facturación
         Route::get('/conceptos-sin-facturacion', [PagoController::class, 'getConceptosSinFacturacion']);
         Route::post('/procesar-sin-facturacion', [PagoVentaController::class, 'procesarPagoSinFacturacion']);
-        
-        // Común
         Route::post('/verificar-nit', [PagoController::class, 'verificarNit']);
         Route::get('/buscar-identificador', [PagoController::class, 'buscarIdentificador']);
     });
@@ -45,6 +42,21 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
     
     // ==================== REPORTE INVENTARIO ====================
     Route::get('/inventario/reporte-movimientos', [App\Http\Controllers\Gestion\Inventario\ReporteInventarioController::class, 'getMovimientos']);
+    
+    // ==================== 🔥 CRONOGRAMA DE PRODUCCIÓN - API ====================
+    Route::prefix('operacion/produccion/cronograma')->group(function () {
+        // API para consultas externas
+        Route::get('/api', [CronogramaController::class, 'apiGet'])
+            ->name('api.operacion.produccion.cronograma.get');
+        
+        // Endpoint para obtener datos por fecha (si lo necesitas)
+        Route::get('/fecha/{fecha}', [CronogramaController::class, 'apiGetByDate'])
+            ->name('api.operacion.produccion.cronograma.by-date');
+        
+        // Endpoint para obtener por día de semana (lunes, martes, etc.)
+        Route::get('/dia/{dia}', [CronogramaController::class, 'apiGetByDay'])
+            ->name('api.operacion.produccion.cronograma.by-day');
+    });
     
     // ==================== NOTIFICACIONES DE APROBACIÓN DE PRODUCTOS ====================
     Route::get('/notificaciones/pendientes', function () {
@@ -186,7 +198,7 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         }
     })->name('api.venta.nit-predefinido');
     
-    // ==================== 🔥 ID DEL COMISIONISTA PARA VENTA (NUEVA) ====================
+    // ==================== ID DEL COMISIONISTA PARA VENTA ====================
     Route::get('/venta/{ventaId}/comisionista-id', function ($ventaId) {
         try {
             $venta = DB::connection('mysql_gestion_comercial_alimentos')

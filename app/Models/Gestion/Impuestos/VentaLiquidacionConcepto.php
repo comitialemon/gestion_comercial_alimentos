@@ -16,25 +16,44 @@ class VentaLiquidacionConcepto extends Model
         'Concepto',
         'IdCuenta',
         'IdCliente',
-        'activo'
+        'activo',
+        'requiere_identificador',
+        'usa_identificador_factura'
     ];
 
+    protected $casts = [
+        'activo' => 'boolean',
+        'requiere_identificador' => 'boolean',
+        'usa_identificador_factura' => 'boolean',
+    ];
+
+    /**
+     * Scope para filtrar por cliente actual
+     */
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
     }
 
+    /**
+     * Scope para solo activos
+     */
     public function scopeActivos($query)
     {
         return $query->where('activo', 1);
     }
 
+    /**
+     * Relación con la cuenta contable
+     */
     public function cuentaContable()
     {
         return $this->belongsTo(ContaCuenta::class, 'IdCuenta', 'IdCuenta');
     }
 
-    // Relación con detalles de liquidación
+    /**
+     * Relación con detalles de liquidación
+     */
     public function detallesLiquidacion()
     {
         return $this->hasMany(LiquidacionVendedorDetalle::class, 'IdConceptoLiquidacion', 'IdConceptoLiquidacion');

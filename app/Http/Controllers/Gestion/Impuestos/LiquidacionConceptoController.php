@@ -11,7 +11,7 @@ use Inertia\Inertia;
 class LiquidacionConceptoController extends Controller
 {
     /**
-     * Listado de conceptos de liquidación para el cliente (global)
+     * Listado de conceptos de liquidación para el cliente
      */
     public function index()
     {
@@ -30,7 +30,7 @@ class LiquidacionConceptoController extends Controller
     }
 
     /**
-     * Guardar nuevo concepto (sin sucursal)
+     * Guardar nuevo concepto
      */
     public function store(Request $request)
     {
@@ -38,20 +38,31 @@ class LiquidacionConceptoController extends Controller
             'Concepto' => 'required|string|max:50',
             'IdCuenta' => 'required|integer|exists:conta_cuenta,IdCuenta',
             'activo' => 'boolean',
+            'requiere_identificador' => 'boolean',
+            'usa_identificador_factura' => 'boolean',
         ]);
+
+        // Validar que no tenga ambos campos activos simultáneamente
+        if ($request->requiere_identificador && $request->usa_identificador_factura) {
+            return redirect()->back()->withErrors([
+                'requiere_identificador' => 'No puede seleccionar ambos tipos de identificador simultáneamente'
+            ])->withInput();
+        }
 
         VentaLiquidacionConcepto::create([
             'Concepto' => $request->Concepto,
             'IdCuenta' => $request->IdCuenta,
             'IdCliente' => session('cliente_id'),
             'activo' => $request->activo ? 1 : 0,
+            'requiere_identificador' => $request->requiere_identificador ? 1 : 0,
+            'usa_identificador_factura' => $request->usa_identificador_factura ? 1 : 0,
         ]);
 
         return redirect()->back()->with('success', 'Concepto agregado correctamente');
     }
 
     /**
-     * Actualizar concepto (sin sucursal)
+     * Actualizar concepto
      */
     public function update(Request $request, $id)
     {
@@ -61,12 +72,23 @@ class LiquidacionConceptoController extends Controller
             'Concepto' => 'required|string|max:50',
             'IdCuenta' => 'required|integer|exists:conta_cuenta,IdCuenta',
             'activo' => 'boolean',
+            'requiere_identificador' => 'boolean',
+            'usa_identificador_factura' => 'boolean',
         ]);
+
+        // Validar que no tenga ambos campos activos simultáneamente
+        if ($request->requiere_identificador && $request->usa_identificador_factura) {
+            return redirect()->back()->withErrors([
+                'requiere_identificador' => 'No puede seleccionar ambos tipos de identificador simultáneamente'
+            ])->withInput();
+        }
 
         $concepto->update([
             'Concepto' => $request->Concepto,
             'IdCuenta' => $request->IdCuenta,
             'activo' => $request->activo ? 1 : 0,
+            'requiere_identificador' => $request->requiere_identificador ? 1 : 0,
+            'usa_identificador_factura' => $request->usa_identificador_factura ? 1 : 0,
         ]);
 
         return redirect()->back()->with('success', 'Concepto actualizado correctamente');
@@ -81,7 +103,6 @@ class LiquidacionConceptoController extends Controller
             $concepto = VentaLiquidacionConcepto::porContexto()->findOrFail($id);
             $concepto->delete();
             
-            // ✅ Devolver JSON, no redirección
             return response()->json([
                 'success' => true,
                 'message' => 'Concepto eliminado correctamente'
@@ -96,14 +117,19 @@ class LiquidacionConceptoController extends Controller
     }
 
     /**
-     * API: Obtener conceptos para el cliente (sin facturación)
-     * Ahora devuelve los conceptos globales del cliente
+     * API: Obtener conceptos para el cliente
      */
     public function getConceptosPorCliente()
     {
         $conceptos = VentaLiquidacionConcepto::porContexto()
             ->activos()
-            ->get(['IdConceptoLiquidacion as id', 'Concepto as nombre', 'IdCuenta']);
+            ->get([
+                'IdConceptoLiquidacion as id', 
+                'Concepto as nombre', 
+                'IdCuenta',
+                'requiere_identificador',
+                'usa_identificador_factura'
+            ]);
 
         return response()->json([
             'success' => true,
