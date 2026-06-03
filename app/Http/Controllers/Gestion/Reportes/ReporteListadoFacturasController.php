@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Controllers\Gestion\Impuestos;
+namespace App\Http\Controllers\Gestion\Reportes;
 
 use App\Http\Controllers\Controller;
 use App\Http\Controllers\PuntoVenta\PagoVentaController;
@@ -77,7 +77,7 @@ class ReporteListadoFacturasController extends Controller
             ->distinct()
             ->get();
 
-        return Inertia::render('Gestion/Impuestos/ReporteListadoFacturas/Index', [
+        return Inertia::render('Gestion/Reportes/ReporteListadoFacturas/Index', [
             'facturas' => $facturas,
             'operadores' => $operadores,
             'filtros' => [

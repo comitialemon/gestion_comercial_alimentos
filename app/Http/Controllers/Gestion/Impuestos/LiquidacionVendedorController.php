@@ -212,7 +212,7 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // CREAR DIARIO Y ASIENTOS (como Scriptcase)
+            // CREAR DIARIO Y ASIENTOS
             // =============================================
             
             // Parámetros de cuentas
@@ -232,7 +232,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdMoneda', 3)
                 ->value('FactorCambio') ?? 1;
 
-            // Identificador del operador
+            // Identificador del operador (por defecto)
             $identificadorOperador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->where('IdOperador', $operadorId)
@@ -264,7 +264,31 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // ASIENTOS CONTABLES
+            // 🔥 OBTENER LOS IDENTIFICADORES REALES DE CADA CONCEPTO DESDE LAS VENTAS
+            // =============================================
+            $liquidacionesVenta = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas_liquidacion as l')
+                ->join('impuestos_ventas as v', 'l.IdVentas', '=', 'v.IdVentas')
+                ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
+                ->where('v.IdCliente', $clienteId)
+                ->where('v.IdClienteSucursal', $sucursalId)
+                ->where('v.IdOperadorIngresa', $operadorId)
+                ->where('v.LiquidadoVendedor', 0)
+                ->where('v.IdEstado', 1)
+                ->whereDate('v.FechaVenta', $fechaStr)
+                ->select('c.IdConceptoLiquidacion', 'c.requiere_identificador', 'c.usa_identificador_factura', 'l.IdIdentificador')
+                ->get();
+
+            // Crear un mapa: [conceptoId] => identificadorId
+            $identificadoresRealesPorConcepto = [];
+            foreach ($liquidacionesVenta as $liq) {
+                $identificadoresRealesPorConcepto[$liq->IdConceptoLiquidacion] = $liq->IdIdentificador;
+                
+                \Log::info("Concepto ID: {$liq->IdConceptoLiquidacion} - requiere: {$liq->requiere_identificador} - usa_factura: {$liq->usa_identificador_factura} - Identificador: {$liq->IdIdentificador}");
+            }
+
+            // =============================================
+            // ASIENTOS CONTABLES - VENTAS E IMPUESTOS
             // =============================================
             
             $totalVentaFacturada = round($request->vEntasConfirma, 2);
@@ -360,7 +384,6 @@ class LiquidacionVendedorController extends Controller
             // COSTO DE VENTA
             // =============================================
             
-            // Obtener ventas por FECHA (como Scriptcase)
             $ventasLiquidadas = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -391,7 +414,7 @@ class LiquidacionVendedorController extends Controller
                 ->table('conta_diario_propiamente')
                 ->insert([
                     'IdDiario' => $diarioId,
-                    'IdCuenta' => 2618, // Cuenta Costo de Venta (ajustar según tu plan)
+                    'IdCuenta' => 2618,
                     'Glosa' => 'Liquidacion Ventas - Costo',
                     'D_H' => 'D',
                     'MontoBolivianos' => $totalCostoVentas,
@@ -407,7 +430,7 @@ class LiquidacionVendedorController extends Controller
                 ->table('conta_diario_propiamente')
                 ->insert([
                     'IdDiario' => $diarioId,
-                    'IdCuenta' => 2694, // Cuenta Inventarios (ajustar según tu plan)
+                    'IdCuenta' => 2694,
                     'Glosa' => 'Liquidacion Ventas - Costo',
                     'D_H' => 'H',
                     'MontoBolivianos' => $totalCostoVentas,
@@ -419,7 +442,7 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // MÉTODOS DE PAGO
+            // 🔥 MÉTODOS DE PAGO - CON IDENTIFICADOR SEGÚN EL TIPO DE CONCEPTO
             // =============================================
             foreach ($request->conceptos as $conceptoData) {
                 $monto = $conceptoData['monto_confirmacion'];
@@ -432,6 +455,35 @@ class LiquidacionVendedorController extends Controller
                 
                 if (!$cuentaConcepto) continue;
                 
+                // 🔥 DETERMINAR QUÉ IDENTIFICADOR USAR SEGÚN LOS FLAGS DEL CONCEPTO
+                $idIdentificadorAsiento = $identificadorOperador; // Por defecto: operador
+                
+                // Verificar si este concepto tiene un identificador real guardado en las ventas
+                $identificadorReal = $identificadoresRealesPorConcepto[$conceptoData['id']] ?? null;
+                
+                if ($cuentaConcepto->requiere_identificador == 1) {
+                    // Caso: "Clientes" - debe usar el identificador seleccionado en el pago
+                    if ($identificadorReal && $identificadorReal > 0) {
+                        $idIdentificadorAsiento = $identificadorReal;
+                        \Log::info("✅ Concepto '{$cuentaConcepto->Concepto}' (requiere_id) usa identificador real: {$idIdentificadorAsiento}");
+                    } else {
+                        \Log::warning("⚠️ Concepto '{$cuentaConcepto->Concepto}' requiere identificador pero no se encontró uno real");
+                    }
+                } 
+                elseif ($cuentaConcepto->usa_identificador_factura == 1) {
+                    // Caso: "QR" - debe usar el NIT del cliente comprador
+                    if ($identificadorReal && $identificadorReal > 0) {
+                        $idIdentificadorAsiento = $identificadorReal;
+                        \Log::info("✅ Concepto '{$cuentaConcepto->Concepto}' (usa_factura) usa identificador real: {$idIdentificadorAsiento}");
+                    } else {
+                        \Log::warning("⚠️ Concepto '{$cuentaConcepto->Concepto}' usa factura pero no se encontró identificador real");
+                    }
+                }
+                else {
+                    // Caso: "Efectivo", "Tarjeta" - usar operador (ya está por defecto)
+                    \Log::info("ℹ️ Concepto '{$cuentaConcepto->Concepto}' (sin flags) usa operador: {$idIdentificadorAsiento}");
+                }
+                
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
@@ -442,7 +494,7 @@ class LiquidacionVendedorController extends Controller
                         'MontoBolivianos' => $monto,
                         'TipoCambio' => 1,
                         'MontoOtraMoneda' => $monto,
-                        'IdIdentificador' => $identificadorOperador,
+                        'IdIdentificador' => $idIdentificadorAsiento,
                         'IdActividad' => 1,
                         'Deducible' => 'D',
                     ]);
@@ -491,7 +543,7 @@ class LiquidacionVendedorController extends Controller
             // =============================================
             $liquidacion->update(['IdDiario' => $diarioId]);
 
-            // 🔥 ACTUALIZAR VENTAS POR FECHA (NO por IdFecha)
+            // Actualizar ventas por fecha
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -522,9 +574,8 @@ class LiquidacionVendedorController extends Controller
             ], 500);
         }
     }
-
     /**
-     * Generar PDF de la liquidación (EXACTAMENTE como Scriptcase)
+     * Generar PDF de la liquidación (con CATEGORÍAS, MULTILÍNEA y SIN duplicados)
      */
     public function pdf($id)
     {
@@ -535,8 +586,6 @@ class LiquidacionVendedorController extends Controller
             $liquidacion = LiquidacionVendedor::with(['detalles.concepto', 'fecha'])
                 ->findOrFail($id);
             
-            \Log::info('Liquidacion encontrada', ['id' => $liquidacion->iDLiquidacionVendedor]);
-
             $clienteId = $liquidacion->iDcliente;
             $sucursalId = $liquidacion->iDsucursal;
             $vendedorId = $liquidacion->iDoperadorVendedor;
@@ -554,17 +603,14 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdClienteSucursal', $sucursalId)
                 ->first();
 
-            // NÚMERO DE DIARIO (NO el ID)
             $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
                 ->where('IdDiario', $diarioId)
                 ->value('NumeroDiario');
 
-            // Fecha de liquidación
             $fechaLiquidacion = $liquidacion->fecha ? $liquidacion->fecha->Fecha : now();
             $fechaFormateada = date('d/m/Y', strtotime($fechaLiquidacion));
 
-            // Nombre del vendedor
             $vendedor = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador as o')
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -574,13 +620,12 @@ class LiquidacionVendedorController extends Controller
             $nombreVendedor = $vendedor ? $vendedor->Nombre : 'Vendedor';
 
             // =============================================
-            // LISTA DE VENTAS POR COMISIONISTA (AGRUPADA como Scriptcase)
+            // 🔥 LISTA DE VENTAS - OBTENER DETALLE POR VENTA (SIN DUPLICADOS)
             // =============================================
-            $ventas = DB::connection('mysql_gestion_comercial_alimentos')
+            $ventasRaw = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas as v')
                 ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
                 ->join('inventario_relacion_ventainventario as irv', 'vd.idrelacionventainventario', '=', 'irv.IdDetalleProducto')
-                ->leftJoin('inventario_relacion_ventainventario_grupouno as g', 'irv.IdVentaGrupo', '=', 'g.IdVentaGrupo')
                 ->where('v.IdCliente', $clienteId)
                 ->where('v.IdClienteSucursal', $sucursalId)
                 ->where('v.IdOperadorIngresa', $vendedorId)
@@ -588,26 +633,54 @@ class LiquidacionVendedorController extends Controller
                 ->where('v.IdEstado', 1)
                 ->select(
                     'v.IdComisionista',
+                    'irv.IdDetalleProducto',
                     'irv.Detalle as producto',
-                    DB::raw('SUM(vd.unidades) as unidades'),
+                    'vd.unidades',
                     'vd.preciounidades',
-                    DB::raw('SUM(vd.totalbolivianos) as total_linea'),
-                    'g.Detalle as grupo'
-                )
-                ->groupBy(
-                    'v.IdComisionista',
-                    'vd.idrelacionventainventario',
-                    'vd.preciounidades',
-                    'irv.Detalle',
-                    'irv.IdVentaGrupo',
-                    'g.Detalle'
+                    'vd.totalbolivianos'
                 )
                 ->orderBy('v.IdComisionista')
-                ->orderBy('g.Detalle')
                 ->orderBy('irv.Detalle')
                 ->get();
 
-            // Agrupar por comisionista
+            // 🔥 Obtener categorías por separado
+            $categoriasPorProducto = [];
+            $productosConCategoria = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_producto_categoria as ipc')
+                ->join('inventario_menu_categoria as cat', 'ipc.id_categoria', '=', 'cat.id_categoria')
+                ->select('ipc.id_detalle_producto', DB::raw("GROUP_CONCAT(cat.nombre ORDER BY cat.id_categoria SEPARATOR ' > ') as categoria_ruta"))
+                ->groupBy('ipc.id_detalle_producto')
+                ->get();
+
+            foreach ($productosConCategoria as $item) {
+                $categoriasPorProducto[$item->id_detalle_producto] = $item->categoria_ruta;
+            }
+
+            // Agrupar por producto en PHP (sumar unidades y total)
+            $ventasAgrupadas = [];
+            foreach ($ventasRaw as $item) {
+                $key = $item->IdComisionista . '_' . $item->IdDetalleProducto;
+                
+                if (!isset($ventasAgrupadas[$key])) {
+                    $ventasAgrupadas[$key] = (object)[
+                        'IdComisionista' => $item->IdComisionista,
+                        'IdDetalleProducto' => $item->IdDetalleProducto,
+                        'producto' => $item->producto,
+                        'unidades' => 0,
+                        'preciounidades' => $item->preciounidades,
+                        'total_linea' => 0,
+                        'categoria_ruta' => $categoriasPorProducto[$item->IdDetalleProducto] ?? null,
+                    ];
+                }
+                
+                $ventasAgrupadas[$key]->unidades += $item->unidades;
+                $ventasAgrupadas[$key]->total_linea += $item->totalbolivianos;
+            }
+
+            // Convertir a array indexado
+            $ventas = array_values($ventasAgrupadas);
+
+            // Agrupar por comisionista para los totales
             $ventasPorComisionista = [];
             foreach ($ventas as $venta) {
                 $comisionistaId = $venta->IdComisionista;
@@ -630,18 +703,16 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // INVENTARIO ACTUALIZADO (EXACTAMENTE como Scriptcase)
+            // INVENTARIO ACTUALIZADO
             // =============================================
             $saldosIniciales = [];
             
-            // Obtener fecha referencial
             $fechaReferenciaObj = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_fecha')
                 ->where('IdFecha', $idFechaCorte)
                 ->first();
             
             if ($fechaReferenciaObj) {
-                // 1. SALDO INICIAL (hasta el día anterior)
                 $invSaldo = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente as inv')
                     ->join('inventario_productodetalle as prod', 'inv.IdProducto', '=', 'prod.IdProducto')
@@ -666,7 +737,6 @@ class LiquidacionVendedorController extends Controller
                     ];
                 }
                 
-                // 2. MOVIMIENTOS DEL DÍA
                 $invDia = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->where('IdFecha', $idFechaCorte)
@@ -682,7 +752,6 @@ class LiquidacionVendedorController extends Controller
                 
                 foreach ($invDia as $row) {
                     if (!isset($saldosIniciales[$row->IdProducto])) {
-                        // Producto nuevo que solo tuvo movimiento hoy
                         $producto = DB::connection('mysql_gestion_comercial_alimentos')
                             ->table('inventario_productodetalle')
                             ->where('IdProducto', $row->IdProducto)
@@ -701,7 +770,6 @@ class LiquidacionVendedorController extends Controller
                 }
             }
             
-            // 3. OBTENER TODOS LOS PRODUCTOS ACTIVOS DE LA SUCURSAL
             $todosProductos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle')
                 ->where('IdCliente', $clienteId)
@@ -710,7 +778,6 @@ class LiquidacionVendedorController extends Controller
                 ->orderBy('Descripcion')
                 ->get(['IdProducto', 'Descripcion']);
             
-            // Agregar productos que no están en $saldosIniciales (sin movimiento)
             foreach ($todosProductos as $producto) {
                 if (!isset($saldosIniciales[$producto->IdProducto])) {
                     $saldosIniciales[$producto->IdProducto] = [
@@ -722,7 +789,6 @@ class LiquidacionVendedorController extends Controller
                 }
             }
             
-            // 4. SEPARAR PRODUCTOS CON Y SIN MOVIMIENTO
             $conMovimiento = [];
             $sinMovimiento = [];
             
@@ -734,7 +800,6 @@ class LiquidacionVendedorController extends Controller
                 }
             }
             
-            // Ordenar alfabéticamente
             usort($conMovimiento, function($a, $b) {
                 return strcmp($a['detalle'], $b['detalle']);
             });
@@ -743,247 +808,317 @@ class LiquidacionVendedorController extends Controller
             });
 
             // =============================================
-            // GENERAR PDF
+            // FUNCIONES AUXILIARES
             // =============================================
             
-            // Calcular altura aproximada
-            $totalAltura = 60;
-            foreach ($ventasPorComisionista as $comisionistaData) {
-                $totalAltura += 10;
-                foreach ($comisionistaData['items'] as $item) {
-                    $lineasProducto = ceil(strlen($item->producto) / 45);
-                    $totalAltura += $lineasProducto * 5;
-                }
-                $totalAltura += 8;
-            }
-            $totalAltura += 20 + (count($conMovimiento) * 5) + (count($sinMovimiento) * 5);
+            $getProductoHeight = function($producto) {
+                return ceil(strlen($producto) / 45) * 4;
+            };
             
-            $alturaHoja = max(150, min(500, $totalAltura + 10));
+            $getVentaHeight = function($producto) {
+                $charsPerLine = 65;
+                $lines = ceil(strlen($producto) / $charsPerLine);
+                return max(4, $lines * 4);
+            };
             
-            $pdf = new \TCPDF('P', 'mm', array(100, $alturaHoja));
+            // =============================================
+            // CREAR PDF
+            // =============================================
+            
+            $pdf = new \TCPDF('P', 'mm', array(100, 300));
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
             $pdf->SetMargins(5, 5, 5);
             $pdf->SetAutoPageBreak(true, 8);
             $pdf->AddPage();
             $pdf->SetFont('times', '', 8);
-
+            
+            $x = 5;
+            $y = 5;
+            
             // =============================================
             // CABECERA
             // =============================================
             $pdf->SetFont('times', 'B', 10);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, "Arqueo de Venta", 0, 1, 'C');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, "Numero de Diario No " . ($numeroDiario ?? '-'), 0, 1, 'C');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, $empresa->Nombre ?? '', 0, 1, 'C');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, $sucursal->Nombre ?? '', 0, 1, 'C');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, $fechaFormateada, 0, 1, 'C');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, $nombreVendedor, 0, 1, 'C');
-
+            $y = $pdf->GetY() + 3;
+            
             // =============================================
-            // TABLA RESUMEN CONCEPTOS
+            // TABLA CONCEPTOS
             // =============================================
-            $pdf->Ln(3);
+            if ($y > 270) { $pdf->AddPage(); $y = 15; }
+            
             $pdf->SetFont('times', 'B', 8);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(40, 5, "Concepto", 0, 0, 'L');
             $pdf->Cell(25, 5, "Sistema", 0, 0, 'R');
             $pdf->Cell(25, 5, "Confirmacion", 0, 1, 'R');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 1, "", 'T', 1);
-
+            $y = $pdf->GetY() + 2;
+            
             $pdf->SetFont('times', '', 8);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(40, 5, 'Tot.Ventas', 0, 0, 'L');
             $pdf->Cell(25, 5, number_format($liquidacion->vEntas, 2, '.', ''), 0, 0, 'R');
             $pdf->Cell(25, 5, number_format($liquidacion->vEntasConfirma, 2, '.', ''), 0, 1, 'R');
-
+            $y = $pdf->GetY();
+            
             foreach ($liquidacion->detalles as $detalle) {
+                if ($y > 270) { $pdf->AddPage(); $y = 15; }
+                
                 $nombreConcepto = $detalle->concepto ? $detalle->concepto->Concepto : 'Concepto';
+                $pdf->SetXY($x, $y);
                 $pdf->Cell(40, 5, $nombreConcepto, 0, 0, 'L');
                 $pdf->Cell(25, 5, number_format($detalle->monto_sistema, 2, '.', ''), 0, 0, 'R');
                 $pdf->Cell(25, 5, number_format($detalle->monto_confirmacion, 2, '.', ''), 0, 1, 'R');
+                $y = $pdf->GetY();
             }
-
+            
+            if ($y > 270) { $pdf->AddPage(); $y = 15; }
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 1, "", 'T', 1);
+            $y = $pdf->GetY() + 1;
+            
             $pdf->SetFont('times', 'B', 8);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(40, 5, 'Dif.Ventas', 0, 0, 'L');
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedor, 2, '.', ''), 0, 0, 'R');
             $pdf->Cell(25, 5, number_format($liquidacion->dIfVendedorConfirma, 2, '.', ''), 0, 1, 'R');
-
+            $y = $pdf->GetY() + 5;
+            
             // =============================================
             // LISTA DE VENTAS POR COMISIONISTA
             // =============================================
-            $pdf->Ln(5);
+            if ($y > 270) { $pdf->AddPage(); $y = 15; }
+            
             $pdf->SetFont('times', 'B', 9);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, "Lista de Ventas", 0, 1, 'C');
-
-            $pdf->SetFont('times', 'B', 8);
-            $pdf->Cell(60, 5, "Producto", 0, 0, 'L');
-            $pdf->Cell(10, 5, "Unid.", 0, 0, 'R');
-            $pdf->Cell(10, 5, "P.U.", 0, 0, 'R');
-            $pdf->Cell(10, 5, "Total", 0, 1, 'R');
-            $pdf->Cell(90, 1, "", 'T', 1);
-
-            $pdf->SetFont('times', '', 7);
+            $y = $pdf->GetY() + 2;
+            
             $totalGeneralVentas = 0;
-            $comisionistaActual = null;
-            $totalComisionista = 0;
-            $nombreComisionistaActual = '';
-
-            foreach ($ventas as $venta) {
-                $comisionistaId = $venta->IdComisionista;
+            
+            foreach ($ventasPorComisionista as $comisionistaId => $comisionistaData) {
+                if ($y > 260) { $pdf->AddPage(); $y = 15; }
                 
-                if (!isset($ventasPorComisionista[$comisionistaId])) {
-                    $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('impuestos_ventas_comisionitas as c')
-                        ->join('todos_identificador as i', 'c.IdIdentificador', '=', 'i.IdIdentificador')
-                        ->where('c.IdComisionista', $comisionistaId)
-                        ->first();
-                    $nombreComisionista = $comisionista ? $comisionista->Nombre : 'Comisionista no identificado';
-                    $ventasPorComisionista[$comisionistaId] = [
-                        'nombre' => $nombreComisionista,
-                        'total' => 0
-                    ];
-                }
-                $nombreComisionista = $ventasPorComisionista[$comisionistaId]['nombre'];
+                // Título del comisionista
+                $pdf->SetFont('times', 'B', 8);
+                $pdf->SetXY($x, $y);
+                $pdf->Cell(90, 5, "Comisionista: " . $comisionistaData['nombre'], 0, 1, 'L');
+                $y = $pdf->GetY() + 2;
                 
-                if ($comisionistaActual !== null && $comisionistaId !== $comisionistaActual) {
-                    $pdf->SetFont('times', 'B', 7);
-                    $pdf->Cell(80, 5, "TOTAL " . strtoupper($nombreComisionistaActual) . ":", 'T', 0, 'R');
-                    $pdf->Cell(10, 5, number_format($totalComisionista, 2, '.', ''), 'T', 1, 'R');
-                    $pdf->Ln(2);
-                    $totalComisionista = 0;
-                }
+                // Cabecera de tabla
+                $pdf->SetFont('times', 'B', 8);
+                $pdf->SetXY($x, $y);
+                $pdf->Cell(60, 5, "Producto", 0, 0, 'L');
+                $pdf->Cell(10, 5, "Unid.", 0, 0, 'R');
+                $pdf->Cell(10, 5, "P.U.", 0, 0, 'R');
+                $pdf->Cell(10, 5, "Total", 0, 1, 'R');
+                $y = $pdf->GetY();
                 
-                if ($comisionistaId !== $comisionistaActual) {
-                    $comisionistaActual = $comisionistaId;
-                    $nombreComisionistaActual = $nombreComisionista;
+                $pdf->SetXY($x, $y);
+                $pdf->Cell(90, 1, "", 'T', 1);
+                $y = $pdf->GetY() + 2;
+                
+                $pdf->SetFont('times', '', 7);
+                
+                // Productos del comisionista
+                foreach ($comisionistaData['items'] as $venta) {
+                    $productoTexto = $venta->producto;
+                    if ($venta->categoria_ruta) {
+                        $productoTexto = '[' . $venta->categoria_ruta . '] ' . $productoTexto;
+                    }
                     
-                    $pdf->Ln(3);
-                    $pdf->SetFont('times', 'B', 8);
-                    $pdf->Cell(90, 5, "Comisionista: " . $nombreComisionista, 0, 1, 'L');
-                    $pdf->SetFont('times', '', 7);
+                    $unidades = number_format($venta->unidades, 2, '.', '');
+                    $precio = number_format($venta->preciounidades, 2, '.', '');
+                    $totalLinea = number_format($venta->total_linea, 2, '.', '');
+                    
+                    $productoHeight = $getVentaHeight($productoTexto);
+                    
+                    if ($y + $productoHeight > 270) { 
+                        $pdf->AddPage(); 
+                        $y = 15;
+                        
+                        $pdf->SetFont('times', 'B', 8);
+                        $pdf->SetXY($x, $y);
+                        $pdf->Cell(60, 5, "Producto", 0, 0, 'L');
+                        $pdf->Cell(10, 5, "Unid.", 0, 0, 'R');
+                        $pdf->Cell(10, 5, "P.U.", 0, 0, 'R');
+                        $pdf->Cell(10, 5, "Total", 0, 1, 'R');
+                        $y = $pdf->GetY();
+                        $pdf->SetXY($x, $y);
+                        $pdf->Cell(90, 1, "", 'T', 1);
+                        $y = $pdf->GetY() + 2;
+                        $pdf->SetFont('times', '', 7);
+                    }
+                    
+                    $pdf->SetXY($x, $y);
+                    $pdf->MultiCell(60, 4, $productoTexto, 0, 'L');
+                    $productoHeightActual = $pdf->GetY() - $y;
+                    
+                    $pdf->SetXY($x + 60, $y);
+                    $pdf->Cell(10, $productoHeightActual, $unidades, 0, 0, 'R');
+                    $pdf->SetXY($x + 70, $y);
+                    $pdf->Cell(10, $productoHeightActual, $precio, 0, 0, 'R');
+                    $pdf->SetXY($x + 80, $y);
+                    $pdf->Cell(10, $productoHeightActual, $totalLinea, 0, 1, 'R');
+                    
+                    $y = $pdf->GetY();
                 }
                 
-                $prefijoGrupo = '';
-                if ($venta->grupo) {
-                    $prefijoGrupo = substr($venta->grupo, 0, 1);
-                }
-                
-                $productoTexto = '';
-                if ($prefijoGrupo) {
-                    $productoTexto = $prefijoGrupo . ' - ';
-                }
-                $productoTexto .= $venta->producto;
-                
-                if (strlen($productoTexto) > 90) {
-                    $productoTexto = substr($productoTexto, 0, 87) . '...';
-                }
-                
-                $unidades = number_format($venta->unidades, 2, '.', '');
-                $precio = number_format($venta->preciounidades, 2, '.', '');
-                $totalLinea = number_format($venta->total_linea, 2, '.', '');
-                
-                if ($pdf->GetY() > 265) {
-                    $pdf->AddPage();
-                    $pdf->SetFont('times', '', 7);
-                    $pdf->SetFont('times', 'B', 8);
-                    $pdf->Cell(60, 5, "Producto", 0, 0, 'L');
-                    $pdf->Cell(10, 5, "Unid.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "P.U.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Total", 0, 1, 'R');
-                    $pdf->Cell(90, 1, "", 'T', 1);
-                    $pdf->SetFont('times', '', 7);
-                }
-                
-                $pdf->Cell(60, 4, $productoTexto, 0, 0, 'L');
-                $pdf->Cell(10, 4, $unidades, 0, 0, 'R');
-                $pdf->Cell(10, 4, $precio, 0, 0, 'R');
-                $pdf->Cell(10, 4, $totalLinea, 0, 1, 'R');
-                
-                $totalComisionista += $venta->total_linea;
-                $totalGeneralVentas += $venta->total_linea;
-            }
-            
-            if ($comisionistaActual !== null) {
+                // Total del comisionista
+                $y += 2;
                 $pdf->SetFont('times', 'B', 7);
-                $pdf->Cell(80, 5, "TOTAL " . strtoupper($nombreComisionistaActual) . ":", 'T', 0, 'R');
-                $pdf->Cell(10, 5, number_format($totalComisionista, 2, '.', ''), 'T', 1, 'R');
-                $pdf->Ln(2);
+                $pdf->SetXY($x + 40, $y);
+                $pdf->Cell(40, 5, "TOTAL " . strtoupper($comisionistaData['nombre']) . ":", 0, 0, 'R');
+                $pdf->Cell(10, 5, number_format($comisionistaData['total'], 2, '.', ''), 0, 1, 'R');
+                $y = $pdf->GetY() + 3;
+                
+                $totalGeneralVentas += $comisionistaData['total'];
             }
             
+            // Total general
+            $y += 2;
             $pdf->SetFont('times', 'B', 8);
-            $pdf->Cell(80, 5, "TOTAL GENERAL:", 'T', 0, 'R');
-            $pdf->Cell(10, 5, number_format($totalGeneralVentas, 2, '.', ''), 'T', 1, 'R');
-
+            $pdf->SetXY($x + 40, $y);
+            $pdf->Cell(40, 5, "TOTAL GENERAL:", 0, 0, 'R');
+            $pdf->Cell(10, 5, number_format($totalGeneralVentas, 2, '.', ''), 0, 1, 'R');
+            $y = $pdf->GetY() + 5;
+            
             // =============================================
-            // INVENTARIO ACTUALIZADO (como Scriptcase)
+            // INVENTARIO ACTUALIZADO
             // =============================================
-            $pdf->Ln(5);
+            if ($y > 270) { $pdf->AddPage(); $y = 15; }
+            
             $pdf->SetFont('times', 'B', 9);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 5, "Inventario actualizado", 0, 1, 'C');
-
+            $y = $pdf->GetY() + 2;
+            
             $pdf->SetFont('times', 'B', 8);
+            $pdf->SetXY($x, $y);
             $pdf->Cell(50, 5, "Producto", 0, 0, 'L');
             $pdf->Cell(10, 5, "Sal. Ini.", 0, 0, 'R');
             $pdf->Cell(10, 5, "Ingr.", 0, 0, 'R');
             $pdf->Cell(10, 5, "Salida", 0, 0, 'R');
             $pdf->Cell(10, 5, "Saldo", 0, 1, 'R');
+            $y = $pdf->GetY();
+            
+            $pdf->SetXY($x, $y);
             $pdf->Cell(90, 1, "", 'T', 1);
-
+            $y = $pdf->GetY() + 2;
+            
             $pdf->SetFont('times', '', 7);
-
-            // Mostrar productos CON movimiento
+            
             foreach ($conMovimiento as $datos) {
-                if ($pdf->GetY() > 265) {
-                    $pdf->AddPage();
-                    $pdf->SetFont('times', '', 7);
-                    $pdf->SetFont('times', 'B', 8);
-                    $pdf->Cell(50, 5, "Producto", 0, 0, 'L');
-                    $pdf->Cell(10, 5, "Sal. Ini.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Ingr.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Salida", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Saldo", 0, 1, 'R');
-                    $pdf->Cell(90, 1, "", 'T', 1);
-                    $pdf->SetFont('times', '', 7);
-                }
-                
-                $detalle = substr($datos['detalle'], 0, 45);
+                $detalle = $datos['detalle'];
                 $ini = number_format($datos['inicial'], 2, '.', '');
                 $ing = number_format($datos['ingresos'], 2, '.', '');
                 $sal = number_format($datos['salidas'], 2, '.', '');
                 $saldo = number_format($datos['inicial'] + $datos['ingresos'] - $datos['salidas'], 2, '.', '');
                 
-                $pdf->Cell(50, 4, $detalle, 0, 0, 'L');
-                $pdf->Cell(10, 4, $ini, 0, 0, 'R');
-                $pdf->Cell(10, 4, $ing, 0, 0, 'R');
-                $pdf->Cell(10, 4, $sal, 0, 0, 'R');
-                $pdf->Cell(10, 4, $saldo, 0, 1, 'R');
+                $productoHeight = $getProductoHeight($detalle);
+                
+                if ($y + $productoHeight > 270) { 
+                    $pdf->AddPage(); 
+                    $y = 15;
+                    
+                    $pdf->SetFont('times', 'B', 8);
+                    $pdf->SetXY($x, $y);
+                    $pdf->Cell(50, 5, "Producto", 0, 0, 'L');
+                    $pdf->Cell(10, 5, "Sal. Ini.", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Ingr.", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Salida", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Saldo", 0, 1, 'R');
+                    $y = $pdf->GetY();
+                    $pdf->SetXY($x, $y);
+                    $pdf->Cell(90, 1, "", 'T', 1);
+                    $y = $pdf->GetY() + 2;
+                    $pdf->SetFont('times', '', 7);
+                }
+                
+                $pdf->SetXY($x, $y);
+                $pdf->MultiCell(50, 4, $detalle, 0, 'L');
+                $productoHeightActual = $pdf->GetY() - $y;
+                
+                $pdf->SetXY($x + 50, $y);
+                $pdf->Cell(10, $productoHeightActual, $ini, 0, 0, 'R');
+                $pdf->SetXY($x + 60, $y);
+                $pdf->Cell(10, $productoHeightActual, $ing, 0, 0, 'R');
+                $pdf->SetXY($x + 70, $y);
+                $pdf->Cell(10, $productoHeightActual, $sal, 0, 0, 'R');
+                $pdf->SetXY($x + 80, $y);
+                $pdf->Cell(10, $productoHeightActual, $saldo, 0, 1, 'R');
+                
+                $y = $pdf->GetY();
             }
-
-            // Mostrar productos SIN movimiento
+            
             foreach ($sinMovimiento as $datos) {
-                if ($pdf->GetY() > 265) {
-                    $pdf->AddPage();
-                    $pdf->SetFont('times', '', 7);
-                    $pdf->SetFont('times', 'B', 8);
-                    $pdf->Cell(50, 5, "Producto", 0, 0, 'L');
-                    $pdf->Cell(10, 5, "Sal. Ini.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Ingr.", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Salida", 0, 0, 'R');
-                    $pdf->Cell(10, 5, "Saldo", 0, 1, 'R');
-                    $pdf->Cell(90, 1, "", 'T', 1);
-                    $pdf->SetFont('times', '', 7);
-                }
-                
-                $detalle = substr($datos['detalle'], 0, 45);
+                $detalle = $datos['detalle'];
                 $ini = number_format($datos['inicial'], 2, '.', '');
                 $ing = number_format($datos['ingresos'], 2, '.', '');
                 $sal = number_format($datos['salidas'], 2, '.', '');
                 $saldo = number_format($datos['inicial'] + $datos['ingresos'] - $datos['salidas'], 2, '.', '');
                 
-                $pdf->Cell(50, 4, $detalle, 0, 0, 'L');
-                $pdf->Cell(10, 4, $ini, 0, 0, 'R');
-                $pdf->Cell(10, 4, $ing, 0, 0, 'R');
-                $pdf->Cell(10, 4, $sal, 0, 0, 'R');
-                $pdf->Cell(10, 4, $saldo, 0, 1, 'R');
+                $productoHeight = $getProductoHeight($detalle);
+                
+                if ($y + $productoHeight > 270) { 
+                    $pdf->AddPage(); 
+                    $y = 15;
+                    
+                    $pdf->SetFont('times', 'B', 8);
+                    $pdf->SetXY($x, $y);
+                    $pdf->Cell(50, 5, "Producto", 0, 0, 'L');
+                    $pdf->Cell(10, 5, "Sal. Ini.", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Ingr.", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Salida", 0, 0, 'R');
+                    $pdf->Cell(10, 5, "Saldo", 0, 1, 'R');
+                    $y = $pdf->GetY();
+                    $pdf->SetXY($x, $y);
+                    $pdf->Cell(90, 1, "", 'T', 1);
+                    $y = $pdf->GetY() + 2;
+                    $pdf->SetFont('times', '', 7);
+                }
+                
+                $pdf->SetXY($x, $y);
+                $pdf->MultiCell(50, 4, $detalle, 0, 'L');
+                $productoHeightActual = $pdf->GetY() - $y;
+                
+                $pdf->SetXY($x + 50, $y);
+                $pdf->Cell(10, $productoHeightActual, $ini, 0, 0, 'R');
+                $pdf->SetXY($x + 60, $y);
+                $pdf->Cell(10, $productoHeightActual, $ing, 0, 0, 'R');
+                $pdf->SetXY($x + 70, $y);
+                $pdf->Cell(10, $productoHeightActual, $sal, 0, 0, 'R');
+                $pdf->SetXY($x + 80, $y);
+                $pdf->Cell(10, $productoHeightActual, $saldo, 0, 1, 'R');
+                
+                $y = $pdf->GetY();
             }
 
             $pdf->Output("liquidacion_{$liquidacion->iDLiquidacionVendedor}.pdf", 'I');

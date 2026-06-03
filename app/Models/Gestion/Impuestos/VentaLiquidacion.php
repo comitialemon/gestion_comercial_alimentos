@@ -28,10 +28,19 @@ class VentaLiquidacion extends Model
     }
 
     /**
-     * Relación con el concepto de liquidación
+     * Relación con el concepto de liquidación (CORREGIDA)
+     * IdCuenta en esta tabla = IdConceptoLiquidacion en la tabla conceptos
      */
     public function concepto()
     {
         return $this->belongsTo(VentaLiquidacionConcepto::class, 'IdCuenta', 'IdConceptoLiquidacion');
+    }
+
+    /**
+     * Relación con el identificador (cliente/persona)
+     */
+    public function identificador()
+    {
+        return $this->belongsTo(\App\Models\Gestion\Todos\Identificador::class, 'IdIdentificador', 'IdIdentificador');
     }
 }

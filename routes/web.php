@@ -16,7 +16,6 @@ use App\Http\Controllers\Gestion\Impuestos\CompraController;
 use App\Http\Controllers\Gestion\Contabilidad\EgresoController;
 use App\Http\Controllers\Gestion\Inventario\ProductoEstadoController;
 use App\Http\Controllers\Gestion\Inventario\ProductoLineaController;
-use App\Http\Controllers\Gestion\Inventario\ProductoGrupoController;
 use App\Http\Controllers\Gestion\Inventario\ProductoGrupoAnalisisController;
 use App\Http\Controllers\Gestion\Inventario\TipoOperacionController;
 use App\Http\Controllers\Gestion\Inventario\UnidadMedidaController;
@@ -56,9 +55,9 @@ use App\Http\Controllers\Gestion\Todos\CierreFechaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Gestion\Inventario\ProductoAprobacionConfigController;
 use App\Http\Controllers\Gestion\Impuestos\LiquidacionVendedorController;
-use App\Http\Controllers\Gestion\Impuestos\ReporteVentasVendedorController;
-use App\Http\Controllers\Gestion\Impuestos\ReporteVentasSucursalController;
-use App\Http\Controllers\Gestion\Impuestos\ReporteListadoFacturasController;
+use App\Http\Controllers\Gestion\Reportes\ReporteVentasVendedorController;
+use App\Http\Controllers\Gestion\Reportes\ReporteVentasSucursalController;
+use App\Http\Controllers\Gestion\Reportes\ReporteListadoFacturasController;
 use App\Http\Controllers\Gestion\Impuestos\AnularFacturaController;
 use App\Http\Controllers\Gestion\Impuestos\MantenimientoMetodosPagoController;
 use App\Http\Controllers\Gestion\Contabilidad\DiarioIngresoController;
@@ -79,6 +78,8 @@ use App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController;
 use App\Http\Controllers\Gestion\Reportes\ReporteVentasSupervisorPorOperadorController;
 use App\Http\Controllers\Operacion\Pedidos\PedidoController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
+use App\Http\Controllers\Api\VentaTactilController;
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -498,7 +499,6 @@ Route::middleware(['auth.operador'])->group(function () {
     Route::prefix('gestion/inventario')->group(function () {
         Route::resource('producto-estado', ProductoEstadoController::class)->except(['show', 'create', 'edit']);
         Route::resource('producto-linea', ProductoLineaController::class)->except(['show', 'create', 'edit']);
-        Route::resource('producto-grupo', ProductoGrupoController::class)->except(['show', 'create', 'edit']);
         Route::resource('producto-grupo-analisis', ProductoGrupoAnalisisController::class)->except(['show', 'create', 'edit']);
         Route::resource('tipo-operacion', TipoOperacionController::class)->except(['show', 'create', 'edit']);
         Route::resource('unidad-medida', UnidadMedidaController::class)->except(['show', 'create', 'edit']);
@@ -600,6 +600,27 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::post('/{id}/enviar-aprobacion', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
     });
 
+    // ==================== OPCIONES DE COMBO (para productos intercambiables) ====================
+    Route::prefix('combo-opciones')->group(function () {
+        // Obtener composición del combo (productos del inventario_detalle)
+        Route::get('/{idProductoCombo}/composicion', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'getComposicion']);
+        
+        // Obtener opciones existentes
+        Route::get('/{idProductoCombo}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'index']);
+        
+        // Buscar productos disponibles para ser opciones
+        Route::get('/productos/disponibles', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'getProductosDisponibles']);
+        
+        // Guardar nueva opción
+        Route::post('/', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'store']);
+        
+        // Actualizar opción (orden)
+        Route::put('/{id}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'update']);
+        
+        // Eliminar opción
+        Route::delete('/{id}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'destroy']);
+    });
+
 
     // ==================== PUNTO DE VENTA (VENTA NORMAL) ====================
     Route::prefix('venta-factura')->group(function () {
@@ -614,21 +635,26 @@ Route::middleware(['auth.operador'])->group(function () {
         // 🔥 Ruta PDF - DENTRO del grupo
         Route::get('/factura-pdf/{id}', [PagoVentaController::class, 'facturaPdf'])->name('ventas.factura-pdf');
     });
-    // ==================== PUNTO DE VENTA (VENTA TÁCTIL) ====================
+    // ==================== PUNTO DE VENTA (VENTA TÁCTIL) - VISTAS ====================
     Route::prefix('venta-tactil')->group(function () {
-        // Formulario de inicio
+        // Vistas (HTML)
         Route::get('/nueva', [NuevaVentaTactilController::class, 'create'])->name('venta-tactil.nueva');
         Route::post('/nueva', [NuevaVentaTactilController::class, 'store'])->name('venta-tactil.nueva.store');
-        
-        // Menú de categorías y productos
         Route::get('/', [MenuTactilController::class, 'index'])->name('venta-tactil.index');
         Route::get('/categoria/{id}', [MenuTactilController::class, 'verCategoria'])->name('venta-tactil.categoria');
-        
-        // Carrito
         Route::get('/carrito', [CarritoTactilController::class, 'index'])->name('venta-tactil.carrito');
-        
-        // Pago
         Route::get('/pago', [PagoVentaController::class, 'createTactil'])->name('venta-tactil.pago');
+    });
+
+    // ==================== API PARA VENTA TÁCTIL (JSON) ====================
+    Route::prefix('api/venta-tactil')->group(function () {
+        // API endpoints
+        Route::get('/carrito', [VentaTactilController::class, 'getCarrito']);
+        Route::post('/agregar', [VentaTactilController::class, 'agregarProducto']);
+        Route::post('/agregar-combo', [VentaTactilController::class, 'agregarCombo']);
+        Route::put('/carrito/{itemId}', [VentaTactilController::class, 'actualizarCantidad']);
+        Route::delete('/carrito/{itemId}', [VentaTactilController::class, 'eliminarProducto']);
+        Route::delete('/cancelar', [VentaTactilController::class, 'cancelarVenta']);
     });
 
     // ==================== APIs DE PRODUCTOS (VENTA NORMAL) ====================

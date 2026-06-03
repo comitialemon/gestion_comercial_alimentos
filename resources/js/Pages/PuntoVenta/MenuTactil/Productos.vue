@@ -1,9 +1,9 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { router } from '@inertiajs/vue3'
 import { ref, computed, inject, onMounted } from 'vue'
 import axios from 'axios'
 import NavBarTactil from '../Components/NavBarTactil.vue'
+import ModalCambioProducto from './ModalCambioProducto.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -19,17 +19,26 @@ const props = defineProps({
 const loading = ref(false)
 const carrito = ref([])
 
-// Modal
+// Modal principal
 const modalVisible = ref(false)
 const productoSeleccionado = ref(null)
 const cantidad = ref(1)
 const precioUnitario = ref(0)
 const tipoPrecio = ref('')
+const esComboConOpciones = ref(false)
+
+// Modal de personalización de combos (múltiples)
+const modalPersonalizarVisible = ref(false)
+const comboActual = ref(null)
+const cantidadCombos = ref(1)
+const personalizacionesTemp = ref([])
+const opcionesAgrupadas = ref([])
 
 const totalModal = computed(() => (cantidad.value * precioUnitario.value).toFixed(2))
 const totalCarrito = computed(() => carrito.value.reduce((sum, item) => sum + (item.precio * item.cantidad), 0).toFixed(2))
 const totalItems = computed(() => carrito.value.reduce((sum, item) => sum + item.cantidad, 0))
 
+// Cargar carrito
 const cargarCarrito = async () => {
     try {
         const response = await axios.get('/api/venta-tactil/carrito')
@@ -40,7 +49,8 @@ const cargarCarrito = async () => {
                 nombre: item.nombre,
                 precio: parseFloat(item.precio),
                 cantidad: item.unidades,
-                subtotal: parseFloat(item.subtotal)
+                subtotal: parseFloat(item.subtotal),
+                personalizacion: item.personalizacion
             }))
         }
     } catch (error) {
@@ -48,35 +58,155 @@ const cargarCarrito = async () => {
     }
 }
 
-const abrirModal = (producto) => {
+// Verificar si el producto tiene opciones de cambio
+const verificarOpcionesCombo = async (producto) => {
+    try {
+        const response = await axios.get(`/combo-opciones/${producto.id}`)
+        return response.data.success && response.data.opciones && response.data.opciones.length > 0
+    } catch (error) {
+        console.error('Error verificando opciones:', error)
+        return false
+    }
+}
+
+// Cargar las opciones del combo
+const cargarOpcionesCombo = async (idCombo) => {
+    try {
+        const response = await axios.get(`/combo-opciones/${idCombo}`)
+        if (response.data.success && response.data.opciones) {
+            const agrupadas = {}
+            response.data.opciones.forEach(op => {
+                if (!agrupadas[op.id_producto_original]) {
+                    agrupadas[op.id_producto_original] = {
+                        id_producto_original: op.id_producto_original,
+                        nombre_original: op.nombre_original,
+                        opciones: []
+                    }
+                }
+                agrupadas[op.id_producto_original].opciones.push({
+                    id_sustituto: op.id_producto_sustituto,
+                    nombre: op.nombre_sustituto,
+                    codigo: op.codigo_sustituto,
+                    es_default: op.es_default === 1
+                })
+            })
+            return Object.values(agrupadas)
+        }
+        return []
+    } catch (error) {
+        console.error('Error cargando opciones:', error)
+        return []
+    }
+}
+
+const abrirModal = async (producto) => {
     if (!producto?.id) {
         toast?.error('Error', 'Producto inválido')
         return
     }
+    
     productoSeleccionado.value = producto
     cantidad.value = 1
     precioUnitario.value = producto.precio_real
     tipoPrecio.value = producto.tipo_precio || 'default'
+    
+    const tieneOpciones = await verificarOpcionesCombo(producto)
+    esComboConOpciones.value = tieneOpciones
+    
     modalVisible.value = true
 }
 
 const cerrarModal = () => {
     modalVisible.value = false
     setTimeout(() => {
-        if (!modalVisible.value) productoSeleccionado.value = null
+        productoSeleccionado.value = null
+        esComboConOpciones.value = false
     }, 200)
 }
 
-const incrementarCantidad = () => cantidad.value++
-const decrementarCantidad = () => { if (cantidad.value > 1) cantidad.value-- }
-const validarCantidad = () => { cantidad.value = parseInt(cantidad.value) || 1 }
+// Abrir modal de personalización de múltiples combos
+const abrirPersonalizacionCombos = async () => {
+    comboActual.value = productoSeleccionado.value
+    cantidadCombos.value = cantidad.value
+    
+    // Cargar las opciones del combo
+    opcionesAgrupadas.value = await cargarOpcionesCombo(productoSeleccionado.value.id)
+    
+    // Inicializar personalizaciones vacías para cada combo
+    personalizacionesTemp.value = []
+    for (let i = 0; i < cantidadCombos.value; i++) {
+        personalizacionesTemp.value.push({ personalizacion: {} })
+    }
+    
+    modalVisible.value = false
+    modalPersonalizarVisible.value = true
+}
 
-const agregarAlCarrito = async () => {
-    if (!productoSeleccionado.value) {
-        toast?.error('Error', 'No se pudo identificar el producto')
-        cerrarModal()
+// Agregar combos personalizados al carrito (después de personalizar)
+const agregarCombosPersonalizados = async (personalizaciones) => {
+    loading.value = true
+    try {
+        const response = await axios.post('/api/venta-tactil/agregar-combo', {
+            id_combo: comboActual.value.id,
+            personalizaciones: personalizaciones,
+            cantidad_total: personalizaciones.length,
+            precio_unitario: precioUnitario.value
+        })
+        if (response.data.success) {
+            await cargarCarrito()
+            toast?.success('¡Combos agregados!', `${comboActual.value.nombre} x ${personalizaciones.length}`)
+            modalPersonalizarVisible.value = false
+            comboActual.value = null
+            opcionesAgrupadas.value = []
+        } else {
+            toast?.error('Error', response.data.message || 'Error al agregar')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al agregar')
+    } finally {
+        loading.value = false
+    }
+}
+
+// Agregar combo con opciones POR DEFECTO (sin abrir modal)
+const agregarComboDefault = async () => {
+    if (cantidad.value < 1) {
+        toast?.warning('Cantidad inválida', 'La cantidad debe ser al menos 1')
         return
     }
+    
+    loading.value = true
+    try {
+        // Crear personalizaciones vacías (usará los productos originales)
+        const personalizacionesDefault = []
+        for (let i = 0; i < cantidad.value; i++) {
+            personalizacionesDefault.push({ personalizacion: {} })
+        }
+        
+        const response = await axios.post('/api/venta-tactil/agregar-combo', {
+            id_combo: productoSeleccionado.value.id,
+            personalizaciones: personalizacionesDefault,
+            cantidad_total: cantidad.value,
+            precio_unitario: precioUnitario.value
+        })
+        if (response.data.success) {
+            await cargarCarrito()
+            toast?.success('¡Combo agregado!', `${productoSeleccionado.value.nombre} x ${cantidad.value}`)
+            cerrarModal()
+        } else {
+            toast?.error('Error', response.data.message || 'Error al agregar')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al agregar')
+    } finally {
+        loading.value = false
+    }
+}
+
+// Agregar producto simple al carrito (normal, sin combo)
+const agregarProductoSimpleAlCarrito = async () => {
     if (cantidad.value < 1) {
         toast?.warning('Cantidad inválida', 'La cantidad debe ser al menos 1')
         return
@@ -97,10 +227,19 @@ const agregarAlCarrito = async () => {
             toast?.error('Error', response.data.message || 'Error al agregar')
         }
     } catch (error) {
+        console.error('Error:', error)
         toast?.error('Error', error.response?.data?.message || 'Error al agregar')
     } finally {
         loading.value = false
     }
+}
+
+const incrementarCantidad = () => cantidad.value++
+const decrementarCantidad = () => { if (cantidad.value > 1) cantidad.value-- }
+const validarCantidad = () => { 
+    let val = parseInt(cantidad.value) 
+    if (isNaN(val) || val < 1) val = 1
+    cantidad.value = val 
 }
 
 onMounted(() => cargarCarrito())
@@ -110,7 +249,6 @@ onMounted(() => cargarCarrito())
     <div class="min-h-screen bg-gray-50">
         <div class="max-w-7xl mx-auto px-3 py-3">
             
-            <!-- 🔥 USAR COMPONENTE -->
             <NavBarTactil 
                 :comisionista="comisionista || 'Sin comisionista'"
                 :ruta="ruta"
@@ -163,7 +301,7 @@ onMounted(() => cargarCarrito())
                 <p class="text-sm">No hay productos en esta categoría</p>
             </div>
 
-            <!-- Modal -->
+            <!-- Modal principal -->
             <div v-if="modalVisible" class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl max-w-sm w-full overflow-hidden shadow-xl">
                     <div class="bg-primary-700 px-4 py-3">
@@ -180,32 +318,90 @@ onMounted(() => cargarCarrito())
                             </div>
                         </div>
                     </div>
+                    
                     <div class="p-4">
+                        <!-- Precio -->
                         <div class="text-center mb-3">
                             <span class="text-2xl font-bold text-primary-700">{{ Number(precioUnitario).toFixed(2) }}</span>
                             <span class="text-gray-400 text-xs ml-0.5">Bs c/u</span>
                         </div>
+                        
+                        <!-- Cantidad -->
                         <div class="flex items-center justify-center gap-3 mb-4">
                             <button @click="decrementarCantidad" class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 font-bold hover:bg-primary-200">-</button>
-                            <input type="number" v-model.number="cantidad" @input="validarCantidad" min="1" class="w-14 text-center text-lg font-bold border rounded-lg py-1 focus:border-primary-400 focus:outline-none">
+                            <input 
+                                type="number" 
+                                v-model.number="cantidad" 
+                                @input="validarCantidad"
+                                min="1" 
+                                class="w-14 text-center text-lg font-bold border rounded-lg py-1 focus:border-primary-400 focus:outline-none"
+                                style="appearance: textfield; -moz-appearance: textfield;"
+                            >
                             <button @click="incrementarCantidad" class="w-8 h-8 rounded-full bg-primary-100 text-primary-700 font-bold hover:bg-primary-200">+</button>
                         </div>
+                        
+                        <!-- Total -->
                         <div class="bg-secondary-50 rounded-lg p-2 mb-4 text-center">
                             <p class="text-[10px] text-secondary-700">Total</p>
                             <p class="text-lg font-bold text-primary-700">{{ totalModal }} Bs</p>
                         </div>
-                        <div class="flex gap-2">
-                            <button @click="cerrarModal" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-600 text-sm hover:bg-gray-200">Cancelar</button>
-                            <button @click="agregarAlCarrito" :disabled="loading" class="flex-1 py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1">
+                        
+                        <!-- Botones acción -->
+                        <div class="flex flex-col gap-2">
+                            <!-- Botón para combos: Personalizar -->
+                            <button 
+                                v-if="esComboConOpciones"
+                                @click="abrirPersonalizacionCombos" 
+                                :disabled="loading" 
+                                class="w-full py-2 rounded-lg bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition flex items-center justify-center gap-2"
+                            >
+                                <i class="fas fa-exchange-alt text-xs"></i>
+                                Personalizar combos
+                            </button>
+                            
+                            <!-- Botón AGREGAR (para todos los casos) -->
+                            <button 
+                                v-if="!esComboConOpciones"
+                                @click="agregarProductoSimpleAlCarrito" 
+                                :disabled="loading" 
+                                class="w-full py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1"
+                            >
                                 <i v-if="loading" class="fas fa-spinner fa-spin text-xs"></i>
                                 <i v-else class="fas fa-cart-plus text-xs"></i>
-                                {{ loading ? '' : `Agregar (${cantidad})` }}
+                                {{ loading ? '' : `Agregar al carrito (${cantidad})` }}
+                            </button>
+                            
+                            <button 
+                                v-else
+                                @click="agregarComboDefault" 
+                                :disabled="loading" 
+                                class="w-full py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1"
+                            >
+                                <i v-if="loading" class="fas fa-spinner fa-spin text-xs"></i>
+                                <i v-else class="fas fa-cart-plus text-xs"></i>
+                                {{ loading ? '' : `Agregar al carrito (${cantidad})` }}
+                            </button>
+                            
+                            <button @click="cerrarModal" class="w-full py-2 rounded-lg bg-gray-100 text-gray-600 text-sm hover:bg-gray-200">
+                                Cancelar
                             </button>
                         </div>
                     </div>
                 </div>
             </div>
 
+            <!-- Modal de Personalización de Múltiples Combos -->
+            <ModalCambioProducto
+                v-model:visible="modalPersonalizarVisible"
+                :combo="comboActual"
+                :opciones="opcionesAgrupadas"
+                :cantidad="cantidadCombos"
+                :precio-unitario="precioUnitario"
+                :personalizaciones-iniciales="personalizacionesTemp"
+                @confirm="agregarCombosPersonalizados"
+            />
+
+            <!-- Carrito flotante -->
             <div v-if="totalItems > 0" class="fixed bottom-3 left-3 bg-white rounded-lg shadow-md p-2 border-l-3 border-primary-500">
                 <div class="flex items-center gap-2">
                     <div class="bg-primary-100 rounded-full w-7 h-7 flex items-center justify-center">
@@ -227,5 +423,17 @@ onMounted(() => cargarCarrito())
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+input[type="number"] {
+    -webkit-appearance: textfield;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
 </style>

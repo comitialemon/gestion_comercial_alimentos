@@ -208,7 +208,6 @@ onMounted(() => cargarCarrito())
             </div>
         </div>
 
-        <!-- Modal Eliminar Producto -->
         <ConfirmModal
             v-model="modalEliminar"
             title="Eliminar producto"
@@ -219,7 +218,6 @@ onMounted(() => cargarCarrito())
             @confirm="confirmarEliminar"
         />
 
-        <!-- Modal Cancelar Venta -->
         <ConfirmModal
             v-model="modalCancelarVenta"
             title="Cancelar venta"

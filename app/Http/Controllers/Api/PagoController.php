@@ -63,14 +63,20 @@ class PagoController extends Controller
 
     /**
      * Obtener conceptos de liquidación (SIN facturación)
+     * CON los flags requiere_identificador y usa_identificador_factura
      */
     public function getConceptosSinFacturacion()
     {
         $conceptos = VentaLiquidacionConcepto::porContexto()
-            ->where('activo', 1)
-            ->orderBy('IdConceptoLiquidacion')
-            ->get(['IdConceptoLiquidacion as id', 'Concepto as nombre', 'IdCuenta']);
-
+            ->activos()
+            ->get([
+                'IdConceptoLiquidacion as id',
+                'Concepto as nombre',
+                'IdCuenta',
+                'requiere_identificador',
+                'usa_identificador_factura'
+            ]);
+        
         return response()->json([
             'success' => true,
             'conceptos' => $conceptos
@@ -139,7 +145,11 @@ class PagoController extends Controller
         
         try {
             // Aquí va la lógica de guardar pago CON facturación
-            $this->limpiarSesionVenta($request->tipo_venta);
+            if ($request->tipo_venta === 'tactil') {
+                session()->forget('venta_tactil_id');
+            } else {
+                session()->forget('venta_actual_id');
+            }
             return response()->json(['success' => true, 'message' => 'Venta procesada exitosamente']);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -171,17 +181,5 @@ class PagoController extends Controller
             'success' => true,
             'clientes' => $clientes
         ]);
-    }
-
-    /**
-     * Limpiar sesión según tipo de venta
-     */
-    private function limpiarSesionVenta($tipoVenta)
-    {
-        if ($tipoVenta === 'tactil') {
-            session()->forget('venta_tactil_id');
-        } else {
-            session()->forget('venta_actual_id');
-        }
     }
 }

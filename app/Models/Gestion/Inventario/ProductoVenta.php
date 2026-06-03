@@ -20,10 +20,8 @@ class ProductoVenta extends Model
     const APROBACION_RECHAZADO = 3;
     
     protected $fillable = [
-        'IdVentaGrupo',
         'Codigo',
         'Detalle',
-        'NombreCortoFactura',
         'PrecioVenta',
         'ActivoInactivo',
         'estado_aprobacion',
@@ -67,11 +65,6 @@ class ProductoVenta extends Model
     public function scopeActivosComercialmente($query)
     {
         return $query->where('ActivoInactivo', self::COMERCIAL_ACTIVO);
-    }
-
-    public function grupo()
-    {
-        return $this->belongsTo(VentaGrupo::class, 'IdVentaGrupo', 'IdVentaGrupo');
     }
 
     public function categoria()
@@ -132,5 +125,52 @@ class ProductoVenta extends Model
             self::APROBACION_RECHAZADO => 'bg-red-100 text-red-800',
             default => 'bg-gray-100 text-gray-500'
         };
+    }
+    /**
+     * Obtiene las opciones de cambio disponibles para este combo
+     */
+    public function opcionesCambio()
+    {
+        return $this->hasMany(ComboOpcion::class, 'id_producto_combo', 'IdDetalleProducto');
+    }
+
+    /**
+     * Verifica si este producto es un combo con opciones de cambio
+     */
+    public function esComboConOpciones()
+    {
+        return $this->opcionesCambio()->activo()->exists();
+    }
+
+    /**
+     * Obtiene las opciones de cambio agrupadas por producto original
+     */
+    public function getOpcionesAgrupadasAttribute()
+    {
+        $opciones = $this->opcionesCambio()
+            ->activo()
+            ->with('productoSustituto')
+            ->orderBy('orden')
+            ->get();
+        
+        $agrupadas = [];
+        foreach ($opciones as $opcion) {
+            $originalId = $opcion->id_producto_original;
+            if (!isset($agrupadas[$originalId])) {
+                $agrupadas[$originalId] = [
+                    'id_producto_original' => $originalId,
+                    'nombre_original' => $opcion->productoOriginal?->Descripcion ?? 'Producto',
+                    'opciones' => []
+                ];
+            }
+            $agrupadas[$originalId]['opciones'][] = [
+                'id_sustituto' => $opcion->id_producto_sustituto,
+                'nombre' => $opcion->productoSustituto?->Descripcion ?? 'Producto',
+                'es_default' => $opcion->es_default,
+                'orden' => $opcion->orden
+            ];
+        }
+        
+        return array_values($agrupadas);
     }
 }

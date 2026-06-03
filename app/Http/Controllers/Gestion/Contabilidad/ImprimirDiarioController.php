@@ -222,7 +222,6 @@ class ImprimirDiarioController extends Controller
             'operadores' => $operadores
         ]);
     }
-    
     /**
      * Generar PDF del diario
      */
@@ -339,7 +338,6 @@ class ImprimirDiarioController extends Controller
         $pdf->SetLineWidth(0.2);
         $pdf->Line(10, $y, 200, $y);
         
-        //$y += 1;
         $pdf->SetFont('courier', 'B', 8);
         $pdf->SetXY(10, $y);
         $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
@@ -377,7 +375,7 @@ class ImprimirDiarioController extends Controller
                 $pdf->SetFont('courier', 'B', 8);
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
-                $pdf->SetXY(25, $y);  // ← GLOSA más a la izquierda
+                $pdf->SetXY(25, $y);
                 $pdf->Cell(80, 5, 'Glosa', 0, 0, 'L');
                 $pdf->SetXY(119, $y);
                 $pdf->Cell(20, 5, 'Tipo Cambio', 0, 0, 'R');
@@ -395,14 +393,34 @@ class ImprimirDiarioController extends Controller
                 $pdf->SetFont('courier', '', 8);
             }
             
-            // Calcular altura necesaria para glosa e identificador
+            // 🔥 CORREGIDO: Obtener el identificador correctamente
             $glosa = $asiento->Glosa ?? '';
-            $identificador = ($asiento->identificador->CI_NIT ?? '') . ' - ' . ($asiento->identificador->Nombre ?? '');
             
-            // Altura de glosa (MultiCell) - ANCHO REDUCIDO a 55mm para no chocar con Tipo Cambio
+            // 🔥 Manejar correctamente el identificador (puede ser NULL)
+            $identificadorTexto = '';
+            if ($asiento->IdIdentificador && $asiento->IdIdentificador > 0) {
+                // Si ya tenemos la relación cargada, usarla
+                if ($asiento->identificador) {
+                    $identificadorTexto = ($asiento->identificador->CI_NIT ?? '') . ' - ' . ($asiento->identificador->Nombre ?? '');
+                } else {
+                    // Buscar manualmente
+                    $identificadorDB = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('todos_identificador')
+                        ->where('IdIdentificador', $asiento->IdIdentificador)
+                        ->first();
+                    if ($identificadorDB) {
+                        $identificadorTexto = ($identificadorDB->CI_NIT ?? '') . ' - ' . ($identificadorDB->Nombre ?? '');
+                    } else {
+                        $identificadorTexto = 'ID: ' . $asiento->IdIdentificador . ' (No encontrado)';
+                    }
+                }
+            } else {
+                $identificadorTexto = 'SIN IDENTIFICADOR';
+            }
+            
+            // Altura de glosa (MultiCell)
             $glosaHeight = $pdf->getStringHeight(55, $glosa);
-            $identHeight = $pdf->getStringHeight(150, $identificador);
-            $maxExtraHeight = max($glosaHeight, $identHeight);
+            $identHeight = $pdf->getStringHeight(150, $identificadorTexto);
             
             // Guardar posición Y actual
             $currentY = $y;
@@ -428,15 +446,15 @@ class ImprimirDiarioController extends Controller
                 $pdf->Cell(25, 4, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
             }
             
-            // ===== LÍNEA 2: Glosa (MultiLine) - AHORA EN X=25, ancho 55mm =====
+            // ===== LÍNEA 2: Glosa (MultiLine) =====
             $y += 5;
-            $pdf->SetXY(25, $y);  // ← MOVIDO DE 47 a 25 (más a la izquierda)
-            $pdf->MultiCell(55, 4, $glosa, 0, 'L');  // ← Ancho reducido de 70 a 55
+            $pdf->SetXY(25, $y);
+            $pdf->MultiCell(55, 4, $glosa, 0, 'L');
             $newY = $pdf->GetY();
             
-            // ===== LÍNEA 3: Identificador (MultiLine) - AHORA EN X=25 =====
-            $pdf->SetXY(25, $newY);  // ← MOVIDO DE 47 a 25
-            $pdf->MultiCell(150, 4, $identificador, 0, 'L');
+            // ===== LÍNEA 3: Identificador (MultiLine) =====
+            $pdf->SetXY(25, $newY);
+            $pdf->MultiCell(150, 4, $identificadorTexto, 0, 'L');
             $newY2 = $pdf->GetY();
             
             // Avanzar Y según la línea más alta
@@ -470,7 +488,7 @@ class ImprimirDiarioController extends Controller
         $pdf->Line(10, $y, 200, $y);
         
         // ==================== FIRMAS ====================
-        $y = $y + 25;
+        $y = $y + 20;
         
         $pdf->SetFont('courier', '', 8);
         

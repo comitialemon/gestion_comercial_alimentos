@@ -8,7 +8,7 @@ use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 use App\Models\Gestion\Contabilidad\ContaCuenta;
 use App\Models\Gestion\Contabilidad\FactorCambio;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
-use App\Http\Controllers\Operacion\Produccion\CronogramaController; // 🔥 AGREGAR ESTO
+use App\Http\Controllers\Operacion\Produccion\CronogramaController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 
 // Middleware web + auth para tener sesión
@@ -24,16 +24,17 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         Route::delete('/cancelar', [VentaTactilController::class, 'cancelarVenta']);
     });
     
-    // ==================== PAGO - ENDPOINTS COMPARTIDOS ====================
+    // ==================== 🔥 PAGO - ENDPOINTS COMPARTIDOS ====================
     Route::prefix('pago')->group(function () {
         Route::get('/metodos-con-facturacion', [PagoController::class, 'getMetodosPagoConFacturacion']);
         Route::post('/procesar-con-facturacion', [PagoController::class, 'procesarPagoConFacturacion']);
         Route::get('/conceptos-sin-facturacion', [PagoController::class, 'getConceptosSinFacturacion']);
-        Route::post('/procesar-sin-facturacion', [PagoVentaController::class, 'procesarPagoSinFacturacion']);
+        Route::post('/procesar-sin-facturacion', [\App\Http\Controllers\PuntoVenta\PagoVentaController::class, 'procesarPagoSinFacturacion']);
         Route::post('/verificar-nit', [PagoController::class, 'verificarNit']);
         Route::get('/buscar-identificador', [PagoController::class, 'buscarIdentificador']);
     });
-    
+    Route::get('/venta/{ventaId}/nit-predefinido', [PagoVentaController::class, 'getNitPredefinido']);
+
     // ==================== INVENTARIO - ENDPOINTS API ====================
     Route::prefix('inventario')->group(function () {
         Route::get('/stock/{idProducto}', [App\Http\Controllers\Gestion\Inventario\InventarioActualController::class, 'getStockProducto']);
@@ -43,19 +44,11 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
     // ==================== REPORTE INVENTARIO ====================
     Route::get('/inventario/reporte-movimientos', [App\Http\Controllers\Gestion\Inventario\ReporteInventarioController::class, 'getMovimientos']);
     
-    // ==================== 🔥 CRONOGRAMA DE PRODUCCIÓN - API ====================
+    // ==================== CRONOGRAMA DE PRODUCCIÓN - API ====================
     Route::prefix('operacion/produccion/cronograma')->group(function () {
-        // API para consultas externas
-        Route::get('/api', [CronogramaController::class, 'apiGet'])
-            ->name('api.operacion.produccion.cronograma.get');
-        
-        // Endpoint para obtener datos por fecha (si lo necesitas)
-        Route::get('/fecha/{fecha}', [CronogramaController::class, 'apiGetByDate'])
-            ->name('api.operacion.produccion.cronograma.by-date');
-        
-        // Endpoint para obtener por día de semana (lunes, martes, etc.)
-        Route::get('/dia/{dia}', [CronogramaController::class, 'apiGetByDay'])
-            ->name('api.operacion.produccion.cronograma.by-day');
+        Route::get('/api', [CronogramaController::class, 'apiGet'])->name('api.operacion.produccion.cronograma.get');
+        Route::get('/fecha/{fecha}', [CronogramaController::class, 'apiGetByDate'])->name('api.operacion.produccion.cronograma.by-date');
+        Route::get('/dia/{dia}', [CronogramaController::class, 'apiGetByDay'])->name('api.operacion.produccion.cronograma.by-day');
     });
     
     // ==================== NOTIFICACIONES DE APROBACIÓN DE PRODUCTOS ====================

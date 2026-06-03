@@ -7,6 +7,7 @@ import axios from 'axios'
 import PrecioSucursalTab from './components/PrecioSucursalTab.vue'
 import PrecioMayoristaTab from './components/PrecioMayoristaTab.vue'
 import InventarioDetalleTab from './components/InventarioDetalleTab.vue'
+import ComboOpcionTab from './components/ComboOpcionTab.vue'  // ← AGREGADO
 import ModalCategorias from './components/ModalCategorias.vue'
 import ModalDuplicado from './components/ModalDuplicado.vue'
 
@@ -19,7 +20,6 @@ const props = defineProps({
     preciosSucursal: Array,
     preciosMayorista: Array,
     detalles: Array,
-    grupos: Array,
     categorias: Array,
     sucursales: Array,
     identificadores: Array,
@@ -34,14 +34,21 @@ const productoGuardado = ref(props.editando || false)
 const productoId = ref(props.producto?.IdDetalleProducto || null)
 const enviandoAprobacion = ref(false)
 const eliminando = ref(false)
+const archivoImagen = ref(null)
 
 // Estado del modal de categorías
 const modalCategoriasOpen = ref(false)
 const categoriaNombre = ref('')
 
-// 🔥 NUEVO: Estado para modal de duplicado
+// Estado para modal de duplicado
 const modalDuplicadoOpen = ref(false)
 const productoDuplicado = ref(null)
+
+// Función para recargar opciones (callback del componente ComboOpcionTab)
+const cargarOpciones = () => {
+    // Esta función se llama cuando se actualizan las opciones
+    console.log('Opciones de combo actualizadas')
+}
 
 // CONSTANTES DE ESTADO
 const ESTADO_ACTIVO = 0
@@ -103,18 +110,15 @@ const textoBotonEstado = computed(() => {
     return ''
 })
 
+// FORM
 const form = useForm({
-    IdVentaGrupo: props.producto?.IdVentaGrupo || '',
     id_categoria: props.producto?.id_categoria || '',
     Codigo: props.producto?.Codigo || '',
     Detalle: props.producto?.Detalle || '',
-    NombreCortoFactura: props.producto?.NombreCortoFactura || '',
     PrecioVenta: props.producto?.PrecioVenta || 0,
-    imagen_base64: null,
     preview_url: props.producto?.ImagenProducto || null,
 })
 
-// 🔥 FUNCIÓN PARA ACTUALIZAR EL NOMBRE DE LA CATEGORÍA EN EL BOTÓN
 const actualizarNombreCategoria = () => {
     if (form.id_categoria && props.categorias) {
         const categoriaEncontrada = props.categorias.find(c => c.id === form.id_categoria || c.id_categoria === form.id_categoria)
@@ -128,7 +132,6 @@ const actualizarNombreCategoria = () => {
     }
 }
 
-// 🔥 INICIALIZAR CATEGORÍA AL CARGAR
 const inicializarCategoria = () => {
     if (props.producto?.id_categoria && props.categorias) {
         const categoriaEncontrada = props.categorias.find(c => 
@@ -142,14 +145,12 @@ const inicializarCategoria = () => {
     }
 }
 
-// 🔥 SELECCIONAR CATEGORÍA DESDE EL MODAL
 const seleccionarCategoriaModal = (categoria) => {
     form.id_categoria = categoria.id_categoria || categoria.id
     categoriaNombre.value = categoria.nombre
     modalCategoriasOpen.value = false
 }
 
-// 🔥 WATCH PARA CUANDO EL PRODUCTO VIENE DESDE EL SERVIDOR
 watch(() => props.producto, (nuevoProducto) => {
     if (nuevoProducto && nuevoProducto.id_categoria && props.categorias) {
         const categoriaEncontrada = props.categorias.find(c => 
@@ -163,12 +164,10 @@ watch(() => props.producto, (nuevoProducto) => {
     }
 }, { immediate: true, deep: true })
 
-// 🔥 WATCH PARA CUANDO CAMBIA form.id_categoria
 watch(() => form.id_categoria, () => {
     actualizarNombreCategoria()
 }, { immediate: true })
 
-// Inicializar al montar
 onMounted(() => {
     inicializarCategoria()
 })
@@ -184,17 +183,16 @@ const imgInput = ref(null)
 const onImageChange = (event) => {
     const file = event.target.files[0]
     if (!file) return
-    
+    archivoImagen.value = file
     const reader = new FileReader()
     reader.onload = (e) => {
-        form.imagen_base64 = e.target.result
         form.preview_url = e.target.result
     }
     reader.readAsDataURL(file)
 }
 
 const eliminarImagen = () => {
-    form.imagen_base64 = null
+    archivoImagen.value = null
     form.preview_url = null
     if (imgInput.value) imgInput.value.value = ''
 }
@@ -212,66 +210,73 @@ const abrirModalCategorias = () => {
 }
 
 const guardarProducto = () => {
+    const formData = new FormData()
+    
+    formData.append('id_categoria', form.id_categoria || '')
+    formData.append('Codigo', form.Codigo)
+    formData.append('Detalle', form.Detalle)
+    formData.append('PrecioVenta', form.PrecioVenta)
+    
+    if (archivoImagen.value) {
+        formData.append('imagen', archivoImagen.value)
+    }
+    
     if (props.editando) {
-        const datosEdicion = {
-            IdVentaGrupo: form.IdVentaGrupo,
-            id_categoria: form.id_categoria,
-            Codigo: form.Codigo,
-            Detalle: form.Detalle,
-            NombreCortoFactura: form.NombreCortoFactura,
-            PrecioVenta: form.PrecioVenta,
-            imagen_base64: form.imagen_base64,
-        }
-        
-        axios.put(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, datosEdicion)
-            .then(response => {
-                if (response.data.success) {
-                    toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
-                } else {
-                    toast?.error('Error', response.data.message || 'Error al actualizar')
+        axios.post(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`, formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                'X-HTTP-Method-Override': 'PUT'
+            }
+        })
+        .then(response => {
+            if (response.data.success) {
+                toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
+                if (response.data.producto) {
+                    form.id_categoria = response.data.producto.id_categoria
+                    form.Codigo = response.data.producto.Codigo
+                    form.Detalle = response.data.producto.Detalle
+                    form.PrecioVenta = response.data.producto.PrecioVenta
+                    form.preview_url = response.data.producto.ImagenProducto
+                    if (props.producto) {
+                        props.producto = { ...props.producto, ...response.data.producto }
+                    }
                 }
-            })
-            .catch(error => {
-                console.error('Errores:', error)
-                const message = error.response?.data?.message || 'Verifique los dados inseridos'
-                toast?.error('Error', message)
-            })
+            } else {
+                toast?.error('Error', response.data.message || 'Error al actualizar')
+            }
+        })
+        .catch(error => {
+            console.error('Errores:', error)
+            const message = error.response?.data?.message || 'Verifique los datos ingresados'
+            toast?.error('Error', message)
+        })
     } else {
-        const datosCreacion = {
-            IdVentaGrupo: form.IdVentaGrupo,
-            id_categoria: form.id_categoria,
-            Codigo: form.Codigo,
-            Detalle: form.Detalle,
-            NombreCortoFactura: form.NombreCortoFactura,
-            PrecioVenta: form.PrecioVenta,
-            imagen_base64: form.imagen_base64,
-        }
-        
-        form.post('/gestion/productos-venta', datosCreacion, {
-            preserveScroll: true,
-            onSuccess: (response) => {
-                if (response.props?.flash?.success) {
-                    toast?.success('Éxito', response.props.flash.success)
-                }
+        axios.post('/gestion/productos-venta', formData, {
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            }
+        })
+        .then(response => {
+            if (response.data.success) {
+                toast?.success('Éxito', response.data.message || 'Producto creado correctamente')
                 productoGuardado.value = true
                 setTimeout(() => {
-                    window.location.reload()
-                }, 500)
-            },
-            onError: (errors) => {
-                console.error('Errores:', errors)
-                toast?.error('Error', 'Verifique os dados inseridos')
+                    router.get(`/gestion/productos-venta/${response.data.producto_id}/edit`)
+                }, 1000)
+            } else {
+                toast?.error('Error', response.data.message || 'Error al crear')
             }
+        })
+        .catch(error => {
+            console.error('Errores:', error)
+            const message = error.response?.data?.message || 'Verifique los datos ingresados'
+            toast?.error('Error', message)
         })
     }
 }
 
 const descartarBorrador = async () => {
     if (!props.producto?.IdDetalleProducto) return
-    
     eliminando.value = true
     try {
         await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
@@ -286,7 +291,6 @@ const descartarBorrador = async () => {
     }
 }
 
-// 🔥 NUEVA FUNCIÓN PARA VERIFICAR COMPOSICIÓN Y MOSTRAR MODAL
 const verificarComposicionAntesDeEnviar = async () => {
     if (detallesList.value.length === 0) {
         toast?.warning('Atención', 'Agregue productos al detalle antes de enviar a aprobación')
@@ -304,7 +308,6 @@ const verificarComposicionAntesDeEnviar = async () => {
         })
         
         if (response.data.existe) {
-            // 🔥 MOSTRAR MODAL EN VEZ DE ELIMINAR DIRECTAMENTE
             productoDuplicado.value = response.data.producto
             modalDuplicadoOpen.value = true
             return false
@@ -316,9 +319,7 @@ const verificarComposicionAntesDeEnviar = async () => {
     }
 }
 
-// 🔥 NUEVA FUNCIÓN PARA CANCELAR CREACIÓN (cuando el usuario confirma)
 const cancelarCreacion = async () => {
-    // Si es un producto nuevo (borrador), eliminarlo
     if (props.producto?.IdDetalleProducto && !props.editando) {
         try {
             await axios.delete(`/gestion/productos-venta/${props.producto.IdDetalleProducto}`)
@@ -326,20 +327,15 @@ const cancelarCreacion = async () => {
             console.error('Error eliminando borrador:', error)
         }
     }
-    
     toast?.info('Información', 'Creación cancelada')
-    
-    // Redirigir al listado
     setTimeout(() => {
         router.get('/gestion/productos-venta')
     }, 500)
 }
 
-// 🔥 MODIFICAR enviarAprobacion para usar la nueva lógica
 const enviarAprobacion = async () => {
     const composicionValida = await verificarComposicionAntesDeEnviar()
     if (!composicionValida) return
-    
     enviandoAprobacion.value = true
     try {
         await axios.post(`/gestion/productos-venta/${props.producto.IdDetalleProducto}/enviar-aprobacion`)
@@ -355,34 +351,17 @@ const enviarAprobacion = async () => {
 }
 
 const toggleEstado = async () => {
-    console.log('=== toggleEstado llamado ===')
-    console.log('props.editando:', props.editando)
-    console.log('props.producto:', props.producto)
-    
-    if (!props.editando) {
-        console.log('No editando, saliendo')
-        return
-    }
-    
+    if (!props.editando) return
     const estadoActual = props.producto?.ActivoInactivo
     const accion = estadoActual === ESTADO_ACTIVO ? 'desactivar' : 'activar'
-    
-    console.log('Estado actual:', estadoActual)
-    console.log('Acción:', accion)
-    console.log('Producto ID:', props.producto?.IdDetalleProducto)
-    console.log('URL:', `/gestion/productos-venta/${props.producto?.IdDetalleProducto}/${accion}`)
-    
     if (accion === 'activar') {
         if (detallesList.value.length === 0) {
             toast?.error('Error', 'No se puede activar. El producto no tiene relación con inventario.')
             return
         }
     }
-    
     try {
         const response = await axios.post(`/gestion/productos-venta/${props.producto.IdDetalleProducto}/${accion}`)
-        console.log('Respuesta:', response)
-        
         if (response.data.success) {
             toast?.success('Éxito', response.data.message || `Producto ${accion === 'activar' ? 'activado' : 'desactivado'} correctamente`)
             setTimeout(() => {
@@ -392,8 +371,7 @@ const toggleEstado = async () => {
             toast?.error('Error', response.data.message || 'Error al cambiar estado')
         }
     } catch (error) {
-        console.error('Error en toggleEstado:', error)
-        console.error('Error response:', error.response)
+        console.error('Error:', error)
         const message = error.response?.data?.message || error.message || 'Error de conexión'
         toast?.error('Error', message)
     }
@@ -474,17 +452,8 @@ const toggleEstado = async () => {
 
                 <!-- Formulario Principal -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4" :class="{ 'opacity-70': editando && props.producto?.ActivoInactivo === 2 }">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 mb-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Grupo *</label>
-                            <select v-model="form.IdVentaGrupo" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.IdVentaGrupo }" :disabled="editando && props.producto?.ActivoInactivo === 2">
-                                <option value="">Seleccione un grupo</option>
-                                <option v-for="g in grupos" :key="g.id" :value="g.id">{{ g.nombre }}</option>
-                            </select>
-                            <p v-if="form.errors.IdVentaGrupo" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.IdVentaGrupo }}</p>
-                        </div>
-
-                        <!-- Campo Categoría con Modal -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
+                        <!-- Campo Categoría -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Categoría *</label>
                             <div class="flex gap-2">
@@ -520,12 +489,6 @@ const toggleEstado = async () => {
                             <label class="block text-xs font-medium text-gray-700 mb-1">Detalle *</label>
                             <input type="text" v-model="form.Detalle" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.Detalle }" placeholder="Nombre del producto" :disabled="editando && props.producto?.ActivoInactivo === 2">
                             <p v-if="form.errors.Detalle" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Detalle }}</p>
-                        </div>
-
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Nombre Factura *</label>
-                            <input type="text" v-model="form.NombreCortoFactura" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.NombreCortoFactura }" placeholder="Para factura (max 20)" :disabled="editando && props.producto?.ActivoInactivo === 2">
-                            <p v-if="form.errors.NombreCortoFactura" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.NombreCortoFactura }}</p>
                         </div>
 
                         <div>
@@ -573,6 +536,10 @@ const toggleEstado = async () => {
                             <button @click="activeTab = 2" class="px-6 py-2 text-xs font-medium transition" :class="activeTab === 2 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500 hover:text-gray-700'">
                                 <i class="fas fa-cubes mr-1 text-[10px]"></i> Inventario Detalle
                             </button>
+                            <!-- Agregar en los tabs -->
+                            <button @click="activeTab = 4" class="px-4 py-2 text-sm" :class="activeTab === 4 ? 'border-b-2 border-primary-600 text-primary-600' : 'text-gray-500'">
+                                <i class="fas fa-random mr-1"></i> Opciones de Combo
+                            </button>
                         </nav>
                     </div>
                     <div class="p-4 flex justify-center">
@@ -602,6 +569,13 @@ const toggleEstado = async () => {
                                     @update="detallesList = $event"
                                 />
                             </div>
+                            <!-- Agregar el contenido del tab -->
+                            <div v-show="activeTab === 4">
+                                <ComboOpcionTab 
+                                    :producto-id="editando ? producto?.IdDetalleProducto : productoId"
+                                    @update="cargarOpciones"
+                                />
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -621,7 +595,7 @@ const toggleEstado = async () => {
             @select="seleccionarCategoriaModal"
         />
 
-        <!-- 🔥 MODAL DE DUPLICADO -->
+        <!-- MODAL DE DUPLICADO -->
         <ModalDuplicado
             v-model:visible="modalDuplicadoOpen"
             :producto-existente="productoDuplicado"

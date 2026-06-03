@@ -45,6 +45,7 @@ class VentaLiquidacionConcepto extends Model
 
     /**
      * Relación con la cuenta contable
+     * IdCuenta en esta tabla = IdCuenta en conta_cuenta
      */
     public function cuentaContable()
     {
@@ -52,10 +53,10 @@ class VentaLiquidacionConcepto extends Model
     }
 
     /**
-     * Relación con detalles de liquidación
+     * Relación con liquidaciones
      */
-    public function detallesLiquidacion()
+    public function liquidaciones()
     {
-        return $this->hasMany(LiquidacionVendedorDetalle::class, 'IdConceptoLiquidacion', 'IdConceptoLiquidacion');
+        return $this->hasMany(VentaLiquidacion::class, 'IdCuenta', 'IdConceptoLiquidacion');
     }
 }

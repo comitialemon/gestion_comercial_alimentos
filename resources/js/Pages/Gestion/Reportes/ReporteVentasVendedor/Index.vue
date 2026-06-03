@@ -19,7 +19,7 @@ const props = defineProps({
 const fecha = ref(props.filtros?.fecha || '')
 const fechaDesde = ref(props.filtros?.fecha_desde || '')
 const fechaHasta = ref(props.filtros?.fecha_hasta || '')
-const grupo = ref(props.filtros?.grupo || '')
+// 🔥 ELIMINADO: grupo
 const metodoPago = ref(props.filtros?.metodo_pago || '')
 const tipoBusqueda = ref(props.filtros?.fecha ? 'dia' : (props.filtros?.fecha_desde ? 'rango' : 'dia'))
 
@@ -37,7 +37,7 @@ const aplicarFiltros = () => {
         if (fechaHasta.value) params.fecha_hasta = fechaHasta.value
     }
     
-    if (grupo.value) params.grupo = grupo.value
+    // 🔥 ELIMINADO: filtro de grupo
     if (metodoPago.value) params.metodo_pago = metodoPago.value
     
     router.get('/gestion/reporte-ventas-vendedor', params, {
@@ -50,7 +50,7 @@ const limpiarFiltros = () => {
     fecha.value = ''
     fechaDesde.value = ''
     fechaHasta.value = ''
-    grupo.value = ''
+    // 🔥 ELIMINADO: grupo.value = ''
     metodoPago.value = ''
     tipoBusqueda.value = 'dia'
     aplicarFiltros()
@@ -95,7 +95,7 @@ const formatearFechaCabecera = (fecha) => {
 
                 <!-- Filtros -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de búsqueda</label>
                             <div class="flex gap-3">
@@ -128,13 +128,7 @@ const formatearFechaCabecera = (fecha) => {
                             </div>
                         </div>
 
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Grupo</label>
-                            <select v-model="grupo" class="w-full border rounded-md px-2 py-1.5 text-sm">
-                                <option value="">Todos los grupos</option>
-                                <option v-for="g in grupos" :key="g.id" :value="g.id">{{ g.nombre }}</option>
-                            </select>
-                        </div>
+                        <!-- 🔥 ELIMINADO: filtro de grupo -->
 
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Método de pago</label>
@@ -206,7 +200,7 @@ const formatearFechaCabecera = (fecha) => {
                     </div>
                 </div>
 
-                <!-- Tabla - Modo Rango de Fechas (columnas dinámicas con etiquetas claras) -->
+                <!-- Tabla - Modo Rango de Fechas -->
                 <div v-else-if="reporte.tipo === 'rango'" class="bg-white rounded-lg shadow-sm overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-primary-50">
@@ -293,7 +287,6 @@ const formatearFechaCabecera = (fecha) => {
                 fecha: fecha,
                 fecha_desde: fechaDesde,
                 fecha_hasta: fechaHasta,
-                grupo: grupo,
                 metodo_pago: metodoPago,
                 tipoBusqueda: tipoBusqueda
             }"

@@ -10,7 +10,7 @@ use Inertia\Inertia;
 class ReporteVentasSupervisorPorOperadorController extends Controller
 {
     /**
-     * Muestra el reporte agrupado por Fecha -> Vendedor -> Producto
+     * Muestra el reporte agrupado por Año -> Fecha -> Vendedor -> Producto
      */
     public function index(Request $request)
     {
@@ -29,7 +29,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['Nombre', 'NumeroSucursal']);
 
-        // Obtener lista de operadores para el filtro
+        // Obtener lista de operadores para el filtro (solo los que tienen ventas)
         $operadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -60,7 +60,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
         $operadorId = $request->get('operador_id');
         $anio = $request->get('anio');
 
-        // Construir query base
+        // Construir query base - 🔥 SIMPLIFICADA
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->join('impuestos_ventas_detalle', 'impuestos_ventas.IdVentas', '=', 'impuestos_ventas_detalle.idventas')
@@ -83,7 +83,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
             $query->whereYear('impuestos_ventas.FechaVenta', $anio);
         }
 
-        // Ordenar por fecha descendente (más reciente primero)
+        // 🔥 SELECT SIMPLIFICADO - sin campos que ya no existen
         $ventas = $query->orderBy('impuestos_ventas.FechaVenta', 'desc')
             ->orderBy('impuestos_ventas.NumeroFactura', 'desc')
             ->get([
@@ -94,11 +94,18 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
                 'impuestos_ventas.IdOperadorIngresa',
                 'impuestos_ventas.FechaVenta',
                 DB::raw("DATE_FORMAT(impuestos_ventas.FechaVenta, '%d/%m/%Y') as Fecha"),
-                'inventario_relacion_ventainventario.Detalle',
+                'inventario_relacion_ventainventario.Detalle as producto',
                 'impuestos_ventas_detalle.unidades',
                 'impuestos_ventas_detalle.preciounidades',
                 'impuestos_ventas_detalle.totalbolivianos'
             ]);
+
+        // Pre-cargar nombres de operadores (evitar consultas dentro del loop)
+        $nombresOperadores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador as o')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->whereIn('o.IdOperador', $ventas->pluck('IdOperadorIngresa')->unique())
+            ->pluck('i.Nombre', 'o.IdOperador');
 
         // Agrupar por Año -> Fecha -> Operador -> Producto
         $reportePorAnio = [];
@@ -129,28 +136,23 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
                 ];
             }
             
-            // Obtener nombre del operador
+            // Inicializar operador
             if (!isset($reportePorAnio[$anioVenta]['fechas'][$fecha]['operadores'][$operadorIdVenta])) {
-                $operador = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('todos_operador as o')
-                    ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
-                    ->where('o.IdOperador', $operadorIdVenta)
-                    ->first(['i.Nombre']);
-                
                 $reportePorAnio[$anioVenta]['fechas'][$fecha]['operadores'][$operadorIdVenta] = [
                     'id' => $operadorIdVenta,
-                    'nombre' => $operador->Nombre ?? 'Desconocido',
+                    'nombre' => $nombresOperadores[$operadorIdVenta] ?? 'Desconocido',
                     'productos' => [],
                     'total_ventas' => 0,
                     'total_unidades' => 0
                 ];
             }
             
-            // Agregar producto
-            $productoKey = md5($venta->Detalle . $venta->preciounidades);
+            // 🔥 Agrupar por producto (usando el nombre del producto como clave)
+            $productoKey = $venta->producto;
+            
             if (!isset($reportePorAnio[$anioVenta]['fechas'][$fecha]['operadores'][$operadorIdVenta]['productos'][$productoKey])) {
                 $reportePorAnio[$anioVenta]['fechas'][$fecha]['operadores'][$operadorIdVenta]['productos'][$productoKey] = [
-                    'detalle' => $venta->Detalle,
+                    'detalle' => $venta->producto,
                     'unidades' => 0,
                     'precio_unitario' => $venta->preciounidades,
                     'total' => 0,

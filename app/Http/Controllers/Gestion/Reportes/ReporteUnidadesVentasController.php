@@ -48,19 +48,17 @@ class ReporteUnidadesVentasController extends Controller
             $fechaInicio = $request->fecha_inicio;
             $fechaFin = $request->fecha_fin;
 
-            // Obtener todos los operadores de una sola vez
+            // Obtener todos los operadores
             $operadores = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador as o')
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
                 ->pluck('i.Nombre', 'o.IdOperador');
 
-            // Consulta principal
+            // 🔥 CONSULTA SIMPLIFICADA - SIN leftJoin innecesarios
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->join('impuestos_ventas_detalle', 'impuestos_ventas.IdVentas', '=', 'impuestos_ventas_detalle.idventas')
                 ->join('inventario_relacion_ventainventario', 'impuestos_ventas_detalle.idrelacionventainventario', '=', 'inventario_relacion_ventainventario.IdDetalleProducto')
-                ->leftJoin('inventario_relacion_ventainventario_detalle', 'inventario_relacion_ventainventario.IdDetalleProducto', '=', 'inventario_relacion_ventainventario_detalle.IdDetalleProducto')
-                ->leftJoin('inventario_productodetalle', 'inventario_relacion_ventainventario_detalle.IdProducto', '=', 'inventario_productodetalle.IdProducto')
                 ->where('impuestos_ventas.IdCliente', $clienteId)
                 ->where('impuestos_ventas.IdEstado', 1)
                 ->where('impuestos_ventas.IdClienteSucursal', $sucursalId);
@@ -72,9 +70,8 @@ class ReporteUnidadesVentasController extends Controller
                 $query->where('impuestos_ventas.FechaVenta', '<=', $fechaFin . ' 23:59:59');
             }
 
-            // CONTAR registros primero (para la advertencia)
             $totalRegistros = $query->count();
-            
+
             // Calcular días del rango
             $diasRango = 0;
             if ($fechaInicio && $fechaFin) {
@@ -83,17 +80,14 @@ class ReporteUnidadesVentasController extends Controller
                 $diasRango = $inicio->diff($fin)->days;
             }
 
-            // Si hay muchos registros, mostrar advertencia PERO IGUAL CARGAR
             $esRangoGrande = ($diasRango > 90) || ($totalRegistros > 5000);
-            
-            // Traer los datos (siempre los trae)
+
+            // 🔥 SELECT SIMPLIFICADO - sin descripcion_producto
             $resultados = $query->select([
                     'impuestos_ventas.FechaVenta',
                     DB::raw("DATE_FORMAT(impuestos_ventas.FechaVenta, '%d/%m/%Y') as fecha_formateada"),
                     'impuestos_ventas.NumeroFactura',
-                    'inventario_relacion_ventainventario.IdVentaGrupo',
                     'inventario_relacion_ventainventario.Detalle as producto',
-                    'inventario_productodetalle.Descripcion as descripcion_producto',
                     'impuestos_ventas_detalle.unidades',
                     'impuestos_ventas_detalle.preciounidades',
                     'impuestos_ventas_detalle.totalbolivianos',
@@ -136,9 +130,7 @@ class ReporteUnidadesVentasController extends Controller
                 
                 $detalle = [
                     'numero_factura' => $row->NumeroFactura,
-                    'id_venta_grupo' => $row->IdVentaGrupo,
                     'detalle_producto' => $row->producto,
-                    'descripcion_producto' => $row->descripcion_producto,
                     'unidades' => (float) $row->unidades,
                     'precio_unitario' => (float) $row->preciounidades,
                     'total_bolivianos' => (float) $row->totalbolivianos,
@@ -164,7 +156,6 @@ class ReporteUnidadesVentasController extends Controller
                 $totalVentasGeneral += $fecha['total_ventas_fecha'];
             }
 
-            // Devolver resultados con advertencia si aplica
             return response()->json([
                 'success' => true,
                 'reporte' => array_values($reporteAgrupado),

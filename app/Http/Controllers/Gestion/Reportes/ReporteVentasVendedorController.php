@@ -1,28 +1,30 @@
 <?php
 
-namespace App\Http\Controllers\Gestion\Impuestos;
+namespace App\Http\Controllers\Gestion\Reportes;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
-class ReporteVentasSucursalController extends Controller
+class ReporteVentasVendedorController extends Controller
 {
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
 
-        // Consulta base
+        // 🔥 Consulta SIMPLIFICADA - sin joins a tablas innecesarias
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
             ->join('inventario_relacion_ventainventario as rvi', 'vd.idrelacionventainventario', '=', 'rvi.IdDetalleProducto')
-            ->join('inventario_relacion_ventainventario_detalle as rvid', 'rvi.IdDetalleProducto', '=', 'rvid.IdDetalleProducto')
-            ->join('inventario_productodetalle as pd', 'rvid.IdProducto', '=', 'pd.IdProducto')
+            ->leftJoin('impuestos_ventas_liquidacion as vl', 'v.IdVentas', '=', 'vl.IdVentas')
+            ->leftJoin('conta_cuenta as cc', 'vl.IdCuenta', '=', 'cc.IdCuenta')
             ->where('v.IdCliente', $clienteId)
             ->where('v.IdClienteSucursal', $sucursalId)
+            ->where('v.IdOperadorIngresa', $operadorId)
             ->where('v.IdEstado', 1);
 
         // Aplicar filtros de fecha
@@ -36,40 +38,28 @@ class ReporteVentasSucursalController extends Controller
                 ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
         }
 
-        // Obtener datos crudos
+        // 🔥 FILTRO POR GRUPO - ELIMINADO porque IdVentaGrupo ya no existe
+        // if ($request->filled('grupo')) {
+        //     $query->where('rvi.IdVentaGrupo', $request->grupo);
+        // }
+
+        if ($request->filled('metodo_pago')) {
+            $query->where('cc.Descripcion', $request->metodo_pago);
+        }
+
+        // 🔥 SELECT SIMPLIFICADO
         $datosCrudos = $query->select(
                 DB::raw('DATE(v.FechaVenta) as Fecha'),
                 'v.NumeroFactura',
-                'rvi.IdVentaGrupo',
                 'rvi.Detalle as ProductoVenta',
-                'pd.Descripcion as ProductoInventario',
                 'vd.unidades',
                 'vd.preciounidades as PrecioUnidades',
                 'vd.totalbolivianos as Total',
-                'v.IdOperadorIngresa'
+                DB::raw("COALESCE(cc.Descripcion, 'SIN MÉTODO DE PAGO') as MetodoPago")
             )
             ->orderBy('rvi.Detalle', 'asc')
             ->orderBy('Fecha', 'asc')
             ->get();
-
-        // Obtener operadores para el filtro
-        $operadores = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas as v')
-            ->join('todos_operador as op', 'v.IdOperadorIngresa', '=', 'op.IdOperador')
-            ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
-            ->where('v.IdCliente', $clienteId)
-            ->where('v.IdClienteSucursal', $sucursalId)
-            ->where('v.IdEstado', 1)
-            ->select('v.IdOperadorIngresa as id', 'i.Nombre as nombre')
-            ->distinct()
-            ->get();
-
-        // Aplicar filtro de operador si existe
-        if ($request->filled('operador')) {
-            $datosCrudos = $datosCrudos->filter(function($item) use ($request) {
-                return $item->IdOperadorIngresa == $request->operador;
-            });
-        }
 
         if ($esRango) {
             // Obtener fechas únicas con ventas
@@ -157,16 +147,33 @@ class ReporteVentasSucursalController extends Controller
             ];
         }
 
-        return Inertia::render('Gestion/Impuestos/ReporteVentasSucursal/Index', [
+        // 🔥 GRUPOS - Ya no se usa porque IdVentaGrupo no existe, pero lo dejamos vacío
+        $grupos = [];
+
+        $metodosPago = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas as v')
+            ->join('impuestos_ventas_liquidacion as vl', 'v.IdVentas', '=', 'vl.IdVentas')
+            ->join('conta_cuenta as cc', 'vl.IdCuenta', '=', 'cc.IdCuenta')
+            ->where('v.IdCliente', $clienteId)
+            ->where('v.IdClienteSucursal', $sucursalId)
+            ->where('v.IdOperadorIngresa', $operadorId)
+            ->where('v.IdEstado', 1)
+            ->select('cc.Descripcion as nombre')
+            ->distinct()
+            ->pluck('nombre');
+
+        return Inertia::render('Gestion/Reportes/ReporteVentasVendedor/Index', [
             'reporte' => $resultado,
-            'operadores' => $operadores,
+            'grupos' => $grupos,
+            'metodosPago' => $metodosPago,
             'filtros' => [
                 'fecha' => $request->fecha,
                 'fecha_desde' => $request->fecha_desde,
                 'fecha_hasta' => $request->fecha_hasta,
-                'operador' => $request->operador,
+                'grupo' => $request->grupo,
+                'metodo_pago' => $request->metodo_pago,
             ],
-            'tieneFiltros' => $request->filled('fecha') || $request->filled('fecha_desde') || $request->filled('fecha_hasta') || $request->filled('operador'),
+            'tieneFiltros' => $request->filled('fecha') || $request->filled('fecha_desde') || $request->filled('fecha_hasta') || $request->filled('grupo') || $request->filled('metodo_pago'),
         ]);
     }
 
@@ -181,15 +188,18 @@ class ReporteVentasSucursalController extends Controller
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
 
+        // 🔥 CONSULTA SIMPLIFICADA
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
             ->join('inventario_relacion_ventainventario as rvi', 'vd.idrelacionventainventario', '=', 'rvi.IdDetalleProducto')
-            ->join('inventario_relacion_ventainventario_detalle as rvid', 'rvi.IdDetalleProducto', '=', 'rvid.IdDetalleProducto')
-            ->join('inventario_productodetalle as pd', 'rvid.IdProducto', '=', 'pd.IdProducto')
+            ->leftJoin('impuestos_ventas_liquidacion as vl', 'v.IdVentas', '=', 'vl.IdVentas')
+            ->leftJoin('conta_cuenta as cc', 'vl.IdCuenta', '=', 'cc.IdCuenta')
             ->where('v.IdCliente', $clienteId)
             ->where('v.IdClienteSucursal', $sucursalId)
+            ->where('v.IdOperadorIngresa', $operadorId)
             ->where('v.IdEstado', 1)
             ->where('rvi.Detalle', $request->producto);
 
@@ -200,20 +210,22 @@ class ReporteVentasSucursalController extends Controller
             $query->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
                   ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
         }
-        if ($request->filled('operador')) {
-            $query->where('v.IdOperadorIngresa', $request->operador);
+        // 🔥 FILTRO POR GRUPO - ELIMINADO
+        // if ($request->filled('grupo')) {
+        //     $query->where('rvi.IdVentaGrupo', $request->grupo);
+        // }
+        if ($request->filled('metodo_pago')) {
+            $query->where('cc.Descripcion', $request->metodo_pago);
         }
 
         $detalles = $query->select(
                 DB::raw('DATE(v.FechaVenta) as FechaVenta'),
                 'v.NumeroFactura',
-                'rvi.IdVentaGrupo',
                 'rvi.Detalle as ProductoVenta',
-                'pd.Descripcion as ProductoInventario',
                 'vd.unidades',
                 'vd.preciounidades as PrecioUnidades',
                 'vd.totalbolivianos as Total',
-                'v.IdOperadorIngresa'
+                DB::raw("COALESCE(cc.Descripcion, 'SIN MÉTODO DE PAGO') as MetodoPago")
             )
             ->orderBy('v.FechaVenta', 'desc')
             ->get();
