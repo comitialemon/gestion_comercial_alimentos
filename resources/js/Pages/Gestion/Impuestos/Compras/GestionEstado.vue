@@ -330,14 +330,14 @@ const getEstadoTexto = (activo) => {
                 </div>
             </div>
         </div>
-
         <!-- Modal de confirmación -->
         <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
             <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
-                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-secondary-50'">
+                <!-- Cambia bg-green-50 / bg-amber-50 según la acción -->
+                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-amber-50'">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-secondary-100'">
-                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-secondary-600'" class="text-xl"></i>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-amber-100'">
+                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-amber-600'" class="text-xl"></i>
                         </div>
                         <div class="flex-1">
                             <h3 class="font-bold text-gray-800 text-sm sm:text-base">
@@ -358,7 +358,7 @@ const getEstadoTexto = (activo) => {
                 </div>
                 <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
                     <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">Cancelar</button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-secondary-600 hover:bg-secondary-700'">
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
                         <i v-else :class="modalData.accion === 'activar' ? 'fas fa-check' : 'fas fa-ban'"></i>
                         {{ modalData.accion === 'activar' ? 'Activar' : 'Desactivar' }}

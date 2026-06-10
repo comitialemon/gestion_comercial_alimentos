@@ -14,7 +14,6 @@ class ProductoDetalle extends Model
     protected $fillable = [
         'IdGrupoAnalisis',
         'IdLineaProducto',
-        'IdGrupoProducto',
         'IdEstadoProducto',
         'IdUnidadMedida',
         'OrdenInformes',
@@ -66,18 +65,35 @@ class ProductoDetalle extends Model
     }
 
     /**
-     * Relación con el grupo de producto
-     */
-    public function grupo()
-    {
-        return $this->belongsTo(ProductoGrupo::class, 'IdGrupoProducto', 'IdProductoGrupo');
-    }
-
-    /**
      * Relación con el estado del producto
      */
     public function estado()
     {
         return $this->belongsTo(ProductoEstado::class, 'IdEstadoProducto', 'IdEstado');
+    }
+    // Agregar esta relación:
+    public function preciosCosto()
+    {
+        return $this->hasMany(ProductoPrecioCosto::class, 'IdProducto', 'IdProducto');
+    }
+
+    // Obtener el último precio costo
+    public function getUltimoPrecioCostoAttribute()
+    {
+        $ultimo = $this->preciosCosto()
+            ->orderBy('IdPrecioCosto', 'desc')
+            ->first();
+        
+        return $ultimo ? (float) $ultimo->PrecioCosto : 0;
+    }
+
+    // Obtener la fecha del último precio costo
+    public function getUltimaFechaPrecioCostoAttribute()
+    {
+        $ultimo = $this->preciosCosto()
+            ->orderBy('IdPrecioCosto', 'desc')
+            ->first();
+        
+        return $ultimo ? $ultimo->IdFecha : null;
     }
 }

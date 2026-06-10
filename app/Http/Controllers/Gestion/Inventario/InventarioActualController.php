@@ -7,7 +7,6 @@ use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Inventario\InventarioPropiamente;
 use App\Models\Gestion\Inventario\Almacen;
 use App\Models\Gestion\Inventario\ProductoLinea;
-use App\Models\Gestion\Inventario\ProductoGrupo;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +32,7 @@ class InventarioActualController extends Controller
         // Query base para productos
         $query = ProductoDetalle::porContexto()
             ->activos()
-            ->with(['unidadMedida', 'linea', 'grupo']);
+            ->with(['unidadMedida', 'linea']);
         
         // Filtrar por búsqueda
         if ($request->filled('search')) {
@@ -47,11 +46,6 @@ class InventarioActualController extends Controller
         // Filtrar por línea
         if ($request->filled('linea_id')) {
             $query->where('IdLineaProducto', $request->linea_id);
-        }
-        
-        // Filtrar por grupo
-        if ($request->filled('grupo_id')) {
-            $query->where('IdGrupoProducto', $request->grupo_id);
         }
         
         // Obtener productos con stock calculado
@@ -87,24 +81,14 @@ class InventarioActualController extends Controller
             ->orderBy('Linea')
             ->get(['IdLinea as id', 'Linea as nombre']);
         
-        // Obtener grupos para filtros (solo los que tienen productos)
-        $grupos = ProductoGrupo::porContexto()
-            ->whereHas('productos', function($q) {
-                $q->porContexto();
-            })
-            ->orderBy('Grupo')
-            ->get(['IdProductoGrupo as id', 'Grupo as nombre']);
-        
         return Inertia::render('Gestion/Inventario/InventarioActual/Index', [
             'productos' => $productos,
             'almacenes' => $almacenes,
             'almacenSeleccionado' => $almacenId,
             'lineas' => $lineas,
-            'grupos' => $grupos,
             'filtros' => [
                 'search' => $request->search,
-                'linea_id' => $request->linea_id,
-                'grupo_id' => $request->grupo_id,
+                'linea_id' => $request->linea_id
             ]
         ]);
     }

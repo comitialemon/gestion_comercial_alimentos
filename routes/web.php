@@ -79,6 +79,7 @@ use App\Http\Controllers\Gestion\Reportes\ReporteVentasSupervisorPorOperadorCont
 use App\Http\Controllers\Operacion\Pedidos\PedidoController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 use App\Http\Controllers\Api\VentaTactilController;
+use App\Http\Controllers\Gestion\Inventario\ProductoPrecioCostoController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -221,6 +222,9 @@ Route::middleware(['auth.operador'])->group(function () {
     // 🔥 API: Obtener operadores por sucursal (para el select dinámico)
     Route::get('/gestion/anular-factura/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])
         ->name('gestion.anular-factura.operadores');
+    // DENTRO del grupo de rutas protegidas (con auth)
+    Route::get('/gestion/anular-factura/pdf/{id}', [AnularFacturaAdminController::class, 'pdf'])
+        ->name('gestion.anular-factura.pdf');
 
     // ==================== MANTENIMIENTO MÉTODOS DE PAGO ====================
     Route::prefix('gestion/mantenimiento-metodos-pago')->group(function () {
@@ -494,7 +498,11 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
         Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
     });
-
+    // PRECIO COSTO DE PRODUCTOS
+    Route::prefix('gestion/inventario/precio-costo')->group(function () {
+        Route::get('/', [ProductoPrecioCostoController::class, 'index'])->name('gestion.inventario.precio-costo.index');
+        Route::get('/{id}/historial', [ProductoPrecioCostoController::class, 'historial'])->name('gestion.inventario.precio-costo.historial');
+    });
     // ==================== INVENTARIO - CATÁLOGOS ====================
     Route::prefix('gestion/inventario')->group(function () {
         Route::resource('producto-estado', ProductoEstadoController::class)->except(['show', 'create', 'edit']);

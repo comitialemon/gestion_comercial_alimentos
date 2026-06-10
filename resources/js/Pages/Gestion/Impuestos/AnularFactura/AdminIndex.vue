@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, watch, onMounted, onUnmounted } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed } from 'vue'
 import { router } from '@inertiajs/vue3'
 import axios from 'axios'
 import ConfirmacionModal from './components/ConfirmacionModal.vue'
@@ -15,6 +15,17 @@ const props = defineProps({
     filtros: Object,
 })
 
+// 🔥 COMPUTED: Verificar si hay sucursal seleccionada
+const tieneSucursalSeleccionada = computed(() => {
+    return !!sucursalId.value
+})
+
+// 🔥 COMPUTED: Facturas filtradas (solo se muestran si hay sucursal)
+const facturasMostrar = computed(() => {
+    if (!tieneSucursalSeleccionada.value) return []
+    return props.facturas || []
+})
+
 const facturaSeleccionada = ref('')
 const anulando = ref(false)
 const mensaje = ref('')
@@ -23,7 +34,7 @@ const exito = ref(false)
 const isMobile = ref(window.innerWidth < 768)
 const mostrarFiltros = ref(false)
 
-// 🔥 Estado del modal
+// Estado del modal
 const modalVisible = ref(false)
 const modalCargando = ref(false)
 const facturaParaAnular = ref(null)
@@ -78,6 +89,7 @@ const seleccionarSucursal = (suc) => {
     buscarSucursal.value = suc.nombre
     operadorId.value = ''
     buscarOperador.value = ''
+    facturaSeleccionada.value = ''  // 🔥 Limpiar selección al cambiar sucursal
     mostrarSucursales.value = false
     aplicarFiltros()
 }
@@ -88,6 +100,7 @@ const limpiarSucursal = () => {
     buscarSucursal.value = ''
     operadorId.value = ''
     buscarOperador.value = ''
+    facturaSeleccionada.value = ''  // 🔥 Limpiar selección
     sucursalesFiltradas.value = props.todasSucursales || []
     mostrarSucursales.value = false
     aplicarFiltros()
@@ -165,6 +178,7 @@ const limpiarTodo = () => {
     fecha.value = ''
     buscarSucursal.value = ''
     buscarOperador.value = ''
+    facturaSeleccionada.value = ''  // 🔥 Limpiar selección
     sucursalesFiltradas.value = props.todasSucursales || []
     operadoresFiltrados.value = []
     router.get('/gestion/anular-factura/admin', {}, {
@@ -182,21 +196,21 @@ const seleccionarFactura = (id) => {
     facturaSeleccionada.value = id
 }
 
-// 🔥 ABRIR MODAL DE CONFIRMACIÓN
+// ABRIR MODAL DE CONFIRMACIÓN
 const abrirModalConfirmacion = () => {
     if (!facturaSeleccionada.value) {
         error.value = 'Seleccione una factura para anular'
         return
     }
     
-    const factura = props.facturas.find(f => f.IdVentas === facturaSeleccionada.value)
+    const factura = props.facturas?.find(f => f.IdVentas === facturaSeleccionada.value)
     if (factura) {
         facturaParaAnular.value = factura
         modalVisible.value = true
     }
 }
 
-// 🔥 EJECUTAR ANULACIÓN
+// EJECUTAR ANULACIÓN
 const ejecutarAnulacion = async () => {
     modalCargando.value = true
     
@@ -210,8 +224,7 @@ const ejecutarAnulacion = async () => {
             exito.value = true
             mensaje.value = response.data.message
             
-            // Abrir PDF de la factura anulada
-            const pdfUrl = `/venta-factura/factura-pdf/${facturaParaAnular.value.IdVentas}`
+            const pdfUrl = `/gestion/anular-factura/pdf/${facturaParaAnular.value.IdVentas}`
             window.open(pdfUrl, '_blank')
             
             setTimeout(() => {
@@ -229,7 +242,7 @@ const ejecutarAnulacion = async () => {
     }
 }
 
-// 🔥 CERRAR MODAL
+// CERRAR MODAL
 const cerrarModal = () => {
     modalVisible.value = false
     facturaParaAnular.value = null
@@ -261,7 +274,7 @@ const formatearNumero = (value) => {
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Anular Factura - Administración</h1>
-                            <p class="text-[10px] text-gray-500 hidden xs:block">Seleccione sucursal, busque operador y/o filtre por fecha</p>
+                            <p class="text-[10px] text-gray-500 hidden xs:block">Seleccione una sucursal para ver las facturas</p>
                         </div>
                     </div>
                     
@@ -296,9 +309,11 @@ const formatearNumero = (value) => {
                     :class="{ 'hidden': isMobile && !mostrarFiltros }"
                 >
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        <!-- Sucursal con buscador -->
+                        <!-- Sucursal con buscador (OBLIGATORIO) -->
                         <div class="relative">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal</label>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">
+                                Sucursal <span class="text-red-500">*</span>
+                            </label>
                             <div class="relative">
                                 <input 
                                     type="text" 
@@ -307,6 +322,7 @@ const formatearNumero = (value) => {
                                     @focus="mostrarSucursales = true"
                                     @blur="ocultarListas"
                                     class="w-full border rounded-md px-2 py-1 text-sm pr-7"
+                                    :class="{ 'border-red-400': !tieneSucursalSeleccionada && buscarSucursal }"
                                     placeholder="Escriba para buscar sucursal..."
                                 >
                                 <button 
@@ -328,11 +344,14 @@ const formatearNumero = (value) => {
                                     {{ suc.nombre }}
                                 </div>
                             </div>
+                            <p v-if="!tieneSucursalSeleccionada" class="text-[10px] text-red-500 mt-1">
+                                <i class="fas fa-info-circle mr-0.5"></i> Debes seleccionar una sucursal
+                            </p>
                         </div>
                         
-                        <!-- Operador con buscador -->
+                        <!-- Operador con buscador (opcional) -->
                         <div class="relative">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Operador</label>
+                            <label class="block text-xs font-medium text-gray-700 mb-1">Operador (opcional)</label>
                             <div class="relative">
                                 <input 
                                     type="text" 
@@ -381,120 +400,140 @@ const formatearNumero = (value) => {
                     </div>
                 </div>
 
-                <!-- Vista MÓVIL (tarjetas) -->
-                <div v-if="isMobile" class="space-y-3">
-                    <div 
-                        v-for="factura in facturas" 
-                        :key="factura.IdVentas"
-                        @click="seleccionarFactura(factura.IdVentas)"
-                        class="bg-white rounded-lg shadow-sm p-3 cursor-pointer transition-all"
-                        :class="{ 'ring-2 ring-red-500 bg-red-50': facturaSeleccionada == factura.IdVentas }"
-                    >
-                        <div class="flex justify-between items-start mb-2">
-                            <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
-                                N° {{ factura.NumeroFactura }}
-                            </span>
-                            <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center"
-                                :class="facturaSeleccionada == factura.IdVentas ? 'bg-red-500 border-red-500' : 'border-gray-300'">
-                                <i v-if="facturaSeleccionada == factura.IdVentas" class="fas fa-check text-white text-[10px]"></i>
+                <!-- 🔥 CONTENIDO CONDICIONAL: Solo mostrar si hay sucursal seleccionada -->
+                <template v-if="tieneSucursalSeleccionada">
+                    <!-- Vista MÓVIL (tarjetas) -->
+                    <div v-if="isMobile" class="space-y-3">
+                        <div 
+                            v-for="factura in facturasMostrar" 
+                            :key="factura.IdVentas"
+                            @click="seleccionarFactura(factura.IdVentas)"
+                            class="bg-white rounded-lg shadow-sm p-3 cursor-pointer transition-all"
+                            :class="{ 'ring-2 ring-red-500 bg-red-50': facturaSeleccionada == factura.IdVentas }"
+                        >
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
+                                    N° {{ factura.NumeroFactura }}
+                                </span>
+                                <div class="w-5 h-5 rounded-full border-2 flex items-center justify-center"
+                                    :class="facturaSeleccionada == factura.IdVentas ? 'bg-red-500 border-red-500' : 'border-gray-300'">
+                                    <i v-if="facturaSeleccionada == factura.IdVentas" class="fas fa-check text-white text-[10px]"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="space-y-2 text-xs">
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Fecha:</span>
+                                    <span class="font-medium">{{ formatearFecha(factura.FechaVenta) }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Sucursal:</span>
+                                    <span class="font-medium">{{ factura.sucursal_nombre }}</span>
+                                </div>
+                                <div class="flex justify-between">
+                                    <span class="text-gray-500">Operador:</span>
+                                    <span class="font-medium">{{ factura.operador_nombre }}</span>
+                                </div>
+                                <div class="flex justify-between pt-1 border-t mt-1">
+                                    <span class="text-gray-500">Importe:</span>
+                                    <span class="font-bold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
+                                </div>
                             </div>
                         </div>
                         
-                        <div class="space-y-2 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-gray-500">Fecha:</span>
-                                <span class="font-medium">{{ formatearFecha(factura.FechaVenta) }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-500">Sucursal:</span>
-                                <span class="font-medium">{{ factura.sucursal_nombre }}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-500">Operador:</span>
-                                <span class="font-medium">{{ factura.operador_nombre }}</span>
-                            </div>
-                            <div class="flex justify-between pt-1 border-t mt-1">
-                                <span class="text-gray-500">Importe:</span>
-                                <span class="font-bold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</span>
-                            </div>
+                        <div v-if="facturasMostrar.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+                            <i class="fas fa-receipt text-3xl text-gray-300 mb-2 block"></i>
+                            <p class="text-xs text-gray-400">No hay facturas pendientes de anulación para esta sucursal</p>
                         </div>
                     </div>
-                    
-                    <div v-if="facturas.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
-                        <i class="fas fa-receipt text-3xl text-gray-300 mb-2 block"></i>
-                        <p class="text-xs text-gray-400">No hay facturas pendientes de anulación</p>
+
+                    <!-- Vista ESCRITORIO (tabla) -->
+                    <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Factura</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sucursal</th>
+                                        <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Operador</th>
+                                        <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Importe</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-12">Seleccionar</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-100">
+                                    <tr 
+                                        v-for="factura in facturasMostrar" 
+                                        :key="factura.IdVentas"
+                                        class="hover:bg-gray-50 transition cursor-pointer"
+                                        :class="{ 'bg-red-50': facturaSeleccionada == factura.IdVentas }"
+                                        @click="seleccionarFactura(factura.IdVentas)"
+                                    >
+                                        <td class="px-4 py-2 text-sm font-mono text-gray-900">{{ factura.NumeroFactura }}</td>
+                                        <td class="px-4 py-2 text-sm text-gray-600">{{ formatearFecha(factura.FechaVenta) }}</td>
+                                        <td class="px-4 py-2 text-sm text-gray-600">{{ factura.sucursal_nombre }}</td>
+                                        <td class="px-4 py-2 text-sm text-gray-600">{{ factura.operador_nombre }}</td>
+                                        <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <input 
+                                                type="radio" 
+                                                :value="factura.IdVentas"
+                                                v-model="facturaSeleccionada"
+                                                class="w-4 h-4 text-red-600 focus:ring-red-500 cursor-pointer"
+                                                @click.stop
+                                            >
+                                        </td>
+                                    </tr>
+                                    <tr v-if="facturasMostrar.length === 0">
+                                        <td colspan="6" class="px-4 py-10 text-center text-gray-500">
+                                            <i class="fas fa-receipt text-3xl mb-2 block"></i>
+                                            No hay facturas pendientes de anulación para esta sucursal
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Vista ESCRITORIO (tabla) -->
-                <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Factura</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Sucursal</th>
-                                    <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Operador</th>
-                                    <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Importe</th>
-                                    <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase w-12">Seleccionar</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-100">
-                                <tr 
-                                    v-for="factura in facturas" 
-                                    :key="factura.IdVentas"
-                                    class="hover:bg-gray-50 transition cursor-pointer"
-                                    :class="{ 'bg-red-50': facturaSeleccionada == factura.IdVentas }"
-                                    @click="seleccionarFactura(factura.IdVentas)"
-                                >
-                                    <td class="px-4 py-2 text-sm font-mono text-gray-900">{{ factura.NumeroFactura }}</td>
-                                    <td class="px-4 py-2 text-sm text-gray-600">{{ formatearFecha(factura.FechaVenta) }}</td>
-                                    <td class="px-4 py-2 text-sm text-gray-600">{{ factura.sucursal_nombre }}</td>
-                                    <td class="px-4 py-2 text-sm text-gray-600">{{ factura.operador_nombre }}</td>
-                                    <td class="px-4 py-2 text-sm text-right font-semibold text-primary-600">{{ formatearNumero(factura.ImporteVenta) }} Bs</td>
-                                    <td class="px-4 py-2 text-center">
-                                        <input 
-                                            type="radio" 
-                                            :value="factura.IdVentas"
-                                            v-model="facturaSeleccionada"
-                                            class="w-4 h-4 text-red-600 focus:ring-red-500 cursor-pointer"
-                                            @click.stop
-                                        >
-                                    </td>
-                                </tr>
-                                <tr v-if="facturas.length === 0">
-                                    <td colspan="6" class="px-4 py-10 text-center text-gray-500">
-                                        <i class="fas fa-receipt text-3xl mb-2 block"></i>
-                                        No hay facturas pendientes de anulación
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Botón Anular -->
+                    <div class="mt-4 flex justify-end" :class="{ 'fixed bottom-4 right-4 z-50': isMobile && facturasMostrar.length > 0 }">
+                        <button 
+                            @click="abrirModalConfirmacion"
+                            :disabled="!facturaSeleccionada || anulando"
+                            class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
+                        >
+                            <i v-if="anulando" class="fas fa-spinner fa-spin"></i>
+                            <i v-else class="fas fa-ban"></i>
+                            {{ anulando ? 'Anulando...' : 'Anular Factura' }}
+                        </button>
                     </div>
-                </div>
 
-                <!-- Botón Anular (con modal) -->
-                <div class="mt-4 flex justify-end" :class="{ 'fixed bottom-4 right-4 z-50': isMobile && facturas.length > 0 }">
-                    <button 
-                        @click="abrirModalConfirmacion"
-                        :disabled="!facturaSeleccionada || anulando"
-                        class="px-5 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 text-sm"
-                    >
-                        <i v-if="anulando" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-ban"></i>
-                        {{ anulando ? 'Anulando...' : 'Anular Factura' }}
-                    </button>
-                </div>
+                    <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Solo se pueden anular facturas que NO hayan sido liquidadas.
+                    </div>
+                </template>
 
-                <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    Solo se pueden anular facturas que NO hayan sido liquidadas.
-                </div>
+                <!-- 🔥 MENSAJE CUANDO NO HAY SUCURSAL SELECCIONADA -->
+                <template v-else>
+                    <div class="bg-white rounded-lg shadow-sm p-12 text-center">
+                        <div class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <i class="fas fa-store text-3xl text-amber-600"></i>
+                        </div>
+                        <h3 class="text-lg font-semibold text-gray-800 mb-2">Selecciona una sucursal</h3>
+                        <p class="text-sm text-gray-500">
+                            Para ver el listado de facturas pendientes de anulación, debes seleccionar una sucursal primero.
+                        </p>
+                        <div class="mt-4 text-xs text-gray-400">
+                            <i class="fas fa-arrow-up mr-1"></i> Usa el filtro de sucursal arriba
+                        </div>
+                    </div>
+                </template>
+
             </div>
         </div>
 
-        <!-- 🔥 MODAL DE CONFIRMACIÓN -->
+        <!-- MODAL DE CONFIRMACIÓN -->
         <ConfirmacionModal
             :visible="modalVisible"
             :cargando="modalCargando"

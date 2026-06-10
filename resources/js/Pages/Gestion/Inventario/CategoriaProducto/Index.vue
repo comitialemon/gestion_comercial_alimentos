@@ -19,20 +19,24 @@ const formData = ref({
     id_padre: '',
     orden: 0,
     activo: 1,
-    imagen_base64: null,
+    // 🔥 CAMBIADO: ya no usamos imagen_base64
     preview_url: null
 })
+
+// 🔥 NUEVO: almacenar el archivo de imagen por separado
+const imagenFile = ref(null)
+const eliminarImagen = ref(false)
+
 const errors = ref({})
 const imgInput = ref(null)
 const calculandoOrden = ref(false)
 
 // 🔥 Calcular el siguiente orden según el padre seleccionado
 const calcularSiguienteOrden = () => {
-    if (editando.value) return // En edición no recalculamos
+    if (editando.value) return
     
     const padreId = formData.value.id_padre
     
-    // Filtrar categorías que tengan el mismo padre
     let hermanos
     
     if (padreId) {
@@ -41,7 +45,6 @@ const calcularSiguienteOrden = () => {
         hermanos = props.categorias.filter(c => !c.id_padre)
     }
     
-    // Encontrar el máximo orden
     let maxOrden = 0
     hermanos.forEach(h => {
         if (h.orden > maxOrden) maxOrden = h.orden
@@ -59,9 +62,10 @@ const resetForm = () => {
         id_padre: '',
         orden: 0,
         activo: 1,
-        imagen_base64: null,
         preview_url: null
     }
+    imagenFile.value = null
+    eliminarImagen.value = false
     if (imgInput.value) imgInput.value.value = ''
     calcularSiguienteOrden()
 }
@@ -75,9 +79,10 @@ const editar = (cat) => {
         id_padre: cat.id_padre || '',
         orden: cat.orden,
         activo: cat.activo,
-        imagen_base64: null,
         preview_url: cat.imagen_url
     }
+    imagenFile.value = null  // Resetear archivo nuevo
+    eliminarImagen.value = false
 }
 
 // 🔥 Cuando cambia el padre, recalcular el orden
@@ -91,36 +96,100 @@ const convertirMayusculas = () => {
     formData.value.nombre = formData.value.nombre.toUpperCase()
 }
 
+// 🔥 MODIFICADO: Guardar el archivo, NO convertir a base64
 const onImageChange = (event) => {
     const file = event.target.files[0]
     if (!file) return
     
+    // Validar tipo de archivo
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp']
+    if (!allowedTypes.includes(file.type)) {
+        toast?.error('Error', 'Solo se permiten imágenes JPG, PNG o WEBP')
+        event.target.value = ''
+        return
+    }
+    
+    // Validar tamaño (max 512KB)
+    if (file.size > 512 * 1024) {
+        toast?.error('Error', 'La imagen no puede superar los 512KB')
+        event.target.value = ''
+        return
+    }
+    
+    imagenFile.value = file
+    
+    // Previsualización (solo para mostrar, no se envía al servidor)
     const reader = new FileReader()
     reader.onload = (e) => {
-        formData.value.imagen_base64 = e.target.result
         formData.value.preview_url = e.target.result
     }
     reader.readAsDataURL(file)
 }
 
+// 🔥 NUEVO: Marcar para eliminar la imagen actual
+const marcarEliminarImagen = () => {
+    eliminarImagen.value = true
+    formData.value.preview_url = null
+    if (imgInput.value) imgInput.value.value = ''
+    imagenFile.value = null
+}
+
+// 🔥 MODIFICADO: Guardar usando FormData
 const guardar = () => {
+    // Validar nombre
+    if (!formData.value.nombre || formData.value.nombre.trim() === '') {
+        errors.value = { nombre: 'El nombre es obligatorio' }
+        return
+    }
+    
+    const data = new FormData()
+    data.append('nombre', formData.value.nombre)
+    if (formData.value.id_padre) data.append('id_padre', formData.value.id_padre)
+    data.append('orden', formData.value.orden)
+    data.append('activo', formData.value.activo ? '1' : '0')
+    
+    // 🔥 IMPORTANTE: Agregar la imagen si hay una nueva
+    if (imagenFile.value) {
+        data.append('imagen', imagenFile.value)
+    }
+    
+    // 🔥 Para edición: indicar si se debe eliminar la imagen actual
+    if (editando.value && eliminarImagen.value) {
+        data.append('eliminar_imagen', '1')
+    }
+    
     if (editando.value) {
-        router.put(`/gestion/inventario/categorias-producto/${editId.value}`, formData.value, {
+        data.append('_method', 'PUT')
+        router.post(`/gestion/inventario/categorias-producto/${editId.value}`, data, {
             preserveScroll: true,
+            forceFormData: true,
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
             onSuccess: () => {
                 toast?.success('Éxito', 'Categoría actualizada correctamente')
                 resetForm()
             },
-            onError: (err) => { errors.value = err }
+            onError: (err) => { 
+                errors.value = err
+                toast?.error('Error', Object.values(err).flat()[0] || 'Error al guardar')
+            }
         })
     } else {
-        router.post('/gestion/inventario/categorias-producto', formData.value, {
+        router.post('/gestion/inventario/categorias-producto', data, {
             preserveScroll: true,
+            forceFormData: true,
+            headers: {
+                'Content-Type': 'multipart/form-data'
+            },
             onSuccess: () => {
                 toast?.success('Éxito', 'Categoría creada correctamente')
                 resetForm()
             },
-            onError: (err) => { errors.value = err }
+            onError: (err) => { 
+                errors.value = err
+                toast?.error('Error', Object.values(err).flat()[0] || 'Error al guardar')
+            }
         })
     }
 }
@@ -240,16 +309,36 @@ resetForm()
                             </select>
                         </div>
                         
-                        <!-- Imagen -->
-                        <div class="md:col-span-2 lg:col-span-3">
+                        <!-- 🔥 IMAGEN MODIFICADA - Ahora con FormData -->
+                        <div class="md:col-span-2 lg:col-span-4">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Imagen</label>
-                            <div class="flex gap-3 items-center">
-                                <input type="file" ref="imgInput" @change="onImageChange" accept="image/*"
-                                    class="flex-1 border rounded-lg px-3 py-2 text-sm">
-                                <div v-if="formData.preview_url" class="w-12 h-12 rounded-lg overflow-hidden bg-gray-100">
+                            <div class="flex flex-wrap gap-3 items-center">
+                                <input type="file" ref="imgInput" @change="onImageChange" accept="image/jpeg,image/png,image/jpg,image/webp"
+                                    class="flex-1 border rounded-lg px-3 py-2 text-sm file:mr-2 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100">
+                                
+                                <!-- Previsualización -->
+                                <div v-if="formData.preview_url" class="relative w-12 h-12 rounded-lg overflow-hidden bg-gray-100 border">
                                     <img :src="formData.preview_url" class="w-full h-full object-cover">
+                                    <button 
+                                        @click="marcarEliminarImagen"
+                                        class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-600"
+                                        title="Eliminar imagen">
+                                        <i class="fas fa-times"></i>
+                                    </button>
                                 </div>
+                                
+                                <!-- Indicador de imagen nueva -->
+                                <span v-if="imagenFile" class="text-[10px] text-green-600">
+                                    <i class="fas fa-check-circle"></i> Nueva imagen seleccionada
+                                </span>
+                                <span v-if="eliminarImagen" class="text-[10px] text-red-600">
+                                    <i class="fas fa-trash"></i> La imagen será eliminada
+                                </span>
                             </div>
+                            <p class="text-[9px] text-gray-400 mt-1">
+                                <i class="fas fa-info-circle"></i> 
+                                Formatos permitidos: JPG, PNG, WEBP. Tamaño máximo: 512KB
+                            </p>
                         </div>
                         
                         <!-- Botones -->
@@ -267,7 +356,7 @@ resetForm()
                     </div>
                 </div>
 
-                <!-- Tabla de categorías (agrupada visualmente por padre) -->
+                <!-- Tabla de categorías -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -292,7 +381,6 @@ resetForm()
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500">{{ cat.id_categoria }}</td>
                                     <td class="px-4 py-3 text-sm text-gray-700">
-                                        <span class="text-gray-400 mr-2">{{ cat.nivel ? '├─' : '' }}</span>
                                         <span :style="{ marginLeft: (cat.nivel * 20) + 'px' }">{{ cat.nombre }}</span>
                                     </td>
                                     <td class="px-4 py-3 text-sm text-gray-500">{{ cat.padre?.nombre || '-' }}</td>

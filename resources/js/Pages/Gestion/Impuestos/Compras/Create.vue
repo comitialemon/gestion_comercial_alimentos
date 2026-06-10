@@ -451,7 +451,7 @@ onUnmounted(() => {
                         <button 
                             @click="guardarCabecera"
                             :disabled="guardandoCabecera"
-                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 sm:flex-initial justify-center"
+                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 sm:flex-initial justify-center transition"
                         >
                             <i v-if="guardandoCabecera" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-save"></i>
@@ -461,8 +461,8 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Alerta de edición -->
-                <div v-if="editando" class="bg-secondary-50 border border-secondary-200 rounded-lg p-2 mb-4">
-                    <div class="flex items-center gap-2 text-secondary-700 text-xs">
+                <div v-if="editando" class="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-4">
+                    <div class="flex items-center gap-2 text-amber-700 text-xs">
                         <i class="fas fa-edit"></i>
                         <span>Editando compra N° {{ compra?.NumeroCorrelativo || 'Sin número' }}</span>
                     </div>
@@ -476,7 +476,7 @@ onUnmounted(() => {
                         <!-- Almacén -->
                         <div>
                             <label class="block text-gray-600 mb-0.5">Almacén *</label>
-                            <select v-model="form.IdAlmacen" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-red-500': errors.IdAlmacen}">
+                            <select v-model="form.IdAlmacen" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" :class="{'border-red-500': errors.IdAlmacen}">
                                 <option value="">Seleccione</option>
                                 <option v-for="a in almacenes" :key="a.id" :value="a.id">{{ a.nombre }}</option>
                             </select>
@@ -486,7 +486,7 @@ onUnmounted(() => {
                         <!-- Tipo Factura -->
                         <div>
                             <label class="block text-gray-600 mb-0.5">Tipo Factura *</label>
-                            <select v-model="form.IdTipoFactura" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-red-500': errors.IdTipoFactura}">
+                            <select v-model="form.IdTipoFactura" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" :class="{'border-red-500': errors.IdTipoFactura}">
                                 <option value="">Seleccione</option>
                                 <option v-for="t in tiposFactura" :key="t.IdTipoFactura" :value="t.IdTipoFactura">{{ t.FacturaRecibo }}</option>
                             </select>
@@ -496,7 +496,7 @@ onUnmounted(() => {
                         <!-- Fecha -->
                         <div>
                             <label class="block text-gray-600 mb-0.5">Fecha *</label>
-                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-red-500': errors.IdFecha}">
+                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" :class="{'border-red-500': errors.IdFecha}">
                                 <option value="">Seleccione</option>
                                 <option v-for="f in fechas" :key="f.id" :value="f.id">{{ f.fecha_display }}</option>
                             </select>
@@ -506,21 +506,21 @@ onUnmounted(() => {
                         <!-- N° Documento -->
                         <div>
                             <label class="block text-gray-600 mb-0.5">N° Documento *</label>
-                            <input type="number" v-model.number="form.NumeroFactura" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs" placeholder="Número">
+                            <input type="number" v-model.number="form.NumeroFactura" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="Número">
                             <p v-if="errors.NumeroFactura" class="text-red-500 text-[10px] mt-0.5">{{ errors.NumeroFactura }}</p>
                         </div>
 
                         <!-- N° Autorización (solo para factura) -->
                         <div v-if="mostrarAutorizacion">
                             <label class="block text-gray-600 mb-0.5">N° Autorización</label>
-                            <input type="number" v-model.number="form.NumeroAutorizacion" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs" placeholder="Autorización">
+                            <input type="number" v-model.number="form.NumeroAutorizacion" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="Autorización">
                         </div>
 
                         <!-- Proveedor -->
                         <div class="sm:col-span-2">
                             <label class="block text-gray-600 mb-0.5">Proveedor (NIT) *</label>
                             <div class="relative">
-                                <input type="text" v-model="busquedaProveedor" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-red-500': errors.IdNIT}" placeholder="Buscar por NIT o nombre...">
+                                <input type="text" v-model="busquedaProveedor" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" :class="{'border-red-500': errors.IdNIT}" placeholder="Buscar por NIT o nombre...">
                                 <div v-if="busquedaProveedor && proveedoresFiltrados.length" class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-32 overflow-y-auto">
                                     <div v-for="prov in proveedoresFiltrados" :key="prov.id" @click="seleccionarProveedor(prov)" class="px-2 py-1.5 hover:bg-gray-100 cursor-pointer border-b text-xs">
                                         <span class="font-mono">{{ prov.ci }}</span> - {{ prov.nombre }}
@@ -533,7 +533,7 @@ onUnmounted(() => {
                         <!-- Observación -->
                         <div class="sm:col-span-2 lg:col-span-4">
                             <label class="block text-gray-600 mb-0.5">Observación</label>
-                            <textarea v-model="form.Observacion" rows="2" class="w-full border rounded-md px-2 py-1.5 text-xs" placeholder="Notas..."></textarea>
+                            <textarea v-model="form.Observacion" rows="2" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="Notas..."></textarea>
                         </div>
                     </div>
                 </div>
@@ -547,7 +547,7 @@ onUnmounted(() => {
                         <!-- Buscador de Producto -->
                         <div class="relative sm:col-span-2 lg:col-span-5">
                             <label class="block text-gray-600 text-[10px] mb-0.5">Producto *</label>
-                            <input type="text" v-model="busquedaProducto" class="w-full border rounded-md px-2 py-1.5 text-xs" placeholder="Buscar por código o nombre...">
+                            <input type="text" v-model="busquedaProducto" class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="Buscar por código o nombre...">
                             <div v-if="busquedaProducto && productosFiltrados.length" class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-32 overflow-y-auto">
                                 <div v-for="prod in productosFiltrados" :key="prod.id" @click="seleccionarProducto(prod)" class="px-2 py-1.5 hover:bg-gray-100 cursor-pointer border-b text-xs">
                                     <span class="font-mono">{{ prod.Codigo }}</span> - {{ prod.Descripcion }}
@@ -556,29 +556,31 @@ onUnmounted(() => {
                         </div>
                         <div class="sm:col-span-1 lg:col-span-2">
                             <label class="block text-gray-600 text-[10px] mb-0.5">Unidades *</label>
-                            <input type="number" step="0.0001" v-model.number="nuevoProducto.Unidades" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs" placeholder="0.0000">
+                            <input type="number" step="0.0001" v-model.number="nuevoProducto.Unidades" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="0.0000">
                         </div>
                         <div class="sm:col-span-1 lg:col-span-2">
                             <label class="block text-gray-600 text-[10px] mb-0.5">Total Bs *</label>
-                            <input type="number" step="0.01" v-model.number="nuevoProducto.TotalBolivianos" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs" placeholder="0.00">
+                            <input type="number" step="0.01" v-model.number="nuevoProducto.TotalBolivianos" class="no-spinner w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:outline-none" placeholder="0.00">
                         </div>
                         <div class="sm:col-span-1 lg:col-span-2">
                             <label class="block text-gray-600 text-[10px] mb-0.5">Precio Unit.</label>
                             <input type="text" readonly class="w-full border rounded-md px-2 py-1.5 text-xs bg-gray-100" :value="precioCalculado">
                         </div>
                         <div class="sm:col-span-1 lg:col-span-1 flex items-end gap-2">
-                            <button v-if="!editandoDetalle" @click="agregarProducto" :disabled="guardandoDetalle || !nuevoProducto.IdProducto" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 w-full justify-center">
+                            <!-- 🔥 BOTÓN AGREGAR - VERDE -->
+                            <button v-if="!editandoDetalle" @click="agregarProducto" :disabled="guardandoDetalle || !nuevoProducto.IdProducto" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 w-full justify-center transition">
                                 <i v-if="guardandoDetalle" class="fas fa-spinner fa-spin"></i>
                                 <i v-else class="fas fa-plus"></i>
                                 {{ guardandoDetalle ? 'Agregando...' : 'Agregar' }}
                             </button>
+                            <!-- 🔥 BOTONES DE EDICIÓN - AZUL y GRIS -->
                             <div v-else class="flex gap-2 w-full">
-                                <button @click="actualizarProducto" :disabled="guardandoDetalle" class="bg-secondary-600 hover:bg-secondary-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center">
+                                <button @click="actualizarProducto" :disabled="guardandoDetalle" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 flex-1 justify-center transition">
                                     <i v-if="guardandoDetalle" class="fas fa-spinner fa-spin"></i>
                                     <i v-else class="fas fa-save"></i>
                                     {{ guardandoDetalle ? 'Actualizando...' : 'Actualizar' }}
                                 </button>
-                                <button @click="cancelarEdicion" class="bg-gray-400 hover:bg-gray-500 text-white px-3 py-1.5 rounded text-xs">
+                                <button @click="cancelarEdicion" class="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-xs transition">
                                     <i class="fas fa-times"></i>
                                 </button>
                             </div>
@@ -596,10 +598,10 @@ onUnmounted(() => {
                                         <p class="text-sm font-medium text-gray-800">{{ item.Descripcion }}</p>
                                     </div>
                                     <div class="flex gap-2">
-                                        <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
+                                        <button @click="editarProducto(index)" class="text-blue-500 hover:text-blue-700 transition" title="Editar">
                                             <i class="fas fa-edit text-sm"></i>
                                         </button>
-                                        <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
+                                        <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700 transition" title="Eliminar">
                                             <i class="fas fa-trash-alt text-sm"></i>
                                         </button>
                                     </div>
@@ -647,10 +649,10 @@ onUnmounted(() => {
                                         <td class="px-3 py-2 text-right font-semibold text-primary-600">{{ Number(item.TotalBolivianos).toFixed(2) }}</td>
                                         <td class="px-3 py-2 text-center">
                                             <div class="flex gap-2 justify-center">
-                                                <button @click="editarProducto(index)" class="text-secondary-500 hover:text-secondary-700" title="Editar">
+                                                <button @click="editarProducto(index)" class="text-blue-500 hover:text-blue-700 transition" title="Editar">
                                                     <i class="fas fa-edit text-sm"></i>
                                                 </button>
-                                                <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700" title="Eliminar">
+                                                <button @click="eliminarProducto(index)" class="text-red-500 hover:text-red-700 transition" title="Eliminar">
                                                     <i class="fas fa-trash-alt text-sm"></i>
                                                 </button>
                                             </div>
@@ -675,7 +677,7 @@ onUnmounted(() => {
                     </div>
 
                     <div class="mt-3 flex justify-end">
-                        <button @click="contabilizar" :disabled="contabilizando || detallesGrid.length === 0" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-1">
+                        <button @click="contabilizar" :disabled="contabilizando || detallesGrid.length === 0" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded text-sm font-medium flex items-center gap-1 transition">
                             <i v-if="contabilizando" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-check-circle"></i>
                             {{ contabilizando ? 'Contabilizando...' : 'CONTABILIZAR' }}
@@ -684,15 +686,15 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Mensaje si cabecera no guardada -->
-                <div v-else class="bg-secondary-50 rounded-lg p-4 text-secondary-800 text-sm text-center">
+                <div v-else class="bg-amber-50 rounded-lg p-4 text-amber-800 text-sm text-center">
                     <i class="fas fa-info-circle mr-1"></i>
                     Complete todos los campos de la cabecera y presione "Guardar Cabecera" para comenzar a agregar productos.
                 </div>
 
                 <!-- Modal de Confirmación -->
                 <div v-if="mostrarConfirmacion" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div class="bg-white rounded-lg max-w-sm w-full">
-                        <div class="bg-secondary-500 p-3 rounded-t-lg">
+                    <div class="bg-white rounded-lg max-w-sm w-full overflow-hidden shadow-xl">
+                        <div class="bg-primary-600 p-3">
                             <div class="flex items-center gap-2">
                                 <i class="fas fa-exclamation-triangle text-white text-lg"></i>
                                 <h3 class="text-white font-semibold text-sm">Confirmar Contabilización</h3>
@@ -702,8 +704,8 @@ onUnmounted(() => {
                             <p class="text-gray-700 text-sm mb-3">¿Está seguro de contabilizar esta compra?</p>
                             <p class="text-gray-500 text-xs mb-4">Una vez contabilizada, no se podrá modificar.</p>
                             <div class="flex gap-2">
-                                <button @click="cancelarConfirmacion" class="flex-1 py-1.5 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300">Cancelar</button>
-                                <button @click="ejecutarContabilizar" class="flex-1 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700">Sí, Contabilizar</button>
+                                <button @click="cancelarConfirmacion" class="flex-1 py-1.5 rounded bg-gray-200 text-gray-700 text-sm hover:bg-gray-300 transition">Cancelar</button>
+                                <button @click="ejecutarContabilizar" class="flex-1 py-1.5 rounded bg-green-600 text-white text-sm hover:bg-green-700 transition">Sí, Contabilizar</button>
                             </div>
                         </div>
                     </div>

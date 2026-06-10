@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, onMounted, inject } from 'vue'
+import { ref, onMounted, inject, watch } from 'vue'  // 🔥 Agregar watch
 import { useForm } from '@inertiajs/vue3'
 import axios from 'axios'
 import DiarioPropiamenteTab from './components/DiarioPropiamenteTab.vue'
@@ -28,6 +28,7 @@ const contabilizando = ref(false)
 const puedeContabilizar = ref(false)
 const modalErrorVisible = ref(false)
 
+// 🔥 CORREGIDO: Inicializar con los valores de props
 const form = useForm({
     IdFecha: props.diario?.IdFecha || '',
     IdTipoDiario: props.diario?.IdTipoDiario || '',
@@ -35,6 +36,15 @@ const form = useForm({
 })
 
 const asientosList = ref(props.asientos || [])
+
+// 🔥 NUEVO: Watch para actualizar el form cuando cambien los props
+watch(() => props.diario, (nuevoDiario) => {
+    if (nuevoDiario) {
+        form.IdFecha = nuevoDiario.IdFecha || ''
+        form.IdTipoDiario = nuevoDiario.IdTipoDiario || ''
+        form.IdSucursal = nuevoDiario.IdSucursal || ''
+    }
+}, { immediate: true, deep: true })
 
 const guardarCabecera = () => {
     if (props.editando) {
@@ -93,12 +103,7 @@ const cerrarModalError = () => {
     modalErrorVisible.value = false
 }
 
-onMounted(() => {
-    if (props.diario?.IdFecha) {
-        const fecha = props.fechas.find(f => f.id === props.diario.IdFecha)
-        if (fecha) form.IdFecha = props.diario.IdFecha
-    }
-})
+// 🔥 Ya no es necesario onMounted porque watch lo maneja
 </script>
 
 <template>
@@ -146,30 +151,59 @@ onMounted(() => {
                 <!-- Formulario Principal -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <!-- FECHA -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Fecha del Diario *</label>
-                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.IdFecha }" :disabled="editando && diario?.Contabilizado === 1">
+                            <select 
+                                v-model="form.IdFecha" 
+                                class="w-full border rounded-md px-2 py-1.5 text-xs" 
+                                :class="{ 'border-red-500': form.errors.IdFecha }" 
+                                :disabled="editando && diario?.Contabilizado === 1"
+                            >
                                 <option value="">Seleccione una fecha</option>
                                 <option v-for="f in fechas" :key="f.id" :value="f.id">{{ f.fecha }}</option>
                             </select>
                             <p v-if="form.errors.IdFecha" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.IdFecha }}</p>
                         </div>
 
+                        <!-- TIPO DIARIO -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Tipo de Diario *</label>
-                            <select v-model="form.IdTipoDiario" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.IdTipoDiario }" :disabled="editando && diario?.Contabilizado === 1">
+                            <select 
+                                v-model="form.IdTipoDiario" 
+                                class="w-full border rounded-md px-2 py-1.5 text-xs" 
+                                :class="{ 'border-red-500': form.errors.IdTipoDiario }" 
+                                :disabled="editando && diario?.Contabilizado === 1"
+                            >
                                 <option value="">Seleccione un tipo</option>
                                 <option v-for="t in tiposDiario" :key="t.IdTipoDiario" :value="t.IdTipoDiario">{{ t.TipoDiario }}</option>
                             </select>
                             <p v-if="form.errors.IdTipoDiario" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.IdTipoDiario }}</p>
                         </div>
 
+                        <!-- 🔥 SUCURSAL (select corregido) -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal *</label>
-                            <select v-model="form.IdSucursal" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': form.errors.IdSucursal }" :disabled="editando && diario?.Contabilizado === 1">
+                            <select 
+                                v-model="form.IdSucursal" 
+                                class="w-full border rounded-md px-2 py-1.5 text-xs" 
+                                :class="{ 'border-red-500': form.errors.IdSucursal }" 
+                                :disabled="editando && diario?.Contabilizado === 1"
+                            >
                                 <option value="">Seleccione una sucursal</option>
-                                <option v-for="s in sucursales" :key="s.id" :value="s.id">{{ s.nombre }}</option>
+                                <option 
+                                    v-for="s in sucursales" 
+                                    :key="s.id" 
+                                    :value="s.id"
+                                    :selected="form.IdSucursal == s.id"
+                                >
+                                    {{ s.nombre }}
+                                </option>
                             </select>
+                            <!-- 🔥 Debug: muestra la sucursal seleccionada -->
+                            <p v-if="form.IdSucursal" class="text-[9px] text-green-600 mt-0.5">
+                                ✅ Sucursal seleccionada ID: {{ form.IdSucursal }}
+                            </p>
                             <p v-if="form.errors.IdSucursal" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.IdSucursal }}</p>
                         </div>
                     </div>

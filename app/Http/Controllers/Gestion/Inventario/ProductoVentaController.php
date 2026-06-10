@@ -30,18 +30,15 @@ class ProductoVentaController extends Controller
         $query = ProductoVenta::where('IdCliente', $clienteId)
             ->with(['categoria']);
         
-        // Filtro por estado
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('ActivoInactivo', $request->estado);
         }
         
-        // 🔥 FILTRO POR CATEGORÍAS (múltiples)
         if ($request->filled('categorias')) {
             $categoriasArray = explode(',', $request->categorias);
             $query->whereIn('id_categoria', $categoriasArray);
         }
         
-        // Búsqueda
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function($q) use ($search) {
@@ -52,16 +49,13 @@ class ProductoVentaController extends Controller
         
         $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
         
-        // 🔥 OBTENER CATEGORÍAS CON EL CONTEO CORRECTO
         $categorias = CategoriaProducto::porContexto()
             ->orderBy('orden')
             ->get()
             ->map(function($categoria) use ($clienteId, $request) {
-                // Contar productos que pertenecen a esta categoría
                 $query = ProductoVenta::where('IdCliente', $clienteId)
                     ->where('id_categoria', $categoria->id_categoria);
                 
-                // Aplicar el mismo filtro de búsqueda si existe
                 if ($request->filled('search')) {
                     $search = $request->search;
                     $query->where(function($q) use ($search) {
@@ -70,7 +64,6 @@ class ProductoVentaController extends Controller
                     });
                 }
                 
-                // Aplicar filtro de estado si existe
                 if ($request->filled('estado') && $request->estado !== '') {
                     $query->where('ActivoInactivo', $request->estado);
                 }
@@ -101,7 +94,6 @@ class ProductoVentaController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // 🔥 Buscar borrador por estado_aprobacion = APROBACION_BORRADOR (0)
         $productoBorrador = ProductoVenta::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->where('IdOperadorInserta', $operadorId)
@@ -163,7 +155,6 @@ class ProductoVentaController extends Controller
             ->with('producto')
             ->get();
         
-        // 🔥 OBTENER CATEGORÍAS COMPLETAS
         $categorias = CategoriaProducto::porContexto()
             ->orderBy('orden')
             ->get();
@@ -197,6 +188,9 @@ class ProductoVentaController extends Controller
         ]);
     }
     
+    /**
+     * 🔥 STORE - Crear nuevo producto (con FormData para imagen)
+     */
     public function store(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -260,7 +254,6 @@ class ProductoVentaController extends Controller
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // 🔥 DEVOLVER JSON EN VEZ DE REDIRECCIÓN
             return response()->json([
                 'success' => true,
                 'message' => 'Producto creado correctamente',
@@ -278,6 +271,9 @@ class ProductoVentaController extends Controller
         }
     }
     
+    /**
+     * 🔥 UPDATE - Actualizar producto (con FormData para imagen)
+     */
     public function update(Request $request, $id)
     {
         $clienteId = session('cliente_id');
@@ -295,7 +291,8 @@ class ProductoVentaController extends Controller
             'Codigo' => 'required|string|max:100',
             'Detalle' => 'required|string|max:100',
             'PrecioVenta' => 'required|numeric|min:0',
-            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048', // 🔥 Validación de archivo
+            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512',
+            'eliminar_imagen' => 'nullable|boolean'
         ]);
         
         // Validar Código
@@ -329,7 +326,15 @@ class ProductoVentaController extends Controller
             
             $imagenUrl = $producto->ImagenProducto;
             
-            // 🔥 Si hay nueva imagen, eliminar la anterior y guardar la nueva
+            // Manejar eliminación de imagen
+            if ($request->boolean('eliminar_imagen')) {
+                if ($imagenUrl && file_exists(public_path($imagenUrl))) {
+                    unlink(public_path($imagenUrl));
+                }
+                $imagenUrl = null;
+            }
+            
+            // Si hay nueva imagen, eliminar la anterior y guardar la nueva
             if ($request->hasFile('imagen')) {
                 if ($imagenUrl && file_exists(public_path($imagenUrl))) {
                     unlink(public_path($imagenUrl));
@@ -349,9 +354,15 @@ class ProductoVentaController extends Controller
             
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
             
+            // Devolver el producto actualizado
+            $productoActualizado = ProductoVenta::where('IdCliente', $clienteId)
+                ->with('categoria')
+                ->findOrFail($id);
+            
             return response()->json([
                 'success' => true,
-                'message' => 'Producto actualizado correctamente'
+                'message' => 'Producto actualizado correctamente',
+                'producto' => $productoActualizado
             ]);
             
         } catch (\Exception $e) {
@@ -364,6 +375,9 @@ class ProductoVentaController extends Controller
         }
     }
 
+    /**
+     * 🔥 DESTROY - Eliminar producto y su imagen asociada
+     */
     public function destroy($id)
     {
         $clienteId = session('cliente_id');
@@ -382,7 +396,7 @@ class ProductoVentaController extends Controller
                 unlink(public_path($producto->ImagenProducto));
             }
             
-            // Eliminar primero los detalles relacionados
+            // Eliminar los detalles relacionados
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_detalle')
                 ->where('IdDetalleProducto', $id)
@@ -404,154 +418,53 @@ class ProductoVentaController extends Controller
         }
     }
     
-    public function activar($id)
+    /**
+     * 🔥 guardarImagenArchivo - Guardar imagen desde archivo subido (FormData)
+     */
+    private function guardarImagenArchivo($file, $codigo)
     {
         try {
-            $clienteId = session('cliente_id');
-            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+            Log::info('=== GUARDANDO IMAGEN DESDE ARCHIVO ===');
+            Log::info('Código: ' . $codigo);
+            Log::info('Archivo original: ' . $file->getClientOriginalName());
+            Log::info('Mime type: ' . $file->getMimeType());
+            Log::info('Tamaño: ' . $file->getSize() . ' bytes');
             
-            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
-                ], 400);
-            }
+            $extension = $file->getClientOriginalExtension();
+            $nombreArchivo = Str::slug($codigo, '_') . '_' . date('Ymd_His') . '.' . $extension;
+            $rutaRelativa = '/storage/productos/' . $nombreArchivo;
+            $rutaCompleta = public_path($rutaRelativa);
             
-            $tieneDetalle = RelacionVentaDetalle::where('IdDetalleProducto', $id)->exists();
+            $directorio = dirname($rutaCompleta);
+            Log::info('Directorio destino: ' . $directorio);
             
-            if (!$tieneDetalle) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No se puede activar. El producto no tiene relación con inventario.'
-                ], 400);
-            }
-            
-            $producto->update([
-                'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
-                'IdOperadorActualiza' => session('operador_id'),
-                'FechaActualiza' => now(),
-            ]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Producto activado correctamente'
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error en activar: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error en el servidor: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-    
-    public function desactivar($id)
-    {
-        try {
-            $clienteId = session('cliente_id');
-            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
-            
-            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
-                ], 400);
-            }
-            
-            $producto->update([
-                'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
-                'IdOperadorActualiza' => session('operador_id'),
-                'FechaActualiza' => now(),
-            ]);
-            
-            return response()->json([
-                'success' => true,
-                'message' => 'Producto desactivado correctamente'
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Error en desactivar: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error en el servidor: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-    
-    // ==================== CATÁLOGO DE LOS PRODUCTOS ====================
-    public function catalogo(Request $request)
-    {
-        $clienteId = session('cliente_id');
-        
-        $query = ProductoVenta::where('IdCliente', $clienteId)
-            ->with(['categoria']);
-        
-        if ($request->filled('categoria')) {
-            $query->where('id_categoria', $request->categoria);
-        }
-        
-        if ($request->filled('aprobacion') && $request->aprobacion !== '') {
-            $query->where('estado_aprobacion', $request->aprobacion);
-        }
-        
-        if ($request->filled('estado') && $request->estado !== '') {
-            $query->where('ActivoInactivo', $request->estado);
-        }
-        
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->where('Codigo', 'like', "%{$search}%")
-                ->orWhere('Detalle', 'like', "%{$search}%");
-            });
-        }
-        
-        $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
-        
-        foreach ($productos as $producto) {
-            if ($producto->ImagenProducto) {
-                if (!str_starts_with($producto->ImagenProducto, 'http') && !str_starts_with($producto->ImagenProducto, '/storage')) {
-                    $producto->imagen_url = '/storage/' . ltrim($producto->ImagenProducto, '/');
-                } else {
-                    $producto->imagen_url = $producto->ImagenProducto;
+            if (!file_exists($directorio)) {
+                Log::info('Creando directorio...');
+                if (!mkdir($directorio, 0755, true)) {
+                    throw new \Exception('No se pudo crear el directorio: ' . $directorio);
                 }
-            } else {
-                $producto->imagen_url = null;
+                Log::info('Directorio creado exitosamente');
             }
+            
+            if (!is_writable($directorio)) {
+                throw new \Exception('El directorio no tiene permisos de escritura: ' . $directorio);
+            }
+            
+            Log::info('Moviendo archivo a: ' . $rutaCompleta);
+            $file->move($directorio, $nombreArchivo);
+            
+            if (!file_exists($rutaCompleta)) {
+                throw new \Exception('El archivo no se guardó correctamente');
+            }
+            
+            Log::info('✅ Imagen guardada exitosamente en: ' . $rutaRelativa);
+            
+            return $rutaRelativa;
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error guardando imagen: ' . $e->getMessage());
+            return null;
         }
-        
-        $categorias = CategoriaProducto::porContexto()
-            ->orderBy('orden')
-            ->get(['id_categoria as id', 'nombre']);
-        
-        $totalProductos = ProductoVenta::where('IdCliente', $clienteId)->count();
-        $totalConCategoria = ProductoVenta::where('IdCliente', $clienteId)
-            ->whereNotNull('id_categoria')
-            ->count();
-        $totalSinCategoria = $totalProductos - $totalConCategoria;
-        
-        $totalConImagen = ProductoVenta::where('IdCliente', $clienteId)
-            ->whereNotNull('ImagenProducto')
-            ->where('ImagenProducto', '!=', '')
-            ->count();
-        $totalSinImagen = $totalProductos - $totalConImagen;
-        
-        return Inertia::render('Gestion/Inventario/ProductosVenta/Catalogo', [
-            'productos' => $productos,
-            'categorias' => $categorias,
-            'totalProductos' => $totalProductos,
-            'totalConCategoria' => $totalConCategoria,
-            'totalSinCategoria' => $totalSinCategoria,
-            'totalConImagen' => $totalConImagen,
-            'totalSinImagen' => $totalSinImagen,
-            'filtros' => [
-                'categoria' => $request->categoria,
-                'aprobacion' => $request->aprobacion,
-                'estado' => $request->estado,
-                'search' => $request->search,
-            ],
-        ]);
     }
     
     // ==================== PRECIO SUCURSAL ====================
@@ -874,9 +787,6 @@ class ProductoVentaController extends Controller
         }
     }
     
-    /**
-     * Verificar si ya existe un producto con la misma composición
-     */
     public function verificarComposicion(Request $request)
     {
         $request->validate([
@@ -927,60 +837,155 @@ class ProductoVentaController extends Controller
         
         return response()->json(['existe' => false]);
     }
-
-    // ==================== UTILIDADES ====================
     
-    /**
-     * 🔥 NUEVA FUNCIÓN: Guardar imagen desde archivo subido
-     */
-    private function guardarImagenArchivo($file, $codigo)
+    public function activar($id)
     {
         try {
-            \Log::info('=== GUARDANDO IMAGEN ===');
-            \Log::info('Código: ' . $codigo);
-            \Log::info('Archivo original: ' . $file->getClientOriginalName());
-            \Log::info('Mime type: ' . $file->getMimeType());
-            \Log::info('Tamaño: ' . $file->getSize() . ' bytes');
+            $clienteId = session('cliente_id');
+            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
             
-            $extension = $file->getClientOriginalExtension();
-            $nombreArchivo = Str::slug($codigo, '_') . '_' . date('Ymd_His') . '.' . $extension;
-            $rutaRelativa = '/storage/productos/' . $nombreArchivo;
-            $rutaCompleta = public_path($rutaRelativa);
-            
-            $directorio = dirname($rutaCompleta);
-            \Log::info('Directorio destino: ' . $directorio);
-            
-            if (!file_exists($directorio)) {
-                \Log::info('Creando directorio...');
-                if (!mkdir($directorio, 0755, true)) {
-                    throw new \Exception('No se pudo crear el directorio: ' . $directorio);
-                }
-                \Log::info('Directorio creado exitosamente');
+            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
+                ], 400);
             }
             
-            // Verificar permisos de escritura
-            if (!is_writable($directorio)) {
-                throw new \Exception('El directorio no tiene permisos de escritura: ' . $directorio);
+            $tieneDetalle = RelacionVentaDetalle::where('IdDetalleProducto', $id)->exists();
+            
+            if (!$tieneDetalle) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede activar. El producto no tiene relación con inventario.'
+                ], 400);
             }
             
-            \Log::info('Moviendo archivo a: ' . $rutaCompleta);
-            $file->move($directorio, $nombreArchivo);
+            $producto->update([
+                'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
             
-            if (!file_exists($rutaCompleta)) {
-                throw new \Exception('El archivo no se guardó correctamente');
-            }
-            
-            \Log::info('✅ Imagen guardada exitosamente en: ' . $rutaRelativa);
-            
-            return $rutaRelativa;
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto activado correctamente'
+            ]);
             
         } catch (\Exception $e) {
-            \Log::error('❌ Error guardando imagen: ' . $e->getMessage());
-            return null;
+            Log::error('Error en activar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error en el servidor: ' . $e->getMessage()
+            ], 500);
         }
     }
-
-    // ==================== APROBACIÓN DE PRODUCTOS ====================
+    
+    public function desactivar($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+            
+            if ($producto->estado_aprobacion != ProductoVenta::APROBACION_APROBADO) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El producto debe estar aprobado primero. Estado actual: ' . $producto->estado_aprobacion
+                ], 400);
+            }
+            
+            $producto->update([
+                'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto desactivado correctamente'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en desactivar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error en el servidor: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    
+    public function catalogo(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        
+        $query = ProductoVenta::where('IdCliente', $clienteId)
+            ->with(['categoria']);
+        
+        if ($request->filled('categoria')) {
+            $query->where('id_categoria', $request->categoria);
+        }
+        
+        if ($request->filled('aprobacion') && $request->aprobacion !== '') {
+            $query->where('estado_aprobacion', $request->aprobacion);
+        }
+        
+        if ($request->filled('estado') && $request->estado !== '') {
+            $query->where('ActivoInactivo', $request->estado);
+        }
+        
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('Codigo', 'like', "%{$search}%")
+                ->orWhere('Detalle', 'like', "%{$search}%");
+            });
+        }
+        
+        $productos = $query->orderBy('Detalle')->paginate(20)->withQueryString();
+        
+        foreach ($productos as $producto) {
+            if ($producto->ImagenProducto) {
+                if (!str_starts_with($producto->ImagenProducto, 'http') && !str_starts_with($producto->ImagenProducto, '/storage')) {
+                    $producto->imagen_url = '/storage/' . ltrim($producto->ImagenProducto, '/');
+                } else {
+                    $producto->imagen_url = $producto->ImagenProducto;
+                }
+            } else {
+                $producto->imagen_url = null;
+            }
+        }
+        
+        $categorias = CategoriaProducto::porContexto()
+            ->orderBy('orden')
+            ->get(['id_categoria as id', 'nombre']);
+        
+        $totalProductos = ProductoVenta::where('IdCliente', $clienteId)->count();
+        $totalConCategoria = ProductoVenta::where('IdCliente', $clienteId)
+            ->whereNotNull('id_categoria')
+            ->count();
+        $totalSinCategoria = $totalProductos - $totalConCategoria;
+        
+        $totalConImagen = ProductoVenta::where('IdCliente', $clienteId)
+            ->whereNotNull('ImagenProducto')
+            ->where('ImagenProducto', '!=', '')
+            ->count();
+        $totalSinImagen = $totalProductos - $totalConImagen;
+        
+        return Inertia::render('Gestion/Inventario/ProductosVenta/Catalogo', [
+            'productos' => $productos,
+            'categorias' => $categorias,
+            'totalProductos' => $totalProductos,
+            'totalConCategoria' => $totalConCategoria,
+            'totalSinCategoria' => $totalSinCategoria,
+            'totalConImagen' => $totalConImagen,
+            'totalSinImagen' => $totalSinImagen,
+            'filtros' => [
+                'categoria' => $request->categoria,
+                'aprobacion' => $request->aprobacion,
+                'estado' => $request->estado,
+                'search' => $request->search,
+            ],
+        ]);
+    }
     
     public function enviarAprobacion($id)
     {

@@ -33,7 +33,7 @@ class CategoriaProductoController extends Controller
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
             'activo' => 'boolean',
-            'imagen_base64' => 'nullable|string'
+            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512' // 🔥 CAMBIADO: file, no base64
         ]);
 
         $padre = null;
@@ -42,11 +42,10 @@ class CategoriaProductoController extends Controller
         }
 
         $imagenUrl = null;
-        if ($request->imagen_base64) {
-            $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->nombre, $padre);
+        if ($request->hasFile('imagen')) { // 🔥 CAMBIADO: verificar file
+            $imagenUrl = $this->guardarImagen($request->file('imagen'), $request->nombre, $padre);
         }
 
-        // 🔥 Calcular orden automáticamente
         $orden = CategoriaProducto::getNextOrder($request->id_padre);
 
         $categoria = CategoriaProducto::create([
@@ -69,7 +68,7 @@ class CategoriaProductoController extends Controller
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
             'activo' => 'boolean',
-            'imagen_base64' => 'nullable|string'
+            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512' // 🔥 CAMBIADO: file, no base64
         ]);
 
         if ($request->id_padre == $id) {
@@ -85,7 +84,10 @@ class CategoriaProductoController extends Controller
         }
 
         $imagenUrl = $categoria->imagen_url;
-        if ($request->imagen_base64) {
+        
+        // 🔥 CAMBIADO: manejar nueva imagen como file
+        if ($request->hasFile('imagen')) {
+            // Eliminar imagen anterior si existe
             if ($imagenUrl && file_exists(public_path($imagenUrl))) {
                 unlink(public_path($imagenUrl));
                 $carpeta = dirname(public_path($imagenUrl));
@@ -93,16 +95,12 @@ class CategoriaProductoController extends Controller
                     rmdir($carpeta);
                 }
             }
-            $imagenUrl = $this->guardarImagen($request->imagen_base64, $request->nombre, $padre);
+            $imagenUrl = $this->guardarImagen($request->file('imagen'), $request->nombre, $padre);
         }
 
-        // 🔥 Si cambió de padre, reordenar en ambos grupos
         if ($padreAnterior != $nuevoPadre) {
-            // Calcular nuevo orden para el nuevo padre
             $nuevoOrden = CategoriaProducto::getNextOrder($nuevoPadre);
             $categoria->orden = $nuevoOrden;
-            
-            // Reordenar el grupo anterior
             CategoriaProducto::reordenar($padreAnterior);
         }
 
@@ -113,7 +111,6 @@ class CategoriaProductoController extends Controller
             'activo' => $request->activo ? 1 : 0,
         ]);
 
-        // Reordenar el nuevo grupo para mantener consistencia
         if ($padreAnterior != $nuevoPadre) {
             CategoriaProducto::reordenar($nuevoPadre);
         }
@@ -147,62 +144,57 @@ class CategoriaProductoController extends Controller
         }
 
         $categoria->delete();
-
-        // 🔥 Reordenar el grupo del padre después de eliminar
         CategoriaProducto::reordenar($padreId);
 
         return redirect()->back()->with('success', 'Categoría eliminada correctamente');
     }
 
-    /**
-     * 🔥 Reordenar todas las categorías (útil para limpiar órdenes desordenados)
-     */
     public function reordenarTodo()
     {
         CategoriaProducto::reordenarTodo();
-        
         return redirect()->back()->with('success', 'Categorías reordenadas correctamente');
     }
 
-    private function guardarImagen($base64, $nombre, $padre = null)
+    /**
+     * 🔥 NUEVO MÉTODO: Guardar imagen desde archivo subido (FormData)
+     */
+    private function guardarImagen($file, $nombre, $padre = null)
     {
         try {
-            if (str_contains($base64, 'base64,')) {
-                $base64 = explode('base64,', $base64)[1];
-            }
+            \Log::info('=== Guardando imagen desde archivo ===');
+            \Log::info('Nombre original: ' . $file->getClientOriginalName());
+            \Log::info('Mime type: ' . $file->getMimeType());
+            \Log::info('Tamaño: ' . $file->getSize() . ' bytes');
             
-            $image = base64_decode($base64);
-            if ($image === false) {
-                throw new \Exception('No se pudo decodificar la imagen');
-            }
-            
-            $finfo = finfo_open();
-            $mimeType = finfo_buffer($finfo, $image, FILEINFO_MIME_TYPE);
-            finfo_close($finfo);
-            
-            $extension = match($mimeType) {
-                'image/jpeg', 'image/jpg' => 'jpg',
-                'image/png' => 'png',
-                'image/webp' => 'webp',
-                default => 'jpg'
-            };
-            
+            $extension = $file->getClientOriginalExtension();
             $nombreLimpio = Str::slug($nombre, '_');
             $rutaBase = $this->getRutaBasePadres($padre);
             $rutaCarpeta = $rutaBase . '/' . $nombreLimpio;
             $rutaCompletaCarpeta = public_path($rutaCarpeta);
             
             if (!file_exists($rutaCompletaCarpeta)) {
-                mkdir($rutaCompletaCarpeta, 0755, true);
+                if (!mkdir($rutaCompletaCarpeta, 0755, true)) {
+                    throw new \Exception('No se pudo crear el directorio: ' . $rutaCompletaCarpeta);
+                }
             }
             
-            $rutaRelativa = $rutaCarpeta . '/icono.' . $extension;
+            $nombreArchivo = 'icono.' . $extension;
+            $rutaRelativa = $rutaCarpeta . '/' . $nombreArchivo;
             $rutaCompleta = public_path($rutaRelativa);
-            file_put_contents($rutaCompleta, $image);
+            
+            // Mover el archivo
+            $file->move($rutaCompletaCarpeta, $nombreArchivo);
+            
+            if (!file_exists($rutaCompleta)) {
+                throw new \Exception('El archivo no se guardó correctamente');
+            }
+            
+            \Log::info('✅ Imagen guardada en: ' . $rutaRelativa);
             
             return $rutaRelativa;
+            
         } catch (\Exception $e) {
-            \Log::error('Error guardando imagen: ' . $e->getMessage());
+            \Log::error('❌ Error guardando imagen: ' . $e->getMessage());
             return null;
         }
     }

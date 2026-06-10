@@ -2,11 +2,11 @@
     <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrar">
         <div class="bg-white rounded-xl max-w-md w-full overflow-hidden shadow-xl transform transition-all">
             
-            <!-- Header con color de advertencia -->
-            <div class="bg-secondary-500 text-white p-4">
+            <!-- Header con color AMARILLO (warning) -->
+            <div class="bg-yellow-500 text-white p-4">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                        <i class="fas fa-exclamation-triangle text-secondary-500 text-xl"></i>
+                        <i class="fas fa-exclamation-triangle text-yellow-500 text-xl"></i>
                     </div>
                     <h3 class="text-lg font-bold">{{ titulo || 'Producto Duplicado' }}</h3>
                 </div>
