@@ -14,10 +14,8 @@ const props = defineProps({
     identificadores: Array,
 })
 
-// Formulario
+// Formulario - SOLO los campos editables
 const form = useForm({
-    Iniciales: props.operador?.Iniciales || '',
-    NombreAcceso: props.operador?.NombreAcceso || '',
     Clave: '',
     DireccionDomicilio: props.operador?.DireccionDomicilio || '',
     TelefonoDomicilio: props.operador?.TelefonoDomicilio || '',
@@ -70,31 +68,24 @@ const submitForm = () => {
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <!-- Iniciales -->
+                            <!-- Iniciales (SOLO LECTURA) -->
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-1">Iniciales *</label>
-                                <input 
-                                    type="text" 
-                                    v-model="form.Iniciales" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs uppercase focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                                    :class="{ 'border-red-500': form.errors.Iniciales }"
-                                    placeholder="Ej: JPG"
-                                    maxlength="5"
-                                >
-                                <p v-if="form.errors.Iniciales" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Iniciales }}</p>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-1">Iniciales</label>
+                                <div class="bg-gray-100 rounded-md px-2 py-1.5 text-xs text-gray-600 border">
+                                    <i class="fas fa-id-card text-gray-400 mr-1 text-[10px]"></i>
+                                    {{ operador?.Iniciales || '-' }}
+                                </div>
+                                <p class="text-[10px] text-gray-400 mt-1">* No se puede modificar</p>
                             </div>
 
-                            <!-- Nombre de Acceso -->
+                            <!-- Nombre de Acceso (SOLO LECTURA) -->
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-1">Nombre de Acceso *</label>
-                                <input 
-                                    type="text" 
-                                    v-model="form.NombreAcceso" 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
-                                    :class="{ 'border-red-500': form.errors.NombreAcceso }"
-                                    placeholder="Usuario para login"
-                                >
-                                <p v-if="form.errors.NombreAcceso" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.NombreAcceso }}</p>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-1">Nombre de Acceso</label>
+                                <div class="bg-gray-100 rounded-md px-2 py-1.5 text-xs text-gray-600 border">
+                                    <i class="fas fa-user text-gray-400 mr-1 text-[10px]"></i>
+                                    {{ operador?.NombreAcceso || '-' }}
+                                </div>
+                                <p class="text-[10px] text-gray-400 mt-1">* No se puede modificar, es tu usuario de login</p>
                             </div>
                         </div>
 
@@ -121,6 +112,7 @@ const submitForm = () => {
                                 </button>
                             </div>
                             <p v-if="form.errors.Clave" class="text-[10px] text-red-500 mt-0.5">{{ form.errors.Clave }}</p>
+                            <p class="text-[10px] text-gray-400 mt-1">* La contraseña debe tener al menos 4 caracteres</p>
                         </div>
 
                         <!-- Dirección -->
@@ -190,7 +182,11 @@ const submitForm = () => {
                 <div class="mt-4 text-center">
                     <p class="text-[10px] text-gray-400">
                         <i class="fas fa-shield-alt mr-1"></i>
-                        Tus datos están seguros. Solo tú puedes modificar esta información.
+                        Tus datos están seguros. Solo tú puedes modificar tu información.
+                    </p>
+                    <p class="text-[10px] text-gray-400 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        El nombre de acceso e iniciales no se pueden modificar. Contacta al administrador si necesitas cambiarlos.
                     </p>
                 </div>
             </div>
