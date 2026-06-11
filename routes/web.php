@@ -510,8 +510,16 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::resource('producto-grupo-analisis', ProductoGrupoAnalisisController::class)->except(['show', 'create', 'edit']);
         Route::resource('tipo-operacion', TipoOperacionController::class)->except(['show', 'create', 'edit']);
         Route::resource('unidad-medida', UnidadMedidaController::class)->except(['show', 'create', 'edit']);
-        Route::resource('almacen', AlmacenController::class)->except(['show', 'create', 'edit']);
     });
+
+    // ==================== ALMACENES (rutas explícitas) ====================
+    Route::prefix('gestion/inventario/almacen')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'index'])->name('gestion.inventario.almacen.index');
+        Route::post('/', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'store'])->name('gestion.inventario.almacen.store');
+        Route::put('/{id}', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'update'])->name('gestion.inventario.almacen.update');
+        Route::delete('/{id}', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'destroy'])->name('gestion.inventario.almacen.destroy');
+    });
+
 
     // ==================== INVENTARIO - CATEGORÍAS MENÚ TÁCTIL ====================
     Route::prefix('gestion/inventario/categorias-producto')->group(function () {

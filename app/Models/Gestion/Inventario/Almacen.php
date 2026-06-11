@@ -12,14 +12,24 @@ class Almacen extends Model
     protected $primaryKey = 'IdAlmacen';
     public $timestamps = false;
 
-    protected $fillable = ['Almacen', 'AlmacenPrincipal', 'IdCliente', 'IdSucursal'];
+    protected $fillable = [
+        'Almacen', 
+        'AlmacenPrincipal', 
+        'IdCliente', 
+        'IdSucursal'
+    ];
 
-    // 🔥 Relación con sucursal (importante para que funcione)
+    protected $casts = [
+        'AlmacenPrincipal' => 'integer',
+    ];
+
+    // Relación con sucursal
     public function sucursal()
     {
         return $this->belongsTo(ClienteSucursal::class, 'IdSucursal', 'IdClienteSucursal');
     }
 
+    // Scope para filtrar por contexto (cliente + sucursal de sesión)
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'))
