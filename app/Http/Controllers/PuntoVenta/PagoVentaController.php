@@ -553,11 +553,11 @@ class PagoVentaController extends Controller
     }
 
     /**
-     * Generar PDF de factura
+     * Generar PDF de factura con altura DINÁMICA
      */
     public function facturaPdf($id)
     {
-        Log::info('=== facturaPdf completo ===');
+        Log::info('=== facturaPdf (altura dinámica) ===');
         Log::info('ID: ' . $id);
         
         try {
@@ -590,20 +590,13 @@ class PagoVentaController extends Controller
             $nombreCliente = $cliente ? $cliente->Nombre : 'CONSUMIDOR FINAL';
             $nitCliente = $cliente ? $cliente->CI_NIT : '0';
             
-            // 🔥 CONSULTA CORREGIDA - SIN NombreCortoFactura
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle as d')
                 ->join('inventario_relacion_ventainventario as p', 'd.idrelacionventainventario', '=', 'p.IdDetalleProducto')
                 ->where('d.idventas', $id)
-                ->select(
-                    'p.Detalle as nombre',
-                    'd.unidades',
-                    'd.preciounidades',
-                    'd.totalbolivianos'
-                )
+                ->select('p.Detalle as nombre', 'd.unidades', 'd.preciounidades', 'd.totalbolivianos')
                 ->get();
             
-            // 🔥 OBTENER PAGOS CON IDENTIFICADORES
             $pagos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_liquidacion as l')
                 ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
@@ -636,30 +629,97 @@ class PagoVentaController extends Controller
                 $lugarVenta = $lugar ? $lugar->Lugar : null;
             }
             
-            // Calcular altura
-            $lineHeight = 4;
-            $yPosition = 35;
-            $yPosition += 5;
+            // =============================================
+            // CALCULAR ALTURA DINÁMICA (más precisa)
+            // =============================================
+            
+            $x = 4;
+            $y = 4;
+            $width = 64;
+            
+            // Usar un objeto TCPDF temporal para calcular la altura
+            $pdfCalc = new \TCPDF('P', 'mm', array(72, 300)); // altura grande temporal
+            $pdfCalc->setPrintHeader(false);
+            $pdfCalc->setPrintFooter(false);
+            $pdfCalc->SetMargins(4, 4, 4);
+            $pdfCalc->SetAutoPageBreak(false);
+            $pdfCalc->AddPage();
+            
+            // Configurar fuentes igual que en el PDF real
+            $pdfCalc->SetFont('helvetica', '', 8);
+            
+            // Variable para acumular altura
+            $alturaTotal = 0;
+            
+            // CABECERA
+            $alturaTotal += 5;  // Título empresa
+            $alturaTotal += 4;  // Sucursal
+            $alturaTotal += 4;  // Dirección
+            $alturaTotal += 4;  // Teléfono
+            $alturaTotal += 4;  // Santa Cruz
+            $alturaTotal += 6;  // Espacio
+            $alturaTotal += 5;  // RECIBO
+            $alturaTotal += 4;  // N°
+            $alturaTotal += 6;  // Espacio
+            $alturaTotal += 4;  // FECHA
+            $alturaTotal += 4;  // NIT/CI
+            $alturaTotal += 4;  // CLIENTE
+            if ($lugarVenta) $alturaTotal += 4;
+            $alturaTotal += 6;  // Espacio antes de tabla
+            
+            // TABLA DE PRODUCTOS (calcular con MultiCell)
+            $pdfCalc->SetFont('helvetica', 'B', 7);
+            $alturaTotal += 4;  // Encabezados
+            $alturaTotal += 2;  // Línea
+            
             foreach ($detalles as $detalle) {
-                $yPosition += ceil(strlen($detalle->nombre) / 30) * $lineHeight;
+                // Calcular altura del MultiCell para el nombre del producto
+                $nombreProducto = $detalle->nombre ?? 'Producto';
+                $alturaNombre = $pdfCalc->getStringHeight(35, $nombreProducto);
+                $alturaTotal += max(4, $alturaNombre);
             }
-            $yPosition += 8;
+            
+            $alturaTotal += 3;  // Línea inferior
+            $alturaTotal += 6;  // TOTAL
+            
+            // PAGOS
             foreach ($pagos as $pago) {
-                $yPosition += $lineHeight;
-                if ($pago->CI_NIT) {
-                    $yPosition += $lineHeight;
+                $alturaTotal += 4;
+                if ($pago->CI_NIT && $pago->CI_NIT != 0) {
+                    $alturaTotal += 3;
                 }
             }
-            $yPosition += 30;
-            $pageHeight = max(80, min(500, $yPosition + 20));
             
-            $pdf = new \TCPDF('P', 'mm', array(72, $pageHeight));
+            $alturaTotal += 6;  // TOTAL PAGO
+            $alturaTotal += 8;  // LITERAL (aproximado)
+            
+            if ($comisionista) $alturaTotal += 4;
+            $alturaTotal += 4;  // VENDEDOR
+            $alturaTotal += 4;  // TICKET
+            $alturaTotal += 6;  // Espacio antes de línea
+            $alturaTotal += 4;  // Línea de firma
+            
+            // Agregar margen de seguridad
+            $alturaTotal += 10;
+            
+            // Altura mínima y máxima
+            $alturaMinima = 80;
+            $alturaFinal = max($alturaMinima, min(500, $alturaTotal));
+            
+            Log::info('Altura calculada: ' . $alturaFinal . ' mm');
+            
+            // =============================================
+            // GENERAR PDF REAL CON ALTURA CALCULADA
+            // =============================================
+            
+            $pdf = new \TCPDF('P', 'mm', array(72, $alturaFinal));
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
             $pdf->SetMargins(4, 4, 4);
             $pdf->SetAutoPageBreak(true, 5);
             $pdf->AddPage();
             
+            // Marca de agua si está anulado
             if ($venta->IdEstado == 2) {
                 $pdf->SetAlpha(0.3);
                 $pdf->SetFont('helvetica', 'B', 38);
@@ -682,51 +742,61 @@ class PagoVentaController extends Controller
             $y = 4;
             $width = 64;
             
-            // Cabecera
+            // CABECERA
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 5, $empresa->Nombre ?? '', 0, 1, 'C');
             $y += 5;
+            
             $pdf->SetFont('helvetica', '', 8);
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "SUCURSAL " . ($sucursal->NumeroSucursal ?? ''), 0, 1, 'C');
             $y += 4;
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, $sucursal->Direccion ?? '', 0, 1, 'C');
             $y += 4;
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "Tel.: " . ($sucursal->Telefono ?? '') . " - Cel.: " . ($sucursal->Celular ?? ''), 0, 1, 'C');
             $y += 4;
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "SANTA CRUZ - BOLIVIA", 0, 1, 'C');
             $y += 6;
+            
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 5, "RECIBO", 0, 1, 'C');
             $y += 5;
+            
             $pdf->SetFont('helvetica', '', 8);
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "N° " . ($venta->NumeroFactura ?? '0'), 0, 1, 'C');
             $y += 6;
             
-            // Datos del cliente
+            // DATOS DEL CLIENTE
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "FECHA: " . date('d/m/Y H:i:s', strtotime($venta->FechaVenta)), 0, 1, 'L');
             $y += 4;
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "NIT/CI: " . $nitCliente, 0, 1, 'L');
             $y += 4;
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "CLIENTE: " . $nombreCliente, 0, 1, 'L');
             $y += 4;
+            
             if ($lugarVenta) {
                 $pdf->SetXY($x, $y);
                 $pdf->Cell($width, 4, "SERVICIO EN: " . $lugarVenta, 0, 1, 'L');
                 $y += 4;
             }
+            
             $y += 2;
             
-            // Tabla de productos (con MultiCell)
+            // TABLA DE PRODUCTOS
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY($x, $y);
             $pdf->Cell(8, 4, "CANT", 0, 0, 'L');
@@ -747,7 +817,6 @@ class PagoVentaController extends Controller
                 $subtotal = $detalle->totalbolivianos;
                 $totalGeneral += $subtotal;
                 
-                // Guardar posición Y actual
                 $startY = $y;
                 
                 // Cantidad
@@ -780,7 +849,7 @@ class PagoVentaController extends Controller
             $pdf->Cell(11, 5, number_format($totalGeneral, 2, '.', ','), 0, 1, 'R');
             $y += 6;
             
-            // Métodos de pago con identificadores
+            // MÉTODOS DE PAGO
             $totalPagos = 0;
             foreach ($pagos as $pago) {
                 $pdf->SetFont('helvetica', 'B', 7);
@@ -790,7 +859,6 @@ class PagoVentaController extends Controller
                 $totalPagos += $pago->Bolivianos;
                 $y += 4;
                 
-                // Mostrar identificador si existe
                 if ($pago->CI_NIT && $pago->CI_NIT != 0) {
                     $pdf->SetFont('helvetica', '', 6);
                     $pdf->SetXY($x + 5, $y);
@@ -805,21 +873,21 @@ class PagoVentaController extends Controller
             $pdf->Cell(11, 5, number_format($totalPagos, 2, '.', ','), 0, 1, 'R');
             $y += 6;
             
-            // Literal
+            // LITERAL
             $pdf->SetFont('helvetica', '', 6);
             $literal = $this->convertirNumeroALetras(round($totalGeneral, 2));
             $pdf->SetXY($x, $y);
             $pdf->MultiCell($width, 3, "SON: " . $literal, 0, 'L');
             $y = $pdf->GetY() + 2;
             
-            // Comisionista
+            // COMISIONISTA
             if ($comisionista) {
                 $pdf->SetXY($x, $y);
                 $pdf->Cell($width, 4, "COMISIONISTA: " . ($comisionista->Nombre ?? ''), 0, 1, 'L');
                 $y += 4;
             }
             
-            // Operador
+            // OPERADOR
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "VENDEDOR: " . ($operador->Nombre ?? ''), 0, 1, 'L');
             $y += 4;
