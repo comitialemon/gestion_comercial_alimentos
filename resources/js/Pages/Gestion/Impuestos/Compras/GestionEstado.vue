@@ -32,9 +32,17 @@ onUnmounted(() => {
 const modalVisible = ref(false)
 const modalData = ref({ id: null, numero: null, accion: '', nuevoEstado: null })
 
+// 🔥 MODIFICADO: Solo permite desactivar (cambiar de 1 a 0)
 const toggleSwitch = (compra) => {
+    // Si ya está inactivo (Borrador), NO se puede activar desde aquí
+    if (compra.ActivoInactivo === 0) {
+        mostrarToast('Para activar esta compra, debe editarla y guardar nuevamente.', 'info')
+        return
+    }
+    
+    // Solo permite desactivar (cambiar de Activo a Inactivo)
     if (cambiando.value[compra.IdCompras]) return
-    const nuevoEstado = compra.ActivoInactivo === 1 ? 0 : 1
+    const nuevoEstado = 0 // Siempre desactivar
     abrirModalConfirmacion(compra, nuevoEstado)
 }
 
@@ -42,7 +50,7 @@ const abrirModalConfirmacion = (compra, nuevoEstado) => {
     modalData.value = {
         id: compra.IdCompras,
         numero: compra.NumeroCorrelativo,
-        accion: nuevoEstado === 1 ? 'activar' : 'desactivar',
+        accion: 'desactivar',  // Siempre desactivar
         nuevoEstado: nuevoEstado
     }
     modalVisible.value = true
@@ -65,7 +73,8 @@ const ejecutarCambioEstado = async () => {
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            }
+            },
+            body: JSON.stringify({ estado: 0 }) // Siempre envía 0 (desactivar)
         })
         
         const data = await response.json()
@@ -94,13 +103,22 @@ const mostrarToast = (mensaje, tipo = 'success') => {
     const toastAnterior = document.querySelector('.custom-toast')
     if (toastAnterior) toastAnterior.remove()
     
+    let bgColor = 'bg-green-500'
+    let icon = 'fa-check-circle'
+    
+    if (tipo === 'error') {
+        bgColor = 'bg-red-500'
+        icon = 'fa-exclamation-circle'
+    } else if (tipo === 'info') {
+        bgColor = 'bg-blue-500'
+        icon = 'fa-info-circle'
+    }
+    
     const toast = document.createElement('div')
-    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${
-        tipo === 'success' ? 'bg-green-500' : 'bg-red-500'
-    }`
-    toast.innerHTML = `<i class="fas ${tipo === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${mensaje}`
+    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${bgColor}`
+    toast.innerHTML = `<i class="fas ${icon}"></i> ${mensaje}`
     document.body.appendChild(toast)
-    setTimeout(() => toast.remove(), 3000)
+    setTimeout(() => toast.remove(), 4000)
 }
 
 const aplicarFiltros = () => {
@@ -138,6 +156,19 @@ const getEstadoColor = (activo) => {
 const getEstadoTexto = (activo) => {
     return activo === 1 ? 'Contabilizada' : 'Borrador'
 }
+
+// 🔥 Verificar si el switch debe estar deshabilitado
+const isSwitchDisabled = (compra) => {
+    return compra.ActivoInactivo === 0  // Deshabilitado si ya está inactivo
+}
+
+// 🔥 Obtener tooltip para el switch
+const getSwitchTitle = (compra) => {
+    if (compra.ActivoInactivo === 0) {
+        return 'No se puede activar desde aquí. Edite la compra para volver a activarla.'
+    }
+    return 'Desactivar compra'
+}
 </script>
 
 <template>
@@ -152,7 +183,7 @@ const getEstadoTexto = (activo) => {
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Compras</h1>
-                            <p class="text-[10px] text-gray-500">Activar o desactivar comprobantes de compra</p>
+                            <p class="text-[10px] text-gray-500">Desactivar comprobantes de compra (solo desactivación)</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
@@ -197,7 +228,7 @@ const getEstadoTexto = (activo) => {
                         <span class="ml-2">({{ compras.total || 0 }} resultados)</span>
                     </div>
                     <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
-                        <i class="fas fa-info-circle"></i> Toque el switch para cambiar el estado
+                        <i class="fas fa-info-circle"></i> Solo se pueden desactivar compras. Para activar, edite la compra.
                     </div>
                 </div>
 
@@ -234,7 +265,13 @@ const getEstadoTexto = (activo) => {
                                     {{ getEstadoTexto(compra.ActivoInactivo) }}
                                 </span>
                                 
-                                <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
+                                <!-- 🔥 Switch MODIFICADO: Solo permite desactivar -->
+                                <div 
+                                    class="relative inline-flex items-center cursor-pointer" 
+                                    :class="{ 'cursor-not-allowed opacity-50': isSwitchDisabled(compra) }"
+                                    :title="getSwitchTitle(compra)"
+                                    @click="!isSwitchDisabled(compra) && toggleSwitch(compra)"
+                                >
                                     <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
                                         :class="compra.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                         <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
@@ -246,6 +283,11 @@ const getEstadoTexto = (activo) => {
                                         <span v-else>{{ compra.ActivoInactivo === 1 ? 'Activo' : 'Inactivo' }}</span>
                                     </span>
                                 </div>
+                            </div>
+                            <!-- 🔥 Mensaje informativo para compras inactivas -->
+                            <div v-if="compra.ActivoInactivo === 0" class="mt-2 text-[9px] text-blue-500 bg-blue-50 p-1.5 rounded-lg text-center">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Para activar esta compra, debe editarla y guardar nuevamente.
                             </div>
                         </div>
                     </div>
@@ -284,7 +326,13 @@ const getEstadoTexto = (activo) => {
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 text-center">
-                                        <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
+                                        <!-- 🔥 Switch MODIFICADO: Solo permite desactivar -->
+                                        <div 
+                                            class="relative inline-flex items-center cursor-pointer" 
+                                            :class="{ 'cursor-not-allowed opacity-50': isSwitchDisabled(compra) }"
+                                            :title="getSwitchTitle(compra)"
+                                            @click="!isSwitchDisabled(compra) && toggleSwitch(compra)"
+                                        >
                                             <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
                                                 :class="compra.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                                 <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
@@ -301,6 +349,13 @@ const getEstadoTexto = (activo) => {
                                         <a :href="`/gestion/compras/${compra.IdCompras}/pdf`" target="_blank" class="text-red-600 hover:text-red-700 transition" title="PDF">
                                             <i class="fas fa-file-pdf text-sm"></i>
                                         </a>
+                                    </td>
+                                </tr>
+                                <!-- 🔥 Fila para mostrar mensaje informativo en escritorio -->
+                                <tr v-if="compras.data?.some(c => c.ActivoInactivo === 0)" class="bg-blue-50">
+                                    <td colspan="7" class="px-3 py-2 text-center text-[10px] text-blue-600">
+                                        <i class="fas fa-info-circle mr-1"></i>
+                                        Las compras inactivas (Borrador) no se pueden activar desde aquí. Para activarlas, debe editarlas y guardar nuevamente.
                                     </td>
                                 </tr>
                                 <tr v-if="compras.data?.length === 0">
@@ -330,38 +385,36 @@ const getEstadoTexto = (activo) => {
                 </div>
             </div>
         </div>
-        <!-- Modal de confirmación -->
+
+        <!-- Modal de confirmación (solo para desactivar) -->
         <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
             <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
-                <!-- Cambia bg-green-50 / bg-amber-50 según la acción -->
-                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-amber-50'">
+                <div class="p-4 border-b bg-amber-50">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-amber-100'">
-                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-amber-600'" class="text-xl"></i>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-100">
+                            <i class="fas fa-ban text-amber-600 text-xl"></i>
                         </div>
                         <div class="flex-1">
-                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">
-                                {{ modalData.accion === 'activar' ? 'Activar Compra' : 'Desactivar Compra' }}
-                            </h3>
+                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Desactivar Compra</h3>
                             <p class="text-[10px] sm:text-xs text-gray-500">Compra N° {{ modalData.numero }}</p>
                         </div>
                     </div>
                 </div>
                 <div class="p-4 sm:p-5">
                     <p class="text-xs sm:text-sm text-gray-700 text-center">
-                        ¿Estás seguro de <span class="font-bold" :class="modalData.accion === 'activar' ? 'text-green-600' : 'text-red-600'">{{ modalData.accion === 'activar' ? 'ACTIVAR' : 'DESACTIVAR' }}</span> 
-                        esta compra?
+                        ¿Estás seguro de <span class="font-bold text-red-600">DESACTIVAR</span> esta compra?
                     </p>
                     <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
-                        {{ modalData.accion === 'activar' ? 'Al activarla, la compra se marcará como contabilizada.' : 'Al desactivarla, la compra volverá a estado borrador y podrá editarse.' }}
+                        Al desactivarla, la compra volverá a estado borrador y podrá editarse.
+                        Para volver a activarla, deberá editarla y guardar nuevamente.
                     </p>
                 </div>
                 <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
                     <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">Cancelar</button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-amber-600 hover:bg-amber-700'">
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-amber-600 hover:bg-amber-700">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                        <i v-else :class="modalData.accion === 'activar' ? 'fas fa-check' : 'fas fa-ban'"></i>
-                        {{ modalData.accion === 'activar' ? 'Activar' : 'Desactivar' }}
+                        <i v-else class="fas fa-ban"></i>
+                        Desactivar
                     </button>
                 </div>
             </div>
