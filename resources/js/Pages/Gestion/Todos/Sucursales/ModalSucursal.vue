@@ -1,47 +1,47 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
     modelValue: Boolean,
-    sucursal: Object,
-    plazas: Array,
-    categorias: Array,
-    editando: Boolean,
+    sucursal: {
+        type: Object,
+        default: null
+    },
+    plazas: {
+        type: Array,
+        default: () => []
+    },
+    categorias: {
+        type: Array,
+        default: () => ['MAYORISTA', 'GRANDE', 'MEDIANA', 'PEQUEÑA', 'MINI']
+    },
+    editando: {
+        type: Boolean,
+        default: false
+    }
 })
 
 const emit = defineEmits(['update:modelValue', 'saved'])
 
+// Estado del formulario
 const form = ref({
     IdPlaza: '',
     Nombre: '',
     Direccion: '',
     Telefono: '',
     Celular: '',
-    NumeroSucursal: null,  // 🔥 NULL por defecto
-    Orden: null,            // 🔥 NULL por defecto
-    Categoria: '',
-    ActivoInactivo: true,
+    NumeroSucursal: '',
+    Orden: 0,
+    Categoria: 'PEQUEÑA',
+    ActivoInactivo: true,  // true = Activo, false = Inactivo
+    ActivaInactivaR: true   // true = Activa, false = Inactiva
 })
 
 const loading = ref(false)
 const errors = ref({})
 
-const resetForm = () => {
-    form.value = {
-        IdPlaza: '',
-        Nombre: '',
-        Direccion: '',
-        Telefono: '',
-        Celular: '',
-        NumeroSucursal: null,
-        Orden: null,
-        Categoria: '',
-        ActivoInactivo: true,
-    }
-    errors.value = {}
-}
-
+// Cargar datos al editar
 watch(() => props.sucursal, (newVal) => {
     if (newVal && props.editando) {
         form.value = {
@@ -50,57 +50,73 @@ watch(() => props.sucursal, (newVal) => {
             Direccion: newVal.Direccion || '',
             Telefono: newVal.Telefono || '',
             Celular: newVal.Celular || '',
-            NumeroSucursal: newVal.NumeroSucursal || null,
-            Orden: newVal.Orden ?? null,
-            Categoria: newVal.Categoria || '',
-            ActivoInactivo: newVal.ActivoInactivo === 0,
+            NumeroSucursal: newVal.NumeroSucursal || '',
+            Orden: newVal.Orden || 0,
+            Categoria: newVal.Categoria || 'PEQUEÑA',
+            ActivoInactivo: newVal.ActivoInactivo === 0,  // 0 = Activo
+            ActivaInactivaR: newVal.ActivaInactivaR === 0  // 0 = Activa
         }
-    } else if (!props.editando) {
-        resetForm()
     }
 }, { immediate: true })
 
-const closeModal = () => {
+// Resetear formulario al cerrar
+const resetForm = () => {
+    form.value = {
+        IdPlaza: '',
+        Nombre: '',
+        Direccion: '',
+        Telefono: '',
+        Celular: '',
+        NumeroSucursal: '',
+        Orden: 0,
+        Categoria: 'PEQUEÑA',
+        ActivoInactivo: true,
+        ActivaInactivaR: true
+    }
+    errors.value = {}
+}
+
+const cerrarModal = () => {
     emit('update:modelValue', false)
     resetForm()
 }
 
-const save = async () => {
+const guardar = async () => {
     loading.value = true
     errors.value = {}
     
-    const datos = {
+    const data = {
         IdPlaza: form.value.IdPlaza,
         Nombre: form.value.Nombre,
         Direccion: form.value.Direccion,
         Telefono: form.value.Telefono,
         Celular: form.value.Celular,
-        NumeroSucursal: form.value.NumeroSucursal ?? 0,
-        Orden: form.value.Orden ?? 0,
+        NumeroSucursal: form.value.NumeroSucursal || 0,
+        Orden: form.value.Orden,
         Categoria: form.value.Categoria,
-        ActivoInactivo: form.value.ActivoInactivo ? 0 : 1,
+        ActivoInactivo: form.value.ActivoInactivo,
+        ActivaInactivaR: form.value.ActivaInactivaR
     }
     
     try {
         let response
-        if (props.editando) {
-            response = await axios.put(`/gestion/sucursales/${props.sucursal.IdClienteSucursal}`, datos)
+        if (props.editando && props.sucursal) {
+            response = await axios.put(`/gestion/sucursales/${props.sucursal.IdClienteSucursal}`, data)
         } else {
-            response = await axios.post('/gestion/sucursales', datos)
+            response = await axios.post('/gestion/sucursales', data)
         }
         
         if (response.data.success) {
             emit('saved')
-            closeModal()
+            cerrarModal()
         } else {
-            errors.value = response.data.errors || { general: response.data.message }
+            alert(response.data.message || 'Error al guardar')
         }
     } catch (error) {
-        console.error('Error:', error)
         if (error.response?.data?.errors) {
             errors.value = error.response.data.errors
         } else {
-            errors.value = { general: error.response?.data?.message || 'Error al guardar' }
+            alert(error.response?.data?.message || 'Error al guardar')
         }
     } finally {
         loading.value = false
@@ -109,117 +125,151 @@ const save = async () => {
 </script>
 
 <template>
-    <!-- Modal overlay -->
-    <div v-if="modelValue" class="fixed inset-0 z-50 overflow-y-auto" @click.self="closeModal">
-        <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" @click="closeModal"></div>
-            
-            <div class="relative bg-white rounded-lg shadow-xl max-w-2xl w-full mx-auto transform transition-all duration-300 scale-100">
-                <div class="flex items-center justify-between px-5 py-3 border-b bg-primary-600 rounded-t-lg">
-                    <h3 class="text-sm font-semibold text-white">
+    <Teleport to="body">
+        <div v-if="modelValue" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div class="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <!-- Header -->
+                <div class="flex justify-between items-center p-4 border-b sticky top-0 bg-white">
+                    <h2 class="text-lg font-semibold text-gray-800">
                         {{ editando ? 'Editar Sucursal' : 'Nueva Sucursal' }}
-                    </h3>
-                    <button @click="closeModal" class="text-white/80 hover:text-white transition">
+                    </h2>
+                    <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
 
-                <div class="p-5">
-                    <form @submit.prevent="save" class="space-y-3">
-                        <div v-if="errors.general" class="bg-red-50 border border-red-200 rounded-md p-2 mb-3">
-                            <p class="text-red-600 text-xs">{{ errors.general }}</p>
-                        </div>
+                <!-- Formulario -->
+                <div class="p-5 space-y-4">
+                    <!-- Plaza -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Plaza <span class="text-red-500">*</span>
+                        </label>
+                        <select v-model="form.IdPlaza" class="w-full border rounded-lg px-3 py-2 text-sm">
+                            <option value="">Seleccione una plaza</option>
+                            <option v-for="plaza in plazas" :key="plaza.id" :value="plaza.id">
+                                {{ plaza.nombre }}
+                            </option>
+                        </select>
+                        <p v-if="errors.IdPlaza" class="text-xs text-red-500 mt-1">{{ errors.IdPlaza }}</p>
+                    </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <!-- Plaza -->
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Plaza *</label>
-                                <select v-model="form.IdPlaza" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdPlaza }">
-                                    <option value="">Seleccione una plaza</option>
-                                    <option v-for="p in plazas" :key="p.id" :value="p.id">{{ p.nombre }}</option>
-                                </select>
-                                <p v-if="errors.IdPlaza" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdPlaza }}</p>
-                            </div>
+                    <!-- Nombre -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Nombre <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" v-model="form.Nombre" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                        <p v-if="errors.Nombre" class="text-xs text-red-500 mt-1">{{ errors.Nombre }}</p>
+                    </div>
 
-                            <!-- Número Sucursal (opcional) -->
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">N° Sucursal (opcional)</label>
-                                <input type="number" v-model.number="form.NumeroSucursal" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.NumeroSucursal }" placeholder="Ej: 1, 2, 3...">
-                                <p v-if="errors.NumeroSucursal" class="text-[10px] text-red-500 mt-0.5">{{ errors.NumeroSucursal }}</p>
-                            </div>
-                        </div>
+                    <!-- Dirección -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Dirección <span class="text-red-500">*</span>
+                        </label>
+                        <input type="text" v-model="form.Direccion" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                        <p v-if="errors.Direccion" class="text-xs text-red-500 mt-1">{{ errors.Direccion }}</p>
+                    </div>
 
-                        <!-- Nombre -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Teléfono -->
                         <div>
-                            <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Nombre *</label>
-                            <input type="text" v-model="form.Nombre" class="w-full border rounded-md px-2 py-1.5 text-xs uppercase" :class="{ 'border-red-500': errors.Nombre }" placeholder="NOMBRE DE LA SUCURSAL">
-                            <p v-if="errors.Nombre" class="text-[10px] text-red-500 mt-0.5">{{ errors.Nombre }}</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Teléfono <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" v-model="form.Telefono" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                            <p v-if="errors.Telefono" class="text-xs text-red-500 mt-1">{{ errors.Telefono }}</p>
                         </div>
 
-                        <!-- Dirección -->
+                        <!-- Celular -->
                         <div>
-                            <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Dirección *</label>
-                            <input type="text" v-model="form.Direccion" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Direccion }" placeholder="Dirección completa">
-                            <p v-if="errors.Direccion" class="text-[10px] text-red-500 mt-0.5">{{ errors.Direccion }}</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Celular <span class="text-red-500">*</span>
+                            </label>
+                            <input type="text" v-model="form.Celular" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                            <p v-if="errors.Celular" class="text-xs text-red-500 mt-1">{{ errors.Celular }}</p>
                         </div>
+                    </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Teléfono *</label>
-                                <input type="text" v-model="form.Telefono" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Telefono }" placeholder="Teléfono fijo">
-                                <p v-if="errors.Telefono" class="text-[10px] text-red-500 mt-0.5">{{ errors.Telefono }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Celular *</label>
-                                <input type="text" v-model="form.Celular" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Celular }" placeholder="Celular / WhatsApp">
-                                <p v-if="errors.Celular" class="text-[10px] text-red-500 mt-0.5">{{ errors.Celular }}</p>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <!-- Orden (opcional) -->
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Orden (opcional)</label>
-                                <input type="number" v-model.number="form.Orden" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Orden }" placeholder="0, 1, 2...">
-                                <p v-if="errors.Orden" class="text-[10px] text-red-500 mt-0.5">{{ errors.Orden }}</p>
-                            </div>
-                            <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Categoría *</label>
-                                <select v-model="form.Categoria" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.Categoria }">
-                                    <option value="">Seleccione una categoría</option>
-                                    <option v-for="cat in categorias" :key="cat" :value="cat">{{ cat }}</option>
-                                </select>
-                                <p v-if="errors.Categoria" class="text-[10px] text-red-500 mt-0.5">{{ errors.Categoria }}</p>
-                            </div>
-                        </div>
-
-                        <!-- Estado -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Número Sucursal -->
                         <div>
-                            <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Estado</label>
-                            <div class="flex items-center gap-4">
-                                <label class="flex items-center gap-1">
-                                    <input type="radio" v-model="form.ActivoInactivo" :value="true" class="w-3 h-3"> Activo
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Número Sucursal
+                            </label>
+                            <input type="number" v-model="form.NumeroSucursal" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+
+                        <!-- Orden -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                                Orden
+                            </label>
+                            <input type="number" v-model="form.Orden" min="0" class="w-full border rounded-lg px-3 py-2 text-sm" />
+                        </div>
+                    </div>
+
+                    <!-- Categoría -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                            Categoría <span class="text-red-500">*</span>
+                        </label>
+                        <select v-model="form.Categoria" class="w-full border rounded-lg px-3 py-2 text-sm">
+                            <option v-for="cat in categorias" :key="cat" :value="cat">{{ cat }}</option>
+                        </select>
+                        <p v-if="errors.Categoria" class="text-xs text-red-500 mt-1">{{ errors.Categoria }}</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <!-- Activo/Inactivo -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Estado
+                            </label>
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" v-model="form.ActivoInactivo" :value="true" class="w-4 h-4" />
+                                    <span class="text-sm">Activo</span>
                                 </label>
-                                <label class="flex items-center gap-1">
-                                    <input type="radio" v-model="form.ActivoInactivo" :value="false" class="w-3 h-3"> Inactivo
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" v-model="form.ActivoInactivo" :value="false" class="w-4 h-4" />
+                                    <span class="text-sm">Inactivo</span>
                                 </label>
                             </div>
                         </div>
 
-                        <!-- Botones -->
-                        <div class="flex justify-end gap-2 pt-3 border-t mt-3">
-                            <button type="button" @click="closeModal" class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">
-                                Cancelar
-                            </button>
-                            <button type="submit" :disabled="loading" class="px-4 py-1.5 bg-emerald-600 text-white rounded-md text-xs hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-1">
-                                <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
-                                <i v-else class="fas fa-save text-[10px]"></i>
-                                {{ loading ? 'Guardando...' : 'Guardar' }}
-                            </button>
+                        <!-- ActivaInactivaR -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">
+                                Activa/Inactiva R
+                            </label>
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" v-model="form.ActivaInactivaR" :value="true" class="w-4 h-4" />
+                                    <span class="text-sm">Activa</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" v-model="form.ActivaInactivaR" :value="false" class="w-4 h-4" />
+                                    <span class="text-sm">Inactiva</span>
+                                </label>
+                            </div>
                         </div>
-                    </form>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="flex justify-end gap-3 p-4 border-t sticky bottom-0 bg-white">
+                    <button @click="cerrarModal" class="px-4 py-2 border rounded-lg text-gray-700 text-sm hover:bg-gray-100">
+                        Cancelar
+                    </button>
+                    <button @click="guardar" :disabled="loading" class="px-5 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2">
+                        <i v-if="loading" class="fas fa-spinner fa-spin"></i>
+                        <i v-else class="fas fa-save"></i>
+                        {{ loading ? 'Guardando...' : 'Guardar' }}
+                    </button>
                 </div>
             </div>
         </div>
-    </div>
+    </Teleport>
 </template>

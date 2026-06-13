@@ -20,11 +20,31 @@ const sucursalSeleccionada = ref(null)
 // Estado para acordeón
 const plazasExpandidas = ref({})
 
-// Agrupar sucursales por plaza
+// 🔥 BUSCADOR
+const searchTerm = ref('')
+
+// Filtrar sucursales por búsqueda
+const sucursalesFiltradas = computed(() => {
+    if (!props.sucursales) return []
+    if (!searchTerm.value) return props.sucursales
+    
+    const termino = searchTerm.value.toLowerCase()
+    return props.sucursales.filter(s => 
+        s.Nombre?.toLowerCase().includes(termino) ||
+        s.NumeroSucursal?.toString().includes(termino) ||
+        s.Direccion?.toLowerCase().includes(termino) ||
+        s.Telefono?.includes(termino) ||
+        s.Celular?.includes(termino) ||
+        s.Categoria?.toLowerCase().includes(termino) ||
+        s.plaza?.Plaza?.toLowerCase().includes(termino)
+    )
+})
+
+// Agrupar sucursales filtradas por plaza
 const sucursalesPorPlaza = computed(() => {
     const grupos = {}
     
-    props.sucursales.forEach(sucursal => {
+    sucursalesFiltradas.value.forEach(sucursal => {
         const plazaNombre = sucursal.plaza?.Plaza || 'Sin Plaza'
         const plazaId = sucursal.IdPlaza || 'sin-plaza'
         
@@ -41,6 +61,11 @@ const sucursalesPorPlaza = computed(() => {
     return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre))
 })
 
+// Total de sucursales encontradas
+const totalEncontradas = computed(() => {
+    return sucursalesFiltradas.value.length
+})
+
 // Alternar expansión
 const togglePlaza = (plazaId) => {
     plazasExpandidas.value[plazaId] = !plazasExpandidas.value[plazaId]
@@ -50,7 +75,7 @@ const isExpanded = (plazaId) => {
     return plazasExpandidas.value[plazaId] !== false
 }
 
-// Estado inicial
+// Inicializar expansión
 sucursalesPorPlaza.value.forEach(plaza => {
     if (plazasExpandidas.value[plaza.id] === undefined) {
         plazasExpandidas.value[plaza.id] = true
@@ -75,12 +100,16 @@ const editarSucursal = (sucursal) => {
 const recargarDatos = async () => {
     try {
         const response = await axios.get('/gestion/sucursales/data')
-        // Actualizar las sucursales (esto requiere un endpoint o recargar la página)
         window.location.reload()
     } catch (error) {
         console.error('Error recargando:', error)
         window.location.reload()
     }
+}
+
+// Limpiar búsqueda
+const limpiarBusqueda = () => {
+    searchTerm.value = ''
 }
 
 const estadoTexto = (activo) => {
@@ -89,6 +118,14 @@ const estadoTexto = (activo) => {
 
 const estadoClase = (activo) => {
     return activo === 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+}
+
+const activaInactivaRTexto = (valor) => {
+    return valor === 0 ? 'Activa' : 'Inactiva'
+}
+
+const activaInactivaRClase = (valor) => {
+    return valor === 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
 }
 </script>
 
@@ -112,8 +149,33 @@ const estadoClase = (activo) => {
                     </button>
                 </div>
 
+                <!-- 🔥 BUSCADOR -->
+                <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input 
+                            type="text" 
+                            v-model="searchTerm" 
+                            placeholder="Buscar por nombre, número, dirección, teléfono, categoría o plaza..." 
+                            class="w-full border rounded-lg pl-9 pr-10 py-2 text-sm focus:ring-2 focus:ring-primary-400 focus:outline-none"
+                            :style="{ borderColor: `var(--color-primary-300)` }"
+                        />
+                        <button 
+                            v-if="searchTerm" 
+                            @click="limpiarBusqueda"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>
+                    <div v-if="searchTerm" class="mt-2 text-xs text-gray-500">
+                        <i class="fas fa-filter mr-1"></i>
+                        Mostrando {{ totalEncontradas }} de {{ props.sucursales?.length || 0 }} sucursales
+                    </div>
+                </div>
+
                 <!-- Grupos por Plaza -->
-                <div class="space-y-3">
+                <div v-if="sucursalesPorPlaza.length > 0" class="space-y-3">
                     <div v-for="plaza in sucursalesPorPlaza" :key="plaza.id" class="bg-white rounded-lg shadow-sm overflow-hidden">
                         <!-- Header del grupo -->
                         <div 
@@ -144,6 +206,7 @@ const estadoClase = (activo) => {
                                             <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Orden</th>
                                             <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Categoría</th>
                                             <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Activa/InactivaR</th>
                                             <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                                         </tr>
                                     </thead>
@@ -164,6 +227,11 @@ const estadoClase = (activo) => {
                                                     {{ estadoTexto(sucursal.ActivoInactivo) }}
                                                 </span>
                                             </td>
+                                            <td class="px-4 py-2 text-center">
+                                                <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="activaInactivaRClase(sucursal.ActivaInactivaR)">
+                                                    {{ activaInactivaRTexto(sucursal.ActivaInactivaR) }}
+                                                </span>
+                                            </td>
                                             <td class="px-4 py-2 text-right">
                                                 <button @click="editarSucursal(sucursal)" class="text-primary-600 hover:text-primary-800 text-xs transition" title="Editar">
                                                     <i class="fas fa-edit text-xs"></i>
@@ -177,8 +245,17 @@ const estadoClase = (activo) => {
                     </div>
                 </div>
 
+                <!-- Mensaje si no hay sucursales con la búsqueda -->
+                <div v-else-if="searchTerm && sucursalesPorPlaza.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+                    <i class="fas fa-search text-4xl text-gray-300 mb-2 block"></i>
+                    <p class="text-gray-500 text-sm">No se encontraron sucursales con "{{ searchTerm }}"</p>
+                    <button @click="limpiarBusqueda" class="inline-block mt-3 text-primary-600 hover:text-primary-700 text-sm">
+                        <i class="fas fa-eraser"></i> Limpiar búsqueda
+                    </button>
+                </div>
+
                 <!-- Mensaje si no hay sucursales -->
-                <div v-if="sucursalesPorPlaza.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+                <div v-else-if="sucursalesPorPlaza.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
                     <i class="fas fa-store text-4xl text-gray-300 mb-2 block"></i>
                     <p class="text-gray-500 text-sm">No hay sucursales registradas</p>
                     <button @click="nuevaSucursal" class="inline-block mt-3 bg-primary-600 hover:bg-primary-700 text-white px-4 py-1.5 rounded-lg text-xs transition">

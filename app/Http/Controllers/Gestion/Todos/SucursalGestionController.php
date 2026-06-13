@@ -74,6 +74,7 @@ class SucursalGestionController extends Controller
             'Orden' => 'nullable|integer|min:0',
             'Categoria' => 'required|string|in:MAYORISTA,GRANDE,MEDIANA,PEQUEÑA,MINI',
             'ActivoInactivo' => 'required|boolean',
+            'ActivaInactivaR' => 'required|boolean',
         ]);
 
         try {
@@ -85,11 +86,11 @@ class SucursalGestionController extends Controller
                 'Telefono' => $request->Telefono,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
-                'ActivaInactivaR' => 0,
+                'ActivaInactivaR' => $request->ActivaInactivaR ? 0 : 1,
                 'Orden' => $request->Orden ?? 0,
                 'Categoria' => $request->Categoria,
                 'ActivoInactivo' => $request->ActivoInactivo ? 0 : 1,
-                'ControlInternoEfectivo' => 0,  // 🔥 AGREGAR ESTE CAMPO
+                'ControlInternoEfectivo' => 0,
                 'facturacion_habilitada' => 0,
             ]);
 
@@ -122,6 +123,7 @@ class SucursalGestionController extends Controller
             'Orden' => 'nullable|integer|min:0',
             'Categoria' => 'required|string|in:MAYORISTA,GRANDE,MEDIANA,PEQUEÑA,MINI',
             'ActivoInactivo' => 'required|boolean',
+            'ActivaInactivaR' => 'required|boolean',
         ]);
 
         try {
@@ -132,6 +134,7 @@ class SucursalGestionController extends Controller
                 'Telefono' => $request->Telefono,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
+                'ActivaInactivaR' => $request->ActivaInactivaR ? 0 : 1,
                 'Orden' => $request->Orden ?? 0,
                 'Categoria' => $request->Categoria,
                 'ActivoInactivo' => $request->ActivoInactivo ? 0 : 1,
