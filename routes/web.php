@@ -80,6 +80,16 @@ use App\Http\Controllers\Operacion\Pedidos\PedidoController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 use App\Http\Controllers\Api\VentaTactilController;
 use App\Http\Controllers\Gestion\Inventario\ProductoPrecioCostoController;
+use App\Http\Controllers\Gestion\Inventario\InventarioPropiamenteController;
+use App\Http\Controllers\Gestion\Inventario\InventarioFisicoController;
+use App\Http\Controllers\Gestion\Inventario\AjusteInventarioFisicoController;
+use App\Http\Controllers\Gestion\Impuestos\LiquidacionComisionistaController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFechasController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController;
+
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -341,6 +351,49 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
     });
 
+    // ==================== REPORTES CONTROL INTERNO ====================
+    Route::prefix('gestion/reportes/control-interno')->group(function () {
+        // Reporte por una fecha (simple)
+        Route::get('/informe-sucursal', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalController::class, 'index'])
+            ->name('gestion.reportes.control-interno.informe-sucursal');
+        Route::get('/informe-sucursal/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalController::class, 'exportar'])
+            ->name('gestion.reportes.control-interno.informe-sucursal.exportar');
+        
+        // Reporte entre fechas
+        Route::get('/informe-sucursal-entre-fechas', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFechasController::class, 'index'])
+            ->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas');
+        Route::get('/informe-sucursal-entre-fechas/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFechasController::class, 'exportar'])
+            ->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas.exportar');
+        
+        // Reporte por operador/comisionistas
+        Route::get('/informe-sucursal-operador-comisionistas', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController::class, 'index'])
+            ->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas');
+        Route::get('/informe-sucursal-operador-comisionistas/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController::class, 'exportar'])
+            ->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas.exportar');
+            // Arqueo Caja Bolivianos
+        Route::get('/arqueo-caja-bolivianos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController::class, 'index'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos');
+        Route::get('/arqueo-caja-bolivianos/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController::class, 'generarPdf'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos.pdf');
+        // Arqueo Caja Bolivianos por Operador
+        Route::get('/arqueo-caja-bolivianos-ci-operador', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController::class, 'index'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador');
+        Route::get('/arqueo-caja-bolivianos-ci-operador/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController::class, 'generarPdf'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.pdf');
+             // Arqueo Caja Chica por Operador
+        Route::get('/arqueo-caja-chica-ci', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController::class, 'index'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci');
+        Route::get('/arqueo-caja-chica-ci/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController::class, 'generarPdf'])
+            ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');
+                // Inventario Detallado
+        Route::get('/inventario-detalle', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController::class, 'index'])
+            ->name('gestion.reportes.control-interno.inventario-detalle');
+        Route::get('/inventario-detalle/movimientos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController::class, 'getMovimientos'])
+            ->name('gestion.reportes.control-interno.inventario-detalle.movimientos');
+    });
+
+
+
     // ==================== LISTADO PLAN DE CUENTAS ====================
     Route::prefix('gestion/contabilidad/cuentas')->group(function () {
         // Vista de solo lectura
@@ -511,6 +564,35 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::resource('tipo-operacion', TipoOperacionController::class)->except(['show', 'create', 'edit']);
         Route::resource('unidad-medida', UnidadMedidaController::class)->except(['show', 'create', 'edit']);
     });
+
+    // ==================== INVENTARIO FÍSICO ====================
+    Route::prefix('gestion/inventario-fisico')->group(function () {
+        // GET - Muestra el formulario de creación (redirige a create)
+        Route::get('/', [InventarioFisicoController::class, 'create'])->name('gestion.inventario-fisico.index');
+        
+        // GET - Editar un inventario existente
+        Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
+        
+        // DELETE - Eliminar borrador
+        Route::delete('/{id}', [InventarioFisicoController::class, 'destroy'])->name('gestion.inventario-fisico.destroy');
+        
+        // Endpoints AJAX (PUT, POST)
+        Route::put('/{id}/cabecera', [InventarioFisicoController::class, 'updateCabecera']);
+        Route::post('/{id}/sincronizar', [InventarioFisicoController::class, 'sincronizarProductos']);
+        Route::put('/{id}/detalle/{detalleId}/unidades', [InventarioFisicoController::class, 'actualizarUnidades']);
+        Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);
+        Route::get('/{id}/detalles', [InventarioFisicoController::class, 'getDetalles']);
+    });
+
+    // Endpoint para almacenes (depende de IdSucursal)
+    Route::get('/api/almacenes-por-sucursal/{sucursalId}', function($sucursalId) {
+        $almacenes = App\Models\Gestion\Inventario\Almacen::where('IdCliente', session('cliente_id'))
+            ->where('IdSucursal', $sucursalId)
+            ->orderBy('Almacen')
+            ->get(['IdAlmacen as id', 'Almacen as nombre']);
+        return response()->json($almacenes);
+    })->name('api.almacenes.por-sucursal');
+    //===========================================
 
     // ==================== ALMACENES (rutas explícitas) ====================
     Route::prefix('gestion/inventario/almacen')->group(function () {

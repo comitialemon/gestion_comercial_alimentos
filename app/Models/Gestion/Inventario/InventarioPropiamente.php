@@ -85,4 +85,25 @@ class InventarioPropiamente extends Model
     {
         return $this->belongsTo(Fecha::class, 'IdFecha', 'IdFecha');
     }
+    
+    // Agregar este método para obtener saldo hasta una fecha
+    public static function getSaldoHastaFecha($productoId, $sucursalId, $fechaId, $excluirFisicoId = null)
+    {
+        $query = self::where('IdProducto', $productoId)
+            ->where('IdCliente', session('cliente_id'))
+            ->where('IdSucursal', $sucursalId)
+            ->where('IdFecha', '<=', $fechaId);
+        
+        if ($excluirFisicoId) {
+            $query->where(function($q) use ($excluirFisicoId) {
+                $q->where('IdTipoDeOperacion', '!=', InventarioFisico::TIPO_OPERACION_AJUSTE)
+                ->orWhere('IdDocumento', '!=', $excluirFisicoId);
+            });
+        }
+        
+        $saldo = $query->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
+            ->value('saldo');
+        
+        return (float) $saldo;
+    }
 }
