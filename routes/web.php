@@ -350,6 +350,19 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/exportar-por-sucursal', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'exportarPorSucursal'])
             ->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
     });
+    // ==================== GESTIÓN - FECHAS AUXILIARES POR SUCURSAL ====================
+    Route::prefix('gestion/todos/fecha-auxiliar-sucursal')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'index'])
+            ->name('gestion.fecha-auxiliar-sucursal.index');
+        Route::post('/', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'store'])
+            ->name('gestion.fecha-auxiliar-sucursal.store');
+        Route::delete('/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'destroy'])
+            ->name('gestion.fecha-auxiliar-sucursal.destroy');
+        Route::get('/fecha/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'getFecha'])
+            ->name('gestion.fecha-auxiliar-sucursal.get-fecha');
+        Route::get('/sucursal/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'getSucursal'])
+            ->name('gestion.fecha-auxiliar-sucursal.get-sucursal');
+    });
 
     // ==================== REPORTES CONTROL INTERNO ====================
     Route::prefix('gestion/reportes/control-interno')->group(function () {
@@ -390,8 +403,14 @@ Route::middleware(['auth.operador'])->group(function () {
             ->name('gestion.reportes.control-interno.inventario-detalle');
         Route::get('/inventario-detalle/movimientos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController::class, 'getMovimientos'])
             ->name('gestion.reportes.control-interno.inventario-detalle.movimientos');
+        // Reimpresión Inventario Físico
+        Route::get('/inventario-fisico-reimprime', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'index'])
+            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime');
+        Route::get('/inventario-fisico-reimprime/correlativos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'getCorrelativos'])
+            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime.correlativos');
+        Route::get('/inventario-fisico-reimprime/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'generarPdf'])
+            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
     });
-
 
 
     // ==================== LISTADO PLAN DE CUENTAS ====================
@@ -593,6 +612,23 @@ Route::middleware(['auth.operador'])->group(function () {
         return response()->json($almacenes);
     })->name('api.almacenes.por-sucursal');
     //===========================================
+    // ==================== INVENTARIO FÍSICO MANTENIMIENTO ====================
+    Route::prefix('gestion/inventario-fisico-mantenimiento')->group(function () {
+        Route::get('/', [App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController::class, 'index'])
+            ->name('gestion.inventario-fisico-mantenimiento.index');
+        Route::put('/{id}/estado', [App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController::class, 'updateEstado'])
+            ->name('gestion.inventario-fisico-mantenimiento.estado');
+    });
+
+    // ==================== PUNTO DE VENTA - BORRAR LIQUIDACIÓN ====================
+    Route::prefix('pdv/borrar-liquidacion')->group(function () {
+        Route::get('/', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'index'])
+            ->name('pdv.borrar-liquidacion.index');
+        Route::get('/liquidaciones', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'getLiquidaciones'])
+            ->name('pdv.borrar-liquidacion.liquidaciones');
+        Route::post('/eliminar', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'eliminar'])
+            ->name('pdv.borrar-liquidacion.eliminar');
+    });
 
     // ==================== ALMACENES (rutas explícitas) ====================
     Route::prefix('gestion/inventario/almacen')->group(function () {
