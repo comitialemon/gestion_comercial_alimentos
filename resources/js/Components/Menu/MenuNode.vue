@@ -35,40 +35,25 @@ const href = computed(() => {
   return '/' + h.replace(/^\/+/, '')
 })
 
-// Detectar si es un enlace no migrado
+// 👀 DETECTAR SI ES UN ENLACE NO MIGRADO (100% DINÁMICO DESDE LA DB)
 const isNoMigrado = computed(() => {
   if (!href.value || isExternal.value) return false
   
   const h = href.value.toLowerCase()
   
-  const rutasMigradas = [
-    '/gestion/inventario/ajustes',
-    '/gestion/inventario/reporte-inventario',
-    '/gestion/ingresos',
-    '/gestion/egresos',
-    '/gestion/compras',
-    '/gestion/lugar-venta',
-    '/gestion/comisionista',
-    '/gestion/todos/identificador',
-    '/facturacion/empresas',
-    '/facturacion/sucursales',
-    '/venta-tactil',
-    '/gestion/inventario/categorias-producto',
-  ]
-  
-  if (rutasMigradas.some(ruta => h === ruta || h.startsWith(ruta + '/'))) {
-    return false
+  // 1. Si tiene guiones bajos estilo "personal_datos_...", es formato antiguo
+  const tieneGuionBajo = /[a-z]+_[a-z]+/.test(h)
+  if (tieneGuionBajo) {
+    return true
+  }
+
+  // 2. Si no contiene barras diagonales "/", es un script o módulo plano antiguo
+  if (!h.includes('/')) {
+    return true
   }
   
-  const tieneGuionBajo = /[a-z]+_[a-z]+/.test(h)
-  const noTieneFormatoLaravel = !h.startsWith('/gestion/') && 
-                                 !h.startsWith('/facturacion/') && 
-                                 !h.startsWith('/venta-') &&
-                                 !h.startsWith('/contexto') &&
-                                 !h.startsWith('/oficial')
-  const esScriptcaseAmigable = /^\/[a-z]+[a-z\-]+$/.test(h) && h.length > 5 && !h.includes('gestion')
-  
-  return tieneGuionBajo || noTieneFormatoLaravel || esScriptcaseAmigable
+  // 3. Si es una URL estructurada con "/" (ej: /contabilidad/diario, /pdv/borrar), es Laravel
+  return false
 })
 
 const label = computed(() =>

@@ -8,7 +8,7 @@ use App\Models\Gestion\Todos\OperadorTipo;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;  // 🔥 ESTA LÍNEA ES LA QUE FALTA
+use Illuminate\Support\Facades\Cache;
 
 class MenuService
 {
@@ -254,8 +254,7 @@ class MenuService
     }
 
     /**
-     * 🔥 NUEVO: Obtiene el árbol de menú con CACHÉ POR VERSIÓN
-     * Este es el método que llama el middleware
+     * Obtiene el árbol de menú con CACHÉ POR VERSIÓN
      */
     public function obtenerArbol(int $tipoId, int $operadorId, int $clienteId): array
     {
@@ -271,7 +270,7 @@ class MenuService
             return [];
         }
 
-        // 🔥 CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
+        // CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
         $version = Cache::rememberForever('menu_global_version', fn() => time());
         
         $cacheKey = "menu_v{$version}_{$modo}_" . (
@@ -300,8 +299,7 @@ class MenuService
     }
 
     /**
-     * 🔥 NUEVO: Invalida la caché del menú globalmente
-     * Solo incrementa la versión, no necesita borrar claves una por una
+     * Invalida la caché del menú globalmente cambiando la versión
      */
     public static function invalidarCache(): void
     {
@@ -309,5 +307,4 @@ class MenuService
         Cache::forever('menu_global_version', $nuevaVersion);
         Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
     }
-
 }
