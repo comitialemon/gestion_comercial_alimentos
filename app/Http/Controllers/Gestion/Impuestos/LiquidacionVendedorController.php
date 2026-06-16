@@ -31,6 +31,7 @@ class LiquidacionVendedorController extends Controller
             ->where('impuestos_ventas.IdOperadorIngresa', $operadorId)
             ->where('impuestos_ventas.LiquidadoVendedor', 0)
             ->where('impuestos_ventas.IdEstado', 1)
+            ->where('impuestos_ventas.ActivoInactivo', 1)  // ✅ CORREGIDO
             ->select('todos_fecha.IdFecha as id', DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d-%m-%Y') as fecha"))
             ->groupBy('todos_fecha.IdFecha', 'todos_fecha.Fecha')
             ->orderBy('todos_fecha.Fecha', 'desc')
@@ -57,7 +58,7 @@ class LiquidacionVendedorController extends Controller
             return response()->json(['error' => 'Fecha no encontrada'], 404);
         }
 
-        // 1. Total de ventas del día
+        // 1. Total de ventas del día (SOLO ACTIVAS)
         $totalVentas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->where('IdCliente', $clienteId)
@@ -65,6 +66,7 @@ class LiquidacionVendedorController extends Controller
             ->where('IdOperadorIngresa', $operadorId)
             ->where('LiquidadoVendedor', 0)
             ->where('IdEstado', 1)
+            ->where('ActivoInactivo', 1)  // ✅ CORREGIDO
             ->whereDate('FechaVenta', $fechaStr)
             ->sum('ImporteVenta');
 
@@ -75,7 +77,7 @@ class LiquidacionVendedorController extends Controller
             ->activos()
             ->get();
 
-        // 3. Calcular montos del sistema para cada concepto
+        // 3. Calcular montos del sistema para cada concepto (SOLO VENTAS ACTIVAS)
         $montosSistema = [];
         foreach ($conceptos as $concepto) {
             $monto = DB::connection('mysql_gestion_comercial_alimentos')
@@ -87,7 +89,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('v.IdOperadorIngresa', $operadorId)
                 ->where('v.LiquidadoVendedor', 0)
                 ->where('v.IdEstado', 1)
-                ->where('v.ActivoInactivo', 1)
+                ->where('v.ActivoInactivo', 1)  // ✅ CORREGIDO
                 ->whereDate('v.FechaVenta', $fechaStr)
                 ->where('c.Concepto', $concepto->Concepto)
                 ->where('c.IdCliente', $clienteId)
@@ -264,7 +266,7 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // 🔥 OBTENER LOS IDENTIFICADORES REALES DE CADA CONCEPTO DESDE LAS VENTAS
+            // 🔥 OBTENER LOS IDENTIFICADORES REALES DE CADA CONCEPTO DESDE LAS VENTAS (SOLO ACTIVAS)
             // =============================================
             $liquidacionesVenta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_liquidacion as l')
@@ -275,6 +277,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('v.IdOperadorIngresa', $operadorId)
                 ->where('v.LiquidadoVendedor', 0)
                 ->where('v.IdEstado', 1)
+                ->where('v.ActivoInactivo', 1)  // ✅ CORREGIDO
                 ->whereDate('v.FechaVenta', $fechaStr)
                 ->select('c.IdConceptoLiquidacion', 'c.requiere_identificador', 'c.usa_identificador_factura', 'l.IdIdentificador')
                 ->get();
@@ -381,7 +384,7 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // COSTO DE VENTA
+            // COSTO DE VENTA (SOLO VENTAS ACTIVAS)
             // =============================================
             
             $ventasLiquidadas = DB::connection('mysql_gestion_comercial_alimentos')
@@ -391,6 +394,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdOperadorIngresa', $operadorId)
                 ->where('LiquidadoVendedor', 0)
                 ->where('IdEstado', 1)
+                ->where('ActivoInactivo', 1)  // ✅ CORREGIDO
                 ->whereDate('FechaVenta', $fechaStr)
                 ->pluck('IdVentas')
                 ->toArray();
@@ -539,11 +543,11 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // ACTUALIZAR LIQUIDACIÓN Y VENTAS
+            // ACTUALIZAR LIQUIDACIÓN Y VENTAS (SOLO ACTIVAS)
             // =============================================
             $liquidacion->update(['IdDiario' => $diarioId]);
 
-            // Actualizar ventas por fecha
+            // Actualizar ventas por fecha (SOLO ACTIVAS)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -551,6 +555,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdOperadorIngresa', $operadorId)
                 ->where('LiquidadoVendedor', 0)
                 ->where('IdEstado', 1)
+                ->where('ActivoInactivo', 1)  // ✅ CORREGIDO
                 ->whereDate('FechaVenta', $fechaStr)
                 ->update(['LiquidadoVendedor' => $diarioId]);
 
@@ -574,6 +579,7 @@ class LiquidacionVendedorController extends Controller
             ], 500);
         }
     }
+
     /**
      * Generar PDF de la liquidación (con CATEGORÍAS, MULTILÍNEA y SIN duplicados)
      */
@@ -620,7 +626,7 @@ class LiquidacionVendedorController extends Controller
             $nombreVendedor = $vendedor ? $vendedor->Nombre : 'Vendedor';
 
             // =============================================
-            // 🔥 LISTA DE VENTAS - OBTENER DETALLE POR VENTA (SIN DUPLICADOS)
+            // 🔥 LISTA DE VENTAS - OBTENER DETALLE POR VENTA (SIN DUPLICADOS) - SOLO ACTIVAS
             // =============================================
             $ventasRaw = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas as v')
@@ -631,6 +637,7 @@ class LiquidacionVendedorController extends Controller
                 ->where('v.IdOperadorIngresa', $vendedorId)
                 ->where('v.LiquidadoVendedor', $diarioId)
                 ->where('v.IdEstado', 1)
+                ->where('v.ActivoInactivo', 1)  // ✅ CORREGIDO
                 ->select(
                     'v.IdComisionista',
                     'irv.IdDetalleProducto',
@@ -1131,7 +1138,7 @@ class LiquidacionVendedorController extends Controller
         }
     }
 
-    //------LQUIDACIONES-----
+    //------LIQUIDACIONES-----
     /**
      * Listado de liquidaciones del operador logueado
      */

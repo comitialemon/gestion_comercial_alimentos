@@ -2,9 +2,10 @@
 import { router } from '@inertiajs/vue3'
 import { ref, onMounted, onUnmounted, inject } from 'vue'
 import axios from 'axios'
-import CancelarModal from '../MenuTactil/Components/CancelarModal.vue'
+import ConfirmModal from './ConfirmModal.vue'
 
 const toast = inject('toast')
+
 const props = defineProps({
     comisionista: {
         type: String,
@@ -70,9 +71,10 @@ const cancelarVenta = async () => {
                 router.get('/venta-tactil/nueva')
             }, 500)
         } else {
-            toast?.error('Error', response.data.message)
+            toast?.error('Error', response.data.message || 'No se pudo cancelar la venta')
         }
     } catch (error) {
+        console.error('Error cancelando venta:', error)
         toast?.error('Error', 'No se pudo cancelar la venta')
     }
 }
@@ -164,9 +166,15 @@ onUnmounted(() => {
         </div>
     </div>
 
-    <!-- 🔥 MODAL DE CANCELACIÓN -->
-    <CancelarModal
+    <!-- 🔥 MODAL DE CANCELACIÓN VENTA (MEJORADO) -->
+    <ConfirmModal
         v-model="modalCancelarVisible"
+        title="Cancelar Venta"
+        :is-cancel-venta="true"
+        confirm-text="Sí, cancelar venta"
+        cancel-text="No, seguir comprando"
+        type="danger"
+        :show-items="true"
         :total-items="totalItems"
         @confirm="cancelarVenta"
         @cancel="modalCancelarVisible = false"

@@ -127,6 +127,7 @@ onMounted(() => cargarCarrito())
     <div class="min-h-screen bg-gray-100">
         <div class="max-w-4xl mx-auto p-3 sm:p-4">
             
+            <!-- Header -->
             <div class="bg-white rounded-lg shadow-sm p-2.5 mb-3 flex items-center justify-between">
                 <button @click="seguirAgregando" class="px-3 py-1.5 bg-gray-100 rounded-md text-gray-600 text-xs hover:bg-gray-200 flex items-center gap-1">
                     <i class="fas fa-arrow-left text-[10px]"></i> Seguir agregando
@@ -137,6 +138,7 @@ onMounted(() => cargarCarrito())
                 </button>
             </div>
 
+            <!-- Carrito -->
             <div class="bg-white rounded-lg shadow-sm overflow-hidden">
                 <div v-if="loading" class="text-center py-8">
                     <i class="fas fa-spinner fa-spin text-2xl text-primary-500"></i>
@@ -152,6 +154,7 @@ onMounted(() => cargarCarrito())
                 </div>
 
                 <div v-else>
+                    <!-- Items -->
                     <div v-for="item in carrito" :key="item.id" class="p-3 border-b hover:bg-gray-50">
                         <div class="flex flex-wrap items-center gap-2">
                             <div class="flex-1 min-w-[120px]">
@@ -179,6 +182,7 @@ onMounted(() => cargarCarrito())
                         </div>
                     </div>
 
+                    <!-- Total -->
                     <div class="p-3 bg-gray-50 border-t">
                         <div class="flex flex-wrap justify-between items-center gap-2">
                             <div class="text-[10px] text-gray-500">
@@ -194,6 +198,7 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
+            <!-- Botones -->
             <div v-if="carrito.length > 0" class="mt-3 flex flex-col sm:flex-row gap-2">
                 <button @click="seguirAgregando" class="flex-1 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 flex items-center justify-center gap-1">
                     <i class="fas fa-plus text-xs"></i> Seguir agregando
@@ -208,24 +213,31 @@ onMounted(() => cargarCarrito())
             </div>
         </div>
 
+        <!-- 🔥 MODAL ELIMINAR PRODUCTO -->
         <ConfirmModal
             v-model="modalEliminar"
             title="Eliminar producto"
-            message="¿Estás seguro de eliminar este producto del carrito?"
+            :message="`¿Estás seguro de eliminar '${itemAEliminar?.nombre || 'este producto'}' del carrito?`"
             confirm-text="Eliminar"
             cancel-text="Cancelar"
             type="danger"
+            :item-name="itemAEliminar?.nombre || ''"
             @confirm="confirmarEliminar"
+            @cancel="modalEliminar = false"
         />
 
+        <!-- 🔥 MODAL CANCELAR VENTA -->
         <ConfirmModal
             v-model="modalCancelarVenta"
-            title="Cancelar venta"
-            message="¿Estás seguro de cancelar toda la venta? Se perderán todos los productos."
-            confirm-text="Cancelar venta"
-            cancel-text="Seguir comprando"
-            type="warning"
+            title="Cancelar Venta"
+            :is-cancel-venta="true"
+            confirm-text="Sí, cancelar venta"
+            cancel-text="No, seguir comprando"
+            type="danger"
+            :show-items="true"
+            :total-items="carrito.length"
             @confirm="confirmarCancelarVenta"
+            @cancel="modalCancelarVenta = false"
         />
     </div>
 </template>

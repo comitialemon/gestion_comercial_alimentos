@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
-use App\Models\Gestion\Impuestos\VentaLiquidacionConcepto;  // 🔥 IMPORTANTE
+use App\Models\Gestion\Impuestos\VentaLiquidacionConcepto;
 
 class PagoVentaController extends Controller
 {
@@ -21,6 +21,35 @@ class PagoVentaController extends Controller
     public function __construct(VentaService $ventaService)
     {
         $this->ventaService = $ventaService;
+    }
+
+    /**
+     * 🔥 GENERAR TICKET DEL DÍA (se ejecuta al finalizar el pago)
+     * Reinicia en 1 cada día por sucursal
+     */
+    private function generarTicketDia($clienteId, $sucursalId, $fechaVenta)
+    {
+        $fechaStr = date('Y-m-d', strtotime($fechaVenta));
+        
+        $maxTicket = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas')
+            ->where('IdCliente', $clienteId)
+            ->where('IdClienteSucursal', $sucursalId)
+            ->whereDate('FechaVenta', $fechaStr)
+            ->where('ActivoInactivo', 1)
+            ->max('TicketDia');
+        
+        $nuevoTicket = ($maxTicket ?? 0) + 1;
+        
+        Log::info('🎫 TicketDia generado al finalizar pago', [
+            'cliente' => $clienteId,
+            'sucursal' => $sucursalId,
+            'fecha' => $fechaStr,
+            'maximo_anterior' => $maxTicket ?? 0,
+            'nuevo_ticket' => $nuevoTicket
+        ]);
+        
+        return $nuevoTicket;
     }
 
     /**
@@ -214,11 +243,10 @@ class PagoVentaController extends Controller
             ]);
         }
     }
+
     /**
      * Procesar pago SIN facturación (completo con inventario)
-     */
-    /**
-     * Procesar pago SIN facturación (completo con inventario)
+     * 🔥 SE GENERA EL TICKETDIA AQUÍ AL FINALIZAR EL PAGO
      */
     public function procesarPagoSinFacturacion(Request $request)
     {
@@ -233,9 +261,21 @@ class PagoVentaController extends Controller
 
             DB::beginTransaction();
 
+            $clienteId = session('cliente_id');
+            $sucursalId = session('cliente_sucursal_id');
             $ventaId = $request->venta_id;
             $idIdentificadorClienteComprador = $request->id_identificador_cliente;
             $identificadoresPorConcepto = $request->identificadores_por_concepto ?? [];
+            
+            // 🔥 Obtener la venta para tener la fecha
+            $venta = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdVentas', $ventaId)
+                ->first();
+            
+            if (!$venta) {
+                throw new \Exception('Venta no encontrada');
+            }
             
             // 🔥 Obtener TODOS los conceptos activos del cliente
             $conceptos = VentaLiquidacionConcepto::porContexto()
@@ -243,11 +283,11 @@ class PagoVentaController extends Controller
                 ->get()
                 ->keyBy('IdConceptoLiquidacion');
             
-            \Log::info('=== PROCESANDO PAGO ===');
-            \Log::info('Venta ID: ' . $ventaId);
-            \Log::info('Cliente comprador ID: ' . $idIdentificadorClienteComprador);
-            \Log::info('Montos: ', $request->montos);
-            \Log::info('Identificadores por concepto: ', $identificadoresPorConcepto);
+            Log::info('=== PROCESANDO PAGO ===');
+            Log::info('Venta ID: ' . $ventaId);
+            Log::info('Cliente comprador ID: ' . $idIdentificadorClienteComprador);
+            Log::info('Montos: ', $request->montos);
+            Log::info('Identificadores por concepto: ', $identificadoresPorConcepto);
             
             // =============================================
             // 1. INSERTAR LIQUIDACIONES
@@ -258,7 +298,7 @@ class PagoVentaController extends Controller
                 
                 $concepto = $conceptos->get($conceptoId);
                 if (!$concepto) {
-                    \Log::warning('Concepto no encontrado: ' . $conceptoId);
+                    Log::warning('Concepto no encontrado: ' . $conceptoId);
                     continue;
                 }
                 
@@ -266,26 +306,22 @@ class PagoVentaController extends Controller
                 $idIdentificadorUsar = null;
                 
                 if ($concepto->requiere_identificador) {
-                    // Caso: Cuentas por Cobrar - usar el identificador seleccionado para este concepto
                     $idIdentificadorUsar = $identificadoresPorConcepto[$conceptoId] ?? null;
-                    \Log::info("Concepto '{$concepto->Concepto}' requiere identificador → ID: " . ($idIdentificadorUsar ?? 'NULL'));
+                    Log::info("Concepto '{$concepto->Concepto}' requiere identificador → ID: " . ($idIdentificadorUsar ?? 'NULL'));
                     
                     if (!$idIdentificadorUsar) {
                         throw new \Exception("El concepto '{$concepto->Concepto}' requiere seleccionar un cliente");
                     }
                 } 
                 elseif ($concepto->usa_identificador_factura) {
-                    // Caso: QR - usar el identificador del cliente comprador
                     $idIdentificadorUsar = $idIdentificadorClienteComprador;
-                    \Log::info("Concepto '{$concepto->Concepto}' usa identificador de factura → ID: " . ($idIdentificadorUsar ?? 'NULL'));
+                    Log::info("Concepto '{$concepto->Concepto}' usa identificador de factura → ID: " . ($idIdentificadorUsar ?? 'NULL'));
                 }
                 else {
-                    // Caso: Efectivo, Tarjeta, etc. - usar el operador
                     $idIdentificadorUsar = $this->getIdIdentificadorOperador();
-                    \Log::info("Concepto '{$concepto->Concepto}' sin flags → usando operador ID: " . ($idIdentificadorUsar ?? 'NULL'));
+                    Log::info("Concepto '{$concepto->Concepto}' sin flags → usando operador ID: " . ($idIdentificadorUsar ?? 'NULL'));
                 }
                 
-                // Insertar liquidación
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('impuestos_ventas_liquidacion')
                     ->insert([
@@ -298,20 +334,24 @@ class PagoVentaController extends Controller
             }
 
             // =============================================
-            // 2. ACTUALIZAR VENTA
+            // 2. 🔥 GENERAR TICKET DIA (AL FINALIZAR EL PAGO)
+            // =============================================
+            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $venta->FechaVenta);
+
+            // =============================================
+            // 3. ACTUALIZAR VENTA
             // =============================================
             
-            // Obtener último número de factura
             $ultimoNumeroFactura = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
-                ->where('IdCliente', session('cliente_id'))
-                ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+                ->where('IdCliente', $clienteId)
+                ->where('IdClienteSucursal', $sucursalId)
                 ->max('NumeroFactura');
 
             $nuevoNumeroFactura = ($ultimoNumeroFactura ?? 0) + 1;
             $operadorId = session('operador_id');
 
-            // Actualizar venta
+            // ✅ Actualizar venta con TicketDia
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
@@ -322,6 +362,7 @@ class PagoVentaController extends Controller
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
                     'IdNIT' => $idIdentificadorClienteComprador,
+                    'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
                 ]);
 
             // Registrar salida de inventario
@@ -342,17 +383,17 @@ class PagoVentaController extends Controller
             return response()->json([
                 'success' => true, 
                 'message' => 'Venta completada',
+                'ticket_dia' => $ticketDia,
                 'pdf_url' => route('ventas.factura-pdf', $ventaId),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Error procesando pago: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            Log::error('Error procesando pago: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
-
 
     /**
      * Obtener el ID del identificador del operador actual
@@ -417,37 +458,32 @@ class PagoVentaController extends Controller
             if ($detalle->personalizacion && $detalle->personalizacion != 'null') {
                 $personalizaciones = json_decode($detalle->personalizacion, true);
                 
-                \Log::info('Procesando combo con múltiples personalizaciones', [
+                Log::info('Procesando combo con múltiples personalizaciones', [
                     'id_combo' => $detalle->idrelacionventainventario,
                     'total_unidades' => $detalle->unidades,
                     'cantidad_personalizaciones' => count($personalizaciones)
                 ]);
                 
-                // Obtener la composición ORIGINAL del combo
                 $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_detalle')
                     ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
                     ->get()
-                    ->keyBy('IdProducto');  // keyBy para fácil acceso
+                    ->keyBy('IdProducto');
                 
-                // Inicializar contadores para sumar lo que se descuenta
                 $productosADescontar = [];
                 
                 foreach ($personalizaciones as $index => $personalizacion) {
-                    // Determinar qué productos descontar para ESTE combo
                     $cambios = $personalizacion['personalizacion'] ?? [];
                     
                     foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
-                        // Verificar si este producto fue cambiado
                         if (isset($cambios[$idProductoOriginal])) {
                             $idProductoADescontar = $cambios[$idProductoOriginal];
                         } else {
                             $idProductoADescontar = $idProductoOriginal;
                         }
                         
-                        $cantidadADescontar = $composicion->Porcion * 1; // 1 = un combo individual
+                        $cantidadADescontar = $composicion->Porcion * 1;
                         
-                        // Acumular para sumar después
                         if (!isset($productosADescontar[$idProductoADescontar])) {
                             $productosADescontar[$idProductoADescontar] = 0;
                         }
@@ -455,11 +491,7 @@ class PagoVentaController extends Controller
                     }
                 }
                 
-                // Multiplicar por la cantidad de unidades totales del combo en la venta
-                // (si el vendedor agregó 3 combos, ya lo procesamos arriba)
-                // Ahora registramos cada producto en inventario_propiamente
                 foreach ($productosADescontar as $idProducto => $cantidadTotal) {
-                    // Obtener precio costo del producto
                     $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('inventario_productodetalle_precio_costo')
                         ->where('IdProducto', $idProducto)
@@ -484,7 +516,7 @@ class PagoVentaController extends Controller
                             'IdSucursal' => $sucursalId,
                         ]);
                     
-                    \Log::info('Descontado producto', [
+                    Log::info('Descontado producto', [
                         'id_producto' => $idProducto,
                         'unidades' => $cantidadTotal
                     ]);
@@ -630,57 +662,53 @@ class PagoVentaController extends Controller
             }
             
             // =============================================
-            // CALCULAR ALTURA DINÁMICA (más precisa)
+            // CALCULAR ALTURA DINÁMICA
             // =============================================
             
             $x = 4;
             $y = 4;
             $width = 64;
             
-            // Usar un objeto TCPDF temporal para calcular la altura
-            $pdfCalc = new \TCPDF('P', 'mm', array(72, 300)); // altura grande temporal
+            $pdfCalc = new \TCPDF('P', 'mm', array(72, 300));
             $pdfCalc->setPrintHeader(false);
             $pdfCalc->setPrintFooter(false);
             $pdfCalc->SetMargins(4, 4, 4);
             $pdfCalc->SetAutoPageBreak(false);
             $pdfCalc->AddPage();
             
-            // Configurar fuentes igual que en el PDF real
             $pdfCalc->SetFont('helvetica', '', 8);
             
-            // Variable para acumular altura
             $alturaTotal = 0;
             
             // CABECERA
-            $alturaTotal += 5;  // Título empresa
-            $alturaTotal += 4;  // Sucursal
-            $alturaTotal += 4;  // Dirección
-            $alturaTotal += 4;  // Teléfono
-            $alturaTotal += 4;  // Santa Cruz
-            $alturaTotal += 6;  // Espacio
-            $alturaTotal += 5;  // RECIBO
-            $alturaTotal += 4;  // N°
-            $alturaTotal += 6;  // Espacio
-            $alturaTotal += 4;  // FECHA
-            $alturaTotal += 4;  // NIT/CI
-            $alturaTotal += 4;  // CLIENTE
+            $alturaTotal += 5;
+            $alturaTotal += 4;
+            $alturaTotal += 4;
+            $alturaTotal += 4;
+            $alturaTotal += 4;
+            $alturaTotal += 6;
+            $alturaTotal += 5;
+            $alturaTotal += 4;
+            $alturaTotal += 6;
+            $alturaTotal += 4;
+            $alturaTotal += 4;
+            $alturaTotal += 4;
             if ($lugarVenta) $alturaTotal += 4;
-            $alturaTotal += 6;  // Espacio antes de tabla
+            $alturaTotal += 6;
             
-            // TABLA DE PRODUCTOS (calcular con MultiCell)
+            // TABLA DE PRODUCTOS
             $pdfCalc->SetFont('helvetica', 'B', 7);
-            $alturaTotal += 4;  // Encabezados
-            $alturaTotal += 2;  // Línea
+            $alturaTotal += 4;
+            $alturaTotal += 2;
             
             foreach ($detalles as $detalle) {
-                // Calcular altura del MultiCell para el nombre del producto
                 $nombreProducto = $detalle->nombre ?? 'Producto';
                 $alturaNombre = $pdfCalc->getStringHeight(35, $nombreProducto);
                 $alturaTotal += max(4, $alturaNombre);
             }
             
-            $alturaTotal += 3;  // Línea inferior
-            $alturaTotal += 6;  // TOTAL
+            $alturaTotal += 3;
+            $alturaTotal += 6;
             
             // PAGOS
             foreach ($pagos as $pago) {
@@ -690,26 +718,24 @@ class PagoVentaController extends Controller
                 }
             }
             
-            $alturaTotal += 6;  // TOTAL PAGO
-            $alturaTotal += 8;  // LITERAL (aproximado)
+            $alturaTotal += 6;
+            $alturaTotal += 8;
             
             if ($comisionista) $alturaTotal += 4;
-            $alturaTotal += 4;  // VENDEDOR
-            $alturaTotal += 4;  // TICKET
-            $alturaTotal += 6;  // Espacio antes de línea
-            $alturaTotal += 4;  // Línea de firma
+            $alturaTotal += 4;
+            $alturaTotal += 4;
+            $alturaTotal += 6;
+            $alturaTotal += 4;
             
-            // Agregar margen de seguridad
             $alturaTotal += 10;
             
-            // Altura mínima y máxima
             $alturaMinima = 80;
             $alturaFinal = max($alturaMinima, min(500, $alturaTotal));
             
             Log::info('Altura calculada: ' . $alturaFinal . ' mm');
             
             // =============================================
-            // GENERAR PDF REAL CON ALTURA CALCULADA
+            // GENERAR PDF REAL
             // =============================================
             
             $pdf = new \TCPDF('P', 'mm', array(72, $alturaFinal));
@@ -819,23 +845,18 @@ class PagoVentaController extends Controller
                 
                 $startY = $y;
                 
-                // Cantidad
                 $pdf->SetXY($x, $startY);
                 $pdf->Cell(8, 4, number_format($cantidad, 0), 0, 0, 'L');
                 
-                // Precio unitario
                 $pdf->SetXY($x + 43, $startY);
                 $pdf->Cell(10, 4, number_format($precio, 2, '.', ','), 0, 0, 'R');
                 
-                // Total
                 $pdf->SetXY($x + 53, $startY);
                 $pdf->Cell(11, 4, number_format($subtotal, 2, '.', ','), 0, 1, 'R');
                 
-                // Producto (MultiCell)
                 $pdf->SetXY($x + 8, $startY);
                 $pdf->MultiCell(35, 4, $nombreProducto, 0, 'L');
                 
-                // Actualizar Y después del MultiCell
                 $y = $pdf->GetY();
             }
             
@@ -892,6 +913,7 @@ class PagoVentaController extends Controller
             $pdf->Cell($width, 4, "VENDEDOR: " . ($operador->Nombre ?? ''), 0, 1, 'L');
             $y += 4;
             
+            // 🔥 TICKET DIA (se muestra el número generado al finalizar el pago)
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "TICKET: " . ($venta->TicketDia ?? '0'), 0, 1, 'L');
             $y += 6;
@@ -911,6 +933,7 @@ class PagoVentaController extends Controller
 
     /**
      * Procesar el pago para venta con facturación
+     * 🔥 TAMBIÉN SE GENERA EL TICKETDIA AQUÍ
      */
     public function store(Request $request)
     {
@@ -924,9 +947,47 @@ class PagoVentaController extends Controller
         ]);
         
         try {
+            $clienteId = session('cliente_id');
+            $sucursalId = session('cliente_sucursal_id');
+            $ventaId = $request->venta_id;
+            
+            // Obtener la venta para tener la fecha
+            $venta = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdVentas', $ventaId)
+                ->first();
+            
+            if (!$venta) {
+                throw new \Exception('Venta no encontrada');
+            }
+            
+            // 🔥 Generar TicketDia al finalizar el pago
+            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $venta->FechaVenta);
+            
+            $operadorId = session('operador_id');
+            
+            // Actualizar venta con TicketDia
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdVentas', $ventaId)
+                ->update([
+                    'ActivoInactivo' => 1,
+                    'FechaUltimaActualizcion' => now(),
+                    'IdEstado' => 1,
+                    'IdOperadorActualiza' => $operadorId,
+                    'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
+                ]);
+            
+            // Registrar salida de inventario
+            $this->registrarSalidaInventario($ventaId);
+            
+            // Limpiar sesión
             session()->forget('venta_actual_id');
-            return redirect()->route('oficial.index')->with('success', '✅ Venta procesada exitosamente');
+            
+            return redirect()->route('oficial.index')->with('success', '✅ Venta procesada exitosamente. Ticket #' . $ticketDia);
+            
         } catch (\Exception $e) {
+            Log::error('Error en store: ' . $e->getMessage());
             return redirect()->back()->with('error', $e->getMessage());
         }
     }
@@ -944,6 +1005,7 @@ class PagoVentaController extends Controller
         
         return $literal;
     }
+
     /**
      * Obtener NIT predefinido para una venta (comisionista o cliente)
      */
@@ -961,7 +1023,6 @@ class PagoVentaController extends Controller
             
             $clienteNit = session('cliente_nit');
             
-            // Buscar comisionista de la venta
             $comisionista = null;
             if ($venta->IdComisionista && $venta->IdComisionista > 0) {
                 $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
@@ -971,7 +1032,6 @@ class PagoVentaController extends Controller
                     ->first();
             }
             
-            // 🔥 Si el comisionista tiene el mismo NIT que la empresa, mostrar NIT 0 (SIN NIT)
             if ($comisionista && $clienteNit && $comisionista->CI_NIT == $clienteNit) {
                 return response()->json([
                     'success' => true,
@@ -982,7 +1042,6 @@ class PagoVentaController extends Controller
                 ]);
             }
             
-            // Si hay comisionista con NIT diferente, mostrarlo
             if ($comisionista && $comisionista->CI_NIT != 0) {
                 return response()->json([
                     'success' => true,
@@ -993,7 +1052,6 @@ class PagoVentaController extends Controller
                 ]);
             }
             
-            // Si la venta ya tiene un NIT asignado
             if ($venta->IdNIT && $venta->IdNIT > 0) {
                 $clienteExistente = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('todos_identificador')
@@ -1011,7 +1069,6 @@ class PagoVentaController extends Controller
                 }
             }
             
-            // Por defecto, no hay NIT predefinido
             return response()->json([
                 'success' => true,
                 'nit' => null,
