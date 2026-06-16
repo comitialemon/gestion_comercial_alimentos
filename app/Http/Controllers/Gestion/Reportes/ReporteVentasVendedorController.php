@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class ReporteVentasVendedorController extends Controller
 {
@@ -15,7 +16,6 @@ class ReporteVentasVendedorController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // 🔥 Consulta SIMPLIFICADA - sin joins a tablas innecesarias
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
@@ -27,27 +27,24 @@ class ReporteVentasVendedorController extends Controller
             ->where('v.IdOperadorIngresa', $operadorId)
             ->where('v.IdEstado', 1);
 
-        // Aplicar filtros de fecha
         $esRango = false;
         
         if ($request->filled('fecha')) {
-            $query->whereDate('v.FechaVenta', $request->fecha);
+            $fecha = Carbon::createFromFormat('Y-m-d', $request->fecha, 'America/La_Paz')->toDateString();
+            $query->whereDate('v.FechaVenta', $fecha);
         } elseif ($request->filled('fecha_desde') && $request->filled('fecha_hasta')) {
             $esRango = true;
-            $query->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
-                ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
+            $fechaDesde = Carbon::createFromFormat('Y-m-d', $request->fecha_desde, 'America/La_Paz')->toDateString();
+            $fechaHasta = Carbon::createFromFormat('Y-m-d', $request->fecha_hasta, 'America/La_Paz')->toDateString();
+            $query->whereDate('v.FechaVenta', '>=', $fechaDesde)
+                ->whereDate('v.FechaVenta', '<=', $fechaHasta);
         }
-
-        // 🔥 FILTRO POR GRUPO - ELIMINADO porque IdVentaGrupo ya no existe
-        // if ($request->filled('grupo')) {
-        //     $query->where('rvi.IdVentaGrupo', $request->grupo);
-        // }
 
         if ($request->filled('metodo_pago')) {
             $query->where('cc.Descripcion', $request->metodo_pago);
         }
 
-        // 🔥 SELECT SIMPLIFICADO
+        // 🔥 CORREGIDO: Ordenar fechas de forma DESCENDENTE (más reciente primero)
         $datosCrudos = $query->select(
                 DB::raw('DATE(v.FechaVenta) as Fecha'),
                 'v.NumeroFactura',
@@ -58,14 +55,13 @@ class ReporteVentasVendedorController extends Controller
                 DB::raw("COALESCE(cc.Descripcion, 'SIN MÉTODO DE PAGO') as MetodoPago")
             )
             ->orderBy('rvi.Detalle', 'asc')
-            ->orderBy('Fecha', 'asc')
+            ->orderBy('Fecha', 'desc')  // ✅ DESCENDENTE
             ->get();
 
         if ($esRango) {
-            // Obtener fechas únicas con ventas
-            $fechasUnicas = $datosCrudos->unique('Fecha')->pluck('Fecha')->values();
+            // 🔥 CORREGIDO: Obtener fechas únicas ordenadas DESCENDENTE
+            $fechasUnicas = $datosCrudos->unique('Fecha')->pluck('Fecha')->values()->sortDesc()->values();
             
-            // Agrupar por producto
             $productosArray = [];
             $productosGroup = $datosCrudos->groupBy('ProductoVenta');
             
@@ -99,7 +95,7 @@ class ReporteVentasVendedorController extends Controller
                 $productosArray[] = $fila;
             }
             
-            // Calcular total por fecha
+            // 🔥 CORREGIDO: Totales por fecha ordenados DESCENDENTE
             $totalesPorFecha = [];
             foreach ($fechasUnicas as $fecha) {
                 $unidadesFecha = 0;
@@ -127,7 +123,6 @@ class ReporteVentasVendedorController extends Controller
                 'totalGeneralBs' => collect($productosArray)->sum('totalBs'),
             ];
         } else {
-            // Modo día único
             $productosArray = [];
             $productosGroup = $datosCrudos->groupBy('ProductoVenta');
             
@@ -147,7 +142,6 @@ class ReporteVentasVendedorController extends Controller
             ];
         }
 
-        // 🔥 GRUPOS - Ya no se usa porque IdVentaGrupo no existe, pero lo dejamos vacío
         $grupos = [];
 
         $metodosPago = DB::connection('mysql_gestion_comercial_alimentos')
@@ -190,7 +184,6 @@ class ReporteVentasVendedorController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // 🔥 CONSULTA SIMPLIFICADA
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('impuestos_ventas_detalle as vd', 'v.IdVentas', '=', 'vd.idventas')
@@ -204,22 +197,24 @@ class ReporteVentasVendedorController extends Controller
             ->where('rvi.Detalle', $request->producto);
 
         if ($request->filled('fecha')) {
-            $query->whereDate('v.FechaVenta', $request->fecha);
+            $fecha = Carbon::createFromFormat('Y-m-d', $request->fecha, 'America/La_Paz')->toDateString();
+            $query->whereDate('v.FechaVenta', $fecha);
         }
+        
         if ($request->filled('fecha_desde') && $request->filled('fecha_hasta')) {
-            $query->whereDate('v.FechaVenta', '>=', $request->fecha_desde)
-                  ->whereDate('v.FechaVenta', '<=', $request->fecha_hasta);
+            $fechaDesde = Carbon::createFromFormat('Y-m-d', $request->fecha_desde, 'America/La_Paz')->toDateString();
+            $fechaHasta = Carbon::createFromFormat('Y-m-d', $request->fecha_hasta, 'America/La_Paz')->toDateString();
+            $query->whereDate('v.FechaVenta', '>=', $fechaDesde)
+                  ->whereDate('v.FechaVenta', '<=', $fechaHasta);
         }
-        // 🔥 FILTRO POR GRUPO - ELIMINADO
-        // if ($request->filled('grupo')) {
-        //     $query->where('rvi.IdVentaGrupo', $request->grupo);
-        // }
+        
         if ($request->filled('metodo_pago')) {
             $query->where('cc.Descripcion', $request->metodo_pago);
         }
 
+        // 🔥 CORREGIDO: Ordenar de forma DESCENDENTE (más reciente primero)
         $detalles = $query->select(
-                DB::raw('DATE(v.FechaVenta) as FechaVenta'),
+                DB::raw('DATE(v.FechaVenta) as FechaVentaRaw'),
                 'v.NumeroFactura',
                 'rvi.Detalle as ProductoVenta',
                 'vd.unidades',
@@ -227,8 +222,37 @@ class ReporteVentasVendedorController extends Controller
                 'vd.totalbolivianos as Total',
                 DB::raw("COALESCE(cc.Descripcion, 'SIN MÉTODO DE PAGO') as MetodoPago")
             )
-            ->orderBy('v.FechaVenta', 'desc')
+            ->orderBy('v.FechaVenta', 'desc')  // ✅ DESCENDENTE
             ->get();
+
+        // Formatear fechas
+        $detallesFormateados = $detalles->map(function($item) {
+            if (empty($item->FechaVentaRaw)) {
+                $fechaFormateada = '-';
+            } else {
+                $fechaStr = $item->FechaVentaRaw;
+                if (is_string($fechaStr) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fechaStr)) {
+                    $partes = explode('-', $fechaStr);
+                    $fechaFormateada = $partes[2] . '/' . $partes[1] . '/' . $partes[0];
+                } else {
+                    try {
+                        $fechaFormateada = Carbon::parse($fechaStr)->format('d/m/Y');
+                    } catch (\Exception $e) {
+                        $fechaFormateada = $fechaStr;
+                    }
+                }
+            }
+
+            return [
+                'FechaVenta' => $fechaFormateada,
+                'NumeroFactura' => $item->NumeroFactura,
+                'ProductoVenta' => $item->ProductoVenta,
+                'unidades' => $item->unidades,
+                'PrecioUnidades' => $item->PrecioUnidades,
+                'Total' => $item->Total,
+                'MetodoPago' => $item->MetodoPago,
+            ];
+        });
 
         $totalUnidades = $detalles->sum('unidades');
         $totalBolivianos = $detalles->sum('Total');
@@ -236,7 +260,7 @@ class ReporteVentasVendedorController extends Controller
         return response()->json([
             'success' => true,
             'producto' => $request->producto,
-            'detalles' => $detalles,
+            'detalles' => $detallesFormateados,
             'totalUnidades' => $totalUnidades,
             'totalBolivianos' => $totalBolivianos,
         ]);

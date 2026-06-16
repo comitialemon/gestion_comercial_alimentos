@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -15,9 +15,35 @@ const detalles = ref([])
 const cargando = ref(false)
 const totalUnidades = ref(0)
 const totalBolivianos = ref(0)
-
-// Estado para vista móvil
 const vistaMobile = ref(window.innerWidth < 768)
+
+// 🔥 FUNCIÓN PARA FORMATEAR FECHA - SIN usar new Date()
+const formatearFecha = (fecha) => {
+    if (!fecha) return '-'
+    
+    // Si ya es string y tiene formato DD/MM/YYYY, devolverlo directamente
+    if (typeof fecha === 'string' && fecha.includes('/')) {
+        return fecha
+    }
+    
+    // Si es string YYYY-MM-DD, formatear manualmente
+    if (typeof fecha === 'string' && fecha.includes('-')) {
+        const partes = fecha.split('-')
+        if (partes.length === 3) {
+            return `${partes[2]}/${partes[1]}/${partes[0]}`
+        }
+    }
+    
+    return fecha
+}
+
+const formatearNumero = (value, decimals = 2) => {
+    if (value === undefined || value === null) return '0.00'
+    return Number(value).toLocaleString('es-BO', {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+    })
+}
 
 watch(() => props.modelValue, (newVal) => {
     modalOpen.value = newVal
@@ -30,12 +56,35 @@ watch(modalOpen, (newVal) => {
     emit('update:modelValue', newVal)
 })
 
-// Detectar cambio de tamaño
 const handleResize = () => {
     vistaMobile.value = window.innerWidth < 768
 }
 
 window.addEventListener('resize', handleResize)
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResize)
+})
+
+// 🔥 CORREGIDO: Función para formatear fecha a YYYY-MM-DD
+const formatearFechaParaBackend = (fecha) => {
+    if (!fecha) return null
+    
+    // Si ya es YYYY-MM-DD, devolverla
+    if (typeof fecha === 'string' && fecha.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return fecha
+    }
+    
+    // Si es DD/MM/YYYY, convertir a YYYY-MM-DD
+    if (typeof fecha === 'string' && fecha.includes('/')) {
+        const partes = fecha.split('/')
+        if (partes.length === 3) {
+            return `${partes[2]}-${partes[1]}-${partes[0]}`
+        }
+    }
+    
+    return fecha
+}
 
 const cargarDetalle = async () => {
     cargando.value = true
@@ -44,15 +93,37 @@ const cargarDetalle = async () => {
             producto: props.producto,
         }
         
+        // 🔥 CORRECCIÓN: Formatear fechas correctamente
         if (props.filtros?.tipoBusqueda === 'dia' && props.filtros?.fecha) {
-            params.fecha = props.filtros.fecha
+            const fechaFormateada = formatearFechaParaBackend(props.filtros.fecha)
+            if (fechaFormateada) {
+                params.fecha = fechaFormateada
+            }
         } else {
-            if (props.filtros?.fecha_desde) params.fecha_desde = props.filtros.fecha_desde
-            if (props.filtros?.fecha_hasta) params.fecha_hasta = props.filtros.fecha_hasta
+            // Modo rango
+            if (props.filtros?.fecha_desde) {
+                const fechaDesde = formatearFechaParaBackend(props.filtros.fecha_desde)
+                if (fechaDesde) {
+                    params.fecha_desde = fechaDesde
+                }
+            }
+            if (props.filtros?.fecha_hasta) {
+                const fechaHasta = formatearFechaParaBackend(props.filtros.fecha_hasta)
+                if (fechaHasta) {
+                    params.fecha_hasta = fechaHasta
+                }
+            }
         }
-        if (props.filtros?.metodo_pago) params.metodo_pago = props.filtros.metodo_pago
+        
+        if (props.filtros?.metodo_pago) {
+            params.metodo_pago = props.filtros.metodo_pago
+        }
+        
+        console.log('📤 Enviando al backend:', params) // 🔥 Depuración
         
         const response = await axios.get('/gestion/reporte-ventas-vendedor/detalle-producto', { params })
+        
+        console.log('📥 Respuesta del backend:', response.data) // 🔥 Depuración
         
         if (response.data.success) {
             detalles.value = response.data.detalles
@@ -68,35 +139,6 @@ const cargarDetalle = async () => {
 
 const cerrarModal = () => {
     modalOpen.value = false
-}
-
-const formatearNumero = (value, decimals = 2) => {
-    if (value === undefined || value === null) return '0.00'
-    return Number(value).toLocaleString('es-BO', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-    })
-}
-
-const formatearFecha = (fecha) => {
-    if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-    })
-}
-
-const formatearFechaHora = (fecha) => {
-    if (!fecha) return '-'
-    const date = new Date(fecha)
-    return date.toLocaleDateString('es-BO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    })
 }
 </script>
 
@@ -166,9 +208,9 @@ const formatearFechaHora = (fecha) => {
                             </table>
                         </div>
 
-                        <!-- 🔥 TARJETAS MOBILE - SIEMPRE ABIERTAS (sin toggle) -->
+                        <!-- Tarjetas Mobile -->
                         <div v-else-if="vistaMobile && detalles.length > 0" class="space-y-3">
-                            <!-- Tarjeta resumen de totales -->
+                            <!-- Resumen -->
                             <div class="bg-primary-50 rounded-lg p-3 border border-primary-100">
                                 <div class="flex justify-between items-center">
                                     <div>
@@ -182,9 +224,8 @@ const formatearFechaHora = (fecha) => {
                                 </div>
                             </div>
 
-                            <!-- 🔥 Tarjetas de venta - SIEMPRE VISIBLES -->
+                            <!-- Tarjetas de venta -->
                             <div v-for="detalle in detalles" :key="detalle.NumeroFactura" class="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
-                                <!-- Cabecera de la tarjeta -->
                                 <div class="bg-gray-50 px-3 py-2 border-b border-gray-100">
                                     <div class="flex justify-between items-center">
                                         <div class="flex items-center gap-2">
@@ -195,7 +236,6 @@ const formatearFechaHora = (fecha) => {
                                     </div>
                                 </div>
                                 
-                                <!-- Cuerpo de la tarjeta -->
                                 <div class="p-3 space-y-2">
                                     <div>
                                         <p class="text-[10px] text-gray-500">Producto</p>
@@ -246,25 +286,3 @@ const formatearFechaHora = (fecha) => {
         </div>
     </Teleport>
 </template>
-
-<style scoped>
-/* Scroll personalizado */
-.modal-scroll::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-}
-
-.modal-scroll::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-}
-
-.modal-scroll::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 10px;
-}
-
-.modal-scroll::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-</style>
