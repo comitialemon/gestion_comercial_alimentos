@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -17,6 +17,21 @@ const numeroFactura = ref('')
 const cargando = ref(false)
 const guardando = ref(false)
 const errors = ref({})
+const errorMontos = ref('')
+
+// ==================== TOAST ====================
+const toastVisible = ref(false)
+const toastMensaje = ref('')
+const toastTipo = ref('success')
+
+const mostrarToast = (mensaje, tipo = 'success') => {
+    toastMensaje.value = mensaje
+    toastTipo.value = tipo
+    toastVisible.value = true
+    setTimeout(() => {
+        toastVisible.value = false
+    }, 4000)
+}
 
 watch(() => props.modelValue, (newVal) => {
     modalOpen.value = newVal
@@ -29,10 +44,29 @@ watch(modalOpen, (newVal) => {
     emit('update:modelValue', newVal)
 })
 
+// ==================== COMPUTADOS ====================
+const totalMontos = computed(() => {
+    return metodosPago.value.reduce((sum, pago) => sum + (Number(pago.Bolivianos) || 0), 0)
+})
+
+const diferencia = computed(() => {
+    return totalVenta.value - totalMontos.value
+})
+
+const hayDiferencia = computed(() => {
+    return Math.abs(diferencia.value) > 0.01
+})
+
+const puedeGuardar = computed(() => {
+    return !hayDiferencia.value && totalMontos.value > 0
+})
+
+// ==================== MÉTODOS ====================
 const cargarMetodosPago = async () => {
     if (!props.venta?.IdVentas) return
     
     cargando.value = true
+    errorMontos.value = ''
     try {
         const response = await axios.get(`/gestion/mantenimiento-metodos-pago/${props.venta.IdVentas}/metodos-pago`)
         
@@ -41,15 +75,70 @@ const cargarMetodosPago = async () => {
             conceptos.value = response.data.conceptos
             totalVenta.value = response.data.totalVenta
             numeroFactura.value = response.data.numeroFactura
+            
+            validarMontos()
         }
     } catch (error) {
         console.error('Error cargando métodos de pago:', error)
+        mostrarToast('Error al cargar los métodos de pago', 'error')
     } finally {
         cargando.value = false
     }
 }
 
+const validarMontos = () => {
+    const total = totalMontos.value
+    const diff = Math.abs(total - totalVenta.value)
+    
+    if (diff > 0.01) {
+        if (total > totalVenta.value) {
+            errorMontos.value = `⚠️ El total de los montos (${formatearNumero(total)} Bs) supera el total de la factura (${formatearNumero(totalVenta.value)} Bs) por ${formatearNumero(diff)} Bs.`
+        } else {
+            errorMontos.value = `⚠️ El total de los montos (${formatearNumero(total)} Bs) es menor al total de la factura (${formatearNumero(totalVenta.value)} Bs) por ${formatearNumero(diff)} Bs.`
+        }
+    } else {
+        errorMontos.value = ''
+    }
+}
+
+const validarMonto = (pago, index) => {
+    if (pago.Bolivianos < 0) {
+        pago.Bolivianos = 0
+    }
+    
+    const otrosMontos = metodosPago.value.reduce((sum, p, i) => {
+        if (i !== index) return sum + (Number(p.Bolivianos) || 0)
+        return sum
+    }, 0)
+    
+    const maximoPermitido = totalVenta.value - otrosMontos
+    
+    if (pago.Bolivianos > maximoPermitido && maximoPermitido > 0) {
+        const valorOriginal = pago.Bolivianos
+        pago.Bolivianos = Math.round(maximoPermitido * 100) / 100
+        
+        if (Math.abs(valorOriginal - pago.Bolivianos) > 0.01) {
+            mostrarToast(
+                `⚠️ El monto ingresado (${formatearNumero(valorOriginal)} Bs) supera el total disponible. Se ajustó a ${formatearNumero(pago.Bolivianos)} Bs.`,
+                'warning'
+            )
+        }
+    }
+    
+    validarMontos()
+}
+
 const guardarCambios = async () => {
+    if (hayDiferencia.value) {
+        mostrarToast('❌ El total de los montos no coincide con el total de la factura. Ajuste los valores antes de guardar.', 'error')
+        return
+    }
+    
+    if (totalMontos.value === 0) {
+        mostrarToast('❌ Debe asignar al menos un método de pago con monto mayor a 0.', 'error')
+        return
+    }
+    
     guardando.value = true
     errors.value = {}
     
@@ -59,15 +148,20 @@ const guardarCambios = async () => {
         })
         
         if (response.data.success) {
-            alert('Métodos de pago actualizados correctamente')
-            cerrarModal()
-            emit('actualizado')
+            mostrarToast('✅ Métodos de pago actualizados correctamente', 'success')
+            setTimeout(() => {
+                cerrarModal()
+                emit('actualizado')
+            }, 800)
         } else {
             errors.value = { general: response.data.message }
+            mostrarToast('❌ ' + response.data.message, 'error')
         }
     } catch (error) {
         console.error('Error guardando:', error)
-        errors.value = { general: error.response?.data?.message || 'Error al guardar' }
+        const mensaje = error.response?.data?.message || 'Error al guardar'
+        errors.value = { general: mensaje }
+        mostrarToast('❌ ' + mensaje, 'error')
     } finally {
         guardando.value = false
     }
@@ -79,15 +173,16 @@ const cerrarModal = () => {
 
 const formatearNumero = (value) => {
     if (value === undefined || value === null) return '0.00'
-    return Number(value).toLocaleString('es-BO', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    })
+    return Number(value).toFixed(2)
 }
 
-// Calcular total de los montos ingresados
-const totalMontos = () => {
-    return metodosPago.value.reduce((sum, pago) => sum + (Number(pago.Bolivianos) || 0), 0)
+// 🔥 Agregar método de pago
+const agregarMetodo = () => {
+    metodosPago.value.push({ 
+        IdVentasLiquidacion: 0,
+        IdCuenta: conceptos.value[0]?.IdCuenta || '', 
+        Bolivianos: 0 
+    })
 }
 </script>
 
@@ -125,7 +220,21 @@ const totalMontos = () => {
                                     <span class="font-medium text-gray-600">Total Factura:</span>
                                     <span class="ml-2 text-primary-600 font-semibold">{{ formatearNumero(totalVenta) }} Bs</span>
                                 </div>
+                                <div class="col-span-2">
+                                    <span class="font-medium text-gray-600">Total Pagado:</span>
+                                    <span class="ml-2 font-semibold" :class="totalMontos === totalVenta ? 'text-green-600' : 'text-red-600'">
+                                        {{ formatearNumero(totalMontos) }} Bs
+                                    </span>
+                                    <span v-if="hayDiferencia" class="ml-2 text-xs text-red-500">
+                                        ({{ diferencia > 0 ? 'Excedente' : 'Faltante' }}: {{ formatearNumero(Math.abs(diferencia)) }} Bs)
+                                    </span>
+                                </div>
                             </div>
+                        </div>
+
+                        <!-- Error de montos -->
+                        <div v-if="errorMontos" class="mb-3 p-2 bg-red-50 rounded-lg border border-red-200">
+                            <p class="text-xs text-red-600">{{ errorMontos }}</p>
                         </div>
 
                         <!-- Tabla de métodos de pago -->
@@ -135,10 +244,11 @@ const totalMontos = () => {
                                     <tr>
                                         <th class="px-4 py-2 text-left text-xs font-medium text-primary-700 uppercase">Método de Pago</th>
                                         <th class="px-4 py-2 text-right text-xs font-medium text-primary-700 uppercase">Monto (Bs)</th>
+                                        <th class="px-4 py-2 text-center text-xs font-medium text-primary-700 uppercase w-12">Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="(pago, index) in metodosPago" :key="pago.IdVentasLiquidacion">
+                                    <tr v-for="(pago, index) in metodosPago" :key="pago.IdVentasLiquidacion || index">
                                         <td class="px-4 py-2">
                                             <select v-model="pago.IdCuenta" class="w-full border rounded-md px-2 py-1.5 text-sm">
                                                 <option v-for="concepto in conceptos" :key="concepto.IdCuenta" :value="concepto.IdCuenta">
@@ -152,28 +262,41 @@ const totalMontos = () => {
                                                 v-model.number="pago.Bolivianos" 
                                                 step="0.01" 
                                                 min="0"
-                                                class="w-32 ml-auto text-right border rounded-md px-2 py-1.5 text-sm"
+                                                @input="validarMonto(pago, index)"
+                                                class="w-32 ml-auto text-right border rounded-md px-2 py-1.5 text-sm no-spinner"
                                             >
+                                        </td>
+                                        <td class="px-4 py-2 text-center">
+                                            <button 
+                                                @click="metodosPago.splice(index, 1)"
+                                                class="text-red-500 hover:text-red-700 transition"
+                                                title="Eliminar"
+                                            >
+                                                <i class="fas fa-trash-alt"></i>
+                                            </button>
                                         </td>
                                     </tr>
                                 </tbody>
                                 <tfoot class="bg-gray-50">
                                     <tr class="border-t border-gray-200">
                                         <td class="px-4 py-2 text-sm font-bold text-gray-700">TOTAL</td>
-                                        <td class="px-4 py-2 text-sm font-bold text-primary-600 text-right">
-                                            {{ formatearNumero(totalMontos()) }} Bs
+                                        <td class="px-4 py-2 text-sm font-bold text-right" :class="totalMontos === totalVenta ? 'text-green-600' : 'text-red-600'">
+                                            {{ formatearNumero(totalMontos) }} Bs
                                         </td>
+                                        <td></td>
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
 
-                        <!-- Advertencia si hay diferencia -->
-                        <div v-if="Math.abs(totalMontos() - totalVenta) > 0.01" class="mt-3 p-2 bg-yellow-50 rounded-lg">
-                            <p class="text-xs text-yellow-700">
-                                <i class="fas fa-exclamation-triangle mr-1"></i>
-                                El total de los montos ({{ formatearNumero(totalMontos()) }} Bs) no coincide con el total de la factura ({{ formatearNumero(totalVenta) }} Bs).
-                            </p>
+                        <!-- Botón para agregar nuevo método de pago -->
+                        <div class="mt-3">
+                            <button 
+                                @click="agregarMetodo"
+                                class="text-sm text-primary-600 hover:text-primary-800 transition flex items-center gap-1"
+                            >
+                                <i class="fas fa-plus-circle"></i> Agregar método de pago
+                            </button>
                         </div>
 
                         <!-- Error general -->
@@ -190,7 +313,7 @@ const totalMontos = () => {
                     </button>
                     <button 
                         @click="guardarCambios" 
-                        :disabled="guardando"
+                        :disabled="guardando || !puedeGuardar"
                         class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-2"
                     >
                         <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
@@ -201,4 +324,34 @@ const totalMontos = () => {
             </div>
         </div>
     </div>
+
+    <!-- ==================== TOAST ==================== -->
+    <div v-if="toastVisible" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2"
+         :class="toastTipo === 'success' ? 'bg-green-500' : (toastTipo === 'error' ? 'bg-red-500' : 'bg-yellow-500')">
+        <i :class="toastTipo === 'success' ? 'fas fa-check-circle' : (toastTipo === 'error' ? 'fas fa-exclamation-circle' : 'fas fa-exclamation-triangle')"></i>
+        {{ toastMensaje }}
+    </div>
 </template>
+
+<style scoped>
+.no-spinner::-webkit-inner-spin-button,
+.no-spinner::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.no-spinner {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+</style>

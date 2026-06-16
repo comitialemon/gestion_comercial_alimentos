@@ -17,7 +17,6 @@ class AnularFacturaAdminController extends Controller
         $todasSucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
-            ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
 
