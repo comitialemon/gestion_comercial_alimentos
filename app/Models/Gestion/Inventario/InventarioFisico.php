@@ -15,12 +15,6 @@ class InventarioFisico extends Model
     protected $primaryKey = 'IdFisico';
     public $timestamps = false;
 
-    // Constantes
-    const TIPO_OPERACION_AJUSTE = 22;
-    const ACTIVO_SI = 1;
-    const ACTIVO_NO = 0;
-
-    // 🔥 Agregar TODOS los campos de la tabla
     protected $fillable = [
         'NumeroCorrelativo',
         'IdFecha',
@@ -39,7 +33,6 @@ class InventarioFisico extends Model
         'NumeroCorrelativo' => 'integer',
     ];
 
-    // Relaciones
     public function fecha()
     {
         return $this->belongsTo(Fecha::class, 'IdFecha', 'IdFecha');
@@ -70,18 +63,9 @@ class InventarioFisico extends Model
         return $this->hasMany(InventarioFisicoDetalle::class, 'IdFisico', 'IdFisico');
     }
 
-    // Scope por contexto
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'))
                      ->where('IdOperador', session('operador_id'));
-    }
-
-    // Obtener siguiente número correlativo
-    public static function getNextCorrelativo($sucursalId)
-    {
-        $max = self::where('IdSucursal', $sucursalId)
-            ->max('NumeroCorrelativo');
-        return ($max ?? 0) + 1;
     }
 }

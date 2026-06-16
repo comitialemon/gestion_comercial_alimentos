@@ -30,38 +30,40 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
 
-// Modal de confirmación
+// Modal de confirmación (solo para desactivar)
 const modalVisible = ref(false)
 const modalData = ref({
     id: null,
     numero: null,
-    accion: '',
-    nuevoEstado: null
 })
 
-// Controlar el toggle manualmente
+// 🔥 Controlar el toggle - SOLO DESACTIVAR
 const toggleSwitch = (ajuste) => {
+    // Si ya está inactivo, NO se puede activar desde aquí
+    if (ajuste.ActivoInactivo === 0) {
+        mostrarToast('Para activar este ajuste, debe editarlo y guardar nuevamente.', 'info')
+        return
+    }
+    
+    // Solo permite desactivar (cambiar de 1 a 0)
     if (cambiando.value[ajuste.IdAjustesPrincipal]) return
-    const nuevoEstado = ajuste.ActivoInactivo === 1 ? 0 : 1
-    abrirModalConfirmacion(ajuste, nuevoEstado)
+    abrirModalConfirmacion(ajuste)
 }
 
-const abrirModalConfirmacion = (ajuste, nuevoEstado) => {
+const abrirModalConfirmacion = (ajuste) => {
     modalData.value = {
         id: ajuste.IdAjustesPrincipal,
         numero: ajuste.NumeroCorrelativo,
-        accion: nuevoEstado === 1 ? 'activar' : 'desactivar',
-        nuevoEstado: nuevoEstado
     }
     modalVisible.value = true
 }
 
 const cerrarModal = () => {
     modalVisible.value = false
-    modalData.value = { id: null, numero: null, accion: '', nuevoEstado: null }
+    modalData.value = { id: null, numero: null }
 }
 
-// 🔥 Cambiar estado (Activar/Inactivar)
+// 🔥 Ejecutar cambio de estado - SIEMPRE DESACTIVAR (0)
 const ejecutarCambioEstado = async () => {
     if (!modalData.value.id) return
     
@@ -74,7 +76,8 @@ const ejecutarCambioEstado = async () => {
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            }
+            },
+            body: JSON.stringify({ estado: 0 }) // Siempre envía 0 (desactivar)
         })
         
         const data = await response.json()
@@ -101,20 +104,30 @@ const ejecutarCambioEstado = async () => {
     }
 }
 
+// ==================== TOAST ====================
 const mostrarToast = (mensaje, tipo = 'success') => {
     const toastAnterior = document.querySelector('.custom-toast')
     if (toastAnterior) toastAnterior.remove()
     
+    let bgColor = 'bg-green-500'
+    let icon = 'fa-check-circle'
+    
+    if (tipo === 'error') {
+        bgColor = 'bg-red-500'
+        icon = 'fa-exclamation-circle'
+    } else if (tipo === 'info') {
+        bgColor = 'bg-blue-500'
+        icon = 'fa-info-circle'
+    }
+    
     const toast = document.createElement('div')
-    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${
-        tipo === 'success' ? 'bg-green-500' : 'bg-red-500'
-    }`
-    toast.innerHTML = `<i class="fas ${tipo === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${mensaje}`
+    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${bgColor}`
+    toast.innerHTML = `<i class="fas ${icon}"></i> ${mensaje}`
     document.body.appendChild(toast)
     
     setTimeout(() => {
         if (toast && toast.remove) toast.remove()
-    }, 3000)
+    }, 4000)
 }
 
 // APLICAR FILTROS
@@ -148,11 +161,7 @@ watch(estadoFiltro, () => {
     aplicarFiltros()
 })
 
-// Formatear moneda
-const formatearMonto = (monto) => {
-    return Number(monto).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-}
-
+// ==================== UTILIDADES ====================
 const getEstadoColor = (activo) => {
     return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
 }
@@ -168,6 +177,18 @@ const getEstadoTexto = (activo) => {
 const getConceptoColor = (concepto) => {
     return concepto === 'INGRESO' ? 'text-emerald-600' : 'text-red-600'
 }
+
+// 🔥 Condiciones para el switch
+const isSwitchDisabled = (ajuste) => {
+    return ajuste.ActivoInactivo === 0 // Deshabilitado si ya está inactivo
+}
+
+const getSwitchTitle = (ajuste) => {
+    if (ajuste.ActivoInactivo === 0) {
+        return 'No se puede activar desde aquí. Edite el ajuste para volver a activarlo.'
+    }
+    return 'Desactivar ajuste'
+}
 </script>
 
 <template>
@@ -182,7 +203,7 @@ const getConceptoColor = (concepto) => {
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Ajustes</h1>
-                            <p class="text-[10px] text-gray-500 hidden xs:block">Activar o desactivar ajustes de inventario</p>
+                            <p class="text-[10px] text-gray-500 hidden xs:block">Desactivar ajustes de inventario (solo desactivación)</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
@@ -210,7 +231,7 @@ const getConceptoColor = (concepto) => {
                             </select>
                         </div>
                         
-                        <!-- BUSCADOR pequeño -->
+                        <!-- BUSCADOR -->
                         <div class="flex items-center gap-1">
                             <input 
                                 type="text" 
@@ -236,7 +257,7 @@ const getConceptoColor = (concepto) => {
                     </div>
                     
                     <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
-                        <i class="fas fa-info-circle"></i> Toque el switch para cambiar el estado
+                        <i class="fas fa-info-circle"></i> Solo se pueden desactivar ajustes. Para activar, edite el ajuste.
                     </div>
                 </div>
 
@@ -286,8 +307,13 @@ const getConceptoColor = (concepto) => {
                                     {{ getEstadoTexto(ajuste.ActivoInactivo) }}
                                 </span>
                                 
-                                <!-- SWITCH PERSONALIZADO -->
-                                <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
+                                <!-- 🔥 SWITCH - SOLO DESACTIVAR -->
+                                <div 
+                                    class="relative inline-flex items-center cursor-pointer" 
+                                    :class="{ 'cursor-not-allowed opacity-50': isSwitchDisabled(ajuste) }"
+                                    :title="getSwitchTitle(ajuste)"
+                                    @click="!isSwitchDisabled(ajuste) && toggleSwitch(ajuste)"
+                                >
                                     <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
                                         :class="ajuste.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                         <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
@@ -299,6 +325,11 @@ const getConceptoColor = (concepto) => {
                                         <span v-else>{{ ajuste.ActivoInactivo === 1 ? 'Activo' : 'Inactivo' }}</span>
                                     </span>
                                 </div>
+                            </div>
+                            <!-- 🔥 Mensaje informativo para ajustes inactivos -->
+                            <div v-if="ajuste.ActivoInactivo === 0" class="mt-2 text-[9px] text-blue-500 bg-blue-50 p-1.5 rounded-lg text-center">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Para activar este ajuste, debe editarlo y guardar nuevamente.
                             </div>
                         </div>
                     </div>
@@ -346,8 +377,13 @@ const getConceptoColor = (concepto) => {
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 text-center">
-                                        <!-- SWITCH PERSONALIZADO -->
-                                        <div class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
+                                        <!-- 🔥 SWITCH - SOLO DESACTIVAR -->
+                                        <div 
+                                            class="relative inline-flex items-center cursor-pointer" 
+                                            :class="{ 'cursor-not-allowed opacity-50': isSwitchDisabled(ajuste) }"
+                                            :title="getSwitchTitle(ajuste)"
+                                            @click="!isSwitchDisabled(ajuste) && toggleSwitch(ajuste)"
+                                        >
                                             <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
                                                 :class="ajuste.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
                                                 <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
@@ -367,6 +403,13 @@ const getConceptoColor = (concepto) => {
                                         <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600 hover:text-red-800 text-xs inline-block" title="Ver PDF">
                                             <i class="fas fa-file-pdf text-sm"></i>
                                         </a>
+                                    </td>
+                                </tr>
+                                <!-- 🔥 Fila informativa para ajustes inactivos -->
+                                <tr v-if="ajustes.data?.some(c => c.ActivoInactivo === 0)" class="bg-blue-50">
+                                    <td colspan="8" class="px-3 py-2 text-center text-[10px] text-blue-600">
+                                        <i class="fas fa-info-circle mr-1"></i>
+                                        Los ajustes inactivos (Borrador) no se pueden activar desde aquí. Para activarlos, debe editarlos y guardar nuevamente.
                                     </td>
                                 </tr>
                                 <tr v-if="ajustes.data?.length === 0">
@@ -400,39 +443,37 @@ const getConceptoColor = (concepto) => {
             </div>
         </div>
 
-        <!-- MODAL DE CONFIRMACIÓN -->
+        <!-- 🔥 MODAL DE CONFIRMACIÓN (solo para desactivar) -->
         <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
             <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
-                <div class="p-4 border-b" :class="modalData.accion === 'activar' ? 'bg-green-50' : 'bg-yellow-50'">
+                <div class="p-4 border-b bg-yellow-50">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" :class="modalData.accion === 'activar' ? 'bg-green-100' : 'bg-yellow-100'">
-                            <i :class="modalData.accion === 'activar' ? 'fas fa-check-circle text-green-600' : 'fas fa-ban text-yellow-600'" class="text-xl"></i>
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-yellow-100">
+                            <i class="fas fa-ban text-yellow-600 text-xl"></i>
                         </div>
                         <div class="flex-1">
-                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">
-                                {{ modalData.accion === 'activar' ? 'Activar Ajuste' : 'Desactivar Ajuste' }}
-                            </h3>
+                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Desactivar Ajuste</h3>
                             <p class="text-[10px] sm:text-xs text-gray-500">Ajuste N° {{ modalData.numero }}</p>
                         </div>
                     </div>
                 </div>
                 <div class="p-4 sm:p-5">
                     <p class="text-xs sm:text-sm text-gray-700 text-center">
-                        ¿Estás seguro de <span class="font-bold" :class="modalData.accion === 'activar' ? 'text-green-600' : 'text-red-600'">{{ modalData.accion === 'activar' ? 'ACTIVAR' : 'DESACTIVAR' }}</span> 
-                        este ajuste?
+                        ¿Estás seguro de <span class="font-bold text-red-600">DESACTIVAR</span> este ajuste?
                     </p>
                     <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
-                        {{ modalData.accion === 'activar' ? 'Al activarlo, el ajuste se marcará como contabilizado.' : 'Al desactivarlo, el ajuste volverá a estado borrador y podrá editarse.' }}
+                        Al desactivarlo, el ajuste volverá a estado borrador y podrá editarse.
+                        Para volver a activarlo, deberá editarlo y guardar nuevamente.
                     </p>
                 </div>
                 <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
                     <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">
                         Cancelar
                     </button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2" :class="modalData.accion === 'activar' ? 'bg-green-600 hover:bg-green-700' : 'bg-yellow-600 hover:bg-yellow-700'">
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-yellow-600 hover:bg-yellow-700">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                        <i v-else :class="modalData.accion === 'activar' ? 'fas fa-check' : 'fas fa-ban'"></i>
-                        {{ modalData.accion === 'activar' ? 'Activar' : 'Desactivar' }}
+                        <i v-else class="fas fa-ban"></i>
+                        Desactivar
                     </button>
                 </div>
             </div>

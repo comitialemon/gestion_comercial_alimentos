@@ -586,32 +586,29 @@ Route::middleware(['auth.operador'])->group(function () {
 
     // ==================== INVENTARIO FÍSICO ====================
     Route::prefix('gestion/inventario-fisico')->group(function () {
-        // GET - Muestra el formulario de creación (redirige a create)
         Route::get('/', [InventarioFisicoController::class, 'create'])->name('gestion.inventario-fisico.index');
         
-        // GET - Editar un inventario existente
-        Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
+        // Redirige /{id} a /{id}/edit
+        Route::get('/{id}', function ($id) {
+            return redirect()->route('gestion.inventario-fisico.edit', $id);
+        });
         
-        // DELETE - Eliminar borrador
+        Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
         Route::delete('/{id}', [InventarioFisicoController::class, 'destroy'])->name('gestion.inventario-fisico.destroy');
         
-        // Endpoints AJAX (PUT, POST)
         Route::put('/{id}/cabecera', [InventarioFisicoController::class, 'updateCabecera']);
         Route::post('/{id}/sincronizar', [InventarioFisicoController::class, 'sincronizarProductos']);
         Route::put('/{id}/detalle/{detalleId}/unidades', [InventarioFisicoController::class, 'actualizarUnidades']);
-        Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);
+        Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);  // ← UN SOLO ENDPOINT
         Route::get('/{id}/detalles', [InventarioFisicoController::class, 'getDetalles']);
+        Route::get('/{id}/pdf', [InventarioFisicoController::class, 'pdf'])->name('gestion.inventario-fisico.pdf');
     });
 
-    // Endpoint para almacenes (depende de IdSucursal)
-    Route::get('/api/almacenes-por-sucursal/{sucursalId}', function($sucursalId) {
-        $almacenes = App\Models\Gestion\Inventario\Almacen::where('IdCliente', session('cliente_id'))
-            ->where('IdSucursal', $sucursalId)
-            ->orderBy('Almacen')
-            ->get(['IdAlmacen as id', 'Almacen as nombre']);
-        return response()->json($almacenes);
-    })->name('api.almacenes.por-sucursal');
-    //===========================================
+    // Endpoint para almacenes
+    Route::get('/api/almacenes-por-sucursal/{sucursalId}', [InventarioFisicoController::class, 'getAlmacenes'])->name('api.almacenes.por-sucursal');
+    //=============================================
+
+
     // ==================== INVENTARIO FÍSICO MANTENIMIENTO ====================
     Route::prefix('gestion/inventario-fisico-mantenimiento')->group(function () {
         Route::get('/', [App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController::class, 'index'])

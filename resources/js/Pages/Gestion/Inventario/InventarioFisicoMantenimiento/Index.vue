@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
@@ -21,12 +21,13 @@ const estado = ref(props.filtros?.estado || '')
 const sucursalesSeleccionadas = ref([])
 const realizadosPorSeleccionados = ref([])
 
-// Modal
-const modalAbierto = ref(false)
-const inventarioEditando = ref(null)
-const editandoId = ref(null)
-const editandoActivoInactivo = ref(0)
-const modalLoading = ref(false)
+// Estado para el switch
+const cambiando = ref({})
+const loading = ref(false)
+
+// Modal de confirmación para desactivar
+const modalVisible = ref(false)
+const modalData = ref({ id: null, numero: null })
 
 // Procesar filtros iniciales
 onMounted(() => {
@@ -37,6 +38,13 @@ onMounted(() => {
         realizadosPorSeleccionados.value = props.filtros.realizados_por.split(',').map(Number)
     }
 })
+
+// Debounce para búsqueda
+let timeoutBuscador
+const buscarInventarios = () => {
+    clearTimeout(timeoutBuscador)
+    timeoutBuscador = setTimeout(() => aplicarFiltros(), 500)
+}
 
 // Alternar selección de sucursal
 const toggleSucursal = (sucursal) => {
@@ -95,41 +103,85 @@ const limpiarFiltros = () => {
     })
 }
 
-// ==================== MODAL ====================
-const abrirModal = (inventario) => {
-    inventarioEditando.value = inventario
-    editandoId.value = inventario.IdFisico
-    editandoActivoInactivo.value = inventario.ActivoInactivo
-    modalAbierto.value = true
+// ==================== SWITCH / TOGGLE ====================
+const toggleSwitch = (inventario) => {
+    if (inventario.ActivoInactivo === 0) {
+        mostrarToast('Este inventario ya está inactivo. Para activarlo, edite el registro.', 'info')
+        return
+    }
+    
+    if (cambiando.value[inventario.IdFisico]) return
+    abrirModalConfirmacion(inventario)
+}
+
+const abrirModalConfirmacion = (inventario) => {
+    modalData.value = {
+        id: inventario.IdFisico,
+        numero: inventario.NumeroCorrelativo
+    }
+    modalVisible.value = true
 }
 
 const cerrarModal = () => {
-    modalAbierto.value = false
-    inventarioEditando.value = null
-    editandoId.value = null
-    editandoActivoInactivo.value = 0
+    modalVisible.value = false
+    modalData.value = { id: null, numero: null }
 }
 
-const guardarEstado = async () => {
-    modalLoading.value = true
+// ==================== EJECUTAR CAMBIO DE ESTADO ====================
+const ejecutarCambioEstado = async () => {
+    if (!modalData.value.id) return
+    
+    cambiando.value[modalData.value.id] = true
+    loading.value = true
+    
     try {
-        const response = await axios.put(`/gestion/inventario-fisico-mantenimiento/${editandoId.value}/estado`, {
-            ActivoInactivo: editandoActivoInactivo.value
+        const response = await axios.put(`/gestion/inventario-fisico-mantenimiento/${modalData.value.id}/estado`, {
+            ActivoInactivo: 0
         })
         
         if (response.data.success) {
-            // Actualizar la lista
-            aplicarFiltros()
-            cerrarModal()
+            mostrarToast(response.data.message || 'Inventario desactivado correctamente', 'success')
+            const params = new URLSearchParams()
+            if (estado.value) params.append('estado', estado.value)
+            if (search.value) params.append('search', search.value)
+            if (sucursalesSeleccionadas.value.length > 0) params.append('sucursales', sucursalesSeleccionadas.value.join(','))
+            if (realizadosPorSeleccionados.value.length > 0) params.append('realizados_por', realizadosPorSeleccionados.value.join(','))
+            window.location.href = `/gestion/inventario-fisico-mantenimiento?${params.toString()}`
         } else {
-            alert(response.data.message || 'Error al actualizar')
+            mostrarToast(response.data.message || 'Error al desactivar', 'error')
+            cerrarModal()
         }
     } catch (error) {
         console.error('Error:', error)
-        alert('Error al actualizar el estado')
+        mostrarToast('Error al cambiar el estado', 'error')
+        cerrarModal()
     } finally {
-        modalLoading.value = false
+        cambiando.value[modalData.value.id] = false
+        loading.value = false
     }
+}
+
+// ==================== TOAST ====================
+const mostrarToast = (mensaje, tipo = 'success') => {
+    const toastAnterior = document.querySelector('.custom-toast')
+    if (toastAnterior) toastAnterior.remove()
+    
+    let bgColor = 'bg-green-500'
+    let icon = 'fa-check-circle'
+    
+    if (tipo === 'error') {
+        bgColor = 'bg-red-500'
+        icon = 'fa-exclamation-circle'
+    } else if (tipo === 'info') {
+        bgColor = 'bg-blue-500'
+        icon = 'fa-info-circle'
+    }
+    
+    const toast = document.createElement('div')
+    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${bgColor}`
+    toast.innerHTML = `<i class="fas ${icon}"></i> ${mensaje}`
+    document.body.appendChild(toast)
+    setTimeout(() => toast.remove(), 4000)
 }
 
 // ==================== UTILIDADES ====================
@@ -138,13 +190,28 @@ const estadoTexto = (activo) => {
 }
 
 const estadoClase = (activo) => {
-    return activo == 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+    return activo == 1 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'
 }
 
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
     return new Date(fecha).toLocaleDateString('es-BO')
 }
+
+// ==================== CONDICIONES PARA EL SWITCH ====================
+const isSwitchDisabled = (inventario) => {
+    return inventario.ActivoInactivo === 0
+}
+
+const getSwitchTitle = (inventario) => {
+    if (inventario.ActivoInactivo === 0) {
+        return 'No se puede activar desde aquí. Edite el inventario para volver a activarlo.'
+    }
+    return 'Desactivar inventario físico'
+}
+
+// ==================== WATCH ====================
+watch(estado, () => aplicarFiltros())
 </script>
 
 <template>
@@ -164,6 +231,40 @@ const formatearFecha = (fecha) => {
                     </div>
                 </div>
 
+                <!-- Filtros -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs font-medium text-gray-700">Estado:</label>
+                            <select v-model="estado" class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-36 sm:w-40 focus:border-primary-400 focus:ring-1 focus:ring-primary-200">
+                                <option value="">Todos</option>
+                                <option value="1">Activos ({{ totalActivos }})</option>
+                                <option value="0">Inactivos ({{ totalInactivos }})</option>
+                            </select>
+                        </div>
+                        
+                        <div class="flex items-center gap-1">
+                            <input 
+                                type="text" 
+                                v-model="search" 
+                                @input="buscarInventarios"
+                                placeholder="N° Correlativo..."
+                                class="border border-gray-200 rounded-lg px-2 py-1 text-xs w-28 sm:w-32 focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
+                            >
+                            <button v-if="search" @click="search = ''; aplicarFiltros()" class="text-gray-400 hover:text-gray-600 text-xs">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div v-if="search" class="mt-2 text-[10px] text-gray-500">
+                        <span class="font-semibold">{{ search }}</span>
+                        <span class="ml-2">({{ inventarios.total || 0 }} resultados)</span>
+                    </div>
+                    <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
+                        <i class="fas fa-info-circle"></i> Solo se pueden desactivar inventarios. Para activar, edite el registro.
+                    </div>
+                </div>
+
                 <!-- Layout Principal -->
                 <div class="flex flex-row gap-4">
                     <!-- FILTROS LATERAL -->
@@ -172,40 +273,6 @@ const formatearFecha = (fecha) => {
                             <h3 class="text-xs font-semibold text-gray-800 mb-3 flex items-center gap-1">
                                 <i class="fas fa-filter text-primary-600 text-[10px]"></i> Filtros
                             </h3>
-
-                            <!-- Buscar por N° Correlativo -->
-                            <div class="mb-3">
-                                <label class="block text-[10px] font-medium text-gray-700 mb-1">N° Correlativo</label>
-                                <div class="relative">
-                                    <i class="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]"></i>
-                                    <input 
-                                        type="text" 
-                                        v-model="search" 
-                                        placeholder="Buscar por número..." 
-                                        class="w-full border rounded-md pl-7 pr-2 py-1.5 text-[11px]"
-                                        @keyup.enter="aplicarFiltros"
-                                    >
-                                </div>
-                            </div>
-
-                            <!-- Estado -->
-                            <div class="mb-3">
-                                <label class="block text-[10px] font-medium text-gray-700 mb-1">Estado</label>
-                                <div class="flex flex-col gap-1">
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="" v-model="estado" class="w-3 h-3 text-primary-600"> 
-                                        <span class="text-[11px] text-gray-700">Todos</span>
-                                    </label>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="1" v-model="estado" class="w-3 h-3 text-primary-600"> 
-                                        <span class="text-[11px] text-gray-700">Activos ({{ totalActivos }})</span>
-                                    </label>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" value="0" v-model="estado" class="w-3 h-3 text-primary-600"> 
-                                        <span class="text-[11px] text-gray-700">Inactivos ({{ totalInactivos }})</span>
-                                    </label>
-                                </div>
-                            </div>
 
                             <!-- LISTA DE SUCURSALES (Checkboxes) -->
                             <div class="mb-3">
@@ -302,7 +369,8 @@ const formatearFecha = (fecha) => {
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Realizado por</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Encargado Sucursal</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase">Estado</th>
-                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase">Acciones</th>
+                                            <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase">Cambiar</th>
+                                            <th class="px-3 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase">PDF</th>
                                         </tr>
                                     </thead>
                                     <tbody class="bg-white divide-y divide-gray-200">
@@ -324,17 +392,40 @@ const formatearFecha = (fecha) => {
                                                 </span>
                                             </td>
                                             <td class="px-3 py-2 text-center">
-                                                <button 
-                                                    @click="abrirModal(item)" 
-                                                    class="text-primary-600 hover:text-primary-800"
-                                                    title="Editar estado"
+                                                <!-- Switch -->
+                                                <div 
+                                                    class="relative inline-flex items-center cursor-pointer" 
+                                                    :class="{ 'cursor-not-allowed opacity-50': isSwitchDisabled(item) }"
+                                                    :title="getSwitchTitle(item)"
+                                                    @click="!isSwitchDisabled(item) && toggleSwitch(item)"
                                                 >
-                                                    <i class="fas fa-edit text-sm"></i>
-                                                </button>
+                                                    <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out"
+                                                        :class="item.ActivoInactivo === 1 ? 'bg-primary-600' : 'bg-gray-300'">
+                                                        <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
+                                                            :class="item.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
+                                                        </div>
+                                                    </div>
+                                                    <span class="ml-2 text-[10px]" :class="cambiando[item.IdFisico] ? 'text-gray-400' : (item.ActivoInactivo === 1 ? 'text-green-600' : 'text-gray-500')">
+                                                        <i v-if="cambiando[item.IdFisico]" class="fas fa-spinner fa-spin"></i>
+                                                        <span v-else>{{ item.ActivoInactivo === 1 ? 'Activo' : 'Inactivo' }}</span>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <!-- 🔥 COLUMNA PDF -->
+                                            <td class="px-3 py-2 text-right">
+                                                <a :href="`/gestion/inventario-fisico/${item.IdFisico}/pdf`" target="_blank" class="text-red-600 hover:text-red-700 transition" title="Ver PDF">
+                                                    <i class="fas fa-file-pdf text-sm"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="inventarios.data?.some(c => c.ActivoInactivo === 0)" class="bg-blue-50">
+                                            <td colspan="8" class="px-3 py-2 text-center text-[10px] text-blue-600">
+                                                <i class="fas fa-info-circle mr-1"></i>
+                                                Los inventarios inactivos no se pueden activar desde aquí. Para activarlos, debe editarlos y guardar nuevamente.
                                             </td>
                                         </tr>
                                         <tr v-if="!inventarios.data || inventarios.data.length === 0">
-                                            <td colspan="7" class="px-3 py-8 text-center text-gray-400 text-[11px]">
+                                            <td colspan="8" class="px-3 py-8 text-center text-gray-400 text-[11px]">
                                                 <i class="fas fa-box-open text-xl mb-1 block"></i>
                                                 No se encontraron inventarios físicos con los filtros seleccionados.
                                             </td>
@@ -371,45 +462,35 @@ const formatearFecha = (fecha) => {
             </div>
         </div>
 
-        <!-- MODAL PARA EDITAR ESTADO -->
-        <div v-if="modalAbierto" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div class="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-800">Editar Estado</h3>
-                    <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                
-                <div class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">
-                            N° Correlativo: <span class="font-bold">{{ inventarioEditando?.NumeroCorrelativo }}</span>
-                        </label>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-2">Estado</label>
-                        <div class="flex gap-4">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" v-model="editandoActivoInactivo" :value="1" class="w-4 h-4 text-primary-600">
-                                <span class="text-sm text-gray-700">Activo</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="radio" v-model="editandoActivoInactivo" :value="0" class="w-4 h-4 text-primary-600">
-                                <span class="text-sm text-gray-700">Inactivo</span>
-                            </label>
+        <!-- Modal de confirmación (solo para desactivar) -->
+        <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
+            <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
+                <div class="p-4 border-b bg-amber-50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-100">
+                            <i class="fas fa-ban text-amber-600 text-xl"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Desactivar Inventario</h3>
+                            <p class="text-[10px] sm:text-xs text-gray-500">N° {{ modalData.numero }}</p>
                         </div>
                     </div>
                 </div>
-                
-                <div class="flex justify-end gap-3 mt-6 pt-4 border-t">
-                    <button @click="cerrarModal" class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100">
-                        Cancelar
-                    </button>
-                    <button @click="guardarEstado" :disabled="modalLoading" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
-                        <i v-if="modalLoading" class="fas fa-spinner fa-spin mr-1"></i>
-                        {{ modalLoading ? 'Guardando...' : 'Guardar' }}
+                <div class="p-4 sm:p-5">
+                    <p class="text-xs sm:text-sm text-gray-700 text-center">
+                        ¿Estás seguro de <span class="font-bold text-red-600">DESACTIVAR</span> este inventario físico?
+                    </p>
+                    <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
+                        Al desactivarlo, el inventario volverá a estado borrador y podrá editarse.
+                        Para volver a activarlo, deberá editarlo y guardar nuevamente.
+                    </p>
+                </div>
+                <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
+                    <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">Cancelar</button>
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-amber-600 hover:bg-amber-700">
+                        <i v-if="loading" class="fas fa-spinner fa-spin"></i>
+                        <i v-else class="fas fa-ban"></i>
+                        Desactivar
                     </button>
                 </div>
             </div>

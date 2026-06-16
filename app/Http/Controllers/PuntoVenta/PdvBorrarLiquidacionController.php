@@ -24,7 +24,6 @@ class PdvBorrarLiquidacionController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // 🔥 CORREGIDO: Ruta correcta de la vista
         return Inertia::render('PuntoVenta/BorrarLiquidacion', [
             'sucursales' => $sucursales,
         ]);
@@ -102,42 +101,38 @@ class PdvBorrarLiquidacionController extends Controller
         try {
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
             
-            // 1. DELETE conta_diario_propiamente
+            // 1. OBTENER LOS IdVentas que tienen esta liquidación
+            $ventasIds = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('LiquidadoVendedor', $idLiquidacion)
+                ->pluck('IdVentas');
+            
+            \Log::info('Ventas encontradas: ' . $ventasIds->count());
+            $resultados['ventas_encontradas'] = $ventasIds->count();
+            
+            // 2. DELETE conta_diario_propiamente
             $deleted1 = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario_propiamente')
                 ->where('IdDiario', $idLiquidacion)
                 ->delete();
-            $resultados['conta_diario_propiamente'] = $deleted1 !== false ? 'OK' : 'ERROR';
-            \Log::info('conta_diario_propiamente: ' . ($deleted1 !== false ? 'OK' : 'ERROR'));
+            $resultados['conta_diario_propiamente'] = $deleted1;
+            \Log::info('conta_diario_propiamente: ' . $deleted1);
             
-            // 2. DELETE impuestos_ventas_liquidacion_vendedor
+            // 3. DELETE impuestos_ventas_liquidacion_vendedor
             $deleted2 = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_liquidacion_vendedor')
                 ->where('IdDiario', $idLiquidacion)
                 ->delete();
-            $resultados['impuestos_ventas_liquidacion_vendedor'] = $deleted2 !== false ? 'OK' : 'ERROR';
-            \Log::info('impuestos_ventas_liquidacion_vendedor: ' . ($deleted2 !== false ? 'OK' : 'ERROR'));
+            $resultados['impuestos_ventas_liquidacion_vendedor'] = $deleted2;
+            \Log::info('impuestos_ventas_liquidacion_vendedor: ' . $deleted2);
             
-            // 3. UPDATE impuestos_ventas (poner NULL en LiquidadoVendedor)
+            // 4. UPDATE impuestos_ventas (poner LiquidadoVendedor = 0 en lugar de NULL)
             $updated = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('LiquidadoVendedor', $idLiquidacion)
-                ->update(['LiquidadoVendedor' => null]);
-            $resultados['impuestos_ventas'] = $updated !== false ? 'OK' : 'ERROR';
-            \Log::info('impuestos_ventas: ' . ($updated !== false ? 'OK' : 'ERROR'));
-            
-            // Verificar si hubo algún error
-            if (in_array('ERROR', $resultados)) {
-                DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-                \Log::error('Error en proceso, se hizo rollback');
-                
-                return response()->json([
-                    'success' => false,
-                    'message' => '❌ Error en el proceso',
-                    'resultados' => $resultados,
-                    'id_liquidacion' => $idLiquidacion
-                ], 500);
-            }
+                ->update(['LiquidadoVendedor' => 0]);
+            $resultados['impuestos_ventas'] = $updated;
+            \Log::info('impuestos_ventas actualizados: ' . $updated);
             
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
             \Log::info('Proceso completado exitosamente');

@@ -1,4 +1,5 @@
 <?php
+// app/Models/Gestion/Inventario/InventarioFisicoDetalle.php
 
 namespace App\Models\Gestion\Inventario;
 
