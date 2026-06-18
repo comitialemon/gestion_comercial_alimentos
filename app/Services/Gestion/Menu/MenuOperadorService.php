@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;  // 🔥 AGREGAR
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
-class MenuService
+class MenuOperadorService
 {
     private $g;
 

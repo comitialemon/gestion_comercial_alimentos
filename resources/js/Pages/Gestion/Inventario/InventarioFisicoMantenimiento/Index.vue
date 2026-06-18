@@ -140,7 +140,7 @@ const toggleFiltros = () => {
 // ==================== SWITCH / TOGGLE ====================
 const toggleSwitch = (inventario) => {
     if (inventario.ActivoInactivo === 0) {
-        mostrarToast('Este inventario ya está inactivo. Para activarlo, edite el registro.', 'info')
+        mostrarToast('Este inventario ya está inactivo. Puede editarlo en el formulario de ingreso.', 'info')
         return
     }
     
@@ -169,19 +169,18 @@ const ejecutarCambioEstado = async () => {
     loading.value = true
     
     try {
-        // ✅ RUTA CORREGIDA - AÑADIR /inventario
         const response = await axios.put(`/gestion/inventario/inventario-fisico-mantenimiento/${modalData.value.id}/estado`, {
             ActivoInactivo: 0
         })
         
         if (response.data.success) {
-            mostrarToast(response.data.message || 'Inventario desactivado correctamente', 'success')
-            const params = new URLSearchParams()
-            if (estado.value) params.append('estado', estado.value)
-            if (search.value) params.append('search', search.value)
-            if (sucursalesSeleccionadas.value.length > 0) params.append('sucursales', sucursalesSeleccionadas.value.join(','))
-            if (realizadosPorSeleccionados.value.length > 0) params.append('realizados_por', realizadosPorSeleccionados.value.join(','))
-            window.location.href = `/gestion/inventario/inventario-fisico-mantenimiento?${params.toString()}`
+            mostrarToast(response.data.message || 'Inventario desactivado correctamente. Redirigiendo a edición...', 'success')
+            cerrarModal()
+            
+            // 🔥 REDIRIGIR AL FORMULARIO DE INGRESO PARA CONTINUAR EDITANDO
+            setTimeout(() => {
+                window.location.href = `/gestion/inventario/inventario-fisico`
+            }, 1500)
         } else {
             mostrarToast(response.data.message || 'Error al desactivar', 'error')
             cerrarModal()
@@ -240,9 +239,9 @@ const isSwitchDisabled = (inventario) => {
 
 const getSwitchTitle = (inventario) => {
     if (inventario.ActivoInactivo === 0) {
-        return 'No se puede activar desde aquí. Edite el inventario para volver a activarlo.'
+        return 'Este inventario ya está inactivo. Edítelo en el formulario de ingreso.'
     }
-    return 'Desactivar inventario físico'
+    return 'Desactivar inventario físico para continuar editándolo'
 }
 
 // ==================== WATCH ====================
@@ -250,7 +249,6 @@ watch(estado, () => aplicarFiltros())
 </script>
 
 <template>
-    <!-- El resto del template se mantiene igual -->
     <div class="min-h-screen" :style="{ backgroundColor: `var(--color-primary-50)` }">
         <div class="py-2 px-2 sm:py-3 sm:px-3 lg:py-4 lg:px-6">
             <div class="max-w-full mx-auto">
@@ -277,7 +275,7 @@ watch(estado, () => aplicarFiltros())
                     </div>
                 </div>
 
-                <!-- Filtros rápidos (siempre visibles) -->
+                <!-- Filtros rápidos -->
                 <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-2.5 sm:p-3 mb-3 sm:mb-4">
                     <div class="flex flex-col xs:flex-row flex-wrap items-center gap-2 sm:gap-3">
                         <div class="flex items-center gap-2 w-full xs:w-auto">
@@ -303,7 +301,7 @@ watch(estado, () => aplicarFiltros())
                         </div>
                         
                         <div class="text-[8px] sm:text-[10px] text-gray-400 xs:ml-auto">
-                            <i class="fas fa-info-circle"></i> Solo se pueden desactivar
+                            <i class="fas fa-info-circle"></i> Desactivar para continuar editando
                         </div>
                     </div>
                     <div v-if="search" class="mt-1.5 text-[8px] sm:text-[10px] text-gray-500">
@@ -667,8 +665,8 @@ watch(estado, () => aplicarFiltros())
                         ¿Estás seguro de <span class="font-bold text-red-600">DESACTIVAR</span> este inventario físico?
                     </p>
                     <p class="text-[8px] sm:text-[10px] text-gray-400 text-center mt-1.5 sm:mt-2">
-                        Al desactivarlo, el inventario volverá a estado borrador y podrá editarse.
-                        Para volver a activarlo, deberá editarlo y guardar nuevamente.
+                        Al desactivarlo, podrás continuar editándolo en el formulario de ingreso.
+                        Luego podrás contabilizarlo nuevamente.
                     </p>
                 </div>
                 <div class="p-2.5 sm:p-4 bg-gray-50 flex flex-col xs:flex-row justify-end gap-2">
@@ -713,7 +711,6 @@ input:focus {
     white-space: nowrap;
 }
 
-/* Scrollbar personalizada */
 .max-h-48::-webkit-scrollbar {
     width: 4px;
 }
@@ -732,7 +729,6 @@ input:focus {
     background: #9ca3af;
 }
 
-/* Animación para filtros en móvil */
 @media (max-width: 1023px) {
     .max-h-0 {
         max-height: 0;
@@ -742,7 +738,6 @@ input:focus {
     }
 }
 
-/* Estilos para pantallas muy pequeñas */
 @media (max-width: 380px) {
     .xs\:flex-row {
         flex-direction: column !important;

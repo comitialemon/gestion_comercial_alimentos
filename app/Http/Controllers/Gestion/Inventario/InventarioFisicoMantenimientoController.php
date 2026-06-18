@@ -48,12 +48,11 @@ class InventarioFisicoMantenimientoController extends Controller
             ->paginate(20)
             ->withQueryString();
         
-        // 🔥 DATOS PARA FILTROS (checkboxes)
+        // DATOS PARA FILTROS (checkboxes)
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero'])
-            ->map(function($s) use ($clienteId, $request) {
-                // Contar inventarios por sucursal
+            ->map(function($s) use ($clienteId) {
                 $count = InventarioFisico::where('IdCliente', $clienteId)
                     ->where('IdSucursal', $s->id)
                     ->count();
@@ -70,7 +69,7 @@ class InventarioFisicoMantenimientoController extends Controller
             })
             ->orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
-            ->map(function($i) use ($clienteId, $request) {
+            ->map(function($i) use ($clienteId) {
                 $count = InventarioFisico::where('IdCliente', $clienteId)
                     ->where('IdRealizadoPor', $i->id)
                     ->count();
@@ -104,25 +103,42 @@ class InventarioFisicoMantenimientoController extends Controller
     
     /**
      * Actualizar estado (ActivoInactivo) de un inventario
+     * Solo permite desactivar (poner en 0)
      */
     public function updateEstado(Request $request, $id)
     {
         $request->validate([
             'ActivoInactivo' => 'required|in:0,1',
         ]);
+
+        // 🔥 SOLO PERMITIR DESACTIVAR (ActivoInactivo = 0)
+        if ($request->ActivoInactivo != 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Solo se permite desactivar inventarios desde esta vista'
+            ], 400);
+        }
         
         $clienteId = session('cliente_id');
         
         $inventario = InventarioFisico::where('IdCliente', $clienteId)
             ->findOrFail($id);
         
+        // 🔥 No permitir desactivar si ya está inactivo
+        if ($inventario->ActivoInactivo == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El inventario ya está inactivo'
+            ], 400);
+        }
+        
         $inventario->update([
-            'ActivoInactivo' => $request->ActivoInactivo,
+            'ActivoInactivo' => 0,
         ]);
         
         return response()->json([
             'success' => true,
-            'message' => $request->ActivoInactivo == 1 ? 'Inventario activado correctamente' : 'Inventario desactivado correctamente'
+            'message' => 'Inventario desactivado correctamente. Ahora puede editarlo en el formulario de ingreso.'
         ]);
     }
 }
