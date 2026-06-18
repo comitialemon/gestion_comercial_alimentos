@@ -19,13 +19,13 @@ const props = defineProps({
 
 // Formulario con datos reactivos
 const form = ref({
-    IdIngreso: props.ingreso?.IdIngreso || null,
-    IdFecha: props.ingreso?.IdFecha || '',
-    IdIdentificador: props.ingreso?.IdIdentificador || '',
-    IdCuentaDebe: props.ingreso?.IdCuentaDebe || '',
-    IdCuentaHaber: props.ingreso?.IdCuentaHaber || '',
-    Glosa: props.ingreso?.Glosa || '',
-    TotalBolivianos: props.ingreso?.TotalBolivianos || '',
+    IdIngreso: null,
+    IdFecha: '',
+    IdIdentificador: '',
+    IdCuentaDebe: '',
+    IdCuentaHaber: '',
+    Glosa: '',
+    TotalBolivianos: '',
 })
 
 const guardando = ref(false)
@@ -55,8 +55,8 @@ const prevenirFlechas = (event) => {
     }
 }
 
-// Limpiar formulario
-const limpiarFormulario = () => {
+// 🔥 FUNCIÓN PARA RESETEAR EL FORMULARIO
+const resetFormulario = () => {
     form.value = {
         IdIngreso: null,
         IdFecha: '',
@@ -150,8 +150,13 @@ const submitForm = async () => {
             
             toast?.success('Éxito', props.editando ? 'Ingreso actualizado correctamente' : 'Ingreso guardado correctamente')
             
-            // 🔥 SIEMPRE REDIRIGIR A CREATE (formulario de nuevo ingreso)
-            window.location.href = '/gestion/ingresos/create'
+            // 🔥 LIMPIAR FORMULARIO
+            resetFormulario()
+            
+            // 🔥 SI ES EDICIÓN, REDIRIGIR A CREATE (para nuevo ingreso)
+            if (props.editando) {
+                window.location.href = '/gestion/ingresos/create'
+            }
         }
     } catch (error) {
         console.error('Error:', error)
@@ -163,11 +168,27 @@ const submitForm = async () => {
 }
 
 onMounted(() => {
-    if (props.ingreso?.IdIdentificador) {
-        const ident = listaIdentificadores.value.find(i => i.id === props.ingreso.IdIdentificador)
-        if (ident) {
-            busquedaIdentificador.value = `${ident.ci} - ${ident.nombre}`
+    // Solo cargar datos si estamos editando o hay un borrador
+    if (props.ingreso?.IdIngreso && props.editando) {
+        form.value = {
+            IdIngreso: props.ingreso.IdIngreso,
+            IdFecha: props.ingreso.IdFecha || '',
+            IdIdentificador: props.ingreso.IdIdentificador || '',
+            IdCuentaDebe: props.ingreso.IdCuentaDebe || '',
+            IdCuentaHaber: props.ingreso.IdCuentaHaber || '',
+            Glosa: props.ingreso.Glosa || '',
+            TotalBolivianos: props.ingreso.TotalBolivianos || '',
         }
+        
+        if (props.ingreso.IdIdentificador) {
+            const ident = listaIdentificadores.value.find(i => i.id === props.ingreso.IdIdentificador)
+            if (ident) {
+                busquedaIdentificador.value = `${ident.ci} - ${ident.nombre}`
+            }
+        }
+    } else {
+        // Si no hay ingreso, resetear formulario
+        resetFormulario()
     }
 })
 </script>

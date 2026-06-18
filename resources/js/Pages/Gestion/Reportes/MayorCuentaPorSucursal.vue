@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { router } from '@inertiajs/vue3'
+import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
 
@@ -79,7 +80,6 @@ const seleccionarSucursal = (sucursal) => {
     sucursalId.value = sucursal.id
     sucursalBusqueda.value = sucursal.nombre
     mostrarSucursales.value = false
-    // Limpiar búsqueda de cuenta para evitar confusión
     form.value.cuenta_id = ''
     form.value.cuenta_busqueda = ''
     form.value.identificador_id = ''
@@ -136,7 +136,6 @@ const exportarReporte = () => {
     errors.value = {}
     procesando.value = true
     
-    // 🔥 USAR POST como en tu otra vista que funciona
     const formData = new FormData()
     formData.append('sucursal_id', sucursalId.value)
     formData.append('cuenta_id', form.value.cuenta_id)
@@ -144,25 +143,35 @@ const exportarReporte = () => {
     formData.append('identificador_id', form.value.identificador_id || '')
     formData.append('moneda', form.value.moneda)
     
-    fetch('/gestion/reportes/mayor-cuenta/exportar-por-sucursal', {
-        method: 'POST',
-        body: formData
-    }).then(response => {
-        if (!response.ok) throw new Error('Error en la exportación')
-        return response.blob()
-    }).then(blob => {
+    // 🔥 NOMBRE DEL ARCHIVO CON SUCURSAL
+    const nombreSucursal = sucursalNombre.value || 'Sucursal'
+    const nombreArchivo = `Mayor${nombreSucursal}.xls`
+    
+    axios.post('/gestion/reportes/mayor-cuenta/exportar-por-sucursal', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        },
+        responseType: 'blob'
+    })
+    .then(response => {
+        const blob = response.data
         const url = window.URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'reporte.xls'
+        a.download = nombreArchivo  // ← NOMBRE PERSONALIZADO
         document.body.appendChild(a)
         a.click()
         window.URL.revokeObjectURL(url)
         a.remove()
         procesando.value = false
-    }).catch(error => {
+    })
+    .catch(error => {
         console.error('Error:', error)
-        alert('Error al exportar')
+        if (error.response?.status === 419) {
+            alert('Error de sesión. Por favor recargue la página.')
+        } else {
+            alert('Error al exportar: ' + (error.response?.data?.message || error.message))
+        }
         procesando.value = false
     })
 }
@@ -192,7 +201,6 @@ const volver = () => {
 // Lifecycle
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
-    // Si hay una sucursal seleccionada por defecto, mostrarla
     if (sucursalId.value) {
         const suc = props.sucursales?.find(s => s.id === sucursalId.value)
         if (suc) {
@@ -225,7 +233,7 @@ onUnmounted(() => {
                     <p class="text-xs text-gray-500 mt-2 sm:hidden">Seleccione sucursal y reporte de movimientos por cuenta contable</p>
                 </div>
 
-                <!-- 🔥 SELECTOR DE SUCURSAL CON AUTOCOMPLETADO 🔥 -->
+                <!-- SELECTOR DE SUCURSAL -->
                 <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6 mb-4 sm:mb-6">
                     <div class="sucursal-autocomplete">
                         <label class="block text-sm font-medium text-gray-700 mb-1">
@@ -252,7 +260,6 @@ onUnmounted(() => {
                                 <i class="fas fa-times text-xs"></i>
                             </button>
                             
-                            <!-- Lista de sugerencias -->
                             <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
                                 class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                 <div 
@@ -271,7 +278,6 @@ onUnmounted(() => {
                                 </div>
                             </div>
                             
-                            <!-- Mensaje sin resultados -->
                             <div v-if="mostrarSucursales && sucursalBusqueda && sucursalesDisponibles.length === 0" 
                                 class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
                                 No se encontraron sucursales con "{{ sucursalBusqueda }}"
@@ -279,7 +285,6 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Indicador de sucursal seleccionada -->
                     <div v-if="sucursalId" class="mt-3 text-xs flex items-center gap-2 flex-wrap">
                         <span class="font-medium text-gray-500">Sucursal seleccionada:</span>
                         <span class="px-2 py-0.5 rounded-full text-xs font-medium"
@@ -289,10 +294,10 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Formulario de parámetros (solo visible si hay sucursal seleccionada) -->
+                <!-- Formulario de parámetros -->
                 <div v-if="sucursalId" class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
                     <div class="space-y-4">
-                        <!-- Cuenta con autocompletado -->
+                        <!-- Cuenta -->
                         <div class="cuenta-autocomplete">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                 Cuenta <span class="text-red-500">*</span>
@@ -318,7 +323,6 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                                 
-                                <!-- Lista de sugerencias -->
                                 <div v-if="mostrarSugerenciasCuenta && cuentasFiltradas.length > 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                     <div 
@@ -337,7 +341,6 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                                 
-                                <!-- Mensaje sin resultados -->
                                 <div v-if="mostrarSugerenciasCuenta && form.cuenta_busqueda && cuentasFiltradas.length === 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
                                     No se encontraron cuentas con "{{ form.cuenta_busqueda }}"
@@ -361,7 +364,7 @@ onUnmounted(() => {
                             <p v-if="errors.fecha_inicial" class="text-xs text-red-500 mt-1">{{ errors.fecha_inicial }}</p>
                         </div>
 
-                        <!-- Identificador con autocompletado (opcional) -->
+                        <!-- Identificador -->
                         <div class="identificador-autocomplete">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                 Identificador <span class="text-gray-400 text-xs">(opcional)</span>
@@ -386,7 +389,6 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                                 
-                                <!-- Lista de sugerencias -->
                                 <div v-if="mostrarSugerenciasIdentificador && identificadoresFiltrados.length > 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                     <div 
@@ -405,7 +407,6 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                                 
-                                <!-- Mensaje sin resultados -->
                                 <div v-if="mostrarSugerenciasIdentificador && form.identificador_busqueda && identificadoresFiltrados.length === 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
                                     No se encontraron identificadores con "{{ form.identificador_busqueda }}"
@@ -454,7 +455,7 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Mensaje cuando no hay sucursal seleccionada -->
+                <!-- Mensaje cuando no hay sucursal -->
                 <div v-else class="bg-white rounded-xl shadow-sm p-8 text-center">
                     <i class="fas fa-arrow-left text-gray-300 text-4xl mb-3 block"></i>
                     <p class="text-gray-500">Seleccione una sucursal para continuar</p>
@@ -475,7 +476,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Focus ring con color dinámico */
 input:focus {
     --tw-ring-color: var(--color-primary-500);
     --tw-ring-offset-width: 0px;
@@ -487,7 +487,6 @@ input:focus {
     outline-offset: 2px;
 }
 
-/* Transiciones */
 .transition {
     transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);

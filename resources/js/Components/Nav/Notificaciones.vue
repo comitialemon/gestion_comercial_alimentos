@@ -94,7 +94,7 @@ const cargarNotificaciones = async () => {
 // Aprobar producto
 const aprobarProducto = async (votoId) => {
     try {
-        await axios.post(`/gestion/productos-aprobacion/votar/${votoId}`, {
+        await axios.post(`/gestion/inventario/productos-aprobacion/votar/${votoId}`, {
             estado: 'aprobado'
         })
         await cargarNotificaciones()
@@ -112,7 +112,7 @@ const aprobarProducto = async (votoId) => {
 const rechazarProducto = async (votoId) => {
     const comentario = prompt('Ingrese un motivo de rechazo (opcional):')
     try {
-        await axios.post(`/gestion/productos-aprobacion/votar/${votoId}`, {
+        await axios.post(`/gestion/inventario/productos-aprobacion/votar/${votoId}`, {
             estado: 'rechazado',
             comentario: comentario || ''
         })
@@ -279,7 +279,7 @@ onUnmounted(() => {
             <!-- Footer con enlace -->
             <div class="px-3 sm:px-4 py-2 sm:py-2.5 border-t bg-gray-50 text-center">
                 <Link 
-                    href="/gestion/productos-aprobacion/pendientes" 
+                    href="/gestion/inventario/productos-aprobacion/pendientes" 
                     class="text-[10px] sm:text-xs font-medium transition hover:underline"
                     :style="footerLinkStyle"
                 >

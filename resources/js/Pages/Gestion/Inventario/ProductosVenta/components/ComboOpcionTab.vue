@@ -15,19 +15,25 @@ const loading = ref(false)
 const composicion = ref([])
 const opciones = ref({})
 
-// Cambiamos variables del modal por estructuras indexadas por 'id_producto'
 const busquedas = ref({})
 const resultadosBusqueda = ref({})
 const buscando = ref({})
 const opcionesSeleccionadas = ref({})
 
-// Cargar composición fija del combo
+// 🔥 RUTAS CORRECTAS (sin prefijo /gestion)
+const API_BASE = '/combo-opciones'
+
 const cargarComposicion = async () => {
-    if (!props.productoId) return
+    if (!props.productoId) {
+        console.warn('No hay productoId para cargar composición')
+        return
+    }
     
     loading.value = true
     try {
-        const response = await axios.get(`/combo-opciones/${props.productoId}/composicion`)
+        const response = await axios.get(`${API_BASE}/${props.productoId}/composicion`)
+        console.log('Composición cargada:', response.data)
+        
         if (response.data.success) {
             composicion.value = response.data.composicion || []
             // Inicializar estados para cada item de la composición
@@ -51,12 +57,13 @@ const cargarComposicion = async () => {
     }
 }
 
-// Cargar opciones existentes
 const cargarOpciones = async () => {
     if (!props.productoId) return
     
     try {
-        const response = await axios.get(`/combo-opciones/${props.productoId}`)
+        const response = await axios.get(`${API_BASE}/${props.productoId}`)
+        console.log('Opciones cargadas:', response.data)
+        
         if (response.data.success) {
             const agrupadas = {}
             if (response.data.opciones && Array.isArray(response.data.opciones)) {
@@ -82,13 +89,11 @@ const cargarOpciones = async () => {
     }
 }
 
-// Cargar todos los datos
 const cargarDatos = async () => {
     await cargarComposicion()
     await cargarOpciones()
 }
 
-// Buscar productos disponibles por cada fila
 const buscarProductos = async (idProductoOriginal) => {
     const query = busquedas.value[idProductoOriginal]
     
@@ -99,7 +104,7 @@ const buscarProductos = async (idProductoOriginal) => {
     
     buscando.value[idProductoOriginal] = true
     try {
-        const response = await axios.get('/combo-opciones/productos/disponibles', {
+        const response = await axios.get(`${API_BASE}/productos/disponibles`, {
             params: {
                 id_producto_original: idProductoOriginal,
                 search: query
@@ -114,13 +119,12 @@ const buscarProductos = async (idProductoOriginal) => {
     }
 }
 
-// Agregar nueva opción desde la fila
 const agregarOpcion = async (idProductoOriginal) => {
     const sustituto = opcionesSeleccionadas.value[idProductoOriginal]
     if (!sustituto) return
     
     try {
-        await axios.post('/combo-opciones', {
+        await axios.post(API_BASE, {
             id_producto_combo: props.productoId,
             id_producto_original: idProductoOriginal,
             id_producto_sustituto: sustituto.id,
@@ -130,7 +134,6 @@ const agregarOpcion = async (idProductoOriginal) => {
         
         await cargarDatos()
         
-        // Limpiar formulario específico de la fila
         busquedas.value[idProductoOriginal] = ''
         opcionesSeleccionadas.value[idProductoOriginal] = null
         resultadosBusqueda.value[idProductoOriginal] = []
@@ -140,19 +143,17 @@ const agregarOpcion = async (idProductoOriginal) => {
     }
 }
 
-// Eliminar opción
 const eliminarOpcion = async (opcion) => {
     if (!confirm(`¿Eliminar la opción "${opcion.nombre_sustituto}"?`)) return
     
     try {
-        await axios.delete(`/combo-opciones/${opcion.id_combo_opcion}`)
+        await axios.delete(`${API_BASE}/${opcion.id_combo_opcion}`)
         await cargarDatos()
     } catch (error) {
         alert('Error al eliminar: ' + (error.response?.data?.message || error.message))
     }
 }
 
-// Mover opción (cambiar orden)
 const moverOpcion = async (opcion, direccion) => {
     const opcionesActuales = [...(opciones.value[opcion.id_producto_original] || [])]
     const index = opcionesActuales.findIndex(o => o.id_combo_opcion === opcion.id_combo_opcion)
@@ -171,14 +172,14 @@ const moverOpcion = async (opcion, direccion) => {
     }
     
     try {
-        await axios.put(`/combo-opciones/${opcion.id_combo_opcion}`, { orden: opcion.orden })
+        await axios.put(`${API_BASE}/${opcion.id_combo_opcion}`, { orden: opcion.orden })
         
         if (direccion === 'up' && index > 0) {
-            await axios.put(`/combo-opciones/${opcionesActuales[index - 1].id_combo_opcion}`, {
+            await axios.put(`${API_BASE}/${opcionesActuales[index - 1].id_combo_opcion}`, {
                 orden: opcionesActuales[index - 1].orden
             })
         } else if (direccion === 'down' && index < opcionesActuales.length - 1) {
-            await axios.put(`/combo-opciones/${opcionesActuales[index + 1].id_combo_opcion}`, {
+            await axios.put(`${API_BASE}/${opcionesActuales[index + 1].id_combo_opcion}`, {
                 orden: opcionesActuales[index + 1].orden
             })
         }
@@ -189,10 +190,8 @@ const moverOpcion = async (opcion, direccion) => {
     }
 }
 
-// Debounce para búsquedas reactivas por producto
 let timeouts = {}
 watch(busquedas, (nuevasBusquedas) => {
-    // Detectar cuál input cambió rastreando los valores
     Object.keys(nuevasBusquedas).forEach(idProducto => {
         clearTimeout(timeouts[idProducto])
         timeouts[idProducto] = setTimeout(() => {
@@ -201,120 +200,130 @@ watch(busquedas, (nuevasBusquedas) => {
     })
 }, { deep: true })
 
-// Cargar datos al montar el componente
 onMounted(() => {
     cargarDatos()
 })
 </script>
 
 <template>
-    <div class="space-y-4">
-        <div class="flex justify-between items-center mb-4">
+    <div class="space-y-3 sm:space-y-4">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-3 sm:mb-4">
             <div class="flex items-center gap-2">
-                <i class="fas fa-random text-primary-500"></i>
-                <span class="text-sm font-medium text-gray-700">Opciones de cambio para cada producto del combo</span>
+                <i class="fas fa-random text-primary-500 text-[10px] sm:text-sm"></i>
+                <span class="text-[10px] sm:text-sm font-medium text-gray-700">Opciones de cambio para cada producto del combo</span>
             </div>
         </div>
 
-        <div v-if="!loading && composicion.length === 0" class="text-center py-8 bg-yellow-50 rounded-lg border border-yellow-200">
-            <i class="fas fa-exclamation-triangle text-yellow-500 text-3xl mb-2"></i>
-            <p class="text-yellow-700 text-sm font-medium">No hay productos en la composición</p>
-            <p class="text-gray-500 text-xs mt-1">Primero debe agregar productos en la pestaña <strong>"Inventario Detalle"</strong></p>
+        <!-- Estado vacío -->
+        <div v-if="!loading && composicion.length === 0" class="text-center py-6 sm:py-8 bg-yellow-50 rounded-lg border border-yellow-200">
+            <i class="fas fa-exclamation-triangle text-yellow-500 text-2xl sm:text-3xl mb-2"></i>
+            <p class="text-yellow-700 text-[10px] sm:text-sm font-medium">No hay productos en la composición</p>
+            <p class="text-gray-500 text-[8px] sm:text-xs mt-1">Primero debe agregar productos en la pestaña <strong>"Inventario Detalle"</strong></p>
         </div>
 
-        <div v-else-if="loading" class="text-center py-8">
-            <i class="fas fa-spinner fa-spin text-primary-500 text-2xl"></i>
-            <p class="text-gray-400 text-sm mt-2">Cargando...</p>
+        <div v-else-if="loading" class="text-center py-6 sm:py-8">
+            <i class="fas fa-spinner fa-spin text-primary-500 text-xl sm:text-2xl"></i>
+            <p class="text-gray-400 text-[10px] sm:text-sm mt-2">Cargando...</p>
         </div>
 
-        <div v-else class="space-y-6">
+        <!-- Cards de productos -->
+        <div v-else class="space-y-3 sm:space-y-4">
             <div v-for="item in composicion" :key="item.id_producto" class="border rounded-lg overflow-hidden shadow-sm bg-white">
                 
-                <div class="bg-gray-50 px-4 py-2.5 border-b flex justify-between items-center">
+                <!-- Header del producto -->
+                <div class="bg-gray-50 px-3 sm:px-4 py-2 sm:py-2.5 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2">
                     <div class="flex items-center gap-2">
-                        <i class="fas fa-box text-primary-500"></i>
-                        <span class="font-semibold text-gray-800">{{ item.nombre }}</span>
-                        <span class="text-xs text-gray-400 italic">(original / por defecto)</span>
+                        <i class="fas fa-box text-primary-500 text-[10px] sm:text-sm"></i>
+                        <span class="font-semibold text-gray-800 text-[10px] sm:text-sm">{{ item.nombre }}</span>
+                        <span class="text-[8px] sm:text-xs text-gray-400 italic">(original)</span>
                     </div>
+                    <span class="text-[8px] sm:text-[10px] text-gray-500 bg-white px-2 py-0.5 rounded-full border">
+                        {{ opciones[item.id_producto]?.length || 0 }} opciones
+                    </span>
                 </div>
                 
-                <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Contenido -->
+                <div class="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     
+                    <!-- Opciones existentes -->
                     <div>
-                        <label class="block text-xs font-bold uppercase text-gray-500 mb-2">Opciones Alternativas</label>
+                        <label class="block text-[8px] sm:text-[10px] font-bold uppercase text-gray-500 mb-1.5 sm:mb-2">Opciones Alternativas</label>
                         
-                        <div v-if="opciones[item.id_producto] && opciones[item.id_producto].length > 0" class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+                        <div v-if="opciones[item.id_producto] && opciones[item.id_producto].length > 0" class="space-y-1 max-h-48 sm:max-h-60 overflow-y-auto pr-1">
                             <div v-for="opcion in opciones[item.id_producto]" :key="opcion.id_combo_opcion" 
-                                 class="flex items-center justify-between bg-gray-50 p-2 border rounded hover:bg-gray-100 transition-colors">
-                                <div class="flex items-center gap-2 min-w-0">
-                                    <i class="fas fa-exchange-alt text-primary-400 text-xs flex-shrink-0"></i>
-                                    <span class="text-sm text-gray-700 truncate" :title="opcion.nombre_sustituto">
+                                 class="flex flex-col sm:flex-row items-start sm:items-center justify-between bg-gray-50 p-2 border rounded hover:bg-gray-100 transition-colors gap-1 sm:gap-0">
+                                <div class="flex items-center gap-2 min-w-0 w-full sm:w-auto">
+                                    <i class="fas fa-exchange-alt text-primary-400 text-[8px] sm:text-xs flex-shrink-0"></i>
+                                    <span class="text-[10px] sm:text-sm text-gray-700 truncate" :title="opcion.nombre_sustituto">
                                         {{ opcion.nombre_sustituto }}
                                     </span>
                                 </div>
-                                <div class="flex gap-1 flex-shrink-0 ml-2">
-                                    <button @click="moverOpcion(opcion, 'up')" class="w-6 h-6 rounded bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs flex items-center justify-center shadow-sm" title="Mover arriba">
+                                <div class="flex gap-1 flex-shrink-0 w-full sm:w-auto justify-end">
+                                    <button @click="moverOpcion(opcion, 'up')" class="w-6 h-6 rounded bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-[10px] sm:text-xs flex items-center justify-center shadow-sm" title="Mover arriba">
                                         ↑
                                     </button>
-                                    <button @click="moverOpcion(opcion, 'down')" class="w-6 h-6 rounded bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-xs flex items-center justify-center shadow-sm" title="Mover abajo">
+                                    <button @click="moverOpcion(opcion, 'down')" class="w-6 h-6 rounded bg-white border border-gray-200 hover:bg-gray-50 text-gray-600 text-[10px] sm:text-xs flex items-center justify-center shadow-sm" title="Mover abajo">
                                         ↓
                                     </button>
-                                    <button @click="eliminarOpcion(opcion)" class="w-6 h-6 rounded bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs flex items-center justify-center shadow-sm" title="Eliminar">
+                                    <button @click="eliminarOpcion(opcion)" class="w-6 h-6 rounded bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-[10px] sm:text-xs flex items-center justify-center shadow-sm" title="Eliminar">
                                         🗑️
                                     </button>
                                 </div>
                             </div>
                         </div>
                         
-                        <div v-else class="text-center py-6 text-gray-400 text-sm bg-gray-50 rounded border border-dashed">
+                        <div v-else class="text-center py-4 sm:py-6 text-gray-400 text-[10px] sm:text-sm bg-gray-50 rounded border border-dashed">
                             No hay opciones adicionales asignadas
                         </div>
                     </div>
 
-                    <div class="border-t md:border-t-0 md:border-l pt-4 md:pt-0 md:pl-4 flex flex-col justify-between">
+                    <!-- Agregar opción -->
+                    <div class="border-t md:border-t-0 md:border-l pt-3 sm:pt-4 md:pt-0 md:pl-4 flex flex-col justify-between">
                         <div>
-                            <label class="block text-xs font-bold uppercase text-gray-500 mb-2">Añadir opción a esta fila</label>
+                            <label class="block text-[8px] sm:text-[10px] font-bold uppercase text-gray-500 mb-1.5 sm:mb-2">Añadir opción</label>
                             
                             <div class="relative">
                                 <input type="text" 
                                        v-model="busquedas[item.id_producto]" 
-                                       class="w-full border rounded-md pl-3 pr-8 py-1.5 text-sm focus:border-primary-500 focus:ring-primary-500 text-gray-800"
-                                       placeholder="Buscar sustituto por código o nombre...">
-                                <span class="absolute right-2 top-2.5 text-gray-400 text-xs" v-if="buscando[item.id_producto]">
+                                       class="w-full border rounded-md pl-2 sm:pl-3 pr-6 sm:pr-8 py-1.5 text-[10px] sm:text-sm focus:border-primary-500 focus:ring-primary-500 text-gray-800"
+                                       placeholder="Buscar sustituto...">
+                                <span class="absolute right-2 top-2 text-gray-400 text-[8px] sm:text-[10px]" v-if="buscando[item.id_producto]">
                                     <i class="fas fa-spinner fa-spin text-primary-500"></i>
                                 </span>
                             </div>
 
-                            <div class="mt-2 border rounded-md max-h-36 overflow-y-auto bg-white shadow-inner" v-if="busquedas[item.id_producto] && busquedas[item.id_producto].length >= 2">
+                            <!-- Resultados -->
+                            <div class="mt-1.5 sm:mt-2 border rounded-md max-h-32 sm:max-h-36 overflow-y-auto bg-white shadow-inner" v-if="busquedas[item.id_producto] && busquedas[item.id_producto].length >= 2">
                                 
                                 <div v-if="resultadosBusqueda[item.id_producto]?.length > 0">
                                     <div v-for="prod in resultadosBusqueda[item.id_producto]" :key="prod.id" 
                                          @click="opcionesSeleccionadas[item.id_producto] = prod"
-                                         class="p-2 border-b last:border-b-0 cursor-pointer text-xs flex justify-between items-center transition-colors"
+                                         class="p-1.5 sm:p-2 border-b last:border-b-0 cursor-pointer text-[9px] sm:text-xs flex justify-between items-center transition-colors"
                                          :class="opcionesSeleccionadas[item.id_producto]?.id === prod.id ? 'bg-primary-50 text-primary-800 font-medium' : 'hover:bg-gray-50 text-gray-700'">
                                         <div class="truncate mr-2">
-                                            <span class="font-mono bg-gray-100 px-1 rounded text-gray-600 text-[10px] mr-1">{{ prod.Codigo }}</span>
+                                            <span class="font-mono bg-gray-100 px-1 rounded text-gray-600 text-[8px] sm:text-[10px] mr-1">{{ prod.Codigo }}</span>
                                             {{ prod.nombre }}
                                         </div>
-                                        <i v-if="opcionesSeleccionadas[item.id_producto]?.id === prod.id" class="fas fa-check text-primary-600 text-xs"></i>
+                                        <i v-if="opcionesSeleccionadas[item.id_producto]?.id === prod.id" class="fas fa-check text-primary-600 text-[8px] sm:text-xs"></i>
                                     </div>
                                 </div>
                                 
-                                <div v-else-if="!buscando[item.id_producto]" class="p-3 text-center text-gray-400 text-xs">
+                                <div v-else-if="!buscando[item.id_producto]" class="p-2 sm:p-3 text-center text-gray-400 text-[8px] sm:text-xs">
                                     No se encontraron productos
                                 </div>
                             </div>
                             
-                            <div v-else-if="busquedas[item.id_producto]?.length > 0" class="mt-1 text-gray-400 text-[11px] italic">
+                            <div v-else-if="busquedas[item.id_producto]?.length > 0" class="mt-0.5 text-gray-400 text-[8px] sm:text-[10px] italic">
                                 Escriba al menos 2 caracteres...
                             </div>
                         </div>
 
-                        <div class="mt-3 pt-3 border-t border-dashed flex justify-end">
+                        <div class="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-dashed flex justify-end">
                             <button @click="agregarOpcion(item.id_producto)" 
                                     :disabled="!opcionesSeleccionadas[item.id_producto]" 
-                                    class="w-full md:w-auto px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded text-xs font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
-                                <i class="fas fa-plus"></i> Vincular Opción
+                                    class="w-full md:w-auto px-3 sm:px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded text-[10px] sm:text-xs font-medium shadow-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
+                                <i class="fas fa-plus text-[8px] sm:text-[10px]"></i> Vincular
                             </button>
                         </div>
                     </div>

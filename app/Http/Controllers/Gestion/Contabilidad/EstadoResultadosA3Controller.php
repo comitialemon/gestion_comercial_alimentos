@@ -53,21 +53,29 @@ class EstadoResultadosA3Controller extends Controller
             ->where('IdClienteSucursal', $sucursalId)
             ->first();
 
-        // Calcular período (desde 01/04 del año o año anterior)
+        // Fecha inicial (1 de enero del año)
         $fechaObj = new \DateTime($fecha);
-        $mes = (int)$fechaObj->format('m');
         $anio = (int)$fechaObj->format('Y');
-        
-        if ($mes >= 4) {
-            $anioInicio = $anio;
-        } else {
-            $anioInicio = $anio - 1;
-        }
-        
-        $fechaInicio = $anioInicio . '-04-01';
-        $fechaFin = $fecha;
+        $fechaInicio = $anio . '-01-01';
 
-        // Cuentas principales de resultados (TipoDeCuenta = 'P', formato XXX.X)
+        // Obtener IDs de fechas
+        $idFechaInicio = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_fecha')
+            ->where('Fecha', $fechaInicio)
+            ->value('IdFecha');
+
+        $idFechaFin = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_fecha')
+            ->where('Fecha', $fecha)
+            ->value('IdFecha');
+
+        if (!$idFechaInicio || !$idFechaFin) {
+            return response()->json(['error' => 'Fechas no encontradas en la tabla todos_fecha'], 404);
+        }
+
+        // =============================================
+        // 1. OBTENER CUENTAS PRINCIPALES (___._)
+        // =============================================
         $cuentasPrincipales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_cuenta')
             ->where('IdCliente', $clienteId)
@@ -76,12 +84,16 @@ class EstadoResultadosA3Controller extends Controller
             ->orderBy('Cuenta')
             ->get();
 
+        $totalResultadosA3Deducible = 0;
+        $totalResultadosA3NoDeducible = 0;
         $resultados = [];
-        $totalDeducibleGeneral = 0;
-        $totalNoDeducibleGeneral = 0;
 
         foreach ($cuentasPrincipales as $principal) {
-            // Buscar subcuentas
+            $totalGrupoCuentaDeducible = 0;
+            $totalGrupoCuentaNoDeducible = 0;
+            $detalles = [];
+
+            // Obtener subcuentas (____.__)
             $subcuentas = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_cuenta')
                 ->where('IdCliente', $clienteId)
@@ -89,64 +101,106 @@ class EstadoResultadosA3Controller extends Controller
                 ->orderBy('Cuenta')
                 ->get();
 
-            $totalGrupoDeducible = 0;
-            $totalGrupoNoDeducible = 0;
-            $detalles = [];
-
             foreach ($subcuentas as $subcuenta) {
-                // Calcular saldo DEDUCIBLE
-                $saldoDeducible = $this->calcularSaldoCuenta($subcuenta->IdCuenta, $sucursalId, $fechaInicio, $fechaFin, $clienteId, null);
-                if (floatval($subcuenta->Cuenta) >= 40000) {
-                    $saldoDeducible = $saldoDeducible * -1;
+                $cuentaAux = $subcuenta->Cuenta;
+                
+                // =============================================
+                // CALCULAR TOTAL DEDUCIBLE (D_H = 'D' - 'H')
+                // =============================================
+                $totalDebeCuentaDeducible = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario as d')
+                    ->join('conta_diario_propiamente as dp', 'd.IdDiario', '=', 'dp.IdDiario')
+                    ->join('conta_cuenta as c', 'dp.IdCuenta', '=', 'c.IdCuenta')
+                    ->where('d.IdCliente', $clienteId)
+                    ->where('d.IdSucursal', $sucursalId)
+                    ->whereBetween('d.IdFecha', [$idFechaInicio, $idFechaFin])
+                    ->where('c.Cuenta', 'like', $cuentaAux)
+                    ->where('dp.D_H', 'D')
+                    ->sum('dp.MontoBolivianos') ?? 0;
+
+                $totalHaberCuentaDeducible = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_diario as d')
+                    ->join('conta_diario_propiamente as dp', 'd.IdDiario', '=', 'dp.IdDiario')
+                    ->join('conta_cuenta as c', 'dp.IdCuenta', '=', 'c.IdCuenta')
+                    ->where('d.IdCliente', $clienteId)
+                    ->where('d.IdSucursal', $sucursalId)
+                    ->whereBetween('d.IdFecha', [$idFechaInicio, $idFechaFin])
+                    ->where('c.Cuenta', 'like', $cuentaAux)
+                    ->where('dp.D_H', 'H')
+                    ->sum('dp.MontoBolivianos') ?? 0;
+
+                $totalCuentaDeducible = ($totalDebeCuentaDeducible - $totalHaberCuentaDeducible) * -1;
+
+                // =============================================
+                // CALCULAR NO DEDUCIBLE (SOLO PARA GASTOS)
+                // =============================================
+                $totalCuentaNoDeducible = 0;
+
+                // Verificar si es cuenta de gasto (> 4__.___)
+                if (floatval($cuentaAux) > 40000) {
+                    $totalDebeCuentaNoDeducible = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('conta_diario as d')
+                        ->join('conta_diario_propiamente as dp', 'd.IdDiario', '=', 'dp.IdDiario')
+                        ->join('conta_cuenta as c', 'dp.IdCuenta', '=', 'c.IdCuenta')
+                        ->where('d.IdCliente', $clienteId)
+                        ->where('d.IdSucursal', $sucursalId)
+                        ->whereBetween('d.IdFecha', [$idFechaInicio, $idFechaFin])
+                        ->where('c.Cuenta', 'like', $cuentaAux)
+                        ->where('dp.D_H', 'D')
+                        ->where('dp.Deducible', 'N')
+                        ->sum('dp.MontoBolivianos') ?? 0;
+
+                    $totalHaberCuentaNoDeducible = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('conta_diario as d')
+                        ->join('conta_diario_propiamente as dp', 'd.IdDiario', '=', 'dp.IdDiario')
+                        ->join('conta_cuenta as c', 'dp.IdCuenta', '=', 'c.IdCuenta')
+                        ->where('d.IdCliente', $clienteId)
+                        ->where('d.IdSucursal', $sucursalId)
+                        ->whereBetween('d.IdFecha', [$idFechaInicio, $idFechaFin])
+                        ->where('c.Cuenta', 'like', $cuentaAux)
+                        ->where('dp.D_H', 'H')
+                        ->where('dp.Deducible', 'N')
+                        ->sum('dp.MontoBolivianos') ?? 0;
+
+                    $totalCuentaNoDeducible = ($totalDebeCuentaNoDeducible - $totalHaberCuentaNoDeducible) * -1;
                 }
 
-                // Calcular saldo NO DEDUCIBLE
-                $saldoNoDeducible = $this->calcularSaldoCuenta($subcuenta->IdCuenta, $sucursalId, $fechaInicio, $fechaFin, $clienteId, 'N');
-                if (floatval($subcuenta->Cuenta) >= 40000) {
-                    $saldoNoDeducible = $saldoNoDeducible * -1;
-                }
+                // Acumular totales del grupo
+                $totalGrupoCuentaDeducible += $totalCuentaDeducible;
+                $totalGrupoCuentaNoDeducible += $totalCuentaNoDeducible;
 
-                if ($saldoDeducible != 0 || $saldoNoDeducible != 0) {
+                // Guardar detalle si tiene movimiento
+                if ($totalCuentaDeducible != 0 || $totalCuentaNoDeducible != 0) {
                     $detalles[] = [
-                        'cuenta' => $subcuenta->Cuenta,
+                        'cuenta' => $cuentaAux,
                         'descripcion' => $subcuenta->Descripcion,
-                        'saldo_deducible' => abs($saldoDeducible),
-                        'd_h_deducible' => $saldoDeducible < 0 ? 'D' : ($saldoDeducible > 0 ? 'H' : ''),
-                        'saldo_no_deducible' => abs($saldoNoDeducible),
-                        'd_h_no_deducible' => $saldoNoDeducible < 0 ? 'D' : ($saldoNoDeducible > 0 ? 'H' : ''),
+                        'saldo_deducible' => $totalCuentaDeducible,
+                        'saldo_no_deducible' => $totalCuentaNoDeducible,
                     ];
-                    $totalGrupoDeducible += $saldoDeducible;
-                    $totalGrupoNoDeducible += $saldoNoDeducible;
                 }
             }
 
-            if ($totalGrupoDeducible != 0 || $totalGrupoNoDeducible != 0 || count($detalles) > 0) {
+            // Totales por grupo
+            $totalResultadosA3Deducible += $totalGrupoCuentaDeducible;
+            $totalResultadosA3NoDeducible += $totalGrupoCuentaNoDeducible;
+
+            if ($totalGrupoCuentaDeducible != 0 || $totalGrupoCuentaNoDeducible != 0 || count($detalles) > 0) {
                 $resultados[] = [
                     'cuenta_principal' => $principal->Cuenta,
                     'descripcion' => $principal->Descripcion,
-                    'total_deducible' => abs($totalGrupoDeducible),
-                    'd_h_deducible' => $totalGrupoDeducible < 0 ? 'D' : ($totalGrupoDeducible > 0 ? 'H' : ''),
-                    'total_no_deducible' => abs($totalGrupoNoDeducible),
-                    'd_h_no_deducible' => $totalGrupoNoDeducible < 0 ? 'D' : ($totalGrupoNoDeducible > 0 ? 'H' : ''),
                     'detalles' => $detalles,
+                    'total_deducible' => $totalGrupoCuentaDeducible,
+                    'total_no_deducible' => $totalGrupoCuentaNoDeducible,
                 ];
-                $totalDeducibleGeneral += $totalGrupoDeducible;
-                $totalNoDeducibleGeneral += $totalGrupoNoDeducible;
             }
         }
 
-        // Totales generales
-        $totalResultado = $totalDeducibleGeneral - $totalNoDeducibleGeneral;
-        $totalResultadoFinal = abs($totalResultado);
-        $d_h_total = $totalResultado > 0 ? 'H' : ($totalResultado < 0 ? 'D' : '');
-        
-        // Cálculo IUE (25% solo si hay ganancia)
-        $iue = 0;
-        if ($totalResultado > 0) {
-            $iue = $totalResultado * 0.25;
-        }
+        // Generar PDF
+        $this->generarPDF($empresa, $sucursal, $fechaInicio, $fecha, $resultados, $totalResultadosA3Deducible, $totalResultadosA3NoDeducible);
+    }
 
-        // Generar PDF con TCPDF
+    private function generarPDF($empresa, $sucursal, $fechaInicio, $fechaFin, $resultados, $totalDeducible, $totalNoDeducible)
+    {
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
@@ -154,7 +208,9 @@ class EstadoResultadosA3Controller extends Controller
         $pdf->AddPage();
         $pdf->SetFont('courier', '', 9);
 
-        // Encabezado
+        // =============================================
+        // ENCABEZADO
+        // =============================================
         $pdf->SetXY(20, 7);
         $pdf->SetFont('courier', 'B', 10);
         $pdf->Cell(10, 3, $empresa->Nombre ?? 'EMPRESA', 0, 1, 'L');
@@ -171,133 +227,180 @@ class EstadoResultadosA3Controller extends Controller
         $pdf->SetFont('courier', '', 9);
         $pdf->Cell(32, 3, "Del " . date('d/m/Y', strtotime($fechaInicio)) . " al " . date('d/m/Y', strtotime($fechaFin)), 0, 1, 'C');
 
-        // Cabecera de tabla
+        // =============================================
+        // CABECERA DE TABLA
+        // =============================================
         $y = 32;
         $pdf->SetXY(15, $y);
-        $pdf->SetFont('courier', 'U', 8);
+        $pdf->SetFont('courier', 'U', 10);
         $pdf->Cell(20, 5, 'Cuenta', 0, 0, 'L');
-        $pdf->Cell(50, 5, 'Descripcion', 0, 0, 'L');
-        $pdf->Cell(30, 5, 'Deducible (Bs)', 0, 0, 'R');
+        $pdf->Cell(70, 5, 'Descripcion', 0, 0, 'L');
+        $pdf->Cell(35, 5, 'Resultados', 0, 0, 'R');
         $pdf->Cell(10, 5, 'D/H', 0, 0, 'C');
-        $pdf->Cell(30, 5, 'No Deducible (Bs)', 0, 0, 'R');
+        $pdf->Cell(35, 5, 'No Deducible', 0, 0, 'R');
         $pdf->Cell(10, 5, 'D/H', 0, 0, 'C');
 
         $y = 38;
         $pdf->SetXY(15, $y);
-        $pdf->Cell(170, 2, '---------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->Cell(180, 2, '------------------------------------------------------------------------------------------------------------------------------------', 0, 1, 'L');
 
         $y = 42;
-        
-        foreach ($resultados as $grupo) {
-            if ($y > 250) {
-                $pdf->AddPage();
-                $y = 20;
-            }
+        $pdf->SetFont('courier', '', 9);
 
-            // Subcuentas
+        // =============================================
+        // CUERPO DEL REPORTE
+        // =============================================
+        foreach ($resultados as $grupo) {
             foreach ($grupo['detalles'] as $detalle) {
-                $pdf->SetXY(20, $y);
-                $pdf->SetFont('courier', '', 8);
-                $pdf->Cell(15, 4, $detalle['cuenta'], 0, 0, 'L');
-                $pdf->Cell(45, 4, $detalle['descripcion'], 0, 0, 'L');
-                $pdf->Cell(30, 4, number_format($detalle['saldo_deducible'], 2, ',', '.'), 0, 0, 'R');
-                $pdf->Cell(10, 4, $detalle['d_h_deducible'], 0, 0, 'C');
-                $pdf->Cell(30, 4, number_format($detalle['saldo_no_deducible'], 2, ',', '.'), 0, 0, 'R');
-                $pdf->Cell(10, 4, $detalle['d_h_no_deducible'], 0, 0, 'C');
+                if ($y > 250) {
+                    $pdf->AddPage();
+                    $y = 20;
+                    // Reimprimir cabecera
+                    $pdf->SetXY(15, $y);
+                    $pdf->SetFont('courier', 'U', 10);
+                    $pdf->Cell(20, 5, 'Cuenta', 0, 0, 'L');
+                    $pdf->Cell(70, 5, 'Descripcion', 0, 0, 'L');
+                    $pdf->Cell(35, 5, 'Resultados', 0, 0, 'R');
+                    $pdf->Cell(10, 5, 'D/H', 0, 0, 'C');
+                    $pdf->Cell(35, 5, 'No Deducible', 0, 0, 'R');
+                    $pdf->Cell(10, 5, 'D/H', 0, 0, 'C');
+                    $y += 6;
+                }
+
+                // Fila de detalle
+                $pdf->SetXY(16, $y);
+                $pdf->SetFont('courier', '', 9);
+                $pdf->Cell(16, 4, $detalle['cuenta'], 0, 0, 'L');
+                $pdf->Cell(50, 4, $detalle['descripcion'], 0, 0, 'L');
+                
+                // Deducible
+                $dHded = $detalle['saldo_deducible'] < 0 ? 'D' : ($detalle['saldo_deducible'] > 0 ? 'H' : '');
+                $pdf->Cell(35, 4, number_format(abs($detalle['saldo_deducible']), 2, '.', ''), 0, 0, 'R');
+                $pdf->Cell(10, 4, $dHded, 0, 0, 'C');
+                
+                // No Deducible
+                $dHnod = $detalle['saldo_no_deducible'] < 0 ? 'D' : ($detalle['saldo_no_deducible'] > 0 ? 'H' : '');
+                $pdf->Cell(35, 4, number_format(abs($detalle['saldo_no_deducible']), 2, '.', ''), 0, 0, 'R');
+                $pdf->Cell(10, 4, $dHnod, 0, 0, 'C');
                 $y += 4;
             }
 
             // Total del grupo
             if ($grupo['total_deducible'] != 0 || $grupo['total_no_deducible'] != 0) {
                 $y += 2;
-                $pdf->SetXY(35, $y);
-                $pdf->SetFont('courier', 'B', 8);
-                $pdf->Cell(30, 4, 'Total', 0, 0, 'L');
-                $pdf->Cell(30, 4, $grupo['descripcion'], 0, 0, 'L');
-                $pdf->Cell(30, 4, number_format($grupo['total_deducible'], 2, ',', '.'), 0, 0, 'R');
-                $pdf->Cell(10, 4, $grupo['d_h_deducible'], 0, 0, 'C');
-                $pdf->Cell(30, 4, number_format($grupo['total_no_deducible'], 2, ',', '.'), 0, 0, 'R');
-                $pdf->Cell(10, 4, $grupo['d_h_no_deducible'], 0, 0, 'C');
+                
+                // Línea separadora
+                $pdf->SetXY(30, $y);
+                $pdf->Cell(100, 2, '----------------------------------------------------------------------', 0, 1, 'L');
+                $y += 2;
+                
+                // Total
+                $pdf->SetXY(40, $y);
+                $pdf->SetFont('courier', 'B', 9);
+                $pdf->Cell(10, 4, 'Total', 0, 0, 'L');
+                $pdf->Cell(40, 4, $grupo['descripcion'], 0, 0, 'L');
+                
+                $dHded = $grupo['total_deducible'] < 0 ? 'D' : ($grupo['total_deducible'] > 0 ? 'H' : '');
+                $pdf->Cell(35, 4, number_format(abs($grupo['total_deducible']), 2, '.', ''), 0, 0, 'R');
+                $pdf->Cell(10, 4, $dHded, 0, 0, 'C');
+                
+                $dHnod = $grupo['total_no_deducible'] < 0 ? 'D' : ($grupo['total_no_deducible'] > 0 ? 'H' : '');
+                $pdf->Cell(35, 4, number_format(abs($grupo['total_no_deducible']), 2, '.', ''), 0, 0, 'R');
+                $pdf->Cell(10, 4, $dHnod, 0, 0, 'C');
                 $y += 4;
                 
-                $pdf->SetXY(35, $y);
-                $pdf->Cell(30, 2, '------------------------------------------------------------', 0, 1, 'L');
+                // Línea separadora
+                $pdf->SetXY(30, $y);
+                $pdf->Cell(100, 2, '----------------------------------------------------------------------', 0, 1, 'L');
                 $y += 3;
             }
         }
 
-        // Totales generales
+        // =============================================
+        // TOTAL GENERAL
+        // =============================================
         $y += 4;
-        $pdf->SetXY(65, $y);
-        $pdf->SetFont('courier', 'B', 9);
+        $pdf->SetXY(60, $y);
+        $pdf->SetFont('courier', 'B', 10);
         $pdf->Cell(20, 5, 'TOTAL RESULTADO', 0, 0, 'L');
-        $pdf->Cell(30, 5, number_format($totalDeducibleGeneral, 2, ',', '.'), 0, 0, 'R');
-        $pdf->Cell(10, 5, $d_h_total, 0, 0, 'C');
-        $pdf->Cell(30, 5, number_format($totalNoDeducibleGeneral, 2, ',', '.'), 0, 0, 'R');
+        
+        $dHtotal = $totalDeducible < 0 ? 'D' : ($totalDeducible > 0 ? 'H' : '');
+        $pdf->Cell(50, 5, number_format(abs($totalDeducible), 2, '.', ''), 0, 0, 'R');
+        $pdf->Cell(10, 5, $dHtotal, 0, 0, 'C');
+        $pdf->Cell(35, 5, number_format(abs($totalNoDeducible), 2, '.', ''), 0, 0, 'R');
         $pdf->Cell(10, 5, '', 0, 0, 'C');
 
-        // Sección IUE (si hay ganancia)
-        if ($totalResultado > 0) {
-            $y += 8;
-            $pdf->SetXY(35, $y);
-            $pdf->SetFont('courier', 'B', 8);
-            $pdf->Cell(30, 4, 'RESUMEN PARA EL I.U.E.', 0, 1, 'L');
+        // Líneas separadoras
+        $y += 4;
+        $pdf->SetXY(30, $y);
+        $pdf->Cell(100, 2, '----------------------------------------------------------------------', 0, 1, 'L');
+        $y += 2;
+        $pdf->SetXY(30, $y);
+        $pdf->Cell(100, 2, '----------------------------------------------------------------------', 0, 1, 'L');
+
+        // =============================================
+        // RESUMEN PARA IUE
+        // =============================================
+        $y += 10;
+        $totalResultadoResumen = $totalDeducible + abs($totalNoDeducible);
+
+        if ($totalResultadoResumen > 0) {
+            $pdf->SetXY(55, $y);
+            $pdf->SetFont('courier', 'B', 10);
+            $pdf->Cell(20, 5, 'RESUMEN PARA EL I.U.E.', 0, 1, 'L');
+            
+            $y += 4;
+            $pdf->SetXY(55, $y);
+            $pdf->Cell(50, 2, '-------------------', 0, 1, 'L');
+            
+            $y += 6;
+            $pdf->SetXY(30, $y);
+            $pdf->SetFont('courier', '', 9);
+            $pdf->Cell(35, 4, 'Total : Resultados', 0, 0, 'L');
+            $pdf->Cell(90, 4, number_format($totalDeducible, 2, '.', ''), 0, 0, 'R');
             
             $y += 5;
-            $pdf->SetXY(35, $y);
-            $pdf->SetFont('courier', '', 8);
-            $pdf->Cell(40, 4, 'Total Resultados', 0, 0, 'L');
-            $pdf->Cell(80, 4, number_format($totalDeducibleGeneral, 2, ',', '.'), 0, 0, 'R');
+            $pdf->SetXY(30, $y);
+            $pdf->Cell(35, 4, 'Mas  : Gasto no deducible', 0, 0, 'L');
+            $pdf->Cell(90, 4, number_format(($totalNoDeducible * -1), 2, '.', ''), 0, 0, 'R');
+            
+            $y += 3;
+            $pdf->SetXY(115, $y);
+            $pdf->Cell(30, 2, '------------', 0, 1, 'L');
             
             $y += 5;
-            $pdf->SetXY(35, $y);
-            $pdf->Cell(40, 4, 'Mas: Gastos no deducibles', 0, 0, 'L');
-            $pdf->Cell(80, 4, number_format($totalNoDeducibleGeneral, 2, ',', '.'), 0, 0, 'R');
+            $pdf->SetXY(30, $y);
+            $pdf->Cell(35, 4, 'Igual : Resultado Impuestos', 0, 0, 'L');
+            $montoParaIUE = ($totalNoDeducible * -1) + $totalDeducible;
+            $pdf->Cell(90, 4, number_format($montoParaIUE, 2, '.', ''), 0, 0, 'R');
+            
+            $y += 3;
+            $pdf->SetXY(115, $y);
+            $pdf->Cell(30, 2, '------------', 0, 1, 'L');
             
             $y += 5;
-            $pdf->SetXY(35, $y);
-            $pdf->Cell(40, 4, 'Igual: Resultado Impuestos', 0, 0, 'L');
-            $pdf->Cell(80, 4, number_format($totalResultado, 2, ',', '.'), 0, 0, 'R');
+            $pdf->SetXY(30, $y);
+            $pdf->Cell(35, 4, 'I.U.E. 25%', 0, 0, 'L');
+            $iueGestion = $montoParaIUE * 0.25;
+            $pdf->Cell(90, 4, number_format($iueGestion, 2, '.', ''), 0, 0, 'R');
             
             $y += 5;
-            $pdf->SetXY(35, $y);
-            $pdf->Cell(40, 4, 'I.U.E. 25%', 0, 0, 'L');
-            $pdf->Cell(80, 4, number_format($iue, 2, ',', '.'), 0, 0, 'R');
+            $pdf->SetXY(115, $y);
+            $pdf->Cell(30, 2, '============', 0, 1, 'L');
         } else {
-            $y += 10;
-            $pdf->SetXY(45, $y);
-            $pdf->SetFont('courier', 'B', 9);
+            $pdf->SetXY(55, $y);
+            $pdf->SetFont('courier', 'B', 12);
             $pdf->Cell(30, 5, 'PERDIDA - NO PAGA I.U.E.', 0, 1, 'C');
         }
 
-        // Pie de página
+        // =============================================
+        // PIE DE PÁGINA
+        // =============================================
         $pdf->SetXY(15, 270);
         $pdf->SetFont('courier', '', 7);
         $pdf->Cell(170, 3, 'Documento generado el ' . date('d/m/Y H:i:s'), 0, 0, 'C');
 
         $pdf->Output("estado_resultados_a3.pdf", 'I');
         exit;
-    }
-
-    private function calcularSaldoCuenta($idCuenta, $sucursalId, $fechaInicio, $fechaFin, $clienteId, $deducible = null)
-    {
-        $query = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('conta_diario as d')
-            ->join('conta_diario_propiamente as dp', 'd.IdDiario', '=', 'dp.IdDiario')
-            ->join('todos_fecha as f', 'd.IdFecha', '=', 'f.IdFecha')
-            ->where('d.IdCliente', $clienteId)
-            ->where('d.IdSucursal', $sucursalId)
-            ->where('f.Fecha', '>=', $fechaInicio)
-            ->where('f.Fecha', '<=', $fechaFin)
-            ->where('dp.IdCuenta', $idCuenta);
-
-        if ($deducible !== null) {
-            $query->where('dp.Deducible', $deducible);
-        }
-
-        $totalDebe = (clone $query)->where('dp.D_H', 'D')->sum('dp.MontoBolivianos');
-        $totalHaber = (clone $query)->where('dp.D_H', 'H')->sum('dp.MontoBolivianos');
-
-        return ($totalDebe ?? 0) - ($totalHaber ?? 0);
     }
 }

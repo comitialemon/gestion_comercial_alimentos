@@ -32,7 +32,7 @@ onUnmounted(() => {
 const abrirPdfDiario = (egreso) => {
     if (egreso.IdDiario && egreso.IdDiario > 0) {
         // Construir URL del PDF del diario
-        window.open(`/gestion/imprimir-diario/pdf/${egreso.IdDiario}`, '_blank')
+        window.open(`/gestion/contabilidad/imprimir-diario/pdf/${egreso.IdDiario}`, '_blank')
     } else {
         // Mostrar mensaje si no tiene diario
         const toast = document.createElement('div')

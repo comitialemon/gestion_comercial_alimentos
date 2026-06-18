@@ -1,7 +1,7 @@
+<!-- resources/js/Pages/Gestion/Impuestos/LugarVenta/Index.vue -->
 <script setup>
-import { ref, computed, onMounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { router, Link, usePage } from '@inertiajs/vue3'
-import axios from 'axios'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 defineOptions({ layout: AppLayout })
@@ -14,334 +14,181 @@ const props = defineProps({
         type: Object,
         default: () => ({ data: [], links: [], from: null, to: null, total: 0 })
     },
-    empresas: {
-        type: Array,
-        default: () => []
-    },
     sucursales: {
         type: Array,
         default: () => []
     },
-    filtros: {
+    sucursalSeleccionada: {
+        type: Number,
+        default: null
+    },
+    contexto_actual: {
         type: Object,
         default: () => ({})
     }
 })
 
-// ==================== ESTADO DEL FORMULARIO ====================
+// ==================== ESTADO ====================
+const sucursalId = ref(props.sucursalSeleccionada || '')
+const busquedaSucursal = ref('')
+const mostrarDropdown = ref(false)
 const editando = ref(false)
 const editId = ref(null)
 const formData = ref({ 
-    IdCliente: '',
-    IdSucursal: '',
-    Lugar: '',
+    sucursal_id: '',
+    Lugar: '', 
     Orden: 0
 })
 const errors = ref({})
 const processing = ref(false)
 
-// ==================== BUSCADORES PARA EL FORMULARIO ====================
-// Buscador de Empresa (formulario)
-const busquedaEmpresa = ref('')
-const mostrarDropdownEmpresa = ref(false)
+// 🔥 EXPANDIR/CONTRAER POR SUCURSAL
+const expandedSucursales = ref({})
 
-// Buscador de Sucursal (formulario)
-const busquedaSucursal = ref('')
-const mostrarDropdownSucursal = ref(false)
-const sucursalesDisponibles = ref([])
-
-// ==================== FILTROS (con buscadores) ====================
-// Filtro de Empresa (con buscador)
-const busquedaEmpresaFiltro = ref('')
-const mostrarDropdownEmpresaFiltro = ref(false)
-const clienteIdFiltro = ref(props.filtros?.cliente_id || '')
-
-// Filtro de Sucursal (con buscador)
-const busquedaSucursalFiltro = ref('')
-const mostrarDropdownSucursalFiltro = ref(false)
-const sucursalIdFiltro = ref(props.filtros?.sucursal_id || '')
-const sucursalesFiltro = ref([])
-
-// ==================== MODAL DE ELIMINACIÓN ====================
+// Modal de eliminación
 const modalEliminarOpen = ref(false)
 const eliminarId = ref(null)
 const eliminarNombre = ref('')
 const eliminando = ref(false)
 
-// ==================== COMPUTED PARA FILTRAR EN TIEMPO REAL ====================
-// Empresas filtradas para el FORMULARIO
-const empresasFiltradas = computed(() => {
-    if (!busquedaEmpresa.value) return props.empresas || []
-    const termino = busquedaEmpresa.value.toLowerCase()
-    return (props.empresas || []).filter(e => 
-        e.nombre?.toLowerCase().includes(termino)
-    )
-})
-
-// Empresas filtradas para el FILTRO
-const empresasFiltradasFiltro = computed(() => {
-    if (!busquedaEmpresaFiltro.value) return props.empresas || []
-    const termino = busquedaEmpresaFiltro.value.toLowerCase()
-    return (props.empresas || []).filter(e => 
-        e.nombre?.toLowerCase().includes(termino)
-    )
-})
-
-// Sucursales filtradas para el FORMULARIO
-const sucursalesFormFiltradas = computed(() => {
-    if (!busquedaSucursal.value) return sucursalesDisponibles.value || []
+// ==================== COMPUTED ====================
+const sucursalesFiltradas = computed(() => {
+    if (!busquedaSucursal.value) return props.sucursales || []
     const termino = busquedaSucursal.value.toLowerCase()
-    return (sucursalesDisponibles.value || []).filter(s => 
+    return (props.sucursales || []).filter(s => 
         s.nombre?.toLowerCase().includes(termino) || 
         s.numero?.toString().includes(termino)
     )
 })
 
-// Sucursales filtradas para el FILTRO
-const sucursalesFiltroFiltradas = computed(() => {
-    if (!busquedaSucursalFiltro.value) return sucursalesFiltro.value || []
-    const termino = busquedaSucursalFiltro.value.toLowerCase()
-    return (sucursalesFiltro.value || []).filter(s => 
-        s.nombre?.toLowerCase().includes(termino) || 
-        s.numero?.toString().includes(termino)
-    )
-})
-
-// Texto de la empresa seleccionada en el formulario
-const empresaSeleccionadaTexto = computed(() => {
-    const emp = (props.empresas || []).find(e => e.id === formData.value.IdCliente)
-    return emp ? emp.nombre : ''
-})
-
-// Texto de la empresa seleccionada en el filtro
-const empresaSeleccionadaFiltroTexto = computed(() => {
-    const emp = (props.empresas || []).find(e => e.id === clienteIdFiltro.value)
-    return emp ? emp.nombre : ''
-})
-
-// Texto de la sucursal seleccionada en el filtro
-const sucursalSeleccionadaFiltroTexto = computed(() => {
-    const suc = sucursalesFiltro.value.find(s => s.id === sucursalIdFiltro.value)
-    return suc ? `${suc.nombre} ${suc.numero ? `(N° ${suc.numero})` : ''}` : ''
-})
-
-// ==================== FUNCIONES DEL FORMULARIO ====================
-// Cargar sucursales cuando cambia la empresa en el formulario
-const cargarSucursalesForm = async (clienteId) => {
-    if (!clienteId) {
-        sucursalesDisponibles.value = []
-        formData.value.IdSucursal = ''
-        busquedaSucursal.value = ''
-        return
-    }
+// 🔥 AGRUPAR LUGARES POR SUCURSAL
+const lugaresAgrupados = computed(() => {
+    const grupos = {}
     
-    try {
-        const response = await axios.get(`/gestion/lugar-venta/sucursales/${clienteId}`)
-        sucursalesDisponibles.value = response.data
-        formData.value.IdSucursal = ''
-        busquedaSucursal.value = ''
-    } catch (error) {
-        console.error('Error cargando sucursales:', error)
-        sucursalesDisponibles.value = []
-    }
+    props.lugares.data.forEach(item => {
+        const sucursalId = item.IdSucursal
+        const sucursalNombre = item.sucursal?.Nombre || 'Sin sucursal'
+        const sucursalNumero = item.sucursal?.NumeroSucursal
+        
+        if (!grupos[sucursalId]) {
+            grupos[sucursalId] = {
+                id: sucursalId,
+                nombre: sucursalNombre,
+                numero: sucursalNumero,
+                items: [],
+                // Inicializar expandido (por defecto cerrado si hay más de 1 sucursal)
+                expanded: expandedSucursales.value[sucursalId] ?? false
+            }
+        }
+        grupos[sucursalId].items.push(item)
+    })
+    
+    // Ordenar por nombre de sucursal
+    return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre))
+})
+
+// ==================== FUNCIONES ====================
+const cerrarDropdown = () => {
+    setTimeout(() => {
+        mostrarDropdown.value = false
+    }, 200)
 }
 
-// Seleccionar empresa en el formulario
-const seleccionarEmpresa = (empresa) => {
-    formData.value.IdCliente = empresa.id
-    busquedaEmpresa.value = empresa.nombre
-    mostrarDropdownEmpresa.value = false
-    cargarSucursalesForm(empresa.id)
-}
-
-// Seleccionar sucursal en el formulario
 const seleccionarSucursal = (sucursal) => {
-    formData.value.IdSucursal = sucursal.id
+    sucursalId.value = sucursal.id
     busquedaSucursal.value = `${sucursal.nombre} ${sucursal.numero ? `(N° ${sucursal.numero})` : ''}`
-    mostrarDropdownSucursal.value = false
-}
-
-// Limpiar empresa en formulario
-const limpiarEmpresa = () => {
-    if (editando.value) return
-    busquedaEmpresa.value = ''
-    formData.value.IdCliente = ''
-    sucursalesDisponibles.value = []
-    formData.value.IdSucursal = ''
-    busquedaSucursal.value = ''
-}
-
-// Limpiar sucursal en formulario
-const limpiarSucursal = () => {
-    formData.value.IdSucursal = ''
-    busquedaSucursal.value = ''
-}
-
-// Cerrar dropdowns del formulario
-const cerrarDropdownEmpresa = () => {
-    setTimeout(() => {
-        mostrarDropdownEmpresa.value = false
-    }, 200)
-}
-
-const cerrarDropdownSucursal = () => {
-    setTimeout(() => {
-        mostrarDropdownSucursal.value = false
-    }, 200)
-}
-
-// ==================== FUNCIONES DE FILTROS ====================
-// Cargar sucursales para el FILTRO
-const cargarSucursalesFiltro = async (id) => {
-    if (!id) {
-        sucursalesFiltro.value = []
-        sucursalIdFiltro.value = ''
-        busquedaSucursalFiltro.value = ''
-        return
-    }
+    mostrarDropdown.value = false
+    formData.value.sucursal_id = sucursal.id
     
-    try {
-        const response = await axios.get(`/gestion/lugar-venta/sucursales/${id}`)
-        sucursalesFiltro.value = response.data
-        sucursalIdFiltro.value = ''
-        busquedaSucursalFiltro.value = ''
-    } catch (error) {
-        console.error('Error cargando sucursales:', error)
-        sucursalesFiltro.value = []
+    router.get('/gestion/lugar-venta', { sucursal_id: sucursal.id }, {
+        preserveState: true,
+        replace: true,
+    })
+}
+
+const seleccionarTodas = () => {
+    sucursalId.value = ''
+    busquedaSucursal.value = 'Todas las sucursales'
+    mostrarDropdown.value = false
+    formData.value.sucursal_id = ''
+    
+    router.get('/gestion/lugar-venta', {}, {
+        preserveState: true,
+        replace: true,
+    })
+}
+
+// 🔥 TOGGLE EXPANDIR/CONTRAER
+const toggleExpandir = (sucursalId) => {
+    if (expandedSucursales.value[sucursalId] === undefined) {
+        expandedSucursales.value[sucursalId] = false
     }
+    expandedSucursales.value[sucursalId] = !expandedSucursales.value[sucursalId]
+    
+    // Guardar en localStorage para mantener estado
+    localStorage.setItem('lugar_venta_expanded', JSON.stringify(expandedSucursales.value))
 }
 
-// Seleccionar empresa en el filtro
-const seleccionarEmpresaFiltro = (empresa) => {
-    clienteIdFiltro.value = empresa.id
-    busquedaEmpresaFiltro.value = empresa.nombre
-    mostrarDropdownEmpresaFiltro.value = false
-    cargarSucursalesFiltro(empresa.id)
+const expandirTodos = () => {
+    lugaresAgrupados.value.forEach(grupo => {
+        expandedSucursales.value[grupo.id] = true
+    })
+    localStorage.setItem('lugar_venta_expanded', JSON.stringify(expandedSucursales.value))
 }
 
-// Seleccionar sucursal en el filtro
-const seleccionarSucursalFiltro = (sucursal) => {
-    sucursalIdFiltro.value = sucursal.id
-    busquedaSucursalFiltro.value = `${sucursal.nombre} ${sucursal.numero ? `(N° ${sucursal.numero})` : ''}`
-    mostrarDropdownSucursalFiltro.value = false
+const contraerTodos = () => {
+    lugaresAgrupados.value.forEach(grupo => {
+        expandedSucursales.value[grupo.id] = false
+    })
+    localStorage.setItem('lugar_venta_expanded', JSON.stringify(expandedSucursales.value))
 }
 
-// Limpiar empresa en filtro
-const limpiarEmpresaFiltro = () => {
-    clienteIdFiltro.value = ''
-    busquedaEmpresaFiltro.value = ''
-    sucursalesFiltro.value = []
-    sucursalIdFiltro.value = ''
-    busquedaSucursalFiltro.value = ''
-    aplicarFiltros()
-}
-
-// Limpiar sucursal en filtro
-const limpiarSucursalFiltro = () => {
-    sucursalIdFiltro.value = ''
-    busquedaSucursalFiltro.value = ''
-    aplicarFiltros()
-}
-
-// Cerrar dropdowns del filtro
-const cerrarDropdownEmpresaFiltro = () => {
-    setTimeout(() => {
-        mostrarDropdownEmpresaFiltro.value = false
-    }, 200)
-}
-
-const cerrarDropdownSucursalFiltro = () => {
-    setTimeout(() => {
-        mostrarDropdownSucursalFiltro.value = false
-    }, 200)
-}
-
-// Aplicar filtros
-const aplicarFiltros = () => {
-    router.get('/gestion/lugar-venta', {
-        cliente_id: clienteIdFiltro.value || undefined,
-        sucursal_id: sucursalIdFiltro.value || undefined,
-    }, { preserveState: true, replace: true })
-}
-
-// Limpiar todos los filtros
-const limpiarFiltros = () => {
-    clienteIdFiltro.value = ''
-    sucursalIdFiltro.value = ''
-    busquedaEmpresaFiltro.value = ''
-    busquedaSucursalFiltro.value = ''
-    sucursalesFiltro.value = []
-    aplicarFiltros()
+// 🔥 VERIFICAR SI UNA SUCURSAL ESTÁ EXPANDIDA
+const estaExpandida = (sucursalId) => {
+    if (expandedSucursales.value[sucursalId] === undefined) {
+        // Por defecto: la primera sucursal expandida, las demás contraídas
+        const keys = Object.keys(expandedSucursales.value)
+        if (keys.length === 0) {
+            // Si no hay ninguna, expandir la primera
+            return false
+        }
+        return false
+    }
+    return expandedSucursales.value[sucursalId]
 }
 
 // ==================== CRUD ====================
-// Resetear formulario
 const resetForm = () => {
     editando.value = false
     editId.value = null
     formData.value = { 
-        IdCliente: '',
-        IdSucursal: '',
-        Lugar: '',
+        sucursal_id: '',
+        Lugar: '', 
         Orden: 0
     }
-    busquedaEmpresa.value = ''
-    busquedaSucursal.value = ''
-    sucursalesDisponibles.value = []
     errors.value = {}
 }
 
-// Editar
-const editar = async (lugar) => {
+const editar = (item) => {
     editando.value = true
-    editId.value = lugar.IdLugar
+    editId.value = item.IdLugar
     formData.value = {
-        IdCliente: lugar.IdCliente,
-        IdSucursal: lugar.IdSucursal,
-        Lugar: lugar.Lugar,
-        Orden: lugar.Orden
+        sucursal_id: item.IdSucursal,
+        Lugar: item.Lugar,
+        Orden: item.Orden
     }
-    
-    const empresa = (props.empresas || []).find(e => e.id === lugar.IdCliente)
-    if (empresa) {
-        busquedaEmpresa.value = empresa.nombre
+    if (item.IdSucursal) {
+        const suc = (props.sucursales || []).find(s => s.id === item.IdSucursal)
+        if (suc) {
+            busquedaSucursal.value = `${suc.nombre} ${suc.numero ? `(N° ${suc.numero})` : ''}`
+            formData.value.sucursal_id = suc.id
+        }
     }
-    
-    await cargarSucursalesForm(lugar.IdCliente)
-    const sucursal = sucursalesDisponibles.value.find(s => s.id === lugar.IdSucursal)
-    if (sucursal) {
-        busquedaSucursal.value = `${sucursal.nombre} ${sucursal.numero ? `(N° ${sucursal.numero})` : ''}`
-    }
-    
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-// Calcular siguiente orden
-const calcularSiguienteOrden = async () => {
-    if (!formData.value.IdCliente || !formData.value.IdSucursal) return 0
-    
-    try {
-        const response = await axios.get(`/gestion/lugar-venta/max-orden`, {
-            params: {
-                cliente_id: formData.value.IdCliente,
-                sucursal_id: formData.value.IdSucursal
-            }
-        })
-        return (response.data.max_orden || 0) + 1
-    } catch (error) {
-        console.error('Error calculando orden:', error)
-        return 0
-    }
-}
-
-// Guardar
 const guardar = async () => {
-    if (!formData.value.IdCliente) {
-        toast?.error('Validación', 'Seleccione una empresa')
-        return
-    }
-    
-    if (!formData.value.IdSucursal) {
+    if (!formData.value.sucursal_id) {
         toast?.error('Validación', 'Seleccione una sucursal')
         return
     }
@@ -353,16 +200,10 @@ const guardar = async () => {
     
     processing.value = true
     
-    let orden = formData.value.Orden
-    if (!editando.value && (orden === 0 || orden === null)) {
-        orden = await calcularSiguienteOrden()
-    }
-    
     const datos = {
-        IdCliente: formData.value.IdCliente,
-        IdSucursal: formData.value.IdSucursal,
+        sucursal_id: formData.value.sucursal_id,
         Lugar: formData.value.Lugar,
-        Orden: orden
+        Orden: formData.value.Orden || null
     }
     
     try {
@@ -394,7 +235,6 @@ const guardar = async () => {
     }
 }
 
-// Abrir modal de eliminación
 const abrirModalEliminar = (id, nombre) => {
     eliminarId.value = id
     eliminarNombre.value = nombre
@@ -444,21 +284,24 @@ onMounted(() => {
         setTimeout(() => sessionStorage.removeItem('last_flash_error'), 500)
     }
     
-    if (clienteIdFiltro.value) {
-        const empresa = props.empresas.find(e => e.id === clienteIdFiltro.value)
-        if (empresa) {
-            busquedaEmpresaFiltro.value = empresa.nombre
+    // 🔥 Recuperar estado de expansión desde localStorage
+    const savedExpanded = localStorage.getItem('lugar_venta_expanded')
+    if (savedExpanded) {
+        try {
+            expandedSucursales.value = JSON.parse(savedExpanded)
+        } catch (e) {
+            expandedSucursales.value = {}
         }
-        cargarSucursalesFiltro(clienteIdFiltro.value)
-        
-        if (sucursalIdFiltro.value) {
-            setTimeout(() => {
-                const sucursal = sucursalesFiltro.value.find(s => s.id === sucursalIdFiltro.value)
-                if (sucursal) {
-                    busquedaSucursalFiltro.value = `${sucursal.nombre} ${sucursal.numero ? `(N° ${sucursal.numero})` : ''}`
-                }
-            }, 500)
+    }
+    
+    if (sucursalId.value) {
+        const suc = (props.sucursales || []).find(s => s.id === sucursalId.value)
+        if (suc) {
+            busquedaSucursal.value = `${suc.nombre} ${suc.numero ? `(N° ${suc.numero})` : ''}`
+            formData.value.sucursal_id = sucursalId.value
         }
+    } else {
+        busquedaSucursal.value = 'Todas las sucursales'
     }
     
     resetForm()
@@ -478,183 +321,55 @@ onMounted(() => {
                         <div>
                             <h1 class="text-base font-bold text-gray-800">Lugares de Venta</h1>
                             <p class="text-[10px] text-gray-500">Administra los puntos de venta físicos o virtuales</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ==================== FILTROS (con buscadores) ==================== -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        <!-- Filtro Empresa con buscador -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Empresa</label>
-                            <div class="relative">
-                                <input 
-                                    type="text"
-                                    v-model="busquedaEmpresaFiltro"
-                                    @focus="mostrarDropdownEmpresaFiltro = true"
-                                    @blur="cerrarDropdownEmpresaFiltro"
-                                    placeholder="Buscar empresa..."
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-8"
-                                >
-                                <button 
-                                    v-if="busquedaEmpresaFiltro"
-                                    @click="limpiarEmpresaFiltro"
-                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    type="button"
-                                >
-                                    <i class="fas fa-times text-xs"></i>
-                                </button>
-                                
-                                <div 
-                                    v-if="mostrarDropdownEmpresaFiltro && empresasFiltradasFiltro.length > 0"
-                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
-                                >
-                                    <div
-                                        v-for="e in empresasFiltradasFiltro"
-                                        :key="e.id"
-                                        @click="seleccionarEmpresaFiltro(e)"
-                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-primary-50': clienteIdFiltro === e.id }"
-                                    >
-                                        {{ e.nombre }}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Filtro Sucursal con buscador -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal</label>
-                            <div class="relative">
-                                <input 
-                                    type="text"
-                                    v-model="busquedaSucursalFiltro"
-                                    @focus="mostrarDropdownSucursalFiltro = true"
-                                    @blur="cerrarDropdownSucursalFiltro"
-                                    placeholder="Buscar sucursal..."
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-8"
-                                    :disabled="!clienteIdFiltro"
-                                >
-                                <button 
-                                    v-if="busquedaSucursalFiltro && clienteIdFiltro"
-                                    @click="limpiarSucursalFiltro"
-                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    type="button"
-                                >
-                                    <i class="fas fa-times text-xs"></i>
-                                </button>
-                                
-                                <div 
-                                    v-if="mostrarDropdownSucursalFiltro && sucursalesFiltroFiltradas.length > 0 && clienteIdFiltro"
-                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
-                                >
-                                    <div
-                                        v-for="s in sucursalesFiltroFiltradas"
-                                        :key="s.id"
-                                        @click="seleccionarSucursalFiltro(s)"
-                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-primary-50': sucursalIdFiltro === s.id }"
-                                    >
-                                        {{ s.nombre }} 
-                                        <span v-if="s.numero" class="text-gray-400 text-[10px]">(N° {{ s.numero }})</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <p v-if="clienteIdFiltro && sucursalesFiltro.length === 0" class="text-[10px] text-gray-400 mt-0.5">
-                                Esta empresa no tiene sucursales
+                            <p v-if="contexto_actual?.cliente_nombre" class="text-[10px] text-primary-600">
+                                <i class="fas fa-building mr-1"></i> {{ contexto_actual.cliente_nombre }}
                             </p>
                         </div>
-
-                        <!-- Botones de filtro (ocupan 2 columnas en móvil, 1 en desktop) -->
-                        <div class="flex gap-2 items-end col-span-1 sm:col-span-2 lg:col-span-1">
-                            <button @click="aplicarFiltros" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition">
-                                <i class="fas fa-search mr-1 text-xs"></i> Filtrar
-                            </button>
-                            <button @click="limpiarFiltros" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm hover:bg-gray-300 transition">
-                                <i class="fas fa-eraser mr-1 text-xs"></i> Limpiar
-                            </button>
-                        </div>
                     </div>
                 </div>
 
-                <!-- ==================== FORMULARIO (TODO EN UNA SOLA LÍNEA) ==================== -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-6 sticky top-2 z-10">
-                    <div class="flex flex-wrap items-end gap-2">
-                        <!-- Campo 1: Empresa -->
-                        <div class="flex-1 min-w-[180px]">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Empresa *</label>
-                            <div class="relative">
-                                <input 
-                                    type="text"
-                                    v-model="busquedaEmpresa"
-                                    @focus="mostrarDropdownEmpresa = true"
-                                    @blur="cerrarDropdownEmpresa"
-                                    placeholder="Buscar empresa..."
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-7"
-                                    :class="{ 'border-red-500': errors.IdCliente, 'bg-gray-100': editando }"
-                                    :disabled="editando"
-                                >
-                                <button 
-                                    v-if="busquedaEmpresa && !editando"
-                                    @click="limpiarEmpresa"
-                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    type="button"
-                                >
-                                    <i class="fas fa-times text-[10px]"></i>
-                                </button>
-                                
-                                <div 
-                                    v-if="mostrarDropdownEmpresa && empresasFiltradas.length > 0 && !editando"
-                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
-                                >
-                                    <div
-                                        v-for="e in empresasFiltradas"
-                                        :key="e.id"
-                                        @click="seleccionarEmpresa(e)"
-                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-primary-50': formData.IdCliente === e.id }"
-                                    >
-                                        {{ e.nombre }}
-                                    </div>
-                                </div>
-                            </div>
-                            <p v-if="editando" class="text-[10px] text-gray-400 mt-0.5">No se puede cambiar en edición</p>
-                        </div>
-
-                        <!-- Campo 2: Sucursal -->
+                <!-- 🔥 UNA SOLA FILA - IGUAL QUE ALMACEN -->
+                <div class="bg-white rounded-lg shadow-sm p-4 mb-6 sticky top-2 z-10 border border-primary-200">
+                    <div class="flex flex-wrap gap-2 items-end">
+                        <!-- Campo 1: Sucursal con buscador -->
                         <div class="flex-1 min-w-[180px]">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal *</label>
                             <div class="relative">
                                 <input 
                                     type="text"
                                     v-model="busquedaSucursal"
-                                    @focus="mostrarDropdownSucursal = true"
-                                    @blur="cerrarDropdownSucursal"
+                                    @focus="mostrarDropdown = true"
+                                    @blur="cerrarDropdown"
                                     placeholder="Buscar sucursal..."
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-7"
-                                    :class="{ 'border-red-500': errors.IdSucursal, 'bg-gray-100': !formData.IdCliente }"
-                                    :disabled="!formData.IdCliente"
+                                    class="w-full border rounded-md px-3 py-2 text-sm pr-8"
+                                    :class="{ 'border-red-500': errors.sucursal_id }"
                                 >
                                 <button 
-                                    v-if="busquedaSucursal && formData.IdCliente"
-                                    @click="limpiarSucursal"
+                                    v-if="busquedaSucursal && busquedaSucursal !== 'Todas las sucursales'"
+                                    @click="busquedaSucursal = ''; sucursalId = ''; formData.sucursal_id = ''"
                                     class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                     type="button"
                                 >
-                                    <i class="fas fa-times text-[10px]"></i>
+                                    <i class="fas fa-times text-xs"></i>
                                 </button>
                                 
                                 <div 
-                                    v-if="mostrarDropdownSucursal && sucursalesFormFiltradas.length > 0 && formData.IdCliente"
+                                    v-if="mostrarDropdown && (sucursalesFiltradas.length > 0 || busquedaSucursal)"
                                     class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
                                 >
                                     <div
-                                        v-for="s in sucursalesFormFiltradas"
+                                        @click="seleccionarTodas()"
+                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b text-sm font-medium text-primary-600"
+                                        :class="{ 'bg-primary-50': sucursalId === '' }"
+                                    >
+                                        <i class="fas fa-store mr-2"></i> Todas las sucursales
+                                    </div>
+                                    <div
+                                        v-for="s in sucursalesFiltradas"
                                         :key="s.id"
                                         @click="seleccionarSucursal(s)"
                                         class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
-                                        :class="{ 'bg-primary-50': formData.IdSucursal === s.id }"
+                                        :class="{ 'bg-primary-50': sucursalId === s.id }"
                                     >
                                         {{ s.nombre }} 
                                         <span v-if="s.numero" class="text-gray-400 text-[10px]">(N° {{ s.numero }})</span>
@@ -663,45 +378,46 @@ onMounted(() => {
                             </div>
                         </div>
 
-                        <!-- Campo 3: Nombre del Lugar (más ancho) -->
-                        <div class="flex-[2] min-w-[200px]">
+                        <!-- Campo 2: Nombre del Lugar -->
+                        <div class="flex-[2] min-w-[180px]">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Nombre del Lugar *</label>
                             <input 
                                 type="text" 
                                 v-model="formData.Lugar" 
-                                placeholder="Ej: Local Central, Terraza, Salón VIP" 
+                                placeholder="Ej: Local Central, Terraza" 
                                 class="w-full border rounded-md px-3 py-2 text-sm"
                                 :class="{ 'border-red-500': errors.Lugar }"
+                                @keyup.enter="guardar"
                                 maxlength="50"
                             />
                         </div>
 
-                        <!-- Campo 4: Orden (más pequeño, sin flechas) -->
+                        <!-- Campo 3: Orden (sin flechas) -->
                         <div class="w-20">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Orden</label>
                             <input 
                                 type="number" 
                                 v-model.number="formData.Orden" 
                                 min="0" 
-                                class="w-full border rounded-md px-2 py-2 text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                 placeholder="0"
+                                class="w-full border rounded-md px-2 py-2 text-sm text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                         </div>
 
-                        <!-- Campo 5: Botón Guardar -->
+                        <!-- Campo 4: Botón Guardar -->
                         <div>
                             <button 
                                 @click="guardar" 
-                                :disabled="processing || !formData.IdCliente || !formData.IdSucursal || !formData.Lugar"
+                                :disabled="processing || !formData.sucursal_id || !formData.Lugar"
                                 class="px-4 py-2 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                             >
                                 <i v-if="processing" class="fas fa-spinner fa-spin text-xs"></i>
-                                <i v-else :class="editando ? 'fas fa-pencil-alt' : 'fas fa-save'" class="text-xs"></i>
-                                {{ processing ? '' : (editando ? 'Actualizar' : 'Guardar') }}
+                                <i v-else :class="editando ? 'fas fa-pencil-alt' : 'fas fa-plus'" class="text-xs"></i>
+                                {{ processing ? 'Procesando...' : (editando ? 'Actualizar' : 'Guardar') }}
                             </button>
                         </div>
 
-                        <!-- Botón Cancelar (solo cuando se edita) -->
+                        <!-- Campo 5: Cancelar -->
                         <div v-if="editando">
                             <button 
                                 @click="resetForm" 
@@ -713,38 +429,77 @@ onMounted(() => {
                     </div>
                 </div>
 
+                <!-- 🔥 BOTONES EXPANDIR/CONTRAER -->
+                <div v-if="lugaresAgrupados.length > 0" class="flex gap-2 mb-4">
+                    <button 
+                        @click="expandirTodos" 
+                        class="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded-md transition flex items-center gap-1"
+                    >
+                        <i class="fas fa-expand text-[10px]"></i> Expandir todos
+                    </button>
+                    <button 
+                        @click="contraerTodos" 
+                        class="px-3 py-1.5 text-xs bg-gray-200 hover:bg-gray-300 rounded-md transition flex items-center gap-1"
+                    >
+                        <i class="fas fa-compress text-[10px]"></i> Contraer todos
+                    </button>
+                    <span class="text-xs text-gray-500 ml-auto flex items-center">
+                        <i class="fas fa-store mr-1"></i> {{ lugaresAgrupados.length }} sucursal(es)
+                    </span>
+                </div>
+
                 <!-- ==================== CARDS PARA MÓVIL ==================== -->
                 <div class="block sm:hidden space-y-3">
-                    <div 
-                        v-for="item in lugares.data" 
-                        :key="item.IdLugar" 
-                        class="bg-white rounded-lg shadow-sm p-4 border border-gray-100"
-                    >
-                        <div class="flex justify-between items-start mb-2">
+                    <!-- Agrupar por sucursal en móvil -->
+                    <div v-for="grupo in lugaresAgrupados" :key="grupo.id" class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                        <!-- Título de sucursal con toggle -->
+                        <div 
+                            @click="toggleExpandir(grupo.id)"
+                            class="flex justify-between items-center p-3 bg-primary-50 cursor-pointer hover:bg-primary-100 transition"
+                        >
                             <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                                    <i class="fas fa-store text-primary-600 text-sm"></i>
-                                </div>
-                                <div>
-                                    <h3 class="font-semibold text-gray-800 text-sm">{{ item.Lugar }}</h3>
-                                    <p class="text-[10px] text-gray-500">{{ item.cliente?.Nombre || '-' }}</p>
-                                    <p class="text-[10px] text-gray-400">{{ item.sucursal?.Nombre || '-' }}</p>
+                                <i class="fas fa-store text-primary-500 text-sm"></i>
+                                <span class="font-semibold text-gray-800 text-sm">{{ grupo.nombre }}</span>
+                                <span v-if="grupo.numero" class="text-[10px] text-gray-400">(N° {{ grupo.numero }})</span>
+                                <span class="text-[10px] text-gray-400 ml-1">({{ grupo.items.length }})</span>
+                            </div>
+                            <i 
+                                class="fas text-primary-500 transition-transform duration-200"
+                                :class="estaExpandida(grupo.id) ? 'fa-chevron-up' : 'fa-chevron-down'"
+                            ></i>
+                        </div>
+                        
+                        <!-- Items de la sucursal -->
+                        <div 
+                            v-show="estaExpandida(grupo.id)"
+                            class="divide-y divide-gray-100"
+                        >
+                            <div 
+                                v-for="item in grupo.items" 
+                                :key="item.IdLugar" 
+                                class="p-3 hover:bg-gray-50"
+                            >
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <p class="text-sm font-medium text-gray-800">{{ item.Lugar }}</p>
+                                        <span class="inline-block mt-1 px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                                            Orden: {{ item.Orden }}
+                                        </span>
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 text-xs" title="Editar">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <button @click="abrirModalEliminar(item.IdLugar, item.Lugar)" class="text-red-600 hover:text-red-800 text-xs" title="Eliminar">
+                                            <i class="fas fa-trash-alt"></i>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
-                            <span class="px-2 py-0.5 text-[9px] rounded-full bg-gray-100 text-gray-600">
-                                Orden: {{ item.Orden }}
-                            </span>
-                        </div>
-                        <div class="flex justify-end gap-3 pt-3 border-t border-gray-100 mt-2">
-                            <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 text-xs flex items-center gap-1">
-                                <i class="fas fa-edit"></i> Editar
-                            </button>
-                            <button @click="abrirModalEliminar(item.IdLugar, item.Lugar)" class="text-red-600 hover:text-red-800 text-xs flex items-center gap-1">
-                                <i class="fas fa-trash-alt"></i> Eliminar
-                            </button>
                         </div>
                     </div>
-                    <div v-if="!lugares.data || lugares.data.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+                    
+                    <div v-if="lugaresAgrupados.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
                         <i class="fas fa-store text-3xl mb-2 block text-gray-300"></i>
                         <p class="text-sm text-gray-400">No hay lugares de venta registrados</p>
                     </div>
@@ -752,53 +507,82 @@ onMounted(() => {
 
                 <!-- ==================== TABLA PARA DESKTOP ==================== -->
                 <div class="hidden sm:block bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-primary-50">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Orden</th>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Lugar</th>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Empresa</th>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Sucursal</th>
-                                    <th class="px-3 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="item in lugares.data" :key="item.IdLugar" class="hover:bg-gray-50 transition">
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-900">
-                                        <span class="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs">
-                                            {{ item.Orden }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-700">
-                                        <i class="fas fa-location-dot text-primary-400 mr-1 text-[10px]"></i>
-                                        {{ item.Lugar }}
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
-                                        {{ item.cliente?.Nombre || '-' }}
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-600">
-                                        <i class="fas fa-store text-primary-400 mr-1 text-[10px]"></i>
-                                        {{ item.sucursal?.Nombre || '-' }}
-                                        <span v-if="item.sucursal?.NumeroSucursal" class="text-gray-400 text-[10px]">(N° {{ item.sucursal.NumeroSucursal }})</span>
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-right">
-                                        <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
-                                            <i class="fas fa-edit text-xs"></i>
-                                        </button>
-                                        <button @click="abrirModalEliminar(item.IdLugar, item.Lugar)" class="text-red-600 hover:text-red-800 transition" title="Eliminar">
-                                            <i class="fas fa-trash-alt text-xs"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr v-if="!lugares.data || lugares.data.length === 0">
-                                    <td colspan="5" class="px-3 py-8 text-center text-gray-400 text-xs">
-                                        <i class="fas fa-store text-2xl mb-1 block text-gray-300"></i>
-                                        No hay lugares de venta registrados
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Recorrer grupos por sucursal -->
+                    <div 
+                        v-for="grupo in lugaresAgrupados" 
+                        :key="grupo.id" 
+                        class="border-b border-gray-200 last:border-b-0"
+                    >
+                        <!-- Cabecera de sucursal (clickeable) -->
+                        <div 
+                            @click="toggleExpandir(grupo.id)"
+                            class="flex items-center justify-between px-4 py-2.5 bg-primary-50 hover:bg-primary-100 cursor-pointer transition select-none"
+                        >
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-store text-primary-500 text-sm"></i>
+                                <span class="font-semibold text-gray-800 text-sm">{{ grupo.nombre }}</span>
+                                <span v-if="grupo.numero" class="text-xs text-gray-400">(N° {{ grupo.numero }})</span>
+                                <span class="text-xs text-gray-400 ml-1">({{ grupo.items.length }} lugares)</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs text-gray-400">
+                                    Orden: {{ grupo.items.reduce((min, item) => Math.min(min, item.Orden), grupo.items[0]?.Orden || 0) }} - 
+                                    {{ grupo.items.reduce((max, item) => Math.max(max, item.Orden), grupo.items[0]?.Orden || 0) }}
+                                </span>
+                                <i 
+                                    class="fas text-primary-500 transition-transform duration-200"
+                                    :class="estaExpandida(grupo.id) ? 'fa-chevron-up' : 'fa-chevron-down'"
+                                ></i>
+                            </div>
+                        </div>
+                        
+                        <!-- Tabla de items de la sucursal -->
+                        <div 
+                            v-show="estaExpandida(grupo.id)"
+                            class="transition-all duration-200"
+                        >
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-1.5 text-left text-[10px] font-semibold text-gray-500 uppercase">Lugar</th>
+                                        <th class="px-4 py-1.5 text-center text-[10px] font-semibold text-gray-500 uppercase">Orden</th>
+                                        <th class="px-4 py-1.5 text-right text-[10px] font-semibold text-gray-500 uppercase">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-100">
+                                    <tr v-for="item in grupo.items" :key="item.IdLugar" class="hover:bg-gray-50 transition">
+                                        <td class="px-4 py-2 whitespace-nowrap text-xs text-gray-700">
+                                            <i class="fas fa-location-dot text-primary-400 mr-1 text-[10px]"></i>
+                                            {{ item.Lugar }}
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap text-center">
+                                            <span class="inline-flex items-center justify-center w-6 h-6 bg-gray-100 rounded-full text-xs text-gray-600">
+                                                {{ item.Orden }}
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap text-right">
+                                            <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
+                                                <i class="fas fa-edit text-xs"></i>
+                                            </button>
+                                            <button @click="abrirModalEliminar(item.IdLugar, item.Lugar)" class="text-red-600 hover:text-red-800 transition" title="Eliminar">
+                                                <i class="fas fa-trash-alt text-xs"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="grupo.items.length === 0">
+                                        <td colspan="3" class="px-4 py-4 text-center text-gray-400 text-xs">
+                                            No hay lugares en esta sucursal
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Mensaje cuando no hay datos -->
+                    <div v-if="lugaresAgrupados.length === 0" class="py-8 text-center text-gray-400 text-sm">
+                        <i class="fas fa-store text-3xl mb-2 block text-gray-300"></i>
+                        No hay lugares de venta registrados
                     </div>
                 </div>
 
@@ -840,7 +624,8 @@ onMounted(() => {
                         <span class="font-semibold text-gray-700">"{{ eliminarNombre }}"</span>?
                     </p>
                     <p class="text-xs text-red-500 mt-2">
-                        <i class="fas fa-exclamation-triangle mr-1"></i> Esta acción no se puede deshacer.
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Esta acción no se puede deshacer.
                     </p>
                 </div>
                 <div class="p-4 flex gap-3">
@@ -869,7 +654,23 @@ onMounted(() => {
         transform: translateY(0);
     }
 }
+
 .animate-fade-in-up {
     animation: fade-in-up 0.2s ease-out;
+}
+
+input[type="number"] {
+    appearance: none;
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.transition-all {
+    transition: all 0.2s ease-in-out;
 }
 </style>

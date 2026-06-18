@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, inject } from 'vue'
+import { ref, computed, onMounted, inject } from 'vue'
 import { router, Link, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 
@@ -37,7 +37,70 @@ const formData = ref({
 const errors = ref({})
 const processing = ref(false)
 
-// 🔥 MODAL DE ELIMINACIÓN
+// 🔥 ESTADO PARA AGRUPACIÓN POR SUCURSAL
+const sucursalesExpandidas = ref({})
+
+// 🔥 Agrupar almacenes por sucursal
+const almacenesAgrupados = computed(() => {
+    if (!props.almacenes.data || props.almacenes.data.length === 0) {
+        return []
+    }
+    
+    const grupos = {}
+    
+    props.almacenes.data.forEach(item => {
+        const sucursalId = item.IdSucursal
+        const sucursalNombre = item.sucursal?.Nombre || 'Sin sucursal'
+        const sucursalNumero = item.sucursal?.NumeroSucursal
+        
+        if (!grupos[sucursalId]) {
+            grupos[sucursalId] = {
+                id: sucursalId,
+                nombre: sucursalNombre,
+                numero: sucursalNumero,
+                almacenes: []
+            }
+            // Inicializar expandido (por defecto todos expandidos)
+            if (sucursalesExpandidas.value[sucursalId] === undefined) {
+                sucursalesExpandidas.value[sucursalId] = true
+            }
+        }
+        grupos[sucursalId].almacenes.push(item)
+    })
+    
+    return Object.values(grupos)
+})
+
+// 🔥 Alternar expansión de una sucursal
+const toggleSucursal = (sucursalId) => {
+    sucursalesExpandidas.value[sucursalId] = !sucursalesExpandidas.value[sucursalId]
+}
+
+// 🔥 Verificar si una sucursal está expandida
+const isExpandida = (sucursalId) => {
+    return sucursalesExpandidas.value[sucursalId] !== false
+}
+
+// 🔥 Expandir todas
+const expandirTodas = () => {
+    almacenesAgrupados.value.forEach(grupo => {
+        sucursalesExpandidas.value[grupo.id] = true
+    })
+}
+
+// 🔥 Contraer todas
+const contraerTodas = () => {
+    almacenesAgrupados.value.forEach(grupo => {
+        sucursalesExpandidas.value[grupo.id] = false
+    })
+}
+
+// 🔥 Contar almacenes totales
+const totalAlmacenes = computed(() => {
+    return props.almacenes.data?.length || 0
+})
+
+// MODAL DE ELIMINACIÓN
 const modalEliminarOpen = ref(false)
 const eliminarId = ref(null)
 const eliminarNombre = ref('')
@@ -66,11 +129,11 @@ const confirmarEliminar = async () => {
     router.delete(`/gestion/inventario/almacen/${eliminarId.value}`, {
         preserveScroll: true,
         onSuccess: () => {
-            toast?.success('Éxito', `Almacén "${eliminarNombre.value}" eliminado correctamente`)
+            if (toast) toast.success('Éxito', `Almacén "${eliminarNombre.value}" eliminado correctamente`)
             cerrarModalEliminar()
         },
         onError: (err) => {
-            toast?.error('Error', 'No se pudo eliminar el almacén')
+            if (toast) toast.error('Error', 'No se pudo eliminar el almacén')
             cerrarModalEliminar()
         },
         onFinish: () => {
@@ -79,23 +142,19 @@ const confirmarEliminar = async () => {
     })
 }
 
-// Verificar mensajes flash al cargar (SOLO UNA VEZ)
+// Verificar mensajes flash al cargar
 onMounted(() => {
-    // Solo mostrar flash si es diferente al último mostrado
     const flashSuccess = page.props.flash?.success
     const flashError = page.props.flash?.error
     
-    if (flashSuccess && !sessionStorage.getItem('last_flash_success')) {
-        toast?.success('Éxito', flashSuccess)
-        sessionStorage.setItem('last_flash_success', flashSuccess)
-        setTimeout(() => sessionStorage.removeItem('last_flash_success'), 500)
+    if (flashSuccess && toast) {
+        toast.success('Éxito', flashSuccess)
     }
-    if (flashError && !sessionStorage.getItem('last_flash_error')) {
-        toast?.error('Error', flashError)
-        sessionStorage.setItem('last_flash_error', flashError)
-        setTimeout(() => sessionStorage.removeItem('last_flash_error'), 500)
+    if (flashError && toast) {
+        toast.error('Error', flashError)
     }
     
+    // Si hay sucursal seleccionada, mostrar el nombre en el campo
     if (sucursalId.value) {
         const suc = (props.sucursales || []).find(s => s.id === sucursalId.value)
         if (suc) {
@@ -103,6 +162,7 @@ onMounted(() => {
             formData.value.sucursal_id = sucursalId.value
         }
     }
+    
     resetForm()
 })
 
@@ -123,7 +183,20 @@ const cerrarDropdown = () => {
     }, 200)
 }
 
-// Seleccionar sucursal
+// Seleccionar TODAS las sucursales
+const seleccionarTodas = () => {
+    sucursalId.value = ''
+    busquedaSucursal.value = 'Todas las sucursales'
+    mostrarDropdown.value = false
+    formData.value.sucursal_id = ''
+    
+    router.get('/gestion/inventario/almacen', {}, {
+        preserveState: true,
+        replace: true,
+    })
+}
+
+// Seleccionar una sucursal específica
 const seleccionarSucursal = (sucursal) => {
     sucursalId.value = sucursal.id
     busquedaSucursal.value = `${sucursal.nombre} ${sucursal.NumeroSucursal ? `(N° ${sucursal.NumeroSucursal})` : ''}`
@@ -169,12 +242,12 @@ const editar = (item) => {
 // Guardar
 const guardar = async () => {
     if (!formData.value.sucursal_id) {
-        toast?.error('Validación', 'Seleccione una sucursal')
+        if (toast) toast.error('Validación', 'Seleccione una sucursal')
         return
     }
     
     if (!formData.value.Almacen || formData.value.Almacen.trim() === '') {
-        toast?.error('Validación', 'Ingrese el nombre del almacén')
+        if (toast) toast.error('Validación', 'Ingrese el nombre del almacén')
         return
     }
     
@@ -191,22 +264,22 @@ const guardar = async () => {
             await router.put(`/gestion/inventario/almacen/${editId.value}`, datos, {
                 preserveScroll: true,
                 onSuccess: () => {
-                    toast?.success('Éxito', 'Almacén actualizado correctamente')
+                    if (toast) toast.success('Éxito', 'Almacén actualizado correctamente')
                     resetForm()
                 },
                 onError: (err) => {
-                    toast?.error('Error', Object.values(err)[0]?.[0] || 'Error al actualizar')
+                    if (toast) toast.error('Error', Object.values(err)[0]?.[0] || 'Error al actualizar')
                 }
             })
         } else {
             await router.post('/gestion/inventario/almacen', datos, {
                 preserveScroll: true,
                 onSuccess: () => {
-                    toast?.success('Éxito', 'Almacén creado correctamente')
+                    if (toast) toast.success('Éxito', 'Almacén creado correctamente')
                     resetForm()
                 },
                 onError: (err) => {
-                    toast?.error('Error', Object.values(err)[0]?.[0] || 'Error al guardar')
+                    if (toast) toast.error('Error', Object.values(err)[0]?.[0] || 'Error al guardar')
                 }
             })
         }
@@ -231,12 +304,28 @@ const guardar = async () => {
                             <p class="text-[10px] text-gray-500">Administra los almacenes por sucursal</p>
                         </div>
                     </div>
+                    <!-- 🔥 Botones Expandir/Contraer (solo cuando no hay filtro) -->
+                    <div v-if="!sucursalId && almacenesAgrupados.length > 0" class="flex gap-2">
+                        <button 
+                            @click="expandirTodas" 
+                            class="px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-md transition"
+                        >
+                            <i class="fas fa-plus-circle mr-1"></i> Expandir todo
+                        </button>
+                        <button 
+                            @click="contraerTodas" 
+                            class="px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 rounded-md transition"
+                        >
+                            <i class="fas fa-minus-circle mr-1"></i> Contraer todo
+                        </button>
+                    </div>
                 </div>
 
-                <!-- Formulario -->
+                <!-- Formulario - Fila horizontal -->
                 <div class="bg-white rounded-lg shadow-sm p-4 mb-6 sticky top-2 z-10">
-                    <div class="space-y-3">
-                        <div>
+                    <div class="flex flex-col sm:flex-row items-end gap-3">
+                        <!-- Sucursal -->
+                        <div class="w-full sm:w-64 flex-shrink-0">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal *</label>
                             <div class="relative">
                                 <input 
@@ -258,9 +347,17 @@ const guardar = async () => {
                                 </button>
                                 
                                 <div 
-                                    v-if="mostrarDropdown && sucursalesFiltradas.length > 0"
+                                    v-if="mostrarDropdown"
                                     class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
                                 >
+                                    <!-- 🔥 OPCIÓN "TODAS" -->
+                                    <div
+                                        @click="seleccionarTodas"
+                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b text-sm font-medium text-primary-600"
+                                    >
+                                        <i class="fas fa-warehouse mr-2"></i> Todas las sucursales
+                                    </div>
+                                    
                                     <div
                                         v-for="s in sucursalesFiltradas"
                                         :key="s.id"
@@ -275,7 +372,8 @@ const guardar = async () => {
                             </div>
                         </div>
 
-                        <div>
+                        <!-- Nombre Almacén -->
+                        <div class="w-full sm:flex-1">
                             <label class="block text-xs font-medium text-gray-700 mb-1">Nombre Almacén *</label>
                             <input 
                                 type="text" 
@@ -287,26 +385,28 @@ const guardar = async () => {
                             />
                         </div>
 
-                        <div class="flex items-center">
+                        <!-- Checkbox Principal -->
+                        <div class="w-full sm:w-auto flex items-center">
                             <label class="flex items-center gap-2 cursor-pointer py-1">
                                 <input 
                                     type="checkbox" 
                                     v-model="formData.AlmacenPrincipal" 
                                     class="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                                 />
-                                <span class="text-sm text-gray-700">Marcar como Almacén Principal</span>
+                                <span class="text-sm text-gray-700 whitespace-nowrap">Principal</span>
                             </label>
                         </div>
 
-                        <div class="flex gap-2 pt-2">
+                        <!-- Botones -->
+                        <div class="w-full sm:w-auto flex gap-2">
                             <button 
                                 @click="guardar" 
                                 :disabled="processing || !formData.sucursal_id || !formData.Almacen"
-                                class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                class="flex-1 sm:flex-none px-4 py-2 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 <i v-if="processing" class="fas fa-spinner fa-spin text-xs"></i>
                                 <i v-else :class="editando ? 'fas fa-pencil-alt' : 'fas fa-plus'" class="text-xs"></i>
-                                {{ processing ? 'Procesando...' : (editando ? 'Actualizar Almacén' : 'Guardar Almacén') }}
+                                {{ processing ? 'Procesando...' : (editando ? 'Actualizar' : 'Crear') }}
                             </button>
                             <button 
                                 v-if="editando" 
@@ -319,86 +419,119 @@ const guardar = async () => {
                     </div>
                 </div>
 
-                <!-- CARDS PARA MÓVIL -->
-                <div class="block sm:hidden space-y-3">
+                <!-- 🔥 VISTA AGRUPADA POR SUCURSAL (ACORDEÓN) -->
+                <div v-if="!sucursalId" class="space-y-3">
+                    <!-- Total de almacenes -->
+                    <div class="text-xs text-gray-500 mb-2">
+                        <i class="fas fa-warehouse mr-1"></i> 
+                        {{ totalAlmacenes }} almacenes en {{ almacenesAgrupados.length }} sucursales
+                    </div>
+
                     <div 
-                        v-for="item in almacenes.data" 
-                        :key="item.IdAlmacen" 
-                        class="bg-white rounded-lg shadow-sm p-4 border border-gray-100"
+                        v-for="grupo in almacenesAgrupados" 
+                        :key="grupo.id" 
+                        class="bg-white rounded-lg shadow-sm overflow-hidden border border-gray-200"
                     >
-                        <div class="flex justify-between items-start mb-2">
-                            <div class="flex items-center gap-2">
-                                <div class="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center">
-                                    <i class="fas fa-warehouse text-primary-600 text-sm"></i>
-                                </div>
-                                <div>
-                                    <h3 class="font-semibold text-gray-800 text-sm">{{ item.Almacen }}</h3>
-                                    <p class="text-[10px] text-gray-500">
-                                        <i class="fas fa-store mr-1"></i>
-                                        {{ item.sucursal?.Nombre || '-' }}
-                                    </p>
+                        <!-- Cabecera de la sucursal (click para expandir/contraer) -->
+                        <div 
+                            @click="toggleSucursal(grupo.id)"
+                            class="flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 cursor-pointer transition border-b border-gray-200"
+                        >
+                            <div class="flex items-center gap-3">
+                                <i 
+                                    :class="isExpandida(grupo.id) ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"
+                                    class="text-gray-400 text-xs transition-transform"
+                                ></i>
+                                <div class="flex items-center gap-2">
+                                    <i class="fas fa-store text-primary-500 text-sm"></i>
+                                    <span class="font-semibold text-gray-800 text-sm">{{ grupo.nombre }}</span>
+                                    <span v-if="grupo.numero" class="text-xs text-gray-400">(N° {{ grupo.numero }})</span>
                                 </div>
                             </div>
-                            <span 
-                                v-if="item.AlmacenPrincipal === 1" 
-                                class="px-2 py-0.5 text-[9px] rounded-full bg-green-100 text-green-700 flex items-center gap-1"
-                            >
-                                <i class="fas fa-star text-[8px]"></i> Principal
-                            </span>
-                            <span 
-                                v-else 
-                                class="px-2 py-0.5 text-[9px] rounded-full bg-gray-100 text-gray-500"
-                            >
-                                Secundario
-                            </span>
+                            <div class="flex items-center gap-2">
+                                <span class="text-xs bg-gray-200 px-2 py-0.5 rounded-full text-gray-600">
+                                    {{ grupo.almacenes.length }} almacenes
+                                </span>
+                                <i 
+                                    :class="isExpandida(grupo.id) ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"
+                                    class="text-gray-400 text-xs"
+                                ></i>
+                            </div>
                         </div>
-                        
-                        <div class="flex justify-end gap-3 pt-3 border-t border-gray-100 mt-2">
-                            <button 
-                                @click="editar(item)" 
-                                class="text-primary-600 hover:text-primary-800 text-xs flex items-center gap-1"
-                            >
-                                <i class="fas fa-edit"></i> Editar
-                            </button>
-                            <button 
-                                @click="abrirModalEliminar(item.IdAlmacen, item.Almacen)" 
-                                class="text-red-600 hover:text-red-800 text-xs flex items-center gap-1"
-                            >
-                                <i class="fas fa-trash-alt"></i> Eliminar
-                            </button>
+
+                        <!-- Contenido (almacenes de la sucursal) -->
+                        <div 
+                            v-show="isExpandida(grupo.id)"
+                            class="overflow-x-auto transition-all"
+                        >
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase">Almacén</th>
+                                        <th class="px-4 py-2 text-center text-[10px] font-semibold text-gray-500 uppercase">Principal</th>
+                                        <th class="px-4 py-2 text-right text-[10px] font-semibold text-gray-500 uppercase">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-100">
+                                    <tr v-for="item in grupo.almacenes" :key="item.IdAlmacen" class="hover:bg-gray-50 transition">
+                                        <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800">
+                                            <i class="fas fa-warehouse text-primary-400 mr-2 text-xs"></i>
+                                            {{ item.Almacen }}
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap text-center">
+                                            <span v-if="item.AlmacenPrincipal === 1" class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-full bg-green-100 text-green-800">
+                                                <i class="fas fa-check mr-0.5 text-[8px]"></i> Principal
+                                            </span>
+                                            <span v-else class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                                                Secundario
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2 whitespace-nowrap text-right">
+                                            <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
+                                                <i class="fas fa-edit text-xs"></i>
+                                            </button>
+                                            <button @click="abrirModalEliminar(item.IdAlmacen, item.Almacen)" class="text-red-600 hover:text-red-800 transition" title="Eliminar">
+                                                <i class="fas fa-trash-alt text-xs"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="grupo.almacenes.length === 0">
+                                        <td colspan="3" class="px-4 py-6 text-center text-gray-400 text-xs">
+                                            <i class="fas fa-warehouse text-gray-300 mr-1"></i>
+                                            No hay almacenes en esta sucursal
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                    
-                    <div v-if="!almacenes.data || almacenes.data.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
+
+                    <!-- Mensaje cuando no hay almacenes -->
+                    <div v-if="almacenesAgrupados.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
                         <i class="fas fa-warehouse text-3xl mb-2 block text-gray-300"></i>
-                        <p class="text-sm text-gray-400">No hay almacenes para esta sucursal</p>
+                        <p class="text-sm text-gray-400">No hay almacenes registrados</p>
+                        <p class="text-xs text-gray-400 mt-1">Selecciona una sucursal o crea uno nuevo</p>
                     </div>
                 </div>
 
-                <!-- TABLA PARA DESKTOP -->
-                <div class="hidden sm:block bg-white rounded-lg shadow-sm overflow-hidden">
+                <!-- 🔥 VISTA FILTRADA POR UNA SUCURSAL (tabla normal) -->
+                <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-primary-50">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Sucursal</th>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Almacén</th>
-                                    <th class="px-3 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase">Principal</th>
-                                    <th class="px-3 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase">Acciones</th>
+                                    <th class="px-4 py-2 text-left text-[10px] font-semibold text-primary-700 uppercase">Almacén</th>
+                                    <th class="px-4 py-2 text-center text-[10px] font-semibold text-primary-700 uppercase">Principal</th>
+                                    <th class="px-4 py-2 text-right text-[10px] font-semibold text-primary-700 uppercase">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="item in almacenes.data" :key="item.IdAlmacen" class="hover:bg-gray-50 transition">
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-700">
-                                        <i class="fas fa-store text-primary-400 mr-1 text-[10px]"></i>
-                                        {{ item.sucursal?.Nombre || '-' }} 
-                                        <span v-if="item.sucursal?.NumeroSucursal" class="text-gray-400 text-[10px]">(N° {{ item.sucursal.NumeroSucursal }})</span>
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-800 font-medium">
-                                        <i class="fas fa-warehouse text-primary-400 mr-1 text-[10px]"></i>
+                                    <td class="px-4 py-2 whitespace-nowrap text-sm text-gray-800">
+                                        <i class="fas fa-warehouse text-primary-400 mr-2 text-xs"></i>
                                         {{ item.Almacen }}
                                     </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-center">
+                                    <td class="px-4 py-2 whitespace-nowrap text-center">
                                         <span v-if="item.AlmacenPrincipal === 1" class="inline-flex items-center px-2 py-0.5 text-[10px] rounded-full bg-green-100 text-green-800">
                                             <i class="fas fa-check mr-0.5 text-[8px]"></i> Principal
                                         </span>
@@ -406,7 +539,7 @@ const guardar = async () => {
                                             Secundario
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-right">
+                                    <td class="px-4 py-2 whitespace-nowrap text-right">
                                         <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 mr-2 transition" title="Editar">
                                             <i class="fas fa-edit text-xs"></i>
                                         </button>
@@ -416,7 +549,7 @@ const guardar = async () => {
                                     </td>
                                 </tr>
                                 <tr v-if="!almacenes.data || almacenes.data.length === 0">
-                                    <td colspan="4" class="px-3 py-8 text-center text-gray-400 text-xs">
+                                    <td colspan="3" class="px-4 py-8 text-center text-gray-400 text-xs">
                                         <i class="fas fa-warehouse text-2xl mb-1 block text-gray-300"></i>
                                         No hay almacenes para esta sucursal
                                     </td>
@@ -504,5 +637,10 @@ const guardar = async () => {
 
 .animate-fade-in-up {
     animation: fade-in-up 0.2s ease-out;
+}
+
+/* Transición suave para el acordeón */
+[v-show] {
+    transition: all 0.2s ease;
 }
 </style>

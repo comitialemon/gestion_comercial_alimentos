@@ -9,20 +9,24 @@ use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\Identificador;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class ComisionistaController extends Controller
 {
     /**
-     * Listado de comisionistas
+     * Listado de comisionistas (filtrado por cliente logueado)
      */
     public function index(Request $request)
     {
-        $query = Comisionista::with(['identificador', 'cliente']);
-
-        // Filtrar por cliente (empresa)
-        if ($request->filled('cliente_id')) {
-            $query->where('IdCliente', $request->cliente_id);
+        $clienteId = session('cliente_id');
+        
+        if (!$clienteId) {
+            return redirect()->route('contexto.index')
+                ->with('error', 'Debes seleccionar una empresa primero');
         }
+
+        $query = Comisionista::with(['identificador', 'cliente'])
+            ->where('IdCliente', $clienteId);
 
         // Buscar por nombre o CI
         if ($request->filled('search')) {
@@ -37,41 +41,16 @@ class ComisionistaController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // Para el filtro de empresas
-        $empresas = Cliente::orderBy('Nombre')->get(['IdCliente as id', 'Nombre as nombre']);
-
         return Inertia::render('Gestion/Impuestos/Comisionista/Index', [
             'comisionistas' => $comisionistas,
             'filtros' => [
-                'cliente_id' => $request->cliente_id,
                 'search' => $request->search,
             ],
-            'empresas' => $empresas,
             'contexto_actual' => [
                 'cliente_id' => session('cliente_id'),
                 'cliente_nombre' => session('cliente_nombre'),
             ],
-        ]);
-    }
-
-    /**
-     * Mostrar formulario para crear
-     */
-    public function create()
-    {
-        $empresas = Cliente::orderBy('Nombre')->get(['IdCliente as id', 'Nombre as nombre']);
-        
-        // Búsqueda de identificadores (para el select con búsqueda)
-        $identificadores = Identificador::orderBy('Nombre')
-            ->limit(50)
-            ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
-
-        return Inertia::render('Gestion/Impuestos/Comisionista/Create', [
-            'empresas' => $empresas,
-            'identificadores' => $identificadores,
-            'defaults' => [
-                'IdCliente' => session('cliente_id'),
-            ],
+            'flash' => session()->only(['success', 'error']),
         ]);
     }
 
@@ -101,50 +80,39 @@ class ComisionistaController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'IdIdentificador' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_identificador,IdIdentificador',
-            'Comision' => 'required|numeric|min:0|max:100',
-            'IdCliente' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_cliente,IdCliente',
-        ]);
-
-        // Verificar si ya existe para este cliente
-        $existe = Comisionista::where('IdIdentificador', $request->IdIdentificador)
-            ->where('IdCliente', $request->IdCliente)
-            ->exists();
-
-        if ($existe) {
-            return back()->with('error', 'Este identificador ya está registrado como comisionista para esta empresa.');
+        $clienteId = session('cliente_id');
+        
+        if (!$clienteId) {
+            return redirect()->back()->with('error', 'No hay cliente seleccionado');
         }
 
-        Comisionista::create([
-            'IdIdentificador' => $request->IdIdentificador,
-            'Comision' => $request->Comision,
-            'IdCliente' => $request->IdCliente,
-        ]);
+        try {
+            $validated = $request->validate([
+                'IdIdentificador' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_identificador,IdIdentificador',
+                'Comision' => 'required|numeric|min:0|max:100',
+            ]);
 
-        return redirect()->route('gestion.comisionista.index')
-            ->with('success', 'Comisionista creado correctamente.');
-    }
+            // Verificar si ya existe para este cliente
+            $existe = Comisionista::where('IdIdentificador', $request->IdIdentificador)
+                ->where('IdCliente', $clienteId)
+                ->exists();
 
-    /**
-     * Mostrar formulario para editar
-     */
-    public function edit($id)
-    {
-        $comisionista = Comisionista::with(['identificador', 'cliente'])->findOrFail($id);
-        
-        $empresas = Cliente::orderBy('Nombre')->get(['IdCliente as id', 'Nombre as nombre']);
-        
-        $identificadores = Identificador::orderBy('Nombre')
-            ->limit(50)
-            ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
+            if ($existe) {
+                return redirect()->back()->with('error', 'Este identificador ya está registrado como comisionista para esta empresa.');
+            }
 
-        return Inertia::render('Gestion/Impuestos/Comisionista/Create', [
-            'comisionista' => $comisionista,
-            'empresas' => $empresas,
-            'identificadores' => $identificadores,
-            'editando' => true,
-        ]);
+            Comisionista::create([
+                'IdIdentificador' => $request->IdIdentificador,
+                'Comision' => $request->Comision,
+                'IdCliente' => $clienteId,
+            ]);
+
+            return redirect()->back()->with('success', 'Comisionista creado correctamente.');
+
+        } catch (\Exception $e) {
+            Log::error('Error creando comisionista: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al crear: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -152,32 +120,43 @@ class ComisionistaController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $request->validate([
-            'IdIdentificador' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_identificador,IdIdentificador',
-            'Comision' => 'required|numeric|min:0|max:100',
-            'IdCliente' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_cliente,IdCliente',
-        ]);
-
-        $comisionista = Comisionista::findOrFail($id);
-
-        // Verificar duplicado excluyendo el actual
-        $existe = Comisionista::where('IdIdentificador', $request->IdIdentificador)
-            ->where('IdCliente', $request->IdCliente)
-            ->where('IdComisionista', '!=', $id)
-            ->exists();
-
-        if ($existe) {
-            return back()->with('error', 'Este identificador ya está registrado como comisionista para esta empresa.');
+        $clienteId = session('cliente_id');
+        
+        if (!$clienteId) {
+            return redirect()->back()->with('error', 'No hay cliente seleccionado');
         }
 
-        $comisionista->update([
-            'IdIdentificador' => $request->IdIdentificador,
-            'Comision' => $request->Comision,
-            'IdCliente' => $request->IdCliente,
-        ]);
+        try {
+            $validated = $request->validate([
+                'IdIdentificador' => 'required|integer|exists:mysql_gestion_comercial_alimentos.todos_identificador,IdIdentificador',
+                'Comision' => 'required|numeric|min:0|max:100',
+            ]);
 
-        return redirect()->route('gestion.comisionista.index')
-            ->with('success', 'Comisionista actualizado correctamente.');
+            $comisionista = Comisionista::where('IdCliente', $clienteId)
+                ->where('IdComisionista', $id)
+                ->firstOrFail();
+
+            // Verificar duplicado excluyendo el actual
+            $existe = Comisionista::where('IdIdentificador', $request->IdIdentificador)
+                ->where('IdCliente', $clienteId)
+                ->where('IdComisionista', '!=', $id)
+                ->exists();
+
+            if ($existe) {
+                return redirect()->back()->with('error', 'Este identificador ya está registrado como comisionista para esta empresa.');
+            }
+
+            $comisionista->update([
+                'IdIdentificador' => $request->IdIdentificador,
+                'Comision' => $request->Comision,
+            ]);
+
+            return redirect()->back()->with('success', 'Comisionista actualizado correctamente.');
+
+        } catch (\Exception $e) {
+            Log::error('Error actualizando comisionista: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al actualizar: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -185,10 +164,21 @@ class ComisionistaController extends Controller
      */
     public function destroy($id)
     {
-        $comisionista = Comisionista::findOrFail($id);
-        $comisionista->delete();
+        $clienteId = session('cliente_id');
+        
+        try {
+            $comisionista = Comisionista::where('IdCliente', $clienteId)
+                ->where('IdComisionista', $id)
+                ->firstOrFail();
+            
+            $nombre = $comisionista->identificador?->Nombre ?? 'Comisionista';
+            $comisionista->delete();
 
-        return redirect()->route('gestion.comisionista.index')
-            ->with('success', 'Comisionista eliminado correctamente.');
+            return redirect()->back()->with('success', "Comisionista '{$nombre}' eliminado correctamente.");
+
+        } catch (\Exception $e) {
+            Log::error('Error eliminando comisionista: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al eliminar: ' . $e->getMessage());
+        }
     }
 }

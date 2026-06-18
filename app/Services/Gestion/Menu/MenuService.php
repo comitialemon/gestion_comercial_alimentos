@@ -81,6 +81,7 @@ class MenuService
 
     /**
      * Resuelve la columna de permiso según el tipo de operador
+     * 🔥 CORREGIDO: Usa las columnas reales de menu_administrador
      */
     private function resolverColumnaPorTipo(int $tipoId): string
     {
@@ -91,33 +92,40 @@ class MenuService
             return 'Administrador';
         }
 
+        // 🔥 MAPEO DE DETALLES A COLUMNAS REALES
+        // El Detalle en todos_operador_tipo se mapea a la columna en menu_administrador
+        $mapeo = [
+            // Detalle (todos_operador_tipo) => Columna (menu_administrador)
+            'SuperUsuario' => 'SuperUsuario',   // SuperUsuario = Administrador
+            'Informes' => 'Informes',
+            'VentaMostrador' => 'VentaMostrador',
+            'Produccion' => 'Produccion',
+            'ControlInterno' => 'ControlInterno',
+        ];
+
         // Normalizar para comparación
         $detalleNorm = $this->normalizar($detalle);
         
-        // Excepciones conocidas
-        $excepciones = [
-            $this->normalizar('SuperUsuario') => 'Administrador',
-            $this->normalizar('VentaMayoristas') => 'VentaMayorista',
-            $this->normalizar('VentaMonitorCocina') => 'MonitorCocina',
-            $this->normalizar('VentaMonitorEntregas') => 'MonitorCocina',
-        ];
-
-        if (isset($excepciones[$detalleNorm])) {
-            return $excepciones[$detalleNorm];
+        // Buscar en el mapeo
+        foreach ($mapeo as $key => $columna) {
+            if ($this->normalizar($key) === $detalleNorm) {
+                // Verificar que la columna existe en menu_administrador
+                $columnas = MenuAdministrador::getPermisoColumns();
+                if (in_array($columna, $columnas)) {
+                    return $columna;
+                }
+                // Si no existe, usar fallback
+                break;
+            }
         }
 
-        // Obtener columnas reales
-        $columnas = MenuAdministrador::getPermisoColumns();
-        $columnasNorm = [];
-        foreach ($columnas as $col) {
-            $columnasNorm[$this->normalizar($col)] = $col;
-        }
-
-        if (isset($columnasNorm[$detalleNorm])) {
-            return $columnasNorm[$detalleNorm];
-        }
-
-        // Fallback
+        // 🔥 FALLBACK: Si no coincide con nada, usar Administrador
+        Log::warning('MENU.fallback_administrador', [
+            'tipo_id' => $tipoId,
+            'detalle' => $detalle,
+            'detalle_norm' => $detalleNorm
+        ]);
+        
         return 'Administrador';
     }
 
@@ -258,44 +266,88 @@ class MenuService
      */
     public function obtenerArbol(int $tipoId, int $operadorId, int $clienteId): array
     {
-        // Verificar si tiene menús asignados individualmente
+        // 🔥 LOG 1: Inicio
+        Log::channel('menu')->info('=== INICIO OBTENER ARBOL ===', [
+            'tipo_id' => $tipoId,
+            'operador_id' => $operadorId,
+            'cliente_id' => $clienteId,
+            'timestamp' => now()->toDateTimeString()
+        ]);
+
+        // 1. Verificar si tiene menús asignados individualmente
         $menuOperador = $this->getMenuIdsPorOperador($operadorId, $clienteId);
-        $modo = !empty($menuOperador) ? 'por_operador' : 'por_columna';
+        
+        Log::channel('menu')->info('MENU OPERADOR', [
+            'cliente_id' => $clienteId,
+            'tiene_asignaciones' => !empty($menuOperador),
+            'total_ids' => count($menuOperador),
+            'ids' => $menuOperador
+        ]);
 
-        $columna = $modo === 'por_columna'
-            ? $this->resolverColumnaPorTipo($tipoId)
-            : '__POR_OPERADOR__';
+        if (!empty($menuOperador)) {
+            Log::channel('menu')->info('USANDO MENU OPERADOR (asignación manual)', [
+                'cliente_id' => $clienteId
+            ]);
+            $items = $this->getItemsPorIds($menuOperador);
+            $items = $this->asegurarPadres($items);
+            $tree = $this->buildTree($items);
+            
+            Log::channel('menu')->info('RESULTADO MENU OPERADOR', [
+                'cliente_id' => $clienteId,
+                'total_items' => count($items),
+                'raices' => count($tree),
+                'nombres_raices' => array_column($tree, 'title')
+            ]);
+            
+            return $tree;
+        }
 
-        if ($columna === '__NONE__') {
+        // 2. Si no, usar columna según tipo
+        $columna = $this->resolverColumnaPorTipo($tipoId);
+        
+        Log::channel('menu')->info('RESOLVIENDO COLUMNA', [
+            'cliente_id' => $clienteId,
+            'tipo_id' => $tipoId,
+            'columna_resuelta' => $columna
+        ]);
+
+        if ($columna === '__NONE__' || $columna === '__POR_OPERADOR__') {
+            Log::channel('menu')->warning('COLUMNA INVALIDA', [
+                'cliente_id' => $clienteId,
+                'columna' => $columna
+            ]);
             return [];
         }
 
-        // CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
-        $version = Cache::rememberForever('menu_global_version', fn() => time());
+        // 3. Obtener menús por columna
+        $items = $this->getItemsPorColumna($columna);
         
-        $cacheKey = "menu_v{$version}_{$modo}_" . (
-            $modo === 'por_operador' 
-                ? "op_{$operadorId}_cli_{$clienteId}" 
-                : "tipo_{$tipoId}_{$columna}"
-        );
+        Log::channel('menu')->info('ITEMS POR COLUMNA', [
+            'cliente_id' => $clienteId,
+            'columna' => $columna,
+            'total_items' => count($items),
+            'primeros_10' => array_slice(array_column($items, 'title'), 0, 10)
+        ]);
 
-        // Cache por 24 horas (86400 segundos)
-        return Cache::remember($cacheKey, 86400, function () use ($modo, $menuOperador, $columna) {
-            Log::info('MENU.regenerando_cache', ['modo' => $modo]);
-            
-            if ($modo === 'por_operador') {
-                $items = $this->getItemsPorIds($menuOperador);
-            } else {
-                $items = $this->getItemsPorColumna($columna);
-            }
+        if (empty($items)) {
+            Log::channel('menu')->warning('NO HAY ITEMS', [
+                'cliente_id' => $clienteId,
+                'columna' => $columna
+            ]);
+            return [];
+        }
 
-            if (empty($items)) {
-                return [];
-            }
+        $items = $this->asegurarPadres($items);
+        $tree = $this->buildTree($items);
+        
+        Log::channel('menu')->info('ARBOL FINAL', [
+            'cliente_id' => $clienteId,
+            'total_raices' => count($tree),
+            'nombres_raices' => array_column($tree, 'title'),
+            'timestamp' => now()->toDateTimeString()
+        ]);
 
-            $items = $this->asegurarPadres($items);
-            return $this->buildTree($items);
-        });
+        return $tree;
     }
 
     /**

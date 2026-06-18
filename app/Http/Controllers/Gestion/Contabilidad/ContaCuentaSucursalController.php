@@ -17,13 +17,11 @@ class ContaCuentaSucursalController extends Controller
     {
         $clienteId = session('cliente_id');
 
-        // 🔥 FORZAR LA CARGA DE LA RELACIÓN 'cuenta'
         $asignaciones = ContaCuentaSucursal::porContexto()
-            ->with(['cuenta', 'sucursal'])  // ← Asegurar que 'cuenta' está aquí
+            ->with(['cuenta', 'sucursal'])
             ->orderBy('Cuenta')
             ->get();
 
-        // 🔥 LOG PARA VERIFICAR QUE LLEGAN DATOS
         \Log::info('Asignaciones con cuentas:', [
             'total' => $asignaciones->count(),
             'primera' => $asignaciones->first() ? [
@@ -50,16 +48,21 @@ class ContaCuentaSucursalController extends Controller
         ]);
     }
 
+    /**
+     * 🔥 GUARDAR ASIGNACIÓN - Usa el nombre que escribe el usuario
+     */
     public function store(Request $request)
     {
         $request->validate([
             'IdCuenta' => 'required|exists:conta_cuenta,IdCuenta',
+            'Cuenta' => 'required|string|max:255',  // ← El nombre que escribe el usuario
             'DinamicaCuenta' => 'required|string|max:1',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
         ]);
 
         $clienteId = session('cliente_id');
 
+        // Verificar si ya existe esta asignación
         $existe = ContaCuentaSucursal::porContexto()
             ->where('IdCuenta', $request->IdCuenta)
             ->where('IdSucursal', $request->IdSucursal)
@@ -72,12 +75,11 @@ class ContaCuentaSucursalController extends Controller
             ], 422);
         }
 
-        $cuenta = ContaCuenta::find($request->IdCuenta);
-
         try {
+            // 🔥 GUARDAR EL NOMBRE QUE ESCRIBIÓ EL USUARIO
             $asignacion = ContaCuentaSucursal::create([
                 'IdCuenta' => $request->IdCuenta,
-                'Cuenta' => $cuenta ? $cuenta->Cuenta : '',
+                'Cuenta' => $request->Cuenta,  // ← LO QUE ESCRIBIÓ EL USUARIO
                 'DinamicaCuenta' => strtoupper($request->DinamicaCuenta),
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $request->IdSucursal,

@@ -89,7 +89,14 @@ use App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFec
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController;
-
+use App\Http\Controllers\Gestion\Contabilidad\CuentaController;
+use App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController;
+use App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController;
+use App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController;
+use App\Http\Controllers\Gestion\Inventario\ComboOpcionController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -106,24 +113,6 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // ============================================
 Route::middleware(['auth.operador'])->group(function () {
 
-    // ==================== CONFIGURACIÓN DE TEMA ====================
-    Route::prefix('gestion/configuracion/tema')->group(function () {
-        // Tema del cliente actual
-        Route::get('/', [TemaClienteController::class, 'index'])->name('gestion.configuracion.tema.index');
-        // Guardar tema
-        Route::post('/{clienteId}', [TemaClienteController::class, 'store'])->name('gestion.configuracion.tema.store');
-        
-        // Restaurar tema por defecto
-        Route::delete('/{clienteId}/reset', [TemaClienteController::class, 'reset'])->name('gestion.configuracion.tema.reset');
-   });
-
-    // ==================== MENÚ ADMINISTRADOR ====================
-    Route::prefix('gestion/menu-administrador')->group(function () {
-        Route::get('/', [MenuAdministradorController::class, 'index'])->name('gestion.menu-administrador.index');
-        Route::post('/', [MenuAdministradorController::class, 'store'])->name('gestion.menu-administrador.store');
-        Route::put('/{id}', [MenuAdministradorController::class, 'update'])->name('gestion.menu-administrador.update');
-        Route::delete('/{id}', [MenuAdministradorController::class, 'destroy'])->name('gestion.menu-administrador.destroy');
-    });
     // ==================== HOME / REDIRECCIONES ====================
     Route::get('/', function () {
         if (session('cliente_id') && session('cliente_sucursal_id')) {
@@ -134,626 +123,541 @@ Route::middleware(['auth.operador'])->group(function () {
 
     Route::get('/oficial', [OficialController::class, 'index'])->name('oficial.index');
 
-    // ==================== CONTEXTO ====================
+    // ============================================================
+    // 1. PREFIJO: CONTEXTO
+    // ============================================================
     Route::prefix('contexto')->middleware(['evitar.contexto.duplicado'])->group(function () {
         Route::get('/', [ContextoController::class, 'index'])->name('contexto.index');
         Route::get('/sucursales/{empresa}', [ContextoController::class, 'sucursales'])->name('contexto.sucursales');
         Route::post('/', [ContextoController::class, 'store'])->name('contexto.store');
     });
 
-    // ==================== CONTEXTO · PDV ====================
+    // ============================================================
+    // 2. PREFIJO: CONTEXTO PDV
+    // ============================================================
     Route::prefix('contexto/pdv')->middleware(['evitar.contexto.duplicado'])->group(function () {
         Route::get('/', [ContextoPdvController::class, 'index'])->name('contexto.pdv.index');
         Route::post('/', [ContextoPdvController::class, 'store'])->name('contexto.pdv.store');
         Route::get('/lista', [ContextoPdvController::class, 'lista'])->name('contexto.pdv.lista');
     });
 
-    // ==================== MENÚS ====================
-    // ==================== GESTIÓN DE MENÚS ====================
-    Route::prefix('gestion/menu')->group(function () {
-        
-        // Asignación de menús a operadores
-        Route::prefix('asignar')->group(function () {
-            Route::get('/', [AsignarMenuController::class, 'index'])->name('gestion.menu.asignar');
-            Route::get('/{operadorId}', [AsignarMenuController::class, 'getAsignados'])->name('gestion.menu.asignar.get');
-            Route::post('/', [AsignarMenuController::class, 'store'])->name('gestion.menu.asignar.store');
+    // ============================================================
+    // 3. PREFIJO: GESTIÓN
+    // ============================================================
+    Route::prefix('gestion')->group(function () {
+
+        // ---------- 3.1 CONFIGURACIÓN - TEMA ----------
+        Route::prefix('configuracion/tema')->group(function () {
+            Route::get('/', [TemaClienteController::class, 'index'])->name('gestion.configuracion.tema.index');
+            Route::post('/{clienteId}', [TemaClienteController::class, 'store'])->name('gestion.configuracion.tema.store');
+            Route::delete('/{clienteId}/reset', [TemaClienteController::class, 'reset'])->name('gestion.configuracion.tema.reset');
         });
-        
-        // Reporte de menús asignados por operador
-        Route::prefix('reporte')->group(function () {
-            Route::get('/', [ReporteMenuController::class, 'index'])->name('gestion.menu.reporte');
-            Route::get('/arbol/{operadorId}', [ReporteMenuController::class, 'getArbol'])->name('gestion.menu.reporte.arbol');
+
+        // ---------- 3.2 MENÚ ADMINISTRADOR ----------
+        Route::prefix('menu-administrador')->group(function () {
+            Route::get('/', [MenuAdministradorController::class, 'index'])->name('gestion.menu-administrador.index');
+            Route::post('/', [MenuAdministradorController::class, 'store'])->name('gestion.menu-administrador.store');
+            Route::put('/{id}', [MenuAdministradorController::class, 'update'])->name('gestion.menu-administrador.update');
+            Route::delete('/{id}', [MenuAdministradorController::class, 'destroy'])->name('gestion.menu-administrador.destroy');
         });
-    });
 
-    //========== GESTION TODOS ==================
-    // ==================== SUCURSALES (GESTIÓN) ====================
-    Route::prefix('gestion/sucursales')->group(function () {
-        Route::get('/', [SucursalGestionController::class, 'index'])->name('sucursales-gestion.index');
-        Route::get('/create', [SucursalGestionController::class, 'create'])->name('sucursales-gestion.create');
-        Route::post('/', [SucursalGestionController::class, 'store'])->name('sucursales-gestion.store');
-        Route::get('/{id}/edit', [SucursalGestionController::class, 'edit'])->name('sucursales-gestion.edit');
-        Route::put('/{id}', [SucursalGestionController::class, 'update'])->name('sucursales-gestion.update');
-    });
-    // ==================== IDENTIFICADORES ====================
-    Route::prefix('gestion/todos/identificador')->group(function () {
-        Route::get('/', [IdentificadorController::class, 'index'])->name('gestion.todos.identificador.index');
-        Route::post('/', [IdentificadorController::class, 'store'])->name('gestion.todos.identificador.store');
-        Route::put('/{id}', [IdentificadorController::class, 'update'])->name('gestion.todos.identificador.update');
-        Route::delete('/{id}', [IdentificadorController::class, 'destroy'])->name('gestion.todos.identificador.destroy');
-    });
-    // ==================== OPERADORES ====================
-    Route::prefix('gestion/operadores')->group(function () {
-        Route::get('/', [OperadorController::class, 'index'])->name('gestion.operadores.index');
-        Route::post('/', [OperadorController::class, 'store'])->name('gestion.operadores.store');
-        Route::put('/{id}', [OperadorController::class, 'update'])->name('gestion.operadores.update');
-        Route::delete('/{id}', [OperadorController::class, 'destroy'])->name('gestion.operadores.destroy');
-        Route::post('/{id}/activar', [OperadorController::class, 'activar'])->name('gestion.operadores.activar');
-    });
-    // ==================== PERFIL DE USUARIO ====================
-    Route::prefix('gestion/perfil')->group(function () {
-        Route::get('/', [PerfilController::class, 'edit'])->name('gestion.perfil.edit');
-        Route::put('/', [PerfilController::class, 'update'])->name('gestion.perfil.update');
-    });
-    // ==================== ASIGNACIÓN OPERADOR - SUCURSAL ====================
-    Route::prefix('gestion/operador-sucursal')->group(function () {
-        Route::get('/', [OperadorSucursalController::class, 'index'])->name('gestion.operador-sucursal.index');
-        Route::post('/', [OperadorSucursalController::class, 'store'])->name('gestion.operador-sucursal.store');
-        Route::put('/{id}', [OperadorSucursalController::class, 'update'])->name('gestion.operador-sucursal.update');
-        Route::delete('/{id}', [OperadorSucursalController::class, 'destroy'])->name('gestion.operador-sucursal.destroy');
-    });
-    // ==================== FECHAS Y TIPOS DE CAMBIO ====================
-    Route::prefix('gestion/fechas')->group(function () {
-        Route::get('/', [FechaController::class, 'index'])->name('gestion.fechas.index');
-        Route::post('/', [FechaController::class, 'store'])->name('gestion.fechas.store');
-        Route::put('/{id}', [FechaController::class, 'update'])->name('gestion.fechas.update');
-        Route::delete('/{id}', [FechaController::class, 'destroy'])->name('gestion.fechas.destroy');
-    });
-    // ==================== CIERRE DE FECHAS ====================
-    Route::prefix('gestion/cierre-fechas')->group(function () {
-        Route::get('/', [CierreFechaController::class, 'index'])->name('gestion.cierre-fechas.index');
-        Route::put('/{id}', [CierreFechaController::class, 'update'])->name('gestion.cierre-fechas.update');
-        Route::post('/update-multiple', [CierreFechaController::class, 'updateMultiple'])->name('gestion.cierre-fechas.update-multiple');
-    });
+        // ---------- 3.3 MENÚ ----------
+        Route::prefix('menu')->group(function () {
+            Route::prefix('asignar')->group(function () {
+                Route::get('/', [AsignarMenuController::class, 'index'])->name('gestion.menu.asignar');
+                Route::get('/{operadorId}', [AsignarMenuController::class, 'getAsignados'])->name('gestion.menu.asignar.get');
+                Route::post('/', [AsignarMenuController::class, 'store'])->name('gestion.menu.asignar.store');
+            });
+            
+            Route::prefix('reporte')->group(function () {
+                Route::get('/', [ReporteMenuController::class, 'index'])->name('gestion.menu.reporte');
+                Route::get('/arbol/{operadorId}', [ReporteMenuController::class, 'getArbol'])->name('gestion.menu.reporte.arbol');
+            });
+        });
 
-    // ============= IMPUESTOS ===============
-    // ==================== ANULAR FACTURA ====================
-    // Vista NORMAL (solo su sucursal)
-    Route::get('/gestion/anular-factura', [AnularFacturaController::class, 'index'])
-        ->name('gestion.anular-factura.index');
-        
-    Route::post('/gestion/anular-factura/anular', [AnularFacturaController::class, 'anular'])
-        ->name('gestion.anular-factura.anular');
+        // ---------- 3.4 SUCURSALES ----------
+        Route::prefix('sucursales')->group(function () {
+            Route::get('/', [SucursalGestionController::class, 'index'])->name('sucursales-gestion.index');
+            Route::get('/create', [SucursalGestionController::class, 'create'])->name('sucursales-gestion.create');
+            Route::post('/', [SucursalGestionController::class, 'store'])->name('sucursales-gestion.store');
+            Route::get('/{id}/edit', [SucursalGestionController::class, 'edit'])->name('sucursales-gestion.edit');
+            Route::put('/{id}', [SucursalGestionController::class, 'update'])->name('sucursales-gestion.update');
+        });
 
-    // 🔥 Vista ADMIN
-    Route::get('/gestion/anular-factura/admin', [AnularFacturaAdminController::class, 'index'])
-        ->name('gestion.anular-factura.admin');
+        // ---------- 3.5 TODOS ----------
+        Route::prefix('todos')->group(function () {
+            Route::prefix('identificador')->group(function () {
+                Route::get('/', [IdentificadorController::class, 'index'])->name('gestion.todos.identificador.index');
+                Route::post('/', [IdentificadorController::class, 'store'])->name('gestion.todos.identificador.store');
+                Route::put('/{id}', [IdentificadorController::class, 'update'])->name('gestion.todos.identificador.update');
+                Route::delete('/{id}', [IdentificadorController::class, 'destroy'])->name('gestion.todos.identificador.destroy');
+            });
 
-    // 🔥 API: Obtener operadores por sucursal (para el select dinámico)
-    Route::get('/gestion/anular-factura/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])
-        ->name('gestion.anular-factura.operadores');
-    // DENTRO del grupo de rutas protegidas (con auth)
-    Route::get('/gestion/anular-factura/pdf/{id}', [AnularFacturaAdminController::class, 'pdf'])
-        ->name('gestion.anular-factura.pdf');
+            Route::prefix('fecha-auxiliar-sucursal')->group(function () {
+                Route::get('/', [FechaAuxiliarSucursalController::class, 'index'])->name('gestion.fecha-auxiliar-sucursal.index');
+                Route::post('/', [FechaAuxiliarSucursalController::class, 'store'])->name('gestion.fecha-auxiliar-sucursal.store');
+                Route::delete('/{id}', [FechaAuxiliarSucursalController::class, 'destroy'])->name('gestion.fecha-auxiliar-sucursal.destroy');
+                Route::get('/fecha/{id}', [FechaAuxiliarSucursalController::class, 'getFecha'])->name('gestion.fecha-auxiliar-sucursal.get-fecha');
+                Route::get('/sucursal/{id}', [FechaAuxiliarSucursalController::class, 'getSucursal'])->name('gestion.fecha-auxiliar-sucursal.get-sucursal');
+            });
+        });
 
-    // ==================== MANTENIMIENTO MÉTODOS DE PAGO ====================
-    Route::prefix('gestion/mantenimiento-metodos-pago')->group(function () {
-        Route::get('/', [MantenimientoMetodosPagoController::class, 'index'])
-            ->name('gestion.mantenimiento-metodos-pago.index');
-        Route::get('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'getMetodosPago'])
-            ->name('gestion.mantenimiento-metodos-pago.get');
-        Route::put('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'updateMetodosPago'])
-            ->name('gestion.mantenimiento-metodos-pago.update');
-    });
+        // ---------- 3.6 OPERADORES ----------
+        Route::prefix('operadores')->group(function () {
+            Route::get('/', [OperadorController::class, 'index'])->name('gestion.operadores.index');
+            Route::post('/', [OperadorController::class, 'store'])->name('gestion.operadores.store');
+            Route::put('/{id}', [OperadorController::class, 'update'])->name('gestion.operadores.update');
+            Route::delete('/{id}', [OperadorController::class, 'destroy'])->name('gestion.operadores.destroy');
+            Route::post('/{id}/activar', [OperadorController::class, 'activar'])->name('gestion.operadores.activar');
+        });
 
-    // ==================== LUGARES DE VENTA ====================
-    Route::prefix('gestion/lugar-venta')->group(function () {
-        Route::get('/', [LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
-        Route::get('/create', [LugarVentaController::class, 'create'])->name('gestion.lugar-venta.create');
-        Route::post('/', [LugarVentaController::class, 'store'])->name('gestion.lugar-venta.store');
-        Route::get('/{id}/edit', [LugarVentaController::class, 'edit'])->name('gestion.lugar-venta.edit');
-        Route::put('/{id}', [LugarVentaController::class, 'update'])->name('gestion.lugar-venta.update');
-        Route::delete('/{id}', [LugarVentaController::class, 'destroy'])->name('gestion.lugar-venta.destroy');
-        Route::get('/sucursales/{clienteId}', [LugarVentaController::class, 'getSucursales'])->name('gestion.lugar-venta.sucursales');
-    });
+        // ---------- 3.7 PERFIL ----------
+        Route::prefix('perfil')->group(function () {
+            Route::get('/', [PerfilController::class, 'edit'])->name('gestion.perfil.edit');
+            Route::put('/', [PerfilController::class, 'update'])->name('gestion.perfil.update');
+        });
 
-    // ==================== IMPUESTOS - COMISIONISTAS ====================
-    Route::prefix('gestion/comisionista')->group(function () {
-        Route::get('/', [ComisionistaController::class, 'index'])->name('gestion.comisionista.index');
-        Route::get('/create', [ComisionistaController::class, 'create'])->name('gestion.comisionista.create');
-        Route::post('/', [ComisionistaController::class, 'store'])->name('gestion.comisionista.store');
-        Route::get('/{id}/edit', [ComisionistaController::class, 'edit'])->name('gestion.comisionista.edit');
-        Route::put('/{id}', [ComisionistaController::class, 'update'])->name('gestion.comisionista.update');
-        Route::delete('/{id}', [ComisionistaController::class, 'destroy'])->name('gestion.comisionista.destroy');
-        Route::get('/buscar-identificador', [ComisionistaController::class, 'buscarIdentificador'])->name('gestion.comisionista.buscar-identificador');
-    });
+        // ---------- 3.8 OPERADOR - SUCURSAL ----------
+        Route::prefix('operador-sucursal')->group(function () {
+            Route::get('/', [OperadorSucursalController::class, 'index'])->name('gestion.operador-sucursal.index');
+            Route::post('/', [OperadorSucursalController::class, 'store'])->name('gestion.operador-sucursal.store');
+            Route::put('/{id}', [OperadorSucursalController::class, 'update'])->name('gestion.operador-sucursal.update');
+            Route::delete('/{id}', [OperadorSucursalController::class, 'destroy'])->name('gestion.operador-sucursal.destroy');
+        });
 
-    // ==================== IMPUESTOS - LIQUIDACIÓN CONCEPTOS ====================
-    Route::prefix('gestion/impuestos/liquidacion-concepto')->group(function () {
-        Route::get('/', [LiquidacionConceptoController::class, 'index'])->name('gestion.impuestos.liquidacion-concepto.index');
-        Route::post('/', [LiquidacionConceptoController::class, 'store'])->name('gestion.impuestos.liquidacion-concepto.store');
-        Route::put('/{id}', [LiquidacionConceptoController::class, 'update'])->name('gestion.impuestos.liquidacion-concepto.update');
-        Route::delete('/{id}', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.destroy');
-        
-        // 🔥 Agrega esta ruta POST como alternativa
-        Route::post('/{id}/eliminar', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.eliminar');
-    });
-    // ==================== LIQUIDACIÓN DE VENTAS ====================
-    Route::prefix('gestion/liquidacion-vendedor')->group(function () {
-        Route::get('/', [LiquidacionVendedorController::class, 'index'])->name('liquidacion-vendedor.index');
-        Route::get('/datos/{fechaId}', [LiquidacionVendedorController::class, 'getDatos'])->name('liquidacion-vendedor.datos');
-        Route::post('/guardar', [LiquidacionVendedorController::class, 'guardar'])->name('liquidacion-vendedor.guardar');
-        Route::get('/mis-liquidaciones', [LiquidacionVendedorController::class, 'liquidacionesPorOperador'])->name('liquidacion-vendedor.mis-liquidaciones');
-        Route::get('/reimprimir/{id}', [LiquidacionVendedorController::class, 'reimprimir'])->name('liquidacion-vendedor.reimprimir');
-        Route::get('/pdf/{id}', [LiquidacionVendedorController::class, 'pdf'])->name('liquidacion-vendedor.pdf');    
-    });
+        // ---------- 3.9 FECHAS ----------
+        Route::prefix('fechas')->group(function () {
+            Route::get('/', [FechaController::class, 'index'])->name('gestion.fechas.index');
+            Route::post('/', [FechaController::class, 'store'])->name('gestion.fechas.store');
+            Route::put('/{id}', [FechaController::class, 'update'])->name('gestion.fechas.update');
+            Route::delete('/{id}', [FechaController::class, 'destroy'])->name('gestion.fechas.destroy');
+        });
 
-    // ==================== REPORTE VENTAS VENDEDOR ====================
-    Route::prefix('gestion/reporte-ventas-vendedor')->group(function () {
-        Route::get('/', [ReporteVentasVendedorController::class, 'index'])->name('reporte-ventas-vendedor.index');
-        Route::get('/detalle-producto', [ReporteVentasVendedorController::class, 'getDetalleProducto'])->name('reporte-ventas-vendedor.detalle');
-        Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
-    });
+        // ---------- 3.10 CIERRE DE FECHAS ----------
+        Route::prefix('cierre-fechas')->group(function () {
+            Route::get('/', [CierreFechaController::class, 'index'])->name('gestion.cierre-fechas.index');
+            Route::put('/{id}', [CierreFechaController::class, 'update'])->name('gestion.cierre-fechas.update');
+            Route::post('/update-multiple', [CierreFechaController::class, 'updateMultiple'])->name('gestion.cierre-fechas.update-multiple');
+        });
 
-    // ==================== REPORTE VENTAS POR OPERADOR - ADMINISTRADOR ====================
-    Route::get('/gestion/reportes/ventas-por-operador', [App\Http\Controllers\Gestion\Reportes\ReporteVentasSupervisorPorOperadorController::class, 'index'])->name('gestion.reportes.ventas-por-operador');
+        // ============================================================
+        // 3.11 CONTABILIDAD (TODOS LOS CONTROLLERS DE LA CARPETA Contabilidad)
+        // ============================================================
+        Route::prefix('contabilidad')->group(function () {
+            
+            // Cuentas (Listado)
+            Route::prefix('cuentas')->group(function () {
+                Route::get('/', [CuentaController::class, 'index'])->name('gestion.contabilidad.cuentas.index');
+            });
 
-    // ==================== REPORTE UNIDADES VENDIDAS ====================
-    Route::prefix('gestion/reportes/unidades-ventas')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController::class, 'index'])
-            ->name('gestion.reportes.unidades-ventas.index');
-        Route::get('/data', [App\Http\Controllers\Gestion\Reportes\ReporteUnidadesVentasController::class, 'getData'])
-            ->name('gestion.reportes.unidades-ventas.data');
-    });
+            // Balance General A3
+            Route::prefix('balance-general-a3')->group(function () {
+                Route::get('/', [BalanceGeneralA3Controller::class, 'index'])->name('gestion.balance-general-a3.index');
+                Route::get('/generar', [BalanceGeneralA3Controller::class, 'generar'])->name('gestion.balance-general-a3.generar');
+            });
 
-    // ==================== REPORTE DE VENTAS POR SUCURSAL ====================
-    Route::get('/gestion/reporte-ventas-sucursal', [ReporteVentasSucursalController::class, 'index'])
-        ->name('gestion.reporte-ventas-sucursal.index');
-    Route::get('/gestion/reporte-ventas-sucursal/detalle-producto', [ReporteVentasSucursalController::class, 'getDetalleProducto'])
-        ->name('gestion.reporte-ventas-sucursal.detalle-producto');
+            // Estado de Resultados A3
+            Route::prefix('estado-resultados-a3')->group(function () {
+                Route::get('/', [EstadoResultadosA3Controller::class, 'index'])->name('gestion.estado-resultados-a3.index');
+                Route::get('/generar', [EstadoResultadosA3Controller::class, 'generar'])->name('gestion.estado-resultados-a3.generar');
+            });
 
+            // Administrador de Diarios
+            Route::prefix('administrador-diario')->group(function () {
+                Route::get('/', [AdministradorDiarioController::class, 'index'])->name('gestion.administrador-diario.index');
+                Route::post('/{id}/reabrir', [AdministradorDiarioController::class, 'reabrir'])->name('gestion.administrador-diario.reabrir');
+            });
 
-    // ==================== REPORTE LISTADO DE FACTURAS ====================
-    Route::get('/gestion/reporte-listado-facturas', [ReporteListadoFacturasController::class, 'index'])
-        ->name('gestion.reporte-listado-facturas.index');
-    Route::get('/gestion/reporte-listado-facturas/reimprimir/{id}', [ReporteListadoFacturasController::class, 'reimprimir'])
-        ->name('gestion.reporte-listado-facturas.reimprimir');
-        
-    // ==================== LISTA DE PRECIOS ====================
-    Route::prefix('gestion/reportes/lista-precios')->group(function () {
-        // Reporte GENERAL (todas las sucursales)
-        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'index'])
-            ->name('gestion.reportes.lista-precios');
-        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportar'])
-            ->name('gestion.reportes.lista-precios.exportar');
-        
-        // 🔥 NUEVO: Reporte por SUCURSAL ACTUAL
-        Route::get('/sucursal', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'indexSucursal'])
-            ->name('gestion.reportes.lista-precios.sucursal');
-        Route::get('/exportar-sucursal', [App\Http\Controllers\Gestion\Reportes\ListaPreciosController::class, 'exportarPorSucursal'])
-            ->name('gestion.reportes.lista-precios.exportar-sucursal');
-    });
+            // Análisis de Cuenta
+            Route::prefix('analisis-cuenta')->group(function () {
+                Route::get('/', [AnalisisCuentaController::class, 'index'])->name('gestion.analisis-cuenta.index');
+                Route::post('/excel', [AnalisisCuentaController::class, 'generarExcel'])->name('gestion.analisis-cuenta.excel');
+            });
 
-    // ==================== REPORTE - MAYOR DE CUENTA ====================
-    Route::prefix('gestion/reportes/mayor-cuenta')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'index'])
-            ->name('gestion.reportes.mayor-cuenta.index');
-        
-        // 🔥 NUEVA RUTA: Por sucursal
-        Route::get('/por-sucursal', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'porSucursal'])
-            ->name('gestion.reportes.mayor-cuenta.por-sucursal');
-        
-        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'exportar'])
-            ->name('gestion.reportes.mayor-cuenta.exportar');
-        
-        // 🔥 NUEVA RUTA: Exportar por sucursal específica
-        Route::get('/exportar-por-sucursal', [App\Http\Controllers\Gestion\Reportes\MayorCuentaController::class, 'exportarPorSucursal'])
-            ->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
-    });
-    // ==================== GESTIÓN - FECHAS AUXILIARES POR SUCURSAL ====================
-    Route::prefix('gestion/todos/fecha-auxiliar-sucursal')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'index'])
-            ->name('gestion.fecha-auxiliar-sucursal.index');
-        Route::post('/', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'store'])
-            ->name('gestion.fecha-auxiliar-sucursal.store');
-        Route::delete('/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'destroy'])
-            ->name('gestion.fecha-auxiliar-sucursal.destroy');
-        Route::get('/fecha/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'getFecha'])
-            ->name('gestion.fecha-auxiliar-sucursal.get-fecha');
-        Route::get('/sucursal/{id}', [App\Http\Controllers\Gestion\Todos\FechaAuxiliarSucursalController::class, 'getSucursal'])
-            ->name('gestion.fecha-auxiliar-sucursal.get-sucursal');
-    });
+            // Cuentas por Sucursal
+            Route::prefix('conta-cuenta-sucursal')->group(function () {
+                Route::get('/', [ContaCuentaSucursalController::class, 'index'])->name('gestion.conta-cuenta-sucursal.index');
+                Route::post('/', [ContaCuentaSucursalController::class, 'store'])->name('gestion.conta-cuenta-sucursal.store');
+                Route::put('/{id}', [ContaCuentaSucursalController::class, 'update'])->name('gestion.conta-cuenta-sucursal.update');
+                Route::delete('/{id}', [ContaCuentaSucursalController::class, 'destroy'])->name('gestion.conta-cuenta-sucursal.destroy');
+            });
+            // Imprimir Diario
+            Route::prefix('imprimir-diario')->group(function () {
+                Route::get('/', [ImprimirDiarioController::class, 'index'])->name('gestion.imprimir-diario.index');
+                Route::get('/buscar', [ImprimirDiarioController::class, 'buscar'])->name('gestion.imprimir-diario.buscar');
+                Route::get('/operadores/{sucursalId}', [ImprimirDiarioController::class, 'getOperadoresPorSucursal'])->name('gestion.imprimir-diario.operadores');
+                Route::get('/pdf/{id}', [ImprimirDiarioController::class, 'pdf'])->name('gestion.imprimir-diario.pdf');
+                Route::get('/por-sucursal', [ImprimirDiarioController::class, 'porSucursal'])->name('gestion.imprimir-diario.por-sucursal');
+                // ✅ RUTA QUE FALTA
+                Route::get('/diarios-por-sucursal', [ImprimirDiarioController::class, 'getDiariosPorSucursal'])->name('gestion.imprimir-diario.diarios-por-sucursal');
+            });
 
-    // ==================== REPORTES CONTROL INTERNO ====================
-    Route::prefix('gestion/reportes/control-interno')->group(function () {
-        // Reporte por una fecha (simple)
-        Route::get('/informe-sucursal', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalController::class, 'index'])
-            ->name('gestion.reportes.control-interno.informe-sucursal');
-        Route::get('/informe-sucursal/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalController::class, 'exportar'])
-            ->name('gestion.reportes.control-interno.informe-sucursal.exportar');
-        
-        // Reporte entre fechas
-        Route::get('/informe-sucursal-entre-fechas', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFechasController::class, 'index'])
-            ->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas');
-        Route::get('/informe-sucursal-entre-fechas/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalEntreFechasController::class, 'exportar'])
-            ->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas.exportar');
-        
-        // Reporte por operador/comisionistas
-        Route::get('/informe-sucursal-operador-comisionistas', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController::class, 'index'])
-            ->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas');
-        Route::get('/informe-sucursal-operador-comisionistas/exportar', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InformeSucursalOperadorComisionistasController::class, 'exportar'])
-            ->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas.exportar');
-            // Arqueo Caja Bolivianos
-        Route::get('/arqueo-caja-bolivianos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController::class, 'index'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos');
-        Route::get('/arqueo-caja-bolivianos/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosController::class, 'generarPdf'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos.pdf');
-        // Arqueo Caja Bolivianos por Operador
-        Route::get('/arqueo-caja-bolivianos-ci-operador', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController::class, 'index'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador');
-        Route::get('/arqueo-caja-bolivianos-ci-operador/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaBolivianosCIOperadorController::class, 'generarPdf'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.pdf');
-             // Arqueo Caja Chica por Operador
-        Route::get('/arqueo-caja-chica-ci', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController::class, 'index'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci');
-        Route::get('/arqueo-caja-chica-ci/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController::class, 'generarPdf'])
-            ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');
+            // Diario de Ingresos
+            Route::prefix('diario-ingreso')->group(function () {
+                Route::get('/', [DiarioIngresoController::class, 'index'])->name('contabilidad.diario-ingreso.index');
+                Route::get('/create', [DiarioIngresoController::class, 'create'])->name('contabilidad.diario-ingreso.create');
+                Route::post('/', [DiarioIngresoController::class, 'store'])->name('contabilidad.diario-ingreso.store');
+                Route::get('/{id}/edit', [DiarioIngresoController::class, 'edit'])->name('contabilidad.diario-ingreso.edit');
+                Route::put('/{id}', [DiarioIngresoController::class, 'update'])->name('contabilidad.diario-ingreso.update');
+                Route::post('/asiento', [DiarioIngresoController::class, 'storeAsiento'])->name('contabilidad.diario-ingreso.asiento.store');
+                Route::put('/asiento/{id}', [DiarioIngresoController::class, 'updateAsiento'])->name('contabilidad.diario-ingreso.asiento.update');
+                Route::delete('/asiento/{id}', [DiarioIngresoController::class, 'destroyAsiento'])->name('contabilidad.diario-ingreso.asiento.destroy');
+                Route::post('/{id}/contabilizar', [DiarioIngresoController::class, 'contabilizar'])->name('contabilidad.diario-ingreso.contabilizar');
+                Route::get('/{id}/pdf', [DiarioIngresoController::class, 'pdf'])->name('contabilidad.diario-ingreso.pdf');
+            });
+        });
+
+        // ============================================================
+        // 3.12 IMPUESTOS (TODOS LOS CONTROLLERS DE LA CARPETA Impuestos)
+        // ============================================================
+        Route::prefix('impuestos')->group(function () {
+            
+            // Lugar de Venta
+            Route::prefix('lugar-venta')->group(function () {
+                Route::get('/', [LugarVentaController::class, 'index'])->name('gestion.lugar-venta.index');
+                Route::get('/create', [LugarVentaController::class, 'create'])->name('gestion.lugar-venta.create');
+                Route::post('/', [LugarVentaController::class, 'store'])->name('gestion.lugar-venta.store');
+                Route::get('/{id}/edit', [LugarVentaController::class, 'edit'])->name('gestion.lugar-venta.edit');
+                Route::put('/{id}', [LugarVentaController::class, 'update'])->name('gestion.lugar-venta.update');
+                Route::delete('/{id}', [LugarVentaController::class, 'destroy'])->name('gestion.lugar-venta.destroy');
+                Route::get('/sucursales/{clienteId}', [LugarVentaController::class, 'getSucursales'])->name('gestion.lugar-venta.sucursales');
+            });
+
+            // Comisionista
+            Route::prefix('comisionista')->group(function () {
+                Route::get('/', [ComisionistaController::class, 'index'])->name('gestion.comisionista.index');
+                Route::get('/create', [ComisionistaController::class, 'create'])->name('gestion.comisionista.create');
+                Route::post('/', [ComisionistaController::class, 'store'])->name('gestion.comisionista.store');
+                Route::get('/{id}/edit', [ComisionistaController::class, 'edit'])->name('gestion.comisionista.edit');
+                Route::put('/{id}', [ComisionistaController::class, 'update'])->name('gestion.comisionista.update');
+                Route::delete('/{id}', [ComisionistaController::class, 'destroy'])->name('gestion.comisionista.destroy');
+                Route::get('/buscar-identificador', [ComisionistaController::class, 'buscarIdentificador'])->name('gestion.comisionista.buscar-identificador');
+            });
+
+            // Liquidación Concepto
+            Route::prefix('liquidacion-concepto')->group(function () {
+                Route::get('/', [LiquidacionConceptoController::class, 'index'])->name('gestion.impuestos.liquidacion-concepto.index');
+                Route::post('/', [LiquidacionConceptoController::class, 'store'])->name('gestion.impuestos.liquidacion-concepto.store');
+                Route::put('/{id}', [LiquidacionConceptoController::class, 'update'])->name('gestion.impuestos.liquidacion-concepto.update');
+                Route::delete('/{id}', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.destroy');
+                Route::post('/{id}/eliminar', [LiquidacionConceptoController::class, 'destroy'])->name('gestion.impuestos.liquidacion-concepto.eliminar');
+            });
+
+            // Liquidación Vendedor
+            Route::prefix('liquidacion-vendedor')->group(function () {
+                Route::get('/', [LiquidacionVendedorController::class, 'index'])->name('liquidacion-vendedor.index');
+                Route::get('/datos/{fechaId}', [LiquidacionVendedorController::class, 'getDatos'])->name('liquidacion-vendedor.datos');
+                Route::post('/guardar', [LiquidacionVendedorController::class, 'guardar'])->name('liquidacion-vendedor.guardar');
+                Route::get('/mis-liquidaciones', [LiquidacionVendedorController::class, 'liquidacionesPorOperador'])->name('liquidacion-vendedor.mis-liquidaciones');
+                Route::get('/reimprimir/{id}', [LiquidacionVendedorController::class, 'reimprimir'])->name('liquidacion-vendedor.reimprimir');
+                Route::get('/pdf/{id}', [LiquidacionVendedorController::class, 'pdf'])->name('liquidacion-vendedor.pdf');
+            });
+
+            // Mantenimiento Métodos de Pago
+            Route::prefix('mantenimiento-metodos-pago')->group(function () {
+                Route::get('/', [MantenimientoMetodosPagoController::class, 'index'])->name('gestion.mantenimiento-metodos-pago.index');
+                Route::get('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'getMetodosPago'])->name('gestion.mantenimiento-metodos-pago.get');
+                Route::put('/{idVenta}/metodos-pago', [MantenimientoMetodosPagoController::class, 'updateMetodosPago'])->name('gestion.mantenimiento-metodos-pago.update');
+            });
+
+            // Anular Factura (Normal)
+            Route::prefix('anular-factura')->group(function () {
+                Route::get('/', [AnularFacturaController::class, 'index'])->name('gestion.anular-factura.index');
+                Route::post('/anular', [AnularFacturaController::class, 'anular'])->name('gestion.anular-factura.anular');
+            });
+
+            // Anular Factura (Admin)
+            Route::prefix('anular-factura/admin')->group(function () {
+                Route::get('/', [AnularFacturaAdminController::class, 'index'])->name('gestion.anular-factura.admin');
+                Route::get('/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])->name('gestion.anular-factura.operadores');
+                Route::get('/pdf/{id}', [AnularFacturaAdminController::class, 'pdf'])->name('gestion.anular-factura.pdf');
+            });
+        });
+
+        // ============================================================
+        // 3.13 INVENTARIO (TODOS LOS CONTROLLERS DE LA CARPETA Inventario)
+        // ============================================================
+        Route::prefix('inventario')->group(function () {
+            
+            // Catálogos (resource)
+            Route::resource('producto-estado', ProductoEstadoController::class)->except(['show', 'create', 'edit']);
+            Route::resource('producto-linea', ProductoLineaController::class)->except(['show', 'create', 'edit']);
+            Route::resource('producto-grupo-analisis', ProductoGrupoAnalisisController::class)->except(['show', 'create', 'edit']);
+            Route::resource('tipo-operacion', TipoOperacionController::class)->except(['show', 'create', 'edit']);
+            Route::resource('unidad-medida', UnidadMedidaController::class)->except(['show', 'create', 'edit']);
+
+            // Almacén
+            Route::prefix('almacen')->group(function () {
+                Route::get('/', [AlmacenController::class, 'index'])->name('gestion.inventario.almacen.index');
+                Route::post('/', [AlmacenController::class, 'store'])->name('gestion.inventario.almacen.store');
+                Route::put('/{id}', [AlmacenController::class, 'update'])->name('gestion.inventario.almacen.update');
+                Route::delete('/{id}', [AlmacenController::class, 'destroy'])->name('gestion.inventario.almacen.destroy');
+            });
+
+            // Categorías Producto
+            Route::prefix('categorias-producto')->group(function () {
+                Route::get('/', [CategoriaProductoController::class, 'index'])->name('gestion.inventario.categorias-producto.index');
+                Route::post('/', [CategoriaProductoController::class, 'store'])->name('gestion.inventario.categorias-producto.store');
+                Route::put('/{id}', [CategoriaProductoController::class, 'update'])->name('gestion.inventario.categorias-producto.update');
+                Route::delete('/{id}', [CategoriaProductoController::class, 'destroy'])->name('gestion.inventario.categorias-producto.destroy');
+                Route::post('/reordenar', [CategoriaProductoController::class, 'reordenarTodo'])->name('gestion.inventario.categorias-producto.reordenar');
+            });
+
+            // Asignar Productos a Categorías
+            Route::prefix('asignar-productos-categoria')->group(function () {
+                Route::get('/', [AsignarProductoCategoriaController::class, 'index'])->name('gestion.inventario.asignar-productos-categoria.index');
+                Route::post('/', [AsignarProductoCategoriaController::class, 'store'])->name('gestion.inventario.asignar-productos-categoria.store');
+            });
+
+            // Reporte de Inventario
+            Route::prefix('reporte-inventario')->group(function () {
+                Route::get('/', [ReporteInventarioController::class, 'index'])->name('gestion.inventario.reporte-inventario.index');
+                Route::get('/sucursal-actual', [ReporteInventarioController::class, 'porSucursal'])->name('gestion.inventario.reporte-inventario.sucursal-actual');
+            });
+
+            // Ajustes de Inventario
+            Route::prefix('ajustes')->group(function () {
+                Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
+                Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
+                Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
+                Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
+                Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
+                Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
+                Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
+                Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
+                Route::put('/detalle/{id}', [AjusteInventarioController::class, 'actualizarDetalle'])->name('ajustes-inventario.detalle.update');
+                Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
+                Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
+                Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
+                Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
+                Route::put('/{id}', [AjusteInventarioController::class, 'update'])->name('ajustes-inventario.update');
+            });
+
+            // Precio Costo
+            Route::prefix('precio-costo')->group(function () {
+                Route::get('/', [ProductoPrecioCostoController::class, 'index'])->name('gestion.inventario.precio-costo.index');
+                Route::get('/{id}/historial', [ProductoPrecioCostoController::class, 'historial'])->name('gestion.inventario.precio-costo.historial');
+            });
+
+            // Inventario Físico
+            Route::prefix('inventario-fisico')->group(function () {
+                Route::get('/', [InventarioFisicoController::class, 'create'])->name('gestion.inventario-fisico.index');
+                Route::get('/{id}', function ($id) {
+                    return redirect()->route('gestion.inventario-fisico.edit', $id);
+                });
+                Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
+                Route::delete('/{id}', [InventarioFisicoController::class, 'destroy'])->name('gestion.inventario-fisico.destroy');
+                Route::put('/{id}/cabecera', [InventarioFisicoController::class, 'updateCabecera']);
+                Route::post('/{id}/sincronizar', [InventarioFisicoController::class, 'sincronizarProductos']);
+                Route::put('/{id}/detalle/{detalleId}/unidades', [InventarioFisicoController::class, 'actualizarUnidades']);
+                Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);
+                Route::get('/{id}/detalles', [InventarioFisicoController::class, 'getDetalles']);
+                Route::get('/{id}/pdf', [InventarioFisicoController::class, 'pdf'])->name('gestion.inventario-fisico.pdf');
+            });
+
+            // Inventario Físico Mantenimiento
+            Route::prefix('inventario-fisico-mantenimiento')->group(function () {
+                Route::get('/', [InventarioFisicoMantenimientoController::class, 'index'])->name('gestion.inventario-fisico-mantenimiento.index');
+                Route::put('/{id}/estado', [InventarioFisicoMantenimientoController::class, 'updateEstado'])->name('gestion.inventario-fisico-mantenimiento.estado');
+            });
+
+            // Productos Venta
+            Route::prefix('productos-venta')->group(function () {
+                Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');
+                Route::get('/create', [ProductoVentaController::class, 'create'])->name('gestion.productos-venta.create');
+                Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
+                Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
+                Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
+                Route::post('/{id}/activar', [ProductoVentaController::class, 'activar']);
+                Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar']);
+                Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
+                Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
+                Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
+                Route::delete('/precio-sucursal/{id}', [ProductoVentaController::class, 'destroyPrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.destroy');
+                Route::post('/precio-mayorista', [ProductoVentaController::class, 'storePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.store');
+                Route::put('/precio-mayorista/{id}', [ProductoVentaController::class, 'updatePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.update');
+                Route::delete('/precio-mayorista/{id}', [ProductoVentaController::class, 'destroyPrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.destroy');
+                Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
+                Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
+                Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
+                Route::get('/catalogo', [ProductoVentaController::class, 'catalogo'])->name('gestion.productos-venta.catalogo');
+                Route::post('/{id}/enviar-aprobacion', [ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
+            });
+
+            // Productos Aprobación Config
+            Route::prefix('productos-aprobacion')->group(function () {
+                Route::get('/config', [ProductoAprobacionConfigController::class, 'index'])->name('gestion.productos-aprobacion.config');
+                Route::post('/config', [ProductoAprobacionConfigController::class, 'store'])->name('gestion.productos-aprobacion.config.store');
+                Route::delete('/config/{id}', [ProductoAprobacionConfigController::class, 'destroy'])->name('gestion.productos-aprobacion.config.destroy');
+                Route::post('/config/{id}/toggle', [ProductoAprobacionConfigController::class, 'toggle'])->name('gestion.productos-aprobacion.config.toggle');
+                Route::get('/pendientes', [ProductoVentaController::class, 'pendientesAprobacion'])->name('gestion.productos-aprobacion.pendientes');
+                Route::post('/votar/{id}', [ProductoVentaController::class, 'votarAprobacion'])->name('gestion.productos-aprobacion.votar');
+                Route::get('/ver/{id}', [ProductoVentaController::class, 'verAprobacion'])->name('gestion.productos-aprobacion.ver');
+            });
+        });
+
+        // ============================================================
+        // 3.14 COMPRAS
+        // ============================================================
+        Route::prefix('compras')->group(function () {
+            Route::get('/', [CompraController::class, 'index'])->name('compras.index');
+            Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
+            Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado');
+            Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
+            Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
+            Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
+            Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
+            Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
+            Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
+            Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
+            Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
+            Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
+            Route::put('/actualizar-detalle/{id}', [CompraController::class, 'actualizarDetalle'])->name('compras.actualizar-detalle');
+        });
+
+        // ============================================================
+        // 3.15 INGRESOS
+        // ============================================================
+        Route::prefix('ingresos')->group(function () {
+            Route::get('/', [IngresoController::class, 'index'])->name('ingresos.index');
+            Route::get('/create', [IngresoController::class, 'create'])->name('ingresos.create');
+            Route::get('/gestion-estado', [IngresoController::class, 'gestionEstado'])->name('ingresos.gestion-estado');
+            Route::post('/', [IngresoController::class, 'store'])->name('ingresos.store');
+            Route::post('/{id}/cambiar-estado', [IngresoController::class, 'cambiarEstado'])->name('ingresos.cambiar-estado');
+            Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
+            Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
+            Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
+            Route::get('/{id}', [IngresoController::class, 'show'])->name('ingresos.show');
+        });
+
+        // ============================================================
+        // 3.16 EGRESOS
+        // ============================================================
+        Route::prefix('egresos')->group(function () {
+            Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');
+            Route::get('/create', [EgresoController::class, 'create'])->name('egresos.create');
+            Route::post('/', [EgresoController::class, 'store'])->name('egresos.store');
+            Route::get('/{id}/edit', [EgresoController::class, 'edit'])->name('egresos.edit');
+            Route::put('/{id}', [EgresoController::class, 'update'])->name('egresos.update');
+            Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])->name('egresos.pdf')->withoutMiddleware([\App\Http\Middleware\VerificarContexto::class]);
+            Route::get('/gestion-estado', [EgresoController::class, 'gestionEstado'])->name('egresos.gestion-estado');
+            Route::post('/{id}/cambiar-estado', [EgresoController::class, 'cambiarEstado'])->name('egresos.cambiar-estado');
+        });
+
+        // ============================================================
+        // 3.17 REPORTES (TODOS LOS CONTROLLERS DE LA CARPETA Reportes)
+        // ============================================================
+        Route::prefix('reportes')->group(function () {
+            
+            // Ventas por Vendedor
+            Route::prefix('ventas-vendedor')->group(function () {
+                Route::get('/', [ReporteVentasVendedorController::class, 'index'])->name('reporte-ventas-vendedor.index');
+                Route::get('/detalle-producto', [ReporteVentasVendedorController::class, 'getDetalleProducto'])->name('reporte-ventas-vendedor.detalle');
+                Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
+            });
+
+            // Ventas por Operador (Supervisor)
+            Route::get('/ventas-por-operador', [ReporteVentasSupervisorPorOperadorController::class, 'index'])->name('gestion.reportes.ventas-por-operador');
+
+            // Unidades Vendidas
+            Route::prefix('unidades-ventas')->group(function () {
+                Route::get('/', [ReporteUnidadesVentasController::class, 'index'])->name('gestion.reportes.unidades-ventas.index');
+                Route::get('/data', [ReporteUnidadesVentasController::class, 'getData'])->name('gestion.reportes.unidades-ventas.data');
+            });
+
+            // Ventas por Sucursal
+            Route::prefix('ventas-sucursal')->group(function () {
+                Route::get('/', [ReporteVentasSucursalController::class, 'index'])->name('gestion.reporte-ventas-sucursal.index');
+                Route::get('/detalle-producto', [ReporteVentasSucursalController::class, 'getDetalleProducto'])->name('gestion.reporte-ventas-sucursal.detalle-producto');
+            });
+
+            // Listado de Facturas
+            Route::prefix('listado-facturas')->group(function () {
+                Route::get('/', [ReporteListadoFacturasController::class, 'index'])->name('gestion.reporte-listado-facturas.index');
+                Route::get('/reimprimir/{id}', [ReporteListadoFacturasController::class, 'reimprimir'])->name('gestion.reporte-listado-facturas.reimprimir');
+            });
+
+            // Lista de Precios
+            Route::prefix('lista-precios')->group(function () {
+                Route::get('/', [ListaPreciosController::class, 'index'])->name('gestion.reportes.lista-precios');
+                Route::get('/exportar', [ListaPreciosController::class, 'exportar'])->name('gestion.reportes.lista-precios.exportar');
+                Route::get('/sucursal', [ListaPreciosController::class, 'indexSucursal'])->name('gestion.reportes.lista-precios.sucursal');
+                Route::get('/exportar-sucursal', [ListaPreciosController::class, 'exportarPorSucursal'])->name('gestion.reportes.lista-precios.exportar-sucursal');
+            });
+
+            // Mayor de Cuenta
+            Route::prefix('mayor-cuenta')->group(function () {
+                Route::get('/', [MayorCuentaController::class, 'index'])->name('gestion.reportes.mayor-cuenta.index');
+                Route::get('/por-sucursal', [MayorCuentaController::class, 'porSucursal'])->name('gestion.reportes.mayor-cuenta.por-sucursal');
+                // ✅ GET para compatibilidad con la vista original
+                Route::get('/exportar', [MayorCuentaController::class, 'exportar'])->name('gestion.reportes.mayor-cuenta.exportar');
+                // ✅ POST para la vista con selector de sucursal
+                Route::post('/exportar-por-sucursal', [MayorCuentaController::class, 'exportarPorSucursal'])->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
+            });
+
+            // Resultados Comparativo
+            Route::prefix('resultados-comparativo')->group(function () {
+                Route::get('/', [ResultadosComparativoController::class, 'index'])->name('gestion.reportes.resultados-comparativo.index');
+                Route::get('/exportar', [ResultadosComparativoController::class, 'exportar'])->name('gestion.reportes.resultados-comparativo.exportar');
+            });
+
+            // ---------- CONTROL INTERNO ----------
+            Route::prefix('control-interno')->group(function () {
+                // Informe Sucursal
+                Route::prefix('informe-sucursal')->group(function () {
+                    Route::get('/', [InformeSucursalController::class, 'index'])->name('gestion.reportes.control-interno.informe-sucursal');
+                    Route::get('/exportar', [InformeSucursalController::class, 'exportar'])->name('gestion.reportes.control-interno.informe-sucursal.exportar');
+                });
+
+                // Informe Sucursal Entre Fechas
+                Route::prefix('informe-sucursal-entre-fechas')->group(function () {
+                    Route::get('/', [InformeSucursalEntreFechasController::class, 'index'])->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas');
+                    Route::get('/exportar', [InformeSucursalEntreFechasController::class, 'exportar'])->name('gestion.reportes.control-interno.informe-sucursal-entre-fechas.exportar');
+                });
+
+                // Informe Sucursal Operador Comisionistas
+                Route::prefix('informe-sucursal-operador-comisionistas')->group(function () {
+                    Route::get('/', [InformeSucursalOperadorComisionistasController::class, 'index'])->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas');
+                    Route::get('/exportar', [InformeSucursalOperadorComisionistasController::class, 'exportar'])->name('gestion.reportes.control-interno.informe-sucursal-operador-comisionistas.exportar');
+                });
+
+                // Arqueo Caja Bolivianos
+                Route::prefix('arqueo-caja-bolivianos')->group(function () {
+                    Route::get('/', [ArqueoCajaBolivianosController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos');
+                    Route::get('/pdf', [ArqueoCajaBolivianosController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos.pdf');
+                });
+
+                // Arqueo Caja Bolivianos por Operador
+                Route::prefix('arqueo-caja-bolivianos-ci-operador')->group(function () {
+                    Route::get('/', [ArqueoCajaBolivianosCIOperadorController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador');
+                    Route::get('/pdf', [ArqueoCajaBolivianosCIOperadorController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.pdf');
+                });
+
+                // Arqueo Caja Chica por Operador
+                Route::prefix('arqueo-caja-chica-ci')->group(function () {
+                    Route::get('/', [ArqueoCajaChicaCIController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci');
+                    Route::get('/pdf', [ArqueoCajaChicaCIController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');
+                });
+
                 // Inventario Detallado
-        Route::get('/inventario-detalle', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController::class, 'index'])
-            ->name('gestion.reportes.control-interno.inventario-detalle');
-        Route::get('/inventario-detalle/movimientos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController::class, 'getMovimientos'])
-            ->name('gestion.reportes.control-interno.inventario-detalle.movimientos');
-        // Reimpresión Inventario Físico
-        Route::get('/inventario-fisico-reimprime', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'index'])
-            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime');
-        Route::get('/inventario-fisico-reimprime/correlativos', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'getCorrelativos'])
-            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime.correlativos');
-        Route::get('/inventario-fisico-reimprime/pdf', [App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController::class, 'generarPdf'])
-            ->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
-    });
+                Route::prefix('inventario-detalle')->group(function () {
+                    Route::get('/', [InventarioDetalleController::class, 'index'])->name('gestion.reportes.control-interno.inventario-detalle');
+                    Route::get('/movimientos', [InventarioDetalleController::class, 'getMovimientos'])->name('gestion.reportes.control-interno.inventario-detalle.movimientos');
+                });
 
-
-    // ==================== LISTADO PLAN DE CUENTAS ====================
-    Route::prefix('gestion/contabilidad/cuentas')->group(function () {
-        // Vista de solo lectura
-        Route::get('/', [App\Http\Controllers\Gestion\Contabilidad\CuentaController::class, 'index'])->name('gestion.contabilidad.cuentas.index');
-    });
-    // ==================== REPORTE DE RESULTADOS COMPARATIVO ====================
-    Route::prefix('gestion/reportes/resultados-comparativo')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Reportes\ResultadosComparativoController::class, 'index'])->name('gestion.reportes.resultados-comparativo.index');
-        Route::get('/exportar', [App\Http\Controllers\Gestion\Reportes\ResultadosComparativoController::class, 'exportar'])->name('gestion.reportes.resultados-comparativo.exportar');
-    });
-
-    // ==================== COMPRAS ====================
-    Route::prefix('gestion/compras')->group(function () {
-        // 🔥 PRIMERO: Rutas FIJAS (sin parámetros)
-        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
-        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
-        Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado'); // ← MOVER AQUÍ
-        
-        // 🔥 SEGUNDO: Rutas POST/PUT/DELETE
-        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
-        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
-        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
-        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
-        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
-        Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
-        
-        // 🔥 TERCERO: Rutas con parámetros {id} (van al final)
-        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
-        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
-        Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
-        Route::put('/actualizar-detalle/{id}', [CompraController::class, 'actualizarDetalle'])->name('compras.actualizar-detalle');
-    });
-
-    // ==================== CONTABILIDAD ====================
-
-    // ==================== CONTABILIDAD - DIARIO DE INGRESOS ====================
-    Route::prefix('contabilidad/diario-ingreso')->group(function () {
-        Route::get('/', [DiarioIngresoController::class, 'index'])->name('contabilidad.diario-ingreso.index');
-        Route::get('/create', [DiarioIngresoController::class, 'create'])->name('contabilidad.diario-ingreso.create');
-        Route::post('/', [DiarioIngresoController::class, 'store'])->name('contabilidad.diario-ingreso.store');
-        Route::get('/{id}/edit', [DiarioIngresoController::class, 'edit'])->name('contabilidad.diario-ingreso.edit');
-        Route::put('/{id}', [DiarioIngresoController::class, 'update'])->name('contabilidad.diario-ingreso.update');
-        
-        // Asientos
-        Route::post('/asiento', [DiarioIngresoController::class, 'storeAsiento'])->name('contabilidad.diario-ingreso.asiento.store');
-        Route::put('/asiento/{id}', [DiarioIngresoController::class, 'updateAsiento'])->name('contabilidad.diario-ingreso.asiento.update');
-        Route::delete('/asiento/{id}', [DiarioIngresoController::class, 'destroyAsiento'])->name('contabilidad.diario-ingreso.asiento.destroy');
-        
-        // Contabilizar
-        Route::post('/{id}/contabilizar', [DiarioIngresoController::class, 'contabilizar'])->name('contabilidad.diario-ingreso.contabilizar');
-        Route::get('/{id}/pdf', [DiarioIngresoController::class, 'pdf'])->name('contabilidad.diario-ingreso.pdf');
-    });
-
-    // ==================== BALANCE GENERAL A3 ====================
-    Route::get('/gestion/balance-general-a3', [BalanceGeneralA3Controller::class, 'index'])
-        ->name('gestion.balance-general-a3.index');
-    Route::get('/gestion/balance-general-a3/generar', [BalanceGeneralA3Controller::class, 'generar'])
-        ->name('gestion.balance-general-a3.generar');
-
-    // ==================== ESTADO DE RESULTADOS A3 ====================
-    Route::get('/gestion/estado-resultados-a3', [EstadoResultadosA3Controller::class, 'index'])
-        ->name('gestion.estado-resultados-a3.index');
-    Route::get('/gestion/estado-resultados-a3/generar', [EstadoResultadosA3Controller::class, 'generar'])
-        ->name('gestion.estado-resultados-a3.generar');
-
-    // ==================== ADMINISTRADOR DE DIARIOS ====================
-    Route::prefix('gestion/administrador-diario')->group(function () {
-        Route::get('/', [AdministradorDiarioController::class, 'index'])->name('gestion.administrador-diario.index');
-        Route::post('/{id}/reabrir', [AdministradorDiarioController::class, 'reabrir'])->name('gestion.administrador-diario.reabrir');
-    });
-
-
-    // ==================== CONTABILIDAD - ANÁLISIS DE CUENTA ====================
-    Route::prefix('gestion/analisis-cuenta')->group(function () {
-        Route::get('/', [AnalisisCuentaController::class, 'index'])->name('gestion.analisis-cuenta.index');
-        Route::post('/excel', [AnalisisCuentaController::class, 'generarExcel'])->name('gestion.analisis-cuenta.excel');
-    });
-
-    // ==================== CONTABILIDAD - CUENTAS POR SUCURSAL ====================
-    Route::prefix('gestion/conta-cuenta-sucursal')->group(function () {
-        Route::get('/', [ContaCuentaSucursalController::class, 'index'])->name('gestion.conta-cuenta-sucursal.index');
-        Route::post('/', [ContaCuentaSucursalController::class, 'store'])->name('gestion.conta-cuenta-sucursal.store');
-        Route::put('/{id}', [ContaCuentaSucursalController::class, 'update'])->name('gestion.conta-cuenta-sucursal.update');
-        Route::delete('/{id}', [ContaCuentaSucursalController::class, 'destroy'])->name('gestion.conta-cuenta-sucursal.destroy');
-    });
-
-    // ==================== CONTABILIDAD - IMPRIMIR DIARIO ====================
-    Route::prefix('gestion/imprimir-diario')->group(function () {
-        Route::get('/', [ImprimirDiarioController::class, 'index'])->name('gestion.imprimir-diario.index');
-        Route::get('/buscar', [ImprimirDiarioController::class, 'buscar'])->name('gestion.imprimir-diario.buscar');
-        Route::get('/operadores/{sucursalId}', [ImprimirDiarioController::class, 'getOperadoresPorSucursal'])->name('gestion.imprimir-diario.operadores');
-        Route::get('/pdf/{id}', [ImprimirDiarioController::class, 'pdf'])->name('gestion.imprimir-diario.pdf');
-        
-        // ========== 🆕 NUEVAS RUTAS (agregar esto) ==========
-        Route::get('/por-sucursal', [ImprimirDiarioController::class, 'porSucursal'])->name('gestion.imprimir-diario.por-sucursal');
-        Route::get('/diarios-por-sucursal', [ImprimirDiarioController::class, 'getDiariosPorSucursal'])->name('gestion.imprimir-diario.diarios-por-sucursal');
-    });
-    // ==================== INGRESOS ====================
-    Route::prefix('gestion/ingresos')->group(function () {
-        
-        // 🔥 RUTAS FIJAS (sin parámetros)
-        Route::get('/', [IngresoController::class, 'index'])->name('ingresos.index');
-        Route::get('/create', [IngresoController::class, 'create'])->name('ingresos.create');
-        Route::get('/gestion-estado', [IngresoController::class, 'gestionEstado'])->name('ingresos.gestion-estado');
-        
-        // 🔥 RUTAS POST/PUT (para crear, actualizar y cambiar estado)
-        Route::post('/', [IngresoController::class, 'store'])->name('ingresos.store');
-        Route::post('/{id}/cambiar-estado', [IngresoController::class, 'cambiarEstado'])->name('ingresos.cambiar-estado');
-        
-        // 🔥 RUTAS CON PARÁMETROS {id} (van al final)
-        Route::get('/{id}/edit', [IngresoController::class, 'edit'])->name('ingresos.edit');
-        Route::put('/{id}', [IngresoController::class, 'update'])->name('ingresos.update');
-        Route::get('/{id}/pdf', [IngresoController::class, 'pdf'])->name('ingresos.pdf');
-        Route::get('/{id}', [IngresoController::class, 'show'])->name('ingresos.show'); // si tienes método show
-    });
-    // ==================== EGRESOS ====================
-    Route::prefix('gestion/egresos')->group(function () {
-        Route::get('/', [EgresoController::class, 'index'])->name('egresos.index');
-        Route::get('/create', [EgresoController::class, 'create'])->name('egresos.create');
-        Route::post('/', [EgresoController::class, 'store'])->name('egresos.store');
-        Route::get('/{id}/edit', [EgresoController::class, 'edit'])->name('egresos.edit');
-        Route::put('/{id}', [EgresoController::class, 'update'])->name('egresos.update');
-        
-        // 🔥 La ruta PDF debe estar FUERA del grupo con middleware de sesión
-        Route::get('/{id}/pdf', [EgresoController::class, 'pdf'])
-            ->name('egresos.pdf')
-            ->withoutMiddleware([\App\Http\Middleware\VerificarContexto::class]);
-
-        // Gestión de estados de egresos
-        Route::get('/gestion-estado', [EgresoController::class, 'gestionEstado'])
-            ->name('egresos.gestion-estado');
-
-        // Cambiar estado de egreso (Activar/Inactivar)
-        Route::post('/{id}/cambiar-estado', [EgresoController::class, 'cambiarEstado'])
-            ->name('egresos.cambiar-estado');
-    });
-
-    // ==================== COMPRAS ====================
-    Route::prefix('gestion/compras')->group(function () {
-        // 🔥 PRIMERO: Rutas FIJAS (sin parámetros)
-        Route::get('/', [CompraController::class, 'index'])->name('compras.index');
-        Route::get('/create', [CompraController::class, 'create'])->name('compras.create');
-        Route::get('/gestion-estado', [CompraController::class, 'gestionEstado'])->name('compras.gestion-estado'); // ← MOVER AQUÍ
-        
-        // 🔥 SEGUNDO: Rutas POST/PUT/DELETE
-        Route::post('/crear', [CompraController::class, 'crearCompra'])->name('compras.crear');
-        Route::put('/actualizar-cabecera/{id}', [CompraController::class, 'actualizarCabecera'])->name('compras.actualizar-cabecera');
-        Route::post('/agregar-detalle', [CompraController::class, 'agregarDetalle'])->name('compras.agregar-detalle');
-        Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
-        Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
-        Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
-        
-        // 🔥 TERCERO: Rutas con parámetros {id} (van al final)
-        Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
-        Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
-        Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
-    });
-    // PRECIO COSTO DE PRODUCTOS
-    Route::prefix('gestion/inventario/precio-costo')->group(function () {
-        Route::get('/', [ProductoPrecioCostoController::class, 'index'])->name('gestion.inventario.precio-costo.index');
-        Route::get('/{id}/historial', [ProductoPrecioCostoController::class, 'historial'])->name('gestion.inventario.precio-costo.historial');
-    });
-    // ==================== INVENTARIO - CATÁLOGOS ====================
-    Route::prefix('gestion/inventario')->group(function () {
-        Route::resource('producto-estado', ProductoEstadoController::class)->except(['show', 'create', 'edit']);
-        Route::resource('producto-linea', ProductoLineaController::class)->except(['show', 'create', 'edit']);
-        Route::resource('producto-grupo-analisis', ProductoGrupoAnalisisController::class)->except(['show', 'create', 'edit']);
-        Route::resource('tipo-operacion', TipoOperacionController::class)->except(['show', 'create', 'edit']);
-        Route::resource('unidad-medida', UnidadMedidaController::class)->except(['show', 'create', 'edit']);
-    });
-
-    // ==================== INVENTARIO FÍSICO ====================
-    Route::prefix('gestion/inventario-fisico')->group(function () {
-        Route::get('/', [InventarioFisicoController::class, 'create'])->name('gestion.inventario-fisico.index');
-        
-        // Redirige /{id} a /{id}/edit
-        Route::get('/{id}', function ($id) {
-            return redirect()->route('gestion.inventario-fisico.edit', $id);
+                // Reimpresión Inventario Físico
+                Route::prefix('inventario-fisico-reimprime')->group(function () {
+                    Route::get('/', [InventarioFisicoReimprimeController::class, 'index'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime');
+                    Route::get('/correlativos', [InventarioFisicoReimprimeController::class, 'getCorrelativos'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.correlativos');
+                    Route::get('/pdf', [InventarioFisicoReimprimeController::class, 'generarPdf'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
+                });
+            });
         });
-        
-        Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
-        Route::delete('/{id}', [InventarioFisicoController::class, 'destroy'])->name('gestion.inventario-fisico.destroy');
-        
-        Route::put('/{id}/cabecera', [InventarioFisicoController::class, 'updateCabecera']);
-        Route::post('/{id}/sincronizar', [InventarioFisicoController::class, 'sincronizarProductos']);
-        Route::put('/{id}/detalle/{detalleId}/unidades', [InventarioFisicoController::class, 'actualizarUnidades']);
-        Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);  // ← UN SOLO ENDPOINT
-        Route::get('/{id}/detalles', [InventarioFisicoController::class, 'getDetalles']);
-        Route::get('/{id}/pdf', [InventarioFisicoController::class, 'pdf'])->name('gestion.inventario-fisico.pdf');
     });
 
-    // Endpoint para almacenes
-    Route::get('/api/almacenes-por-sucursal/{sucursalId}', [InventarioFisicoController::class, 'getAlmacenes'])->name('api.almacenes.por-sucursal');
-    //=============================================
-
-
-    // ==================== INVENTARIO FÍSICO MANTENIMIENTO ====================
-    Route::prefix('gestion/inventario-fisico-mantenimiento')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController::class, 'index'])
-            ->name('gestion.inventario-fisico-mantenimiento.index');
-        Route::put('/{id}/estado', [App\Http\Controllers\Gestion\Inventario\InventarioFisicoMantenimientoController::class, 'updateEstado'])
-            ->name('gestion.inventario-fisico-mantenimiento.estado');
-    });
-
-    // ==================== PUNTO DE VENTA - BORRAR LIQUIDACIÓN ====================
-    Route::prefix('pdv/borrar-liquidacion')->group(function () {
-        Route::get('/', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'index'])
-            ->name('pdv.borrar-liquidacion.index');
-        Route::get('/liquidaciones', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'getLiquidaciones'])
-            ->name('pdv.borrar-liquidacion.liquidaciones');
-        Route::post('/eliminar', [App\Http\Controllers\PuntoVenta\PdvBorrarLiquidacionController::class, 'eliminar'])
-            ->name('pdv.borrar-liquidacion.eliminar');
-    });
-
-    // ==================== ALMACENES (rutas explícitas) ====================
-    Route::prefix('gestion/inventario/almacen')->group(function () {
-        Route::get('/', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'index'])->name('gestion.inventario.almacen.index');
-        Route::post('/', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'store'])->name('gestion.inventario.almacen.store');
-        Route::put('/{id}', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'update'])->name('gestion.inventario.almacen.update');
-        Route::delete('/{id}', [App\Http\Controllers\Gestion\Inventario\AlmacenController::class, 'destroy'])->name('gestion.inventario.almacen.destroy');
-    });
-
-
-    // ==================== INVENTARIO - CATEGORÍAS MENÚ TÁCTIL ====================
-    Route::prefix('gestion/inventario/categorias-producto')->group(function () {
-        Route::get('/', [CategoriaProductoController::class, 'index'])->name('gestion.inventario.categorias-producto.index');
-        Route::post('/', [CategoriaProductoController::class, 'store'])->name('gestion.inventario.categorias-producto.store');
-        Route::put('/{id}', [CategoriaProductoController::class, 'update'])->name('gestion.inventario.categorias-producto.update');
-        Route::delete('/{id}', [CategoriaProductoController::class, 'destroy'])->name('gestion.inventario.categorias-producto.destroy');
-    });
-    // Reordenar categorías (opcional, para limpiar órdenes)
-    Route::post('/gestion/inventario/categorias-producto/reordenar', [CategoriaProductoController::class, 'reordenarTodo'])
-        ->name('gestion.inventario.categorias-producto.reordenar');
-
-    // ==================== INVENTARIO - ASIGNAR PRODUCTOS A CATEGORÍAS ====================
-    Route::get('/gestion/inventario/asignar-productos-categoria', [AsignarProductoCategoriaController::class, 'index'])->name('gestion.inventario.asignar-productos-categoria.index');
-    Route::post('/gestion/inventario/asignar-productos-categoria', [AsignarProductoCategoriaController::class, 'store'])->name('gestion.inventario.asignar-productos-categoria.store');
-
-    // ==================== INVENTARIO - ACTUAL Y REPORTES ====================
-    // ==================== REPORTE DE INVENTARIO ====================
-    Route::get('/gestion/inventario/reporte-inventario', [ReporteInventarioController::class, 'index'])
-        ->name('gestion.inventario.reporte-inventario.index');
-
-    // Reporte de inventario por sucursal actual (sin selector)
-    Route::get('/gestion/inventario/reporte-inventario/sucursal-actual', [ReporteInventarioController::class, 'porSucursal'])
-        ->name('gestion.inventario.reporte-inventario.sucursal-actual');
-
-    // API para obtener movimientos de un producto
-    Route::get('/inventario/reporte-movimientos', [ReporteInventarioController::class, 'getMovimientos']);
-
-    // ==================== INVENTARIO - AJUSTES ====================
-    Route::prefix('gestion/inventario/ajustes')->group(function () {
-        // Listado y creación
-        Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
-        Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
-        Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
-        // Gestión de estados
-        Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
-        Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
-        // Cabecera
-        Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
-        // 🔥 Ruta de contabilizar (verifica que esté aquí)
-        Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
-        // Rutas de detalle
-        Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
-        Route::put('/detalle/{id}', [AjusteInventarioController::class, 'actualizarDetalle'])->name('ajustes-inventario.detalle.update');
-        Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
-        // Rutas con {id} genérico (deben ir al final)
-        Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
-        Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
-        Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
-        Route::put('/{id}', [AjusteInventarioController::class, 'update'])->name('ajustes-inventario.update');
-    });
-    // ==================== PRODUCTOS VENTA ====================
-    Route::prefix('gestion/productos-venta')->group(function () {
-        Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');
-        Route::get('/create', [ProductoVentaController::class, 'create'])->name('gestion.productos-venta.create');
-        Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
-        Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
-        Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
-        Route::post('/{id}/activar', [ProductoVentaController::class, 'activar']);
-        Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar']);
-        Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
-        // Endpoints para tabs
-        Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
-        Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
-        Route::delete('/precio-sucursal/{id}', [ProductoVentaController::class, 'destroyPrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.destroy');
-        
-        Route::post('/precio-mayorista', [ProductoVentaController::class, 'storePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.store');
-        Route::put('/precio-mayorista/{id}', [ProductoVentaController::class, 'updatePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.update');
-        Route::delete('/precio-mayorista/{id}', [ProductoVentaController::class, 'destroyPrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.destroy');
-        
-        Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
-        Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
-        Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
-    });
-    // Catálogo de productos (con categorías)
-    Route::get('/gestion/productos-venta/catalogo', [ProductoVentaController::class, 'catalogo'])
-        ->name('gestion.productos-venta.catalogo');
-    // ==================== CONFIGURACIÓN DE APROBACIÓN DE PRODUCTOS ====================
-
-    // ==================== APROBACIÓN DE PRODUCTOS ====================
-    Route::prefix('gestion/productos-aprobacion')->group(function () {
-        Route::get('/config', [ProductoAprobacionConfigController::class, 'index'])->name('gestion.productos-aprobacion.config');
-        Route::post('/config', [ProductoAprobacionConfigController::class, 'store'])->name('gestion.productos-aprobacion.config.store');
-        Route::delete('/config/{id}', [ProductoAprobacionConfigController::class, 'destroy'])->name('gestion.productos-aprobacion.config.destroy');        Route::post('/config/{id}/toggle', [ProductoAprobacionConfigController::class, 'toggle'])->name('gestion.productos-aprobacion.config.toggle');
-        
-        Route::get('/pendientes', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'pendientesAprobacion'])->name('gestion.productos-aprobacion.pendientes');
-        Route::post('/votar/{id}', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'votarAprobacion'])->name('gestion.productos-aprobacion.votar');
-        Route::get('/ver/{id}', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'verAprobacion'])->name('gestion.productos-aprobacion.ver');
-    });
-
-    // Modificar la ruta de productos para incluir el envío a aprobación
-    Route::prefix('gestion/productos-venta')->group(function () {
-        // ... rutas existentes ...
-        Route::post('/{id}/enviar-aprobacion', [App\Http\Controllers\Gestion\Inventario\ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
-    });
-
-    // ==================== OPCIONES DE COMBO (para productos intercambiables) ====================
-    Route::prefix('combo-opciones')->group(function () {
-        // Obtener composición del combo (productos del inventario_detalle)
-        Route::get('/{idProductoCombo}/composicion', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'getComposicion']);
-        
-        // Obtener opciones existentes
-        Route::get('/{idProductoCombo}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'index']);
-        
-        // Buscar productos disponibles para ser opciones
-        Route::get('/productos/disponibles', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'getProductosDisponibles']);
-        
-        // Guardar nueva opción
-        Route::post('/', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'store']);
-        
-        // Actualizar opción (orden)
-        Route::put('/{id}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'update']);
-        
-        // Eliminar opción
-        Route::delete('/{id}', [App\Http\Controllers\Gestion\Inventario\ComboOpcionController::class, 'destroy']);
-    });
-
-
-    // ==================== PUNTO DE VENTA (VENTA NORMAL) ====================
+    // ============================================================
+    // 4. PREFIJO: VENTA FACTURA
+    // ============================================================
     Route::prefix('venta-factura')->group(function () {
         Route::get('/crear', [NuevaVentaController::class, 'create'])->name('ventas.crear');
         Route::post('/store', [NuevaVentaController::class, 'store'])->name('ventas.store');
@@ -762,13 +666,13 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/pago', [PagoVentaController::class, 'create'])->name('ventas.pago');
         Route::post('/buscar-cliente', [PagoVentaController::class, 'buscarCliente'])->name('ventas.buscar-cliente');
         Route::post('/procesar-pago', [PagoVentaController::class, 'store'])->name('ventas.procesar-pago');
-        
-        // 🔥 Ruta PDF - DENTRO del grupo
         Route::get('/factura-pdf/{id}', [PagoVentaController::class, 'facturaPdf'])->name('ventas.factura-pdf');
     });
-    // ==================== PUNTO DE VENTA (VENTA TÁCTIL) - VISTAS ====================
+
+    // ============================================================
+    // 5. PREFIJO: VENTA TÁCTIL
+    // ============================================================
     Route::prefix('venta-tactil')->group(function () {
-        // Vistas (HTML)
         Route::get('/nueva', [NuevaVentaTactilController::class, 'create'])->name('venta-tactil.nueva');
         Route::post('/nueva', [NuevaVentaTactilController::class, 'store'])->name('venta-tactil.nueva.store');
         Route::get('/', [MenuTactilController::class, 'index'])->name('venta-tactil.index');
@@ -777,200 +681,235 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/pago', [PagoVentaController::class, 'createTactil'])->name('venta-tactil.pago');
     });
 
-    // ==================== API PARA VENTA TÁCTIL (JSON) ====================
-    Route::prefix('api/venta-tactil')->group(function () {
-        // API endpoints
-        Route::get('/carrito', [VentaTactilController::class, 'getCarrito']);
-        Route::post('/agregar', [VentaTactilController::class, 'agregarProducto']);
-        Route::post('/agregar-combo', [VentaTactilController::class, 'agregarCombo']);
-        Route::put('/carrito/{itemId}', [VentaTactilController::class, 'actualizarCantidad']);
-        Route::delete('/carrito/{itemId}', [VentaTactilController::class, 'eliminarProducto']);
-        Route::delete('/cancelar', [VentaTactilController::class, 'cancelarVenta']);
-    });
-
-    // ==================== APIs DE PRODUCTOS (VENTA NORMAL) ====================
-    Route::prefix('api/venta')->group(function () {
-        Route::get('/grupos', [FormularioVentaController::class, 'getGrupos']);
-        Route::get('/productos/{idVentaGrupo}', [FormularioVentaController::class, 'getProductos']);
-        Route::get('/precio-producto/{idProducto}', [FormularioVentaController::class, 'getPrecioProducto']);
-    });
-
-    // ==================== API PARA CATÁLOGOS DE FACTURACIÓN ====================
-    Route::prefix('api/catalogos')->group(function () {
-        // Tipos de documento
-        Route::get('/tipos-documento', function () {
-            try {
-                $response = Illuminate\Support\Facades\Http::timeout(10)->get('http://siat-app:80/api/v1/tipos-documento');
-                if ($response->successful()) {
-                    return response()->json($response->json());
-                }
-                return response()->json([]);
-            } catch (\Exception $e) {
-                return response()->json([]);
-            }
+    // ============================================================
+    // 6. PREFIJO: API
+    // ============================================================
+    Route::prefix('api')->group(function () {
+        // Venta Táctil
+        Route::prefix('venta-tactil')->group(function () {
+            Route::get('/carrito', [VentaTactilController::class, 'getCarrito']);
+            Route::post('/agregar', [VentaTactilController::class, 'agregarProducto']);
+            Route::post('/agregar-combo', [VentaTactilController::class, 'agregarCombo']);
+            Route::put('/carrito/{itemId}', [VentaTactilController::class, 'actualizarCantidad']);
+            Route::delete('/carrito/{itemId}', [VentaTactilController::class, 'eliminarProducto']);
+            Route::delete('/cancelar', [VentaTactilController::class, 'cancelarVenta']);
         });
 
-        // Monedas
-        Route::get('/monedas', function () {
-            try {
-                $response = Illuminate\Support\Facades\Http::timeout(10)->get('http://siat-app:80/api/v1/monedas');
-                if ($response->successful()) {
-                    $data = $response->json();
-                    $monedas = isset($data['data']) ? $data['data'] : $data;
-                    $bolivianos = array_filter($monedas, function($m) {
-                        return $m['codigo'] == 1 || $m['sigla'] == 'BOB' || str_contains($m['descripcion'], 'Boliviano');
-                    });
-                    $resultado = array_values($bolivianos);
-                    if (empty($resultado)) {
-                        return response()->json([['id' => 1, 'codigo' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
+        // Venta (Normal)
+        Route::prefix('venta')->group(function () {
+            Route::get('/grupos', [FormularioVentaController::class, 'getGrupos']);
+            Route::get('/productos/{idVentaGrupo}', [FormularioVentaController::class, 'getProductos']);
+            Route::get('/precio-producto/{idProducto}', [FormularioVentaController::class, 'getPrecioProducto']);
+            Route::get('/mapeos-metodos-pago', function () {
+                $mapeos = App\Models\Gestion\Contabilidad\MetodoPagoMapeo::where('idCliente', session('cliente_id'))
+                    ->where('idSucursal', session('cliente_sucursal_id'))
+                    ->where('activo', 1)
+                    ->get();
+                
+                $resultado = [];
+                foreach ($mapeos as $m) {
+                    if (!isset($resultado[$m->codigo_siat])) {
+                        $resultado[$m->codigo_siat] = [];
                     }
-                    return response()->json($resultado);
+                    if (!in_array($m->idContaCuenta, $resultado[$m->codigo_siat])) {
+                        $resultado[$m->codigo_siat][] = $m->idContaCuenta;
+                    }
                 }
-                return response()->json([['id' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
-            } catch (\Exception $e) {
-                \Log::error('Error cargando monedas: ' . $e->getMessage());
-                return response()->json([['id' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
-            }
+                return response()->json($resultado);
+            });
         });
 
-        // Métodos de pago
-        Route::get('/metodos-pago', [PagoVentaController::class, 'getMetodosPago']);
+        // Catálogos (Facturación)
+        Route::prefix('catalogos')->group(function () {
+            Route::get('/tipos-documento', function () {
+                try {
+                    $response = Illuminate\Support\Facades\Http::timeout(10)->get('http://siat-app:80/api/v1/tipos-documento');
+                    if ($response->successful()) {
+                        return response()->json($response->json());
+                    }
+                    return response()->json([]);
+                } catch (\Exception $e) {
+                    return response()->json([]);
+                }
+            });
+
+            Route::get('/monedas', function () {
+                try {
+                    $response = Illuminate\Support\Facades\Http::timeout(10)->get('http://siat-app:80/api/v1/monedas');
+                    if ($response->successful()) {
+                        $data = $response->json();
+                        $monedas = isset($data['data']) ? $data['data'] : $data;
+                        $bolivianos = array_filter($monedas, function($m) {
+                            return $m['codigo'] == 1 || $m['sigla'] == 'BOB' || str_contains($m['descripcion'], 'Boliviano');
+                        });
+                        $resultado = array_values($bolivianos);
+                        if (empty($resultado)) {
+                            return response()->json([['id' => 1, 'codigo' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
+                        }
+                        return response()->json($resultado);
+                    }
+                    return response()->json([['id' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
+                } catch (\Exception $e) {
+                    \Log::error('Error cargando monedas: ' . $e->getMessage());
+                    return response()->json([['id' => 1, 'sigla' => 'BOB', 'descripcion' => 'Boliviano']]);
+                }
+            });
+
+            Route::get('/metodos-pago', [PagoVentaController::class, 'getMetodosPago']);
+        });
+
+        // Almacenes por Sucursal
+        Route::get('/almacenes-por-sucursal/{sucursalId}', [InventarioFisicoController::class, 'getAlmacenes'])->name('api.almacenes.por-sucursal');
     });
 
-    // ==================== API PARA MAPEOS DE PAGO ====================
-    Route::get('/api/venta/mapeos-metodos-pago', function () {
-        $mapeos = App\Models\Gestion\Contabilidad\MetodoPagoMapeo::where('idCliente', session('cliente_id'))
-            ->where('idSucursal', session('cliente_sucursal_id'))
-            ->where('activo', 1)
-            ->get();
-        
-        $resultado = [];
-        foreach ($mapeos as $m) {
-            if (!isset($resultado[$m->codigo_siat])) {
-                $resultado[$m->codigo_siat] = [];
-            }
-            if (!in_array($m->idContaCuenta, $resultado[$m->codigo_siat])) {
-                $resultado[$m->codigo_siat][] = $m->idContaCuenta;
-            }
-        }
-        
-        return response()->json($resultado);
+    // ============================================================
+    // 7. PREFIJO: FACTURACIÓN
+    // ============================================================
+    Route::prefix('facturacion')->group(function () {
+        // Métodos de Pago - Mapeo
+        Route::prefix('metodos-pago/mapeo')->group(function () {
+            Route::get('/', [MetodoPagoMapeoController::class, 'index'])->name('facturacion.metodos-pago.mapeo');
+            Route::post('/', [MetodoPagoMapeoController::class, 'store'])->name('facturacion.metodos-pago.mapeo.store');
+        });
+
+        // Empresas
+        Route::prefix('empresas')->group(function () {
+            Route::get('/', [EmpresasHomeController::class, 'index'])->name('facturacion.empresas.home');
+            Route::get('/crear', [EmpresaController::class, 'create'])->name('facturacion.empresas.create');
+            Route::post('/crear', [EmpresaController::class, 'store'])->name('facturacion.empresas.store');
+            Route::get('/importar', [ImportarEmpresaController::class, 'index'])->name('facturacion.empresas.importar');
+            Route::post('/importar', [ImportarEmpresaController::class, 'store'])->name('facturacion.empresas.importar.store');
+            Route::get('/clientes', [ImportarEmpresaController::class, 'clientes'])->name('facturacion.empresas.clientes');
+            Route::get('/ultimo-id-fecha', [EmpresaController::class, 'ultimoIdFecha'])->name('facturacion.empresas.ultimo-id-fecha');
+        });
+
+        // Sucursales
+        Route::prefix('sucursales')->group(function () {
+            Route::get('/', [SucursalesHomeController::class, 'index'])->name('facturacion.sucursales.home');
+            Route::get('/create', [SucursalController::class, 'create'])->name('facturacion.sucursales.create');
+            Route::post('/', [SucursalController::class, 'store'])->name('facturacion.sucursales.store');
+            Route::get('/clientes', [SucursalController::class, 'clientes'])->name('facturacion.sucursales.clientes');
+            Route::get('/plazas', [SucursalController::class, 'plazas'])->name('facturacion.sucursales.plazas');
+            Route::get('/empresa-por-cliente', [SucursalController::class, 'empresaPorCliente'])->name('facturacion.sucursales.empresaPorCliente');
+        });
+
+        // Importar Sucursales
+        Route::prefix('importar/sucursales')->group(function () {
+            Route::get('/', [ImportarSucursalController::class, 'index'])->name('facturacion.importar.sucursales.index');
+            Route::post('/', [ImportarSucursalController::class, 'store'])->name('facturacion.importar.sucursales.store');
+            Route::get('/clientes', [ImportarSucursalController::class, 'clientes'])->name('facturacion.importar.sucursales.clientes');
+            Route::get('/sucursales', [ImportarSucursalController::class, 'sucursales'])->name('facturacion.importar.sucursales.lista');
+        });
+
+        // Puntos de Venta
+        Route::prefix('puntos-venta')->group(function () {
+            Route::get('/', [PuntoVentaHomeController::class, 'index'])->name('facturacion.puntos-venta.home');
+            Route::get('/crear', [PuntoVentaController::class, 'create'])->name('facturacion.puntos-venta.create');
+            Route::post('/', [PuntoVentaController::class, 'store'])->name('facturacion.puntos-venta.store');
+            Route::get('/sucursales', [PuntoVentaController::class, 'sucursales'])->name('facturacion.puntos-venta.sucursales');
+        });
+
+        // SIAT
+        Route::prefix('siat')->group(function () {
+            // CUIS
+            Route::prefix('cuis')->group(function () {
+                Route::get('/vigente', [SiatCuisController::class, 'vigente'])->name('facturacion.siat.cuis.vigente');
+                Route::post('/solicitar', [SiatCuisController::class, 'solicitar'])->name('facturacion.siat.cuis.solicitar');
+            });
+
+            // CUFD
+            Route::prefix('cufd')->group(function () {
+                Route::get('/vigente', [SiatCufdController::class, 'vigente'])->name('facturacion.siat.cufd.vigente');
+                Route::post('/solicitar', [SiatCufdController::class, 'solicitar'])->name('facturacion.siat.cufd.solicitar');
+            });
+
+            // Catálogos
+            Route::prefix('catalogos')->group(function () {
+                Route::get('/', [SiatCatalogoController::class, 'index'])->name('facturacion.siat.catalogos.index');
+                Route::post('/sync', [SiatCatalogoController::class, 'syncAll'])->name('facturacion.siat.catalogos.sync');
+                Route::post('/sync/{key}', [SiatCatalogoController::class, 'syncOne'])->name('facturacion.siat.catalogos.syncOne');
+                Route::post('/ping', [SiatCatalogoController::class, 'pingFechaHora'])->name('facturacion.siat.catalogos.ping');
+            });
+
+            // Operaciones
+            Route::prefix('operaciones')->group(function () {
+                Route::get('/cierre', [SiatOperacionesController::class, 'showCierre'])->name('facturacion.siat.operaciones.cierre');
+                Route::post('/cierre', [SiatOperacionesController::class, 'cierre'])->name('facturacion.siat.operaciones.cierre.post');
+            });
+        });
     });
 
-    // ==================== FACTURACIÓN - MAPEO MÉTODOS DE PAGO ====================
-    Route::get('/facturacion/metodos-pago/mapeo', [MetodoPagoMapeoController::class, 'index'])->name('facturacion.metodos-pago.mapeo');
-    Route::post('/facturacion/metodos-pago/mapeo', [MetodoPagoMapeoController::class, 'store'])->name('facturacion.metodos-pago.mapeo.store');
-
-    // ==================== FACTURACIÓN - EMPRESAS ====================
-    Route::prefix('facturacion/empresas')->group(function () {
-        Route::get('/', [EmpresasHomeController::class, 'index'])->name('facturacion.empresas.home');
-        Route::get('/crear', [EmpresaController::class, 'create'])->name('facturacion.empresas.create');
-        Route::post('/crear', [EmpresaController::class, 'store'])->name('facturacion.empresas.store');
-        Route::get('/importar', [ImportarEmpresaController::class, 'index'])->name('facturacion.empresas.importar');
-        Route::post('/importar', [ImportarEmpresaController::class, 'store'])->name('facturacion.empresas.importar.store');
-        Route::get('/clientes', [ImportarEmpresaController::class, 'clientes'])->name('facturacion.empresas.clientes');
-        Route::get('/ultimo-id-fecha', [EmpresaController::class, 'ultimoIdFecha'])->name('facturacion.empresas.ultimo-id-fecha');
+    // ============================================================
+    // 8. PREFIJO: PDV (PUNTO DE VENTA)
+    // ============================================================
+    Route::prefix('pdv')->group(function () {
+        // Borrar Liquidación
+        Route::prefix('borrar-liquidacion')->group(function () {
+            Route::get('/', [PdvBorrarLiquidacionController::class, 'index'])->name('pdv.borrar-liquidacion.index');
+            Route::get('/liquidaciones', [PdvBorrarLiquidacionController::class, 'getLiquidaciones'])->name('pdv.borrar-liquidacion.liquidaciones');
+            Route::post('/eliminar', [PdvBorrarLiquidacionController::class, 'eliminar'])->name('pdv.borrar-liquidacion.eliminar');
+        });
     });
 
-    // ==================== FACTURACIÓN - SUCURSALES ====================
-    Route::prefix('facturacion/sucursales')->group(function () {
-        Route::get('/', [SucursalesHomeController::class, 'index'])->name('facturacion.sucursales.home');
-        Route::get('/create', [SucursalController::class, 'create'])->name('facturacion.sucursales.create');
-        Route::post('/', [SucursalController::class, 'store'])->name('facturacion.sucursales.store');
-        Route::get('/clientes', [SucursalController::class, 'clientes'])->name('facturacion.sucursales.clientes');
-        Route::get('/plazas', [SucursalController::class, 'plazas'])->name('facturacion.sucursales.plazas');
-        Route::get('/empresa-por-cliente', [SucursalController::class, 'empresaPorCliente'])->name('facturacion.sucursales.empresaPorCliente');
+    // ============================================================
+    // 9. PREFIJO: COMBO OPCIONES
+    // ============================================================
+    Route::prefix('combo-opciones')->group(function () {
+        Route::get('/{idProductoCombo}/composicion', [ComboOpcionController::class, 'getComposicion']);
+        Route::get('/{idProductoCombo}', [ComboOpcionController::class, 'index']);
+        Route::get('/productos/disponibles', [ComboOpcionController::class, 'getProductosDisponibles']);
+        Route::post('/', [ComboOpcionController::class, 'store']);
+        Route::put('/{id}', [ComboOpcionController::class, 'update']);
+        Route::delete('/{id}', [ComboOpcionController::class, 'destroy']);
     });
 
-    // ==================== FACTURACIÓN - IMPORTAR SUCURSALES ====================
-    Route::prefix('facturacion/importar/sucursales')->group(function () {
-        Route::get('/', [ImportarSucursalController::class, 'index'])->name('facturacion.importar.sucursales.index');
-        Route::post('/', [ImportarSucursalController::class, 'store'])->name('facturacion.importar.sucursales.store');
-        Route::get('/clientes', [ImportarSucursalController::class, 'clientes'])->name('facturacion.importar.sucursales.clientes');
-        Route::get('/sucursales', [ImportarSucursalController::class, 'sucursales'])->name('facturacion.importar.sucursales.lista');
+    // ============================================================
+    // 10. PREFIJO: OPERACIÓN
+    // ============================================================
+    Route::prefix('operacion')->group(function () {
+        // Producción
+        Route::prefix('produccion')->middleware(['contexto.requerido'])->group(function () {
+            Route::prefix('cronograma')->group(function () {
+                Route::get('/', [CronogramaController::class, 'index'])->name('operacion.produccion.cronograma.index');
+                Route::get('/ver', [CronogramaController::class, 'show'])->name('operacion.produccion.cronograma.show');
+                Route::post('/', [CronogramaController::class, 'store'])->name('operacion.produccion.cronograma.store');
+                Route::delete('/{id}', [CronogramaController::class, 'destroy'])->name('operacion.produccion.cronograma.destroy');
+            });
+        });
+
+        // Pedidos
+        Route::prefix('pedidos')->group(function () {
+            // Hora Límite
+            Route::prefix('hora-limite')->group(function () {
+                Route::get('/', [HoraLimiteController::class, 'index'])->name('operacion.pedidos.hora-limite.index');
+                Route::post('/', [HoraLimiteController::class, 'store'])->name('operacion.pedidos.hora-limite.store');
+                Route::put('/{id}', [HoraLimiteController::class, 'update'])->name('operacion.pedidos.hora-limite.update');
+                Route::delete('/{id}', [HoraLimiteController::class, 'destroy'])->name('operacion.pedidos.hora-limite.destroy');
+            });
+
+            // Pedido
+            Route::prefix('pedido')->group(function () {
+                Route::get('/', [PedidoController::class, 'index'])->name('operacion.pedidos.pedido.index');
+                Route::post('/', [PedidoController::class, 'store'])->name('operacion.pedidos.pedido.store');
+                Route::delete('/{id}', [PedidoController::class, 'destroy'])->name('operacion.pedidos.pedido.destroy');
+                Route::post('/api/validar-producto', [PedidoController::class, 'apiValidarProducto']);
+                Route::post('/api/validar-hora-limite', [PedidoController::class, 'apiValidarHoraLimite']);
+                Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
+            });
+        });
     });
 
-    // ==================== FACTURACIÓN - PUNTOS DE VENTA ====================
-    Route::prefix('facturacion/puntos-venta')->group(function () {
-        Route::get('/', [PuntoVentaHomeController::class, 'index'])->name('facturacion.puntos-venta.home');
-        Route::get('/crear', [PuntoVentaController::class, 'create'])->name('facturacion.puntos-venta.create');
-        Route::post('/', [PuntoVentaController::class, 'store'])->name('facturacion.puntos-venta.store');
-        Route::get('/sucursales', [PuntoVentaController::class, 'sucursales'])->name('facturacion.puntos-venta.sucursales');
-    });
-
-    // ==================== FACTURACIÓN - SIAT ====================
-    Route::prefix('facturacion/siat')->group(function () {
-        // CUIS
-        Route::get('/cuis/vigente', [SiatCuisController::class, 'vigente'])->name('facturacion.siat.cuis.vigente');
-        Route::post('/cuis/solicitar', [SiatCuisController::class, 'solicitar'])->name('facturacion.siat.cuis.solicitar');
-        
-        // CUFD
-        Route::get('/cufd/vigente', [SiatCufdController::class, 'vigente'])->name('facturacion.siat.cufd.vigente');
-        Route::post('/cufd/solicitar', [SiatCufdController::class, 'solicitar'])->name('facturacion.siat.cufd.solicitar');
-        
-        // Catálogos
-        Route::get('/catalogos', [SiatCatalogoController::class, 'index'])->name('facturacion.siat.catalogos.index');
-        Route::post('/catalogos/sync', [SiatCatalogoController::class, 'syncAll'])->name('facturacion.siat.catalogos.sync');
-        Route::post('/catalogos/sync/{key}', [SiatCatalogoController::class, 'syncOne'])->name('facturacion.siat.catalogos.syncOne');
-        Route::post('/catalogos/ping', [SiatCatalogoController::class, 'pingFechaHora'])->name('facturacion.siat.catalogos.ping');
-        
-        // Operaciones
-        Route::get('/operaciones/cierre', [SiatOperacionesController::class, 'showCierre'])->name('facturacion.siat.operaciones.cierre');
-        Route::post('/operaciones/cierre', [SiatOperacionesController::class, 'cierre'])->name('facturacion.siat.operaciones.cierre.post');
-    });
-    // 🔥 Ruta para verificar sesión (sin autenticación)
+    // ============================================================
+    // 11. UTILIDADES
+    // ============================================================
+    // Verificar sesión
     Route::get('/check-session', function () {
         return response()->json([
             'has_session' => session()->has('operador_id') && session('operador_id') > 0
         ]);
     });
-    // ====================== OPERACIÓN ====================
-    // ==================== PRODUCCIÓN ====================
-    // ==================== OPERACIONES - PRODUCCIÓN ====================
-    Route::prefix('operacion/produccion')->middleware(['auth.operador', 'contexto.requerido'])->group(function () {
-        
-        // ==================== CRONOGRAMA ====================
-        Route::prefix('cronograma')->group(function () {
-            // Vista editable (con botones)
-            Route::get('/', [CronogramaController::class, 'index'])
-                ->name('operacion.produccion.cronograma.index');
-            
-            // Vista solo lectura (para consulta)
-            Route::get('/ver', [CronogramaController::class, 'show'])
-                ->name('operacion.produccion.cronograma.show');
-            
-            // Guardar cambios
-            Route::post('/', [CronogramaController::class, 'store'])
-                ->name('operacion.produccion.cronograma.store');
-            
-            // Eliminar fila
-            Route::delete('/{id}', [CronogramaController::class, 'destroy'])
-                ->name('operacion.produccion.cronograma.destroy');
-        });
-        
-    });
 
-    // ==================== OPERACIONES - PEDIDOS ====================
-    Route::prefix('operacion/pedidos')->group(function () {
-        
-        // Hora Límite
-        Route::prefix('hora-limite')->group(function () {
-            Route::get('/', [HoraLimiteController::class, 'index'])->name('operacion.pedidos.hora-limite.index');
-            Route::post('/', [HoraLimiteController::class, 'store'])->name('operacion.pedidos.hora-limite.store');
-            Route::put('/{id}', [HoraLimiteController::class, 'update'])->name('operacion.pedidos.hora-limite.update');
-            Route::delete('/{id}', [HoraLimiteController::class, 'destroy'])->name('operacion.pedidos.hora-limite.destroy');
-        });
+    // API para movimientos de inventario
+    Route::get('/inventario/reporte-movimientos', [ReporteInventarioController::class, 'getMovimientos']);
 
-        // Pedidos (GRID)
-        Route::prefix('pedido')->group(function () {
-            Route::get('/', [PedidoController::class, 'index'])->name('operacion.pedidos.pedido.index');
-            Route::post('/', [PedidoController::class, 'store'])->name('operacion.pedidos.pedido.store');
-            Route::delete('/{id}', [PedidoController::class, 'destroy'])->name('operacion.pedidos.pedido.destroy');
-            
-            Route::post('/api/validar-producto', [PedidoController::class, 'apiValidarProducto']);
-            Route::post('/api/validar-hora-limite', [PedidoController::class, 'apiValidarHoraLimite']);
-            Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
-        });
-        
-    });
-});
+}); // Fin de rutas protegidas

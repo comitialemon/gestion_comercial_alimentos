@@ -106,11 +106,18 @@ const cargarDiarios = async () => {
     
     cargando.value = true
     try {
-        const response = await axios.get('/gestion/imprimir-diario/diarios-por-sucursal', {
+        // ✅ URL CORRECTA
+        const response = await axios.get('/gestion/contabilidad/imprimir-diario/diarios-por-sucursal', {
             params: { sucursal_id: sucursalId.value }
         })
         if (response.data.success) {
             diarios.value = response.data.diarios
+            // 🔥 Si hay diarios y no hay diario seleccionado, seleccionar el primero
+            if (diarios.value.length > 0 && !diarioSeleccionado.value) {
+                diarioSeleccionado.value = diarios.value[0]
+            }
+        } else {
+            diarios.value = []
         }
     } catch (error) {
         console.error('Error cargando diarios:', error)
@@ -189,7 +196,7 @@ const limpiarBusqueda = () => {
 // Imprimir diario
 const imprimirDiario = () => {
     if (!diarioSeleccionado.value) return
-    window.open(`/gestion/imprimir-diario/pdf/${diarioSeleccionado.value.id}`, '_blank')
+    window.open(`/gestion/contabilidad/imprimir-diario/pdf/${diarioSeleccionado.value.id}`, '_blank')
 }
 
 // Cerrar sugerencias al hacer clic fuera

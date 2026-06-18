@@ -551,37 +551,33 @@ class EgresoController extends Controller
     }
 
     /**
-     * 🔥 CAMBIAR ESTADO (Activar/Inactivar)
+     * Cambiar estado (SOLO DESACTIVAR - Activo → Borrador)
      */
     public function cambiarEstado($id)
     {
         try {
             $egreso = Egreso::porContexto()->findOrFail($id);
             
-            $nuevoEstado = $egreso->ActivoInactivo == 1 ? 0 : 1;
-            
-            // Validación al activar
-            if ($nuevoEstado == 1 && $egreso->ActivoInactivo == 0) {
-                if (!$egreso->IdFecha || !$egreso->IdIdentificador || !$egreso->TotalBolivianos || $egreso->TotalBolivianos <= 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No se puede activar: Faltan datos obligatorios'
-                    ], 400);
-                }
+            // 🔥 SOLO PERMITIR DESACTIVAR (Activo → Borrador)
+            if ($egreso->ActivoInactivo == 1) {
+                // Desactivar (pasar a borrador)
+                $egreso->update(['ActivoInactivo' => 0]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Egreso desactivado correctamente (pasó a Borrador)',
+                    'nuevo_estado' => 0
+                ]);
+            } else {
+                // Si ya está inactivo, no permitir activar
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este egreso ya está en estado BORRADOR. Solo se activa al editarlo y guardarlo.'
+                ], 400);
             }
             
-            $egreso->update(['ActivoInactivo' => $nuevoEstado]);
-            
-            $mensaje = $nuevoEstado == 1 ? 'Egreso activado correctamente' : 'Egreso desactivado correctamente';
-            
-            return response()->json([
-                'success' => true,
-                'message' => $mensaje,
-                'nuevo_estado' => $nuevoEstado
-            ]);
-            
         } catch (\Exception $e) {
-            Log::error('Error al cambiar estado: ' . $e->getMessage());
+            Log::error('Error al cambiar estado de egreso: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cambiar estado: ' . $e->getMessage()

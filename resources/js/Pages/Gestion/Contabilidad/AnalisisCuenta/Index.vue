@@ -60,7 +60,7 @@ const generarReporte = () => {
         formData.append('SucursalId', form.value.SucursalId)
     }
     
-    fetch('/gestion/analisis-cuenta/excel', {
+    fetch('/gestion/contabilidad/analisis-cuenta/excel', {
         method: 'POST',
         body: formData,
         headers: {

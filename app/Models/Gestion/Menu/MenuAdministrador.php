@@ -4,7 +4,7 @@ namespace App\Models\Gestion\Menu;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Schema;
-use App\Services\Gestion\Menu\MenuService;  // 🔥 IMPORTAR
+use App\Services\Gestion\Menu\MenuService;
 
 class MenuAdministrador extends Model
 {
@@ -13,33 +13,18 @@ class MenuAdministrador extends Model
     protected $primaryKey = 'Id';
     public $timestamps = false;
 
+    // ✅ AGREGAR SuperUsuario AL fillable
     protected $fillable = [
         'Description',
         'Link',
         'Parent',
         'Node_Order',
         'Informes',
-        'Digitador',
-        'Supervisor',
-        'Administrador',
+        'SuperUsuario',      // ✅ AGREGADO
         'EstadoCuenta',
         'VentaMostrador',
-        'VentaRestaurante',
-        'VentaSupervisor',
-        'VentaAdministracion',
-        'VentaMayorista',
-        'MonitorCocina',
-        'ComercialGerente',
-        'ComercialSupervisor',
-        'ComercialDistribucion',
         'Produccion',
-        'ProduccionSupervisor',
-        'ProduccionGerente',
-        'Fiscal',
-        'FiscalSupervisor',
-        'FiscalGerente',
         'ControlInterno',
-        'ControlInternoPrecios',
     ];
 
     /**

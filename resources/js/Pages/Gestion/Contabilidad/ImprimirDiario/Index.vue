@@ -120,7 +120,7 @@ const limpiarBusqueda = () => {
 const imprimirDiario = (diario) => {
     const id = diario.id || diarioSeleccionado.value?.id
     if (!id) return
-    window.open(`/gestion/imprimir-diario/pdf/${id}`, '_blank')
+    window.open(`/gestion/contabilidad/imprimir-diario/pdf/${id}`, '_blank')
 }
 
 // Ver detalle

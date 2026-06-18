@@ -1,4 +1,6 @@
 <?php
+// app/Models/Gestion/Inventario/TipoOperacion.php
+
 namespace App\Models\Gestion\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
@@ -16,9 +18,4 @@ class TipoOperacion extends Model
     {
         return $query->where('IdCliente', session('cliente_id'));
     }
-    public function scopeActivos($query)
-    {
-        return $query->where('ActivoInactivo', 0);  // 0 = activo
-    }
-
 }

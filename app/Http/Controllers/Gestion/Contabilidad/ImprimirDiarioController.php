@@ -106,18 +106,63 @@ class ImprimirDiarioController extends Controller
      */
     public function getDiariosPorSucursal(Request $request)
     {
-        $request->validate([
-            'sucursal_id' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal'
-        ]);
-        
-        $diarios = $this->obtenerDiariosPorSucursal($request->sucursal_id);
-        
-        return response()->json([
-            'success' => true,
-            'diarios' => $diarios
-        ]);
+        try {
+            $request->validate([
+                'sucursal_id' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal'
+            ]);
+            
+            $sucursalId = $request->sucursal_id;
+            $clienteId = session('cliente_id');
+            
+            $diarios = Diario::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('Contabilizado', 1)
+                ->where('NumeroDiario', '>', 0)
+                ->orderBy('NumeroDiario', 'desc')
+                ->limit(100)
+                ->get();
+            
+            $resultados = [];
+            foreach ($diarios as $diario) {
+                $tipoDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('conta_tipodiario')
+                    ->where('IdTipoDiario', $diario->IdTipoDiario)
+                    ->value('TipoDiario');
+                
+                $fecha = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_fecha')
+                    ->where('IdFecha', $diario->IdFecha)
+                    ->value('Fecha');
+                
+                $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador as o')
+                    ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                    ->where('o.IdOperador', $diario->IdOperadorIngreso)
+                    ->first();
+                
+                $resultados[] = [
+                    'id' => $diario->IdDiario,
+                    'numero' => $diario->NumeroDiario,
+                    'tipo' => $tipoDiario ?? 'Diario',
+                    'fecha' => $fecha ? date('d/m/Y', strtotime($fecha)) : null,
+                    'operador' => $operador->Nombre ?? 'Desconocido',
+                ];
+            }
+            
+            return response()->json([
+                'success' => true,
+                'diarios' => $resultados
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en getDiariosPorSucursal: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'diarios' => []
+            ]);
+        }
     }
-    
     /**
      * Método auxiliar para obtener diarios de una sucursal
      */

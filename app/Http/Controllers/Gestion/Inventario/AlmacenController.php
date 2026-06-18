@@ -20,13 +20,19 @@ class AlmacenController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
         
-        // Sucursal seleccionada (por defecto la primera o la que viene en la URL)
-        $sucursalId = $request->get('sucursal_id', $sucursales->first()->id ?? null);
+        // 🔥 Sucursal seleccionada (SOLO si viene en la URL)
+        $sucursalId = $request->get('sucursal_id');
         
-        // Obtener almacenes de la sucursal seleccionada CON LA RELACIÓN
-        $almacenes = Almacen::where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId)
-            ->with('sucursal')
+        // Construir query base
+        $query = Almacen::where('IdCliente', $clienteId)
+            ->with('sucursal');
+        
+        // 🔥 SI hay sucursal_id en la URL, filtrar, sino mostrar TODAS
+        if ($sucursalId) {
+            $query->where('IdSucursal', $sucursalId);
+        }
+        
+        $almacenes = $query->orderBy('IdSucursal')
             ->orderBy('Almacen')
             ->paginate(20)
             ->withQueryString();
@@ -34,7 +40,7 @@ class AlmacenController extends Controller
         return Inertia::render('Gestion/Inventario/Almacen/Index', [
             'almacenes' => $almacenes,
             'sucursales' => $sucursales,
-            'sucursalSeleccionada' => $sucursalId,
+            'sucursalSeleccionada' => $sucursalId, // Puede ser null
             'flash' => session()->only(['success', 'error']),
         ]);
     }

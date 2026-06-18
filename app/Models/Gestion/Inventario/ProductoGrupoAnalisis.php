@@ -1,4 +1,6 @@
 <?php
+// app/Models/Gestion/Inventario/ProductoGrupoAnalisis.php
+
 namespace App\Models\Gestion\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
@@ -12,9 +14,9 @@ class ProductoGrupoAnalisis extends Model
 
     protected $fillable = ['Grupo', 'IdCliente', 'IdSucursal'];
 
+    // 🔥 Scope por cliente (sin sucursal)
     public function scopePorContexto($query)
     {
-        return $query->where('IdCliente', session('cliente_id'))
-                     ->where('IdSucursal', session('cliente_sucursal_id'));
+        return $query->where('IdCliente', session('cliente_id'));
     }
 }

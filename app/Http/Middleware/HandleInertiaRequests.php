@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Illuminate\Support\Facades\DB;
 use App\Services\Gestion\Menu\MenuService;
-use App\Models\Gestion\Todos\ClienteTema; // 🔥 NUEVO: Modelo de tema
+use App\Models\Gestion\Todos\ClienteTema;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -55,9 +55,8 @@ class HandleInertiaRequests extends Middleware
             if ($sucursalNombre) session(['global_sucursal_nombre' => $sucursalNombre]);
         }
 
-        // 🔥 ==================== TEMA DINÁMICO POR CLIENTE ====================
+        // 🔥 TEMA DINÁMICO POR CLIENTE
         $theme = $this->loadTheme(session('cliente_id'));
-        // ====================================================================
 
         // 🔥 Obtener el detalle del tipo de operador (para saber si es vendedor)
         $operadorTipoDetalle = null;
@@ -74,7 +73,7 @@ class HandleInertiaRequests extends Middleware
                 'id'      => (int) session('operador_id'),
                 'nombre'  => (string) $operadorNombre,
                 'tipo_id' => (int) session('operador_tipo_id'),
-                'tipo_detalle' => $operadorTipoDetalle, // 🔥 NUEVO: "VentaMostrador", "Administrador", etc.
+                'tipo_detalle' => $operadorTipoDetalle, // 🔥 "VentaMostrador", "Administrador", etc.
             ],
         ];
 
@@ -87,7 +86,7 @@ class HandleInertiaRequests extends Middleware
             'ready' => (bool) (session()->has('cliente_id') && session()->has('cliente_sucursal_id')),
         ];
 
-        // Menú: llamamos al servicio
+        // 🔥 MENÚ: Usamos el servicio que ya tiene caché
         $menu = [];
         if ($ctx['ready'] && !empty($auth['operador']['tipo_id'])) {
             $menu = $this->menuService->obtenerArbol(
@@ -122,8 +121,8 @@ class HandleInertiaRequests extends Middleware
             'accent' => '#6b7280',
             'accent_rgb' => '107, 114, 128',
             'background' => '#ffffff',
-            'text_dark' => '#111827',   // Para fondos claros
-            'text_light' => '#ffffff',   // Para fondos oscuros
+            'text_dark' => '#111827',
+            'text_light' => '#ffffff',
             'logo' => null,
             'systemName' => 'Sistema Gestion',
             'hasCustomTheme' => false,
@@ -163,6 +162,9 @@ class HandleInertiaRequests extends Middleware
         }
     }
 
+    /**
+     * Convierte color HEX a RGB
+     */
     private function hexToRgb($hex): string
     {
         $hex = str_replace('#', '', $hex);

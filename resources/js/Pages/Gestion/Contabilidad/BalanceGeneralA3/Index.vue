@@ -32,7 +32,7 @@ const generarReporte = () => {
     error.value = ''
     generando.value = true
     
-    const url = `/gestion/balance-general-a3/generar?sucursal=${sucursal.value}&fecha=${fecha.value}`
+    const url = `/gestion/contabilidad/balance-general-a3/generar?sucursal=${sucursal.value}&fecha=${fecha.value}`
     window.open(url, '_blank')
     generando.value = false
 }

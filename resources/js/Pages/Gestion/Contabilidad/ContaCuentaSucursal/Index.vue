@@ -147,7 +147,6 @@ const limpiarSucursalNueva = () => {
 // Seleccionar cuenta (guarda IdCuenta)
 const seleccionarCuenta = (cuenta) => {
     nuevaCuentaId.value = cuenta.id
-    // NO jalamos el nombre automáticamente, el usuario escribe lo que quiere
     busquedaCuentaLocal.value = `${cuenta.Cuenta} - ${cuenta.Descripcion}`
 }
 
@@ -179,7 +178,7 @@ const cerrarDropdownCuenta = () => {
     }, 200)
 }
 
-// Agregar nueva asignación
+// 🔥 AGREGAR ASIGNACIÓN - RUTA CORREGIDA
 const agregarAsignacion = async () => {
     if (!nuevaSucursalId.value) {
         toast?.error('Error', 'Seleccione una sucursal')
@@ -200,7 +199,8 @@ const agregarAsignacion = async () => {
     
     agregando.value = true
     try {
-        const response = await axios.post('/gestion/conta-cuenta-sucursal', {
+        // ✅ RUTA CORREGIDA
+        const response = await axios.post('/gestion/contabilidad/conta-cuenta-sucursal', {
             IdCuenta: nuevaCuentaId.value,
             Cuenta: nuevaCuentaNombre.value,
             DinamicaCuenta: nuevaDinamica.value.toUpperCase(),
@@ -218,7 +218,7 @@ const agregarAsignacion = async () => {
     }
 }
 
-// Editar dinámica
+// 🔥 EDITAR DINÁMICA - RUTA CORREGIDA
 const editarDinamica = (asignacion) => {
     editandoId.value = asignacion.IdCuentaSucursales
 }
@@ -230,7 +230,8 @@ const guardarDinamica = async (asignacion) => {
     }
     
     try {
-        const response = await axios.put(`/gestion/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`, {
+        // ✅ RUTA CORREGIDA
+        const response = await axios.put(`/gestion/contabilidad/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`, {
             DinamicaCuenta: asignacion.DinamicaCuenta.toUpperCase(),
         })
         
@@ -243,13 +244,14 @@ const guardarDinamica = async (asignacion) => {
     }
 }
 
-// Eliminar asignación
+// 🔥 ELIMINAR ASIGNACIÓN - RUTA CORREGIDA
 const eliminarAsignacion = async (asignacion) => {
     const cuentaTexto = `${asignacion.Cuenta || '-'}`
     if (!confirm(`¿Eliminar la cuenta "${cuentaTexto}" de esta sucursal?`)) return
     
     try {
-        const response = await axios.delete(`/gestion/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`)
+        // ✅ RUTA CORREGIDA
+        const response = await axios.delete(`/gestion/contabilidad/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`)
         if (response.data.success) {
             toast?.success('Éxito', 'Cuenta desasignada correctamente')
             window.location.reload()

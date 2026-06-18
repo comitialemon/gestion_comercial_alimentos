@@ -30,7 +30,7 @@ onUnmounted(() => {
 // 🔥 Abrir PDF del diario
 const abrirPdfDiario = (compra) => {
     if (compra.IdDiario && compra.IdDiario > 0) {
-        window.open(`/gestion/imprimir-diario/pdf/${compra.IdDiario}`, '_blank')
+        window.open(`/gestion/contabilidad/imprimir-diario/pdf/${compra.IdDiario}`, '_blank')
     } else {
         const toast = document.createElement('div')
         toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white bg-yellow-500 flex items-center gap-2'

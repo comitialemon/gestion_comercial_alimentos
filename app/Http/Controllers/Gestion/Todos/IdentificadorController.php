@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Gestion\Todos\Identificador;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class IdentificadorController extends Controller
 {
@@ -35,6 +36,7 @@ class IdentificadorController extends Controller
             'filtros' => [
                 'search' => $request->search,
             ],
+            'flash' => session()->only(['success', 'error']),
         ]);
     }
 
@@ -43,29 +45,30 @@ class IdentificadorController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'CI_NIT' => 'required|numeric|unique:mysql_gestion_comercial_alimentos.todos_identificador,CI_NIT',
-            'Nombre' => 'required|string|max:100',
-        ]);
+        try {
+            $request->validate([
+                'CI_NIT' => 'required|numeric|unique:mysql_gestion_comercial_alimentos.todos_identificador,CI_NIT',
+                'Nombre' => 'required|string|max:100',
+            ]);
 
-        $identificador = Identificador::create([
-            'CI_NIT' => $request->CI_NIT,
-            'Nombre' => $request->Nombre,
-            'IdOperadorIngreso' => session('operador_id', 1),
-            'FechaIngreso' => now(),
-            'IdOperadorEdita' => session('operador_id', 1),
-            'FechaEdita' => now(),
-        ]);
+            $identificador = Identificador::create([
+                'CI_NIT' => $request->CI_NIT,
+                'Nombre' => $request->Nombre,
+                'IdOperadorIngreso' => session('operador_id', 1),
+                'FechaIngreso' => now(),
+                'IdOperadorEdita' => session('operador_id', 1),
+                'FechaEdita' => now(),
+            ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Identificador creado correctamente',
-            'identificador' => [
-                'IdIdentificador' => $identificador->IdIdentificador,
-                'CI_NIT' => $identificador->CI_NIT,
-                'Nombre' => $identificador->Nombre,
-            ]
-        ]);
+            // ✅ RETORNAR REDIRECT CON MENSAJE DE ÉXITO
+            return redirect()->back()->with('success', 'Identificador creado correctamente');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors())->withInput();
+        } catch (\Exception $e) {
+            Log::error('Error al crear identificador: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al crear: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -73,21 +76,29 @@ class IdentificadorController extends Controller
      */
     public function update(Request $request, $id)
     {
-        $identificador = Identificador::findOrFail($id);
+        try {
+            $identificador = Identificador::findOrFail($id);
 
-        $request->validate([
-            'CI_NIT' => 'required|numeric|unique:mysql_gestion_comercial_alimentos.todos_identificador,CI_NIT,' . $id . ',IdIdentificador',
-            'Nombre' => 'required|string|max:100',
-        ]);
+            $request->validate([
+                'CI_NIT' => 'required|numeric|unique:mysql_gestion_comercial_alimentos.todos_identificador,CI_NIT,' . $id . ',IdIdentificador',
+                'Nombre' => 'required|string|max:100',
+            ]);
 
-        $identificador->update([
-            'CI_NIT' => $request->CI_NIT,
-            'Nombre' => $request->Nombre,
-            'IdOperadorEdita' => session('operador_id', 1),
-            'FechaEdita' => now(),
-        ]);
+            $identificador->update([
+                'CI_NIT' => $request->CI_NIT,
+                'Nombre' => $request->Nombre,
+                'IdOperadorEdita' => session('operador_id', 1),
+                'FechaEdita' => now(),
+            ]);
 
-        return redirect()->back()->with('success', 'Identificador actualizado correctamente.');
+            return redirect()->back()->with('success', 'Identificador actualizado correctamente');
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return redirect()->back()->withErrors($e->errors())->withInput();
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar identificador: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al actualizar: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -95,13 +106,21 @@ class IdentificadorController extends Controller
      */
     public function destroy($id)
     {
-        // Verificar si el identificador está siendo usado en otros lugares
-        $identificador = Identificador::findOrFail($id);
-        
-        // Puedes agregar validaciones aquí si está siendo usado por comisionistas, etc.
-        
-        $identificador->delete();
+        try {
+            $identificador = Identificador::findOrFail($id);
+            
+            // Verificar si está siendo usado (opcional)
+            // if ($identificador->operador()->exists()) {
+            //     return redirect()->back()->with('error', 'No se puede eliminar porque tiene operadores asociados');
+            // }
+            
+            $identificador->delete();
 
-        return redirect()->back()->with('success', 'Identificador eliminado correctamente.');
+            return redirect()->back()->with('success', 'Identificador eliminado correctamente');
+
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar identificador: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al eliminar: ' . $e->getMessage());
+        }
     }
 }
