@@ -11,14 +11,15 @@ use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Inventario\CategoriaProducto;
 use App\Models\Gestion\Todos\ClienteSucursal;
 use App\Models\Gestion\Todos\Identificador;
+// ✅ IMPORTAR CORRECTAMENTE
+use App\Models\Gestion\Inventario\ProductoAprobacionConfig;
+use App\Models\Gestion\Inventario\ProductoAprobacionSolicitud;
+use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use App\Models\Gestion\Inventario\ProductoAprobacionConfig;
-use App\Models\Gestion\Inventario\ProductoAprobacionSolicitud;
-use App\Models\Gestion\Inventario\ProductoAprobacionVoto;
 
 class ProductoVentaController extends Controller
 {
@@ -189,7 +190,7 @@ class ProductoVentaController extends Controller
     }
     
     /**
-     * 🔥 STORE - Crear nuevo producto (con FormData para imagen)
+     * 🔥 STORE - Crear nuevo producto con imagen
      */
     public function store(Request $request)
     {
@@ -230,11 +231,7 @@ class ProductoVentaController extends Controller
         try {
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-            $imagenUrl = null;
-            if ($request->hasFile('imagen')) {
-                $imagenUrl = $this->guardarImagenArchivo($request->file('imagen'), $request->Codigo);
-            }
-
+            // Crear el producto primero para tener el ID
             $producto = ProductoVenta::create([
                 'id_categoria' => $request->id_categoria,
                 'Codigo' => $request->Codigo,
@@ -242,7 +239,7 @@ class ProductoVentaController extends Controller
                 'PrecioVenta' => $request->PrecioVenta,
                 'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
                 'estado_aprobacion' => ProductoVenta::APROBACION_BORRADOR,
-                'ImagenProducto' => $imagenUrl,
+                'ImagenProducto' => null, // Temporal
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $sucursalId,
                 'IdOperadorInserta' => $operadorId,
@@ -251,6 +248,26 @@ class ProductoVentaController extends Controller
                 'FechaActualiza' => now(),
                 'CierrePermanente' => 0,
             ]);
+
+            // Obtener la categoría
+            $categoria = CategoriaProducto::find($request->id_categoria);
+
+            // Guardar la imagen con el ID del producto
+            $imagenUrl = null;
+            if ($request->hasFile('imagen')) {
+                $imagenUrl = $this->guardarImagenArchivo(
+                    $request->file('imagen'),
+                    $producto->IdDetalleProducto,
+                    $request->Codigo,
+                    $categoria,
+                    $clienteId
+                );
+            }
+
+            // Actualizar el producto con la URL de la imagen
+            if ($imagenUrl) {
+                $producto->update(['ImagenProducto' => $imagenUrl]);
+            }
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
@@ -272,7 +289,7 @@ class ProductoVentaController extends Controller
     }
     
     /**
-     * 🔥 UPDATE - Actualizar producto (con FormData para imagen)
+     * 🔥 UPDATE - Actualizar producto con imagen
      */
     public function update(Request $request, $id)
     {
@@ -325,21 +342,38 @@ class ProductoVentaController extends Controller
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
             
             $imagenUrl = $producto->ImagenProducto;
+            $categoriaAntigua = CategoriaProducto::find($producto->id_categoria);
+            $categoriaNueva = CategoriaProducto::find($request->id_categoria);
             
             // Manejar eliminación de imagen
             if ($request->boolean('eliminar_imagen')) {
-                if ($imagenUrl && file_exists(public_path($imagenUrl))) {
-                    unlink(public_path($imagenUrl));
-                }
+                $this->eliminarImagen($imagenUrl);
                 $imagenUrl = null;
             }
             
             // Si hay nueva imagen, eliminar la anterior y guardar la nueva
             if ($request->hasFile('imagen')) {
-                if ($imagenUrl && file_exists(public_path($imagenUrl))) {
-                    unlink(public_path($imagenUrl));
+                // Eliminar imagen anterior si existe
+                if ($imagenUrl) {
+                    $this->eliminarImagen($imagenUrl);
                 }
-                $imagenUrl = $this->guardarImagenArchivo($request->file('imagen'), $request->Codigo);
+                
+                $imagenUrl = $this->guardarImagenArchivo(
+                    $request->file('imagen'),
+                    $producto->IdDetalleProducto,
+                    $request->Codigo,
+                    $categoriaNueva,
+                    $clienteId
+                );
+            }
+            
+            // Si cambió de categoría y tiene imagen, mover la imagen a la nueva categoría
+            if ($producto->id_categoria != $request->id_categoria && $imagenUrl && !$request->hasFile('imagen')) {
+                // Eliminar imagen anterior (está en la categoría vieja)
+                $this->eliminarImagen($imagenUrl);
+                
+                // No hay nueva imagen, así que queda null
+                $imagenUrl = null;
             }
             
             $producto->update([
@@ -392,8 +426,8 @@ class ProductoVentaController extends Controller
         
         try {
             // Eliminar imagen si existe
-            if ($producto->ImagenProducto && file_exists(public_path($producto->ImagenProducto))) {
-                unlink(public_path($producto->ImagenProducto));
+            if ($producto->ImagenProducto) {
+                $this->eliminarImagen($producto->ImagenProducto);
             }
             
             // Eliminar los detalles relacionados
@@ -419,39 +453,76 @@ class ProductoVentaController extends Controller
     }
     
     /**
-     * 🔥 guardarImagenArchivo - Guardar imagen desde archivo subido (FormData)
+     * 🔥 guardarImagenArchivo - Guarda imagen en estructura Cliente → Categoría → Producto
+     * 
+     * Estructura: /storage/productos/cliente_{id}/cat_{categoria_id}_{categoria_nombre}/prod_{producto_id}_{codigo}_{timestamp}.ext
+     * 
+     * @param \Illuminate\Http\UploadedFile $file
+     * @param int $productoId
+     * @param string $codigo
+     * @param \App\Models\Gestion\Inventario\CategoriaProducto|null $categoria
+     * @param int $clienteId
+     * @return string|null Ruta relativa de la imagen
      */
-    private function guardarImagenArchivo($file, $codigo)
+    private function guardarImagenArchivo($file, $productoId, $codigo, $categoria = null, $clienteId = null)
     {
         try {
-            Log::info('=== GUARDANDO IMAGEN DESDE ARCHIVO ===');
+            $clienteId = $clienteId ?? session('cliente_id');
+            
+            Log::info('=== GUARDANDO IMAGEN PRODUCTO ===');
+            Log::info('Cliente ID: ' . $clienteId);
+            Log::info('Producto ID: ' . $productoId);
             Log::info('Código: ' . $codigo);
-            Log::info('Archivo original: ' . $file->getClientOriginalName());
-            Log::info('Mime type: ' . $file->getMimeType());
-            Log::info('Tamaño: ' . $file->getSize() . ' bytes');
+            Log::info('Categoría: ' . ($categoria ? $categoria->nombre . ' (ID: ' . $categoria->id_categoria . ')' : 'Sin categoría'));
             
             $extension = $file->getClientOriginalExtension();
-            $nombreArchivo = Str::slug($codigo, '_') . '_' . date('Ymd_His') . '.' . $extension;
-            $rutaRelativa = '/storage/productos/' . $nombreArchivo;
+            $nombreLimpio = Str::slug($codigo, '_');
+            $timestamp = date('Ymd_His');
+            
+            // 🔥 ESTRUCTURA: cliente_{id}/cat_{categoria_id}_{categoria_nombre}/
+            $categoriaId = $categoria ? $categoria->id_categoria : '0';
+            $categoriaNombre = $categoria ? Str::slug($categoria->nombre, '_') : 'sin_categoria';
+            
+            $rutaCarpeta = sprintf(
+                '/storage/productos/cliente_%d/cat_%d_%s',
+                $clienteId,
+                $categoriaId,
+                $categoriaNombre
+            );
+            
+            $rutaCompletaCarpeta = public_path($rutaCarpeta);
+            
+            Log::info('📁 Carpeta destino: ' . $rutaCompletaCarpeta);
+            
+            // Crear carpeta si no existe
+            if (!file_exists($rutaCompletaCarpeta)) {
+                if (!mkdir($rutaCompletaCarpeta, 0755, true)) {
+                    throw new \Exception('No se pudo crear el directorio: ' . $rutaCompletaCarpeta);
+                }
+                Log::info('📁 Carpeta creada exitosamente');
+            }
+            
+            // Verificar permisos de escritura
+            if (!is_writable($rutaCompletaCarpeta)) {
+                throw new \Exception('El directorio no tiene permisos de escritura: ' . $rutaCompletaCarpeta);
+            }
+            
+            // 🔥 NOMBRE DEL ARCHIVO: prod_{id}_{codigo}_{timestamp}.ext
+            $nombreArchivo = sprintf(
+                'prod_%d_%s_%s.%s',
+                $productoId,
+                $nombreLimpio,
+                $timestamp,
+                $extension
+            );
+            
+            $rutaRelativa = $rutaCarpeta . '/' . $nombreArchivo;
             $rutaCompleta = public_path($rutaRelativa);
             
-            $directorio = dirname($rutaCompleta);
-            Log::info('Directorio destino: ' . $directorio);
+            Log::info('📄 Guardando archivo: ' . $rutaCompleta);
             
-            if (!file_exists($directorio)) {
-                Log::info('Creando directorio...');
-                if (!mkdir($directorio, 0755, true)) {
-                    throw new \Exception('No se pudo crear el directorio: ' . $directorio);
-                }
-                Log::info('Directorio creado exitosamente');
-            }
-            
-            if (!is_writable($directorio)) {
-                throw new \Exception('El directorio no tiene permisos de escritura: ' . $directorio);
-            }
-            
-            Log::info('Moviendo archivo a: ' . $rutaCompleta);
-            $file->move($directorio, $nombreArchivo);
+            // Mover el archivo
+            $file->move($rutaCompletaCarpeta, $nombreArchivo);
             
             if (!file_exists($rutaCompleta)) {
                 throw new \Exception('El archivo no se guardó correctamente');
@@ -464,6 +535,62 @@ class ProductoVentaController extends Controller
         } catch (\Exception $e) {
             Log::error('❌ Error guardando imagen: ' . $e->getMessage());
             return null;
+        }
+    }
+    
+    /**
+     * 🔥 eliminarImagen - Elimina una imagen del sistema de archivos
+     * 
+     * @param string|null $imagenUrl Ruta relativa de la imagen
+     * @return bool
+     */
+    private function eliminarImagen($imagenUrl)
+    {
+        if (!$imagenUrl) {
+            return false;
+        }
+        
+        try {
+            $rutaCompleta = public_path($imagenUrl);
+            
+            if (file_exists($rutaCompleta)) {
+                Log::info('🗑️ Eliminando imagen: ' . $rutaCompleta);
+                unlink($rutaCompleta);
+                
+                // Intentar eliminar carpeta si quedó vacía
+                $carpeta = dirname($rutaCompleta);
+                $this->eliminarCarpetaSiVacia($carpeta);
+                
+                return true;
+            } else {
+                Log::warning('⚠️ Imagen no encontrada: ' . $rutaCompleta);
+                return false;
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('❌ Error eliminando imagen: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * 🔥 eliminarCarpetaSiVacia - Elimina una carpeta si está vacía
+     * 
+     * @param string $carpeta Ruta completa de la carpeta
+     * @return bool
+     */
+    private function eliminarCarpetaSiVacia($carpeta)
+    {
+        try {
+            if (is_dir($carpeta) && count(glob($carpeta . '/*')) === 0) {
+                Log::info('📁 Eliminando carpeta vacía: ' . $carpeta);
+                rmdir($carpeta);
+                return true;
+            }
+            return false;
+        } catch (\Exception $e) {
+            Log::error('❌ Error eliminando carpeta: ' . $e->getMessage());
+            return false;
         }
     }
     

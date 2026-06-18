@@ -154,7 +154,7 @@ const aplicarFiltros = () => {
         if (buscarSucursal.value) params.buscar_sucursal = buscarSucursal.value
         if (buscarOperador.value) params.buscar_operador = buscarOperador.value
         
-        router.get('/gestion/anular-factura/admin', params, {
+        router.get('/gestion/impuestos/anular-factura/admin', params, {
             preserveState: true,
             replace: true,
         })
@@ -181,7 +181,7 @@ const limpiarTodo = () => {
     facturaSeleccionada.value = ''  // 🔥 Limpiar selección
     sucursalesFiltradas.value = props.todasSucursales || []
     operadoresFiltrados.value = []
-    router.get('/gestion/anular-factura/admin', {}, {
+    router.get('/gestion/impuestos/anular-factura/admin', {}, {
         preserveState: true,
         replace: true,
     })
@@ -215,7 +215,7 @@ const ejecutarAnulacion = async () => {
     modalCargando.value = true
     
     try {
-        const response = await axios.post('/gestion/anular-factura/anular', {
+        const response = await axios.post('/gestion/impuestos/anular-factura/anular', {
             IdVentas: facturaParaAnular.value.IdVentas
         })
         
@@ -224,7 +224,7 @@ const ejecutarAnulacion = async () => {
             exito.value = true
             mensaje.value = response.data.message
             
-            const pdfUrl = `/gestion/anular-factura/pdf/${facturaParaAnular.value.IdVentas}`
+            const pdfUrl = `/gestion/impuestos/anular-factura/pdf/${facturaParaAnular.value.IdVentas}`
             window.open(pdfUrl, '_blank')
             
             setTimeout(() => {

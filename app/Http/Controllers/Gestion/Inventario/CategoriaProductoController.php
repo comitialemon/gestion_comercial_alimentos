@@ -33,7 +33,7 @@ class CategoriaProductoController extends Controller
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
             'activo' => 'boolean',
-            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512' // 🔥 CAMBIADO: file, no base64
+            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512'
         ]);
 
         $padre = null;
@@ -42,7 +42,7 @@ class CategoriaProductoController extends Controller
         }
 
         $imagenUrl = null;
-        if ($request->hasFile('imagen')) { // 🔥 CAMBIADO: verificar file
+        if ($request->hasFile('imagen')) {
             $imagenUrl = $this->guardarImagen($request->file('imagen'), $request->nombre, $padre);
         }
 
@@ -68,7 +68,7 @@ class CategoriaProductoController extends Controller
             'nombre' => 'required|string|max:100',
             'id_padre' => 'nullable|exists:inventario_menu_categoria,id_categoria',
             'activo' => 'boolean',
-            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512' // 🔥 CAMBIADO: file, no base64
+            'imagen' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:512'
         ]);
 
         if ($request->id_padre == $id) {
@@ -85,7 +85,6 @@ class CategoriaProductoController extends Controller
 
         $imagenUrl = $categoria->imagen_url;
         
-        // 🔥 CAMBIADO: manejar nueva imagen como file
         if ($request->hasFile('imagen')) {
             // Eliminar imagen anterior si existe
             if ($imagenUrl && file_exists(public_path($imagenUrl))) {
@@ -156,28 +155,39 @@ class CategoriaProductoController extends Controller
     }
 
     /**
-     * 🔥 NUEVO MÉTODO: Guardar imagen desde archivo subido (FormData)
+     * 🔥 Guardar imagen con estructura por cliente
      */
     private function guardarImagen($file, $nombre, $padre = null)
     {
         try {
-            \Log::info('=== Guardando imagen desde archivo ===');
-            \Log::info('Nombre original: ' . $file->getClientOriginalName());
-            \Log::info('Mime type: ' . $file->getMimeType());
-            \Log::info('Tamaño: ' . $file->getSize() . ' bytes');
+            $clienteId = session('cliente_id');
+            
+            \Log::info('=== Guardando imagen ===');
+            \Log::info('Cliente ID: ' . $clienteId);
+            \Log::info('Nombre: ' . $nombre);
             
             $extension = $file->getClientOriginalExtension();
             $nombreLimpio = Str::slug($nombre, '_');
-            $rutaBase = $this->getRutaBasePadres($padre);
-            $rutaCarpeta = $rutaBase . '/' . $nombreLimpio;
+            
+            // 🔥 ESTRUCTURA: cliente_id -> jerarquía de categorías
+            $rutaBase = '/storage/categorias/cliente_' . $clienteId;
+            $rutaJerarquia = $this->getRutaJerarquia($padre);
+            $rutaCarpeta = $rutaBase . '/' . $rutaJerarquia . '/' . $nombreLimpio;
+            
+            // Limpiar rutas (evitar duplicados)
+            $rutaCarpeta = preg_replace('#/+#', '/', $rutaCarpeta);
+            
             $rutaCompletaCarpeta = public_path($rutaCarpeta);
             
+            // Crear carpeta
             if (!file_exists($rutaCompletaCarpeta)) {
                 if (!mkdir($rutaCompletaCarpeta, 0755, true)) {
                     throw new \Exception('No se pudo crear el directorio: ' . $rutaCompletaCarpeta);
                 }
+                \Log::info('📁 Carpeta creada: ' . $rutaCompletaCarpeta);
             }
             
+            // Guardar archivo como icono.webp
             $nombreArchivo = 'icono.' . $extension;
             $rutaRelativa = $rutaCarpeta . '/' . $nombreArchivo;
             $rutaCompleta = public_path($rutaRelativa);
@@ -199,21 +209,26 @@ class CategoriaProductoController extends Controller
         }
     }
 
-    private function getRutaBasePadres($padre)
+    /**
+     * 🔥 Obtiene la ruta jerárquica de los padres (excluyendo raíz)
+     */
+    private function getRutaJerarquia($padre)
     {
         if (!$padre) {
-            return '/storage/categorias';
+            return '';
         }
         
         $partes = [];
         $actual = $padre;
         
+        // Obtener todos los padres en orden
         while ($actual) {
             $nombreLimpio = Str::slug($actual->nombre, '_');
             array_unshift($partes, $nombreLimpio);
             $actual = $actual->padre;
         }
         
-        return '/storage/categorias/' . implode('/', $partes);
+        // Retornar la jerarquía completa
+        return implode('/', $partes);
     }
 }

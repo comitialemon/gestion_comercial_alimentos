@@ -272,8 +272,8 @@ const eliminarFila = async (precio) => {
             </button>
         </div>
 
-        <!-- Tabla responsive -->
-        <div class="overflow-x-auto rounded-lg border border-gray-200">
+        <!-- Contenedor con altura mínima -->
+        <div class="overflow-x-auto rounded-lg border border-gray-200" style="min-height: 300px;">
             <!-- Desktop: Tabla completa -->
             <table class="min-w-full hidden md:table">
                 <thead class="bg-primary-50 sticky top-0">

@@ -27,7 +27,7 @@ const seleccionarFecha = async () => {
     
     loading.value = true
     try {
-        const response = await axios.get(`/gestion/liquidacion-vendedor/datos/${fechaSeleccionada.value}`)
+        const response = await axios.get(`/gestion/impuestos/liquidacion-vendedor/datos/${fechaSeleccionada.value}`)
         
         if (response.data.success) {
             if (response.data.liquidacion) {

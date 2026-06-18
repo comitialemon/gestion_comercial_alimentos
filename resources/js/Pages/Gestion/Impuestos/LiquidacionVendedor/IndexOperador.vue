@@ -40,13 +40,13 @@ const formatearNumero = (value) => {
 }
 
 const reimprimirPDF = (id) => {
-    window.open(`/gestion/liquidacion-vendedor/pdf/${id}`, '_blank')
+    window.open(`/gestion/impuestos/liquidacion-vendedor/pdf/${id}`, '_blank')
 }
 
 // 🔥 Abrir PDF del diario (al hacer clic en el número de diario)
 const abrirPdfDiario = (idDiario) => {
     if (idDiario && idDiario > 0) {
-        window.open(`/gestion/imprimir-diario/pdf/${idDiario}`, '_blank')
+        window.open(`/gestion/contabilidad/imprimir-diario/pdf/${idDiario}`, '_blank')
     } else {
         const toast = document.createElement('div')
         toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white bg-yellow-500 flex items-center gap-2'

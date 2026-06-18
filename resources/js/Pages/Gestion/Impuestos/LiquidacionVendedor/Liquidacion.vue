@@ -56,7 +56,7 @@ const guardarLiquidacion = async () => {
     
     loading.value = true
     try {
-        const response = await axios.post('/gestion/liquidacion-vendedor/guardar', {
+        const response = await axios.post('/gestion/impuestos/liquidacion-vendedor/guardar', {
             IdFecha: form.value.IdFecha,
             vEntasConfirma: form.value.vEntasConfirma,
             conceptos: form.value.conceptos.map(c => ({
@@ -68,7 +68,7 @@ const guardarLiquidacion = async () => {
         
         if (response.data.success) {
             window.open(response.data.pdf_url, '_blank')
-            router.get('/gestion/liquidacion-vendedor')
+            router.get('/gestion/impuestos/liquidacion-vendedor')
         } else {
             alert(response.data.message || 'Error al guardar')
         }

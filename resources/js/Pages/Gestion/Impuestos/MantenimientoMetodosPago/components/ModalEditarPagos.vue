@@ -68,7 +68,7 @@ const cargarMetodosPago = async () => {
     cargando.value = true
     errorMontos.value = ''
     try {
-        const response = await axios.get(`/gestion/mantenimiento-metodos-pago/${props.venta.IdVentas}/metodos-pago`)
+        const response = await axios.get(`/gestion/impuestos/mantenimiento-metodos-pago/${props.venta.IdVentas}/metodos-pago`)
         
         if (response.data.success) {
             metodosPago.value = response.data.metodosPago
@@ -143,7 +143,7 @@ const guardarCambios = async () => {
     errors.value = {}
     
     try {
-        const response = await axios.put(`/gestion/mantenimiento-metodos-pago/${props.venta.IdVentas}/metodos-pago`, {
+        const response = await axios.put(`/gestion/impuestos/mantenimiento-metodos-pago/${props.venta.IdVentas}/metodos-pago`, {
             pagos: metodosPago.value
         })
         

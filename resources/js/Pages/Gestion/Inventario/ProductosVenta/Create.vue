@@ -2,7 +2,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, inject, computed, watch, onMounted } from 'vue'
+import { ref, inject, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useForm } from '@inertiajs/vue3'
 import axios from 'axios'
 import PrecioSucursalTab from './components/PrecioSucursalTab.vue'
@@ -36,7 +36,7 @@ const productoId = ref(props.producto?.IdDetalleProducto || null)
 const enviandoAprobacion = ref(false)
 const eliminando = ref(false)
 
-// 🔥 ESTADOS PARA IMAGEN
+// 🔥 ESTADOS PARA IMAGEN (FormData)
 const archivoImagen = ref(null)
 const eliminarImagenFlag = ref(false)
 const imgInput = ref(null)
@@ -79,6 +79,10 @@ onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
     inicializarCategoria()
+})
+
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
 })
 
 // ==================== COMPUTED ====================
@@ -469,8 +473,9 @@ const tabs = [
                         </span>
                     </div>
                     
-                    <!-- Botones - Mobile Toggle -->
-                    <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <!-- 🔥 BOTONES - VISIBLES EN DESKTOP, TOGGLE EN MÓVIL -->
+                    <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <!-- Botón toggle en móvil -->
                         <button 
                             @click="toggleMenu"
                             class="sm:hidden flex-1 px-3 py-1.5 bg-white border rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
@@ -481,6 +486,36 @@ const tabs = [
                             <i class="fas text-[10px]" :class="menuAbierto ? 'fa-chevron-up' : 'fa-chevron-down'" :style="{ color: `var(--color-primary-600)` }"></i>
                         </button>
                         
+                        <!-- 🔥 BOTONES DESKTOP - SIEMPRE VISIBLES -->
+                        <div class="hidden sm:flex flex-wrap items-center gap-2">
+                            <button type="button" @click="router.get('/gestion/inventario/productos-venta')" 
+                                    class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">
+                                Cancelar
+                            </button>
+                            
+                            <button v-if="mostrarDescartarBorrador" @click="descartarBorrador" :disabled="eliminando" 
+                                    class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs transition disabled:opacity-50 flex items-center gap-1">
+                                <i v-if="eliminando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-trash-alt text-[10px]"></i>
+                                {{ eliminando ? 'Eliminando...' : 'Descartar' }}
+                            </button>
+                            
+                            <button v-if="editando && mostrarToggleEstado" @click="toggleEstado" 
+                                    class="px-3 py-1.5 rounded-md text-xs transition flex items-center gap-1" 
+                                    :class="props.producto?.ActivoInactivo === 0 ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'">
+                                <i :class="props.producto?.ActivoInactivo === 0 ? 'fas fa-ban text-[10px]' : 'fas fa-check-circle text-[10px]'"></i>
+                                {{ textoBotonEstado }}
+                            </button>
+                            
+                            <button v-if="editando && puedeEnviarAprobacion" @click="enviarAprobacion" :disabled="enviandoAprobacion" 
+                                    class="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs hover:bg-blue-700 transition disabled:opacity-50 flex items-center gap-1">
+                                <i v-if="enviandoAprobacion" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-paper-plane text-[10px]"></i>
+                                {{ enviandoAprobacion ? 'Enviando...' : 'Enviar' }}
+                            </button>
+                        </div>
+                        
+                        <!-- Botón Guardar (visible siempre) -->
                         <button @click="guardarProducto" 
                                 :disabled="form.processing || (editando && !puedeEditar)" 
                                 class="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-emerald-600 text-white rounded-md text-[11px] sm:text-xs hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5">

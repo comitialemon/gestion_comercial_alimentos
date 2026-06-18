@@ -40,7 +40,7 @@ onUnmounted(() => {
 const aplicarFiltro = () => {
     const params = {}
     if (fecha.value) params.fecha = fecha.value
-    router.get('/gestion/anular-factura', params, {
+    router.get('/gestion/impuestos/anular-factura', params, {
         preserveState: true,
         replace: true,
     })
@@ -48,7 +48,7 @@ const aplicarFiltro = () => {
 
 const limpiarFiltro = () => {
     fecha.value = ''
-    router.get('/gestion/anular-factura', {}, {
+    router.get('/gestion/impuestos/anular-factura', {}, {
         preserveState: true,
         replace: true,
     })
@@ -77,7 +77,7 @@ const ejecutarAnulacion = async () => {
     modalCargando.value = true
     
     try {
-        const response = await axios.post('/gestion/anular-factura/anular', {
+        const response = await axios.post('/gestion/impuestos/anular-factura/anular', {
             IdVentas: facturaParaAnular.value.IdVentas
         })
         
@@ -89,7 +89,7 @@ const ejecutarAnulacion = async () => {
             // 🔥 ABRIR EL PDF DE LA FACTURA ANULADA (con sello)
             // Usar el id_ventas devuelto por el servidor o el que ya tenemos
             const ventaId = response.data.id_ventas || facturaParaAnular.value.IdVentas
-            const pdfUrl = `/venta-factura/factura-pdf/${ventaId}`
+            const pdfUrl = `/gestion/impuestos/venta-factura/factura-pdf/${ventaId}`
             window.open(pdfUrl, '_blank')
             
             setTimeout(() => {

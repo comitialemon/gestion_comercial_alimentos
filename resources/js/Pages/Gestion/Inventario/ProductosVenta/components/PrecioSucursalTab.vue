@@ -202,7 +202,7 @@ const nombreSucursal = (sucursal) => {
         </div>
 
         <!-- Tabla responsive -->
-        <div class="overflow-x-auto rounded-lg border border-gray-200">
+        <div class="overflow-x-auto rounded-lg border border-gray-200" style="min-height: 300px;">
             <!-- Desktop: Tabla -->
             <table class="min-w-full hidden md:table">
                 <thead class="bg-primary-50">
