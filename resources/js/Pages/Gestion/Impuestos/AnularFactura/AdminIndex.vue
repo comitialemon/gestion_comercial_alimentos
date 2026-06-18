@@ -224,7 +224,7 @@ const ejecutarAnulacion = async () => {
             exito.value = true
             mensaje.value = response.data.message
             
-            const pdfUrl = `/gestion/impuestos/anular-factura/pdf/${facturaParaAnular.value.IdVentas}`
+            const pdfUrl = `/gestion/impuestos/anular-factura/admin/pdf/${facturaParaAnular.value.IdVentas}`
             window.open(pdfUrl, '_blank')
             
             setTimeout(() => {
