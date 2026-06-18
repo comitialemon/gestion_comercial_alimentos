@@ -35,7 +35,7 @@ const estado = ref(props.filtros?.estado || '')
 
 // Aplicar filtros
 const aplicarFiltros = () => {
-    router.get('/gestion/productos-venta/catalogo', {
+    router.get('/gestion/inventario/productos-venta/catalogo', {
         search: search.value || undefined,
         categoria: categoria.value || undefined,
         estado: estado.value || undefined,
@@ -127,7 +127,7 @@ onUnmounted(() => {
                             <p class="text-xs text-gray-500">Todos los productos con su categoría asignada</p>
                         </div>
                     </div>
-                    <Link href="/gestion/productos-venta/create" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm lg:text-[15px] font-medium flex items-center gap-2 transition w-full sm:w-auto justify-center">
+                    <Link href="/gestion/inventario/productos-venta/create" class="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg text-sm lg:text-[15px] font-medium flex items-center gap-2 transition w-full sm:w-auto justify-center">
                         <i class="fas fa-plus text-sm"></i> Nuevo Producto
                     </Link>
                 </div>
@@ -258,7 +258,7 @@ onUnmounted(() => {
                                             </div>
                                         </div>
                                         <div class="flex gap-3 mt-2 pt-2 border-t border-gray-200">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800 text-sm" title="Editar">
+                                            <Link :href="`/gestion/inventario/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800 text-sm" title="Editar">
                                                 <i class="fas fa-edit"></i> Editar
                                             </Link>
                                         </div>
@@ -312,7 +312,7 @@ onUnmounted(() => {
                                             </span>
                                         </td>
                                         <td class="px-3 py-2 text-center">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
+                                            <Link :href="`/gestion/inventario/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
                                                 <i class="fas fa-edit"></i>
                                             </Link>
                                         </td>
@@ -362,7 +362,7 @@ onUnmounted(() => {
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 text-center">
-                                            <Link :href="`/gestion/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
+                                            <Link :href="`/gestion/inventario/productos-venta/${producto.IdDetalleProducto}/edit`" class="text-primary-600 hover:text-primary-800" title="Editar">
                                                 <i class="fas fa-edit text-base"></i>
                                             </Link>
                                         </td>
