@@ -121,7 +121,7 @@ const cargarDetalle = async () => {
         
         console.log('📤 Enviando al backend:', params) // 🔥 Depuración
         
-        const response = await axios.get('/gestion/reporte-ventas-vendedor/detalle-producto', { params })
+        const response = await axios.get('/gestion/reportes/ventas-vendedor/detalle-producto', { params })
         
         console.log('📥 Respuesta del backend:', response.data) // 🔥 Depuración
         

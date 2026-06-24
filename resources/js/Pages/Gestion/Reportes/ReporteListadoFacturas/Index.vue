@@ -105,7 +105,7 @@ const aplicarFiltros = () => {
     
     mostrarAgrupado.value = false
     
-    router.get('/gestion/reporte-listado-facturas', params, {
+    router.get('/gestion/reportes/listado-facturas', params, {
         preserveState: true,
         replace: true,
     })
@@ -148,7 +148,7 @@ const estadoClase = (estado) => {
 }
 
 const reimprimir = (id) => {
-    window.open(`/gestion/reporte-listado-facturas/reimprimir/${id}`, '_blank')
+    window.open(`/gestion/reportes/listado-facturas/reimprimir/${id}`, '_blank')
 }
 
 // 🔥 Alternar entre vista normal y agrupada

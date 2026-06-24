@@ -37,7 +37,7 @@ const aplicarFiltros = () => {
     
     if (operador.value) params.operador = operador.value
     
-    router.get('/gestion/reporte-ventas-sucursal', params, {
+    router.get('/gestion/reportes/ventas-sucursal', params, {
         preserveState: true,
         replace: true,
     })

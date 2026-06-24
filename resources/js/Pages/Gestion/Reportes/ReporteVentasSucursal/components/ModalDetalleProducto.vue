@@ -52,7 +52,7 @@ const cargarDetalle = async () => {
         }
         if (props.filtros?.operador) params.operador = props.filtros.operador
         
-        const response = await axios.get('/gestion/reporte-ventas-sucursal/detalle-producto', { params })
+        const response = await axios.get('/gestion/reportes/ventas-sucursal/detalle-producto', { params })
         
         if (response.data.success) {
             detalles.value = response.data.detalles

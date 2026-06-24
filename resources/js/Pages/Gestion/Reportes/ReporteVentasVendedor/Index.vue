@@ -38,7 +38,7 @@ const aplicarFiltros = () => {
     
     if (metodoPago.value) params.metodo_pago = metodoPago.value
     
-    router.get('/gestion/reporte-ventas-vendedor', params, {
+    router.get('/gestion/reportes/ventas-vendedor', params, {
         preserveState: true,
         replace: true,
     })

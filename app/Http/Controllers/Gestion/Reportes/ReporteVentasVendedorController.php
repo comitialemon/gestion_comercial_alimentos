@@ -265,4 +265,6 @@ class ReporteVentasVendedorController extends Controller
             'totalBolivianos' => $totalBolivianos,
         ]);
     }
+
+    
 }
