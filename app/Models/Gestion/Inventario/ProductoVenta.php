@@ -25,7 +25,7 @@ class ProductoVenta extends Model
         'PrecioVenta',
         'ActivoInactivo',
         'estado_aprobacion',
-        'ImagenProducto',  // 🔥 Cambiado: ahora es VARCHAR
+        // 'ImagenProducto', // ❌ ELIMINAR - Ya no se usa
         'IdCliente',
         'IdSucursal',
         'IdOperadorInserta',
@@ -43,19 +43,58 @@ class ProductoVenta extends Model
         'CierrePermanente' => 'integer',
     ];
 
-    // 🔥 Accessor para obtener la URL completa de la imagen
+    // ==================== RELACIONES CON IMÁGENES ====================
+
+    /**
+     * Relación con todas las imágenes del producto
+     */
+    public function imagenes()
+    {
+        return $this->hasMany(ProductoImagen::class, 'IdProducto', 'IdDetalleProducto')
+            ->where('ActivoInactivo', 1)
+            ->orderBy('Orden', 'asc');
+    }
+
+    /**
+     * Relación con la imagen principal
+     */
+    public function imagenPrincipal()
+    {
+        return $this->hasOne(ProductoImagen::class, 'IdProducto', 'IdDetalleProducto')
+            ->where('ActivoInactivo', 1)
+            ->where('EsPrincipal', 1);
+    }
+
+    /**
+     * 🔥 Obtener URL de la imagen principal (thumbnail)
+     */
     public function getImagenUrlAttribute()
     {
-        if ($this->ImagenProducto && !empty($this->ImagenProducto)) {
-            // Si la ruta ya tiene /storage/ al inicio, usarla directamente
-            if (str_starts_with($this->ImagenProducto, '/storage/')) {
-                return asset($this->ImagenProducto);
-            }
-            // Si no, asumir que está en storage
-            return asset('/storage/' . ltrim($this->ImagenProducto, '/'));
+        $principal = $this->imagenPrincipal;
+        if ($principal) {
+            return $principal->url_thumbnail;
         }
         return null;
     }
+
+    /**
+     * 🔥 Obtener todas las URLs de las imágenes
+     */
+    public function getImagenesUrlsAttribute()
+    {
+        return $this->imagenes->map(function($imagen) {
+            return [
+                'id' => $imagen->IdImagen,
+                'thumbnail' => $imagen->url_thumbnail,
+                'medium' => $imagen->url_medium,
+                'original' => $imagen->url_original,
+                'es_principal' => $imagen->EsPrincipal,
+                'orden' => $imagen->Orden,
+            ];
+        })->toArray();
+    }
+
+    // ==================== SCOPES ====================
 
     public function scopePorContexto($query)
     {
@@ -66,6 +105,8 @@ class ProductoVenta extends Model
     {
         return $query->where('ActivoInactivo', self::COMERCIAL_ACTIVO);
     }
+
+    // ==================== RELACIONES EXISTENTES ====================
 
     public function categoria()
     {
@@ -86,6 +127,13 @@ class ProductoVenta extends Model
     {
         return $this->hasOne(ProductoAprobacionSolicitud::class, 'IdDetalleProducto', 'IdDetalleProducto');
     }
+
+    public function opcionesCambio()
+    {
+        return $this->hasMany(ComboOpcion::class, 'id_producto_combo', 'IdDetalleProducto');
+    }
+
+    // ==================== ATRIBUTOS ====================
     
     public function getEstadoTextoAttribute()
     {
@@ -126,25 +174,12 @@ class ProductoVenta extends Model
             default => 'bg-gray-100 text-gray-500'
         };
     }
-    /**
-     * Obtiene las opciones de cambio disponibles para este combo
-     */
-    public function opcionesCambio()
-    {
-        return $this->hasMany(ComboOpcion::class, 'id_producto_combo', 'IdDetalleProducto');
-    }
 
-    /**
-     * Verifica si este producto es un combo con opciones de cambio
-     */
     public function esComboConOpciones()
     {
         return $this->opcionesCambio()->activo()->exists();
     }
 
-    /**
-     * Obtiene las opciones de cambio agrupadas por producto original
-     */
     public function getOpcionesAgrupadasAttribute()
     {
         $opciones = $this->opcionesCambio()

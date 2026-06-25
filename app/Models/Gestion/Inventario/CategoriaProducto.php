@@ -14,11 +14,63 @@ class CategoriaProducto extends Model
     protected $fillable = [
         'nombre',
         'id_padre',
-        'imagen_url',
+        // 'imagen_url', // ❌ ELIMINAR - Ya no se usa
         'orden',
         'activo',
         'id_cliente',
     ];
+
+    // ==================== RELACIONES CON IMÁGENES ====================
+
+    /**
+     * Relación con todas las imágenes de la categoría
+     */
+    public function imagenes()
+    {
+        return $this->hasMany(CategoriaImagen::class, 'IdCategoria', 'id_categoria')
+            ->where('ActivoInactivo', 1)
+            ->orderBy('FechaRegistro', 'desc');
+    }
+
+    /**
+     * Relación con la imagen principal
+     */
+    public function imagenPrincipal()
+    {
+        return $this->hasOne(CategoriaImagen::class, 'IdCategoria', 'id_categoria')
+            ->where('ActivoInactivo', 1)
+            ->where('EsPrincipal', 1);
+    }
+
+    /**
+     * 🔥 Obtener URL de la imagen principal (thumbnail)
+     */
+    public function getImagenUrlAttribute()
+    {
+        $principal = $this->imagenPrincipal;
+        if ($principal) {
+            return $principal->url_thumbnail;
+        }
+        return null;
+    }
+
+    /**
+     * 🔥 Obtener todas las URLs de las imágenes
+     */
+    public function getImagenesUrlsAttribute()
+    {
+        return $this->imagenes->map(function($imagen) {
+            return [
+                'id' => $imagen->IdImagenCategoria,
+                'thumbnail' => $imagen->url_thumbnail,
+                'medium' => $imagen->url_medium,
+                'original' => $imagen->url_original,
+                'es_principal' => $imagen->EsPrincipal,
+            ];
+        })->toArray();
+    }
+
+    // ==================== RELACIONES EXISTENTES ====================
 
     // Relación con el padre
     public function padre()
