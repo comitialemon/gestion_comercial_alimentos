@@ -34,25 +34,6 @@ const form = useForm({
     factores: [],
 })
 
-// Función para formatear fecha automáticamente mientras escribe
-// Función para formatear fecha automáticamente mientras escribe (dd/mm/aaaa)
-const formatearFechaInput = (event) => {
-    let value = event.target.value.replace(/\D/g, '') // Solo números
-    let resultado = ''
-    
-    if (value.length >= 2 && value.length < 4) {
-        resultado = value.slice(0, 2) + (value.length > 2 ? '/' + value.slice(2) : '')
-    } else if (value.length >= 4 && value.length < 6) {
-        resultado = value.slice(0, 2) + '/' + value.slice(2, 4) + (value.length > 4 ? '/' + value.slice(4) : '')
-    } else if (value.length >= 6) {
-        resultado = value.slice(0, 2) + '/' + value.slice(2, 4) + '/' + value.slice(4, 8)
-    } else {
-        resultado = value
-    }
-    
-    searchFecha.value = resultado
-}
-
 // Opciones para filtro de cierre
 const opcionesCierre = [
     { value: '', label: 'Todos' },
@@ -61,14 +42,25 @@ const opcionesCierre = [
     { value: 'cierre_permanente', label: 'Cierre Permanente' },
 ]
 
-// Inicializar factores con todas las monedas
+// Inicializar factores con valores por defecto
 const inicializarFactores = () => {
-    form.factores = props.monedas.map(moneda => ({
-        IdMoneda: moneda.IdMoneda,
-        MonedaNombre: moneda.Moneda,
-        Abreviacion: moneda.Abreviacion,
-        FactorCambio: 0,
-    }))
+    form.factores = props.monedas.map(moneda => {
+        let factorPorDefecto = 0
+        
+        // Asignar valores por defecto según la moneda
+        if (moneda.Abreviacion === 'Bs' || moneda.Moneda === 'Bolivianos') {
+            factorPorDefecto = 1
+        } else if (moneda.Abreviacion === 'Sus' || moneda.Moneda === 'Dolares Americanos') {
+            factorPorDefecto = 6.96
+        }
+        
+        return {
+            IdMoneda: moneda.IdMoneda,
+            MonedaNombre: moneda.Moneda,
+            Abreviacion: moneda.Abreviacion,
+            FactorCambio: factorPorDefecto,
+        }
+    })
 }
 
 // Aplicar filtros (solo al presionar el botón)
@@ -116,12 +108,27 @@ const editarFecha = (fecha) => {
         factoresMap.set(factor.IdMoneda, factor.FactorCambio)
     })
     
-    form.factores = props.monedas.map(moneda => ({
-        IdMoneda: moneda.IdMoneda,
-        MonedaNombre: moneda.Moneda,
-        Abreviacion: moneda.Abreviacion,
-        FactorCambio: factoresMap.get(moneda.IdMoneda) || 0,
-    }))
+    form.factores = props.monedas.map(moneda => {
+        let factor = factoresMap.get(moneda.IdMoneda)
+        
+        // Si no tiene factor guardado, asignar valor por defecto
+        if (factor === undefined) {
+            if (moneda.Abreviacion === 'Bs' || moneda.Moneda === 'Bolivianos') {
+                factor = 1
+            } else if (moneda.Abreviacion === 'Sus' || moneda.Moneda === 'Dolares Americanos') {
+                factor = 6.96
+            } else {
+                factor = 0
+            }
+        }
+        
+        return {
+            IdMoneda: moneda.IdMoneda,
+            MonedaNombre: moneda.Moneda,
+            Abreviacion: moneda.Abreviacion,
+            FactorCambio: factor,
+        }
+    })
     
     modalOpen.value = true
 }
@@ -158,23 +165,6 @@ const guardarFecha = () => {
             },
         })
     }
-}
-
-// Formatear fecha para mostrar (dd/mm/aaaa)
-const formatearFecha = (fechaStr) => {
-    if (!fechaStr) return '-'
-    // Si es string YYYY-MM-DD
-    if (typeof fechaStr === 'string' && fechaStr.includes('-')) {
-        const [anio, mes, dia] = fechaStr.split('-')
-        return `${dia.padStart(2, '0')}/${mes.padStart(2, '0')}/${anio}`
-    }
-    // Si es objeto Date
-    const fecha = new Date(fechaStr)
-    if (isNaN(fecha.getTime())) return '-'
-    const dia = fecha.getDate().toString().padStart(2, '0')
-    const mes = (fecha.getMonth() + 1).toString().padStart(2, '0')
-    const anio = fecha.getFullYear()
-    return `${dia}/${mes}/${anio}`
 }
 
 // Estado texto
@@ -228,17 +218,15 @@ onMounted(() => {
                 <!-- Filtros -->
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                        <!-- Buscar por fecha (dd/mm/aaaa) con formato automático -->
+                        <!-- Buscar por fecha (texto libre) -->
                         <div>
                             <label class="block text-[10px] font-medium text-gray-600 mb-0.5">Buscar por fecha</label>
                             <input 
                                 type="text" 
-                                :value="searchFecha"
-                                @input="formatearFechaInput"
-                                placeholder="dd/mm/aaaa"
+                                v-model="searchFecha"
+                                placeholder="YYYY-MM-DD o texto"
                                 class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-500"
                             >
-                            <p class="text-[9px] text-gray-400 mt-0.5">Ej: 26/05/2025</p>
                         </div>
                         
                         <!-- Filtro por tipo de cierre -->
@@ -283,7 +271,7 @@ onMounted(() => {
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="fecha in fechas.data" :key="fecha.IdFecha" class="hover:bg-gray-50">
-                                    <td class="px-4 py-3 text-xs font-mono text-gray-700">{{ formatearFecha(fecha.Fecha) }}</td>
+                                    <td class="px-4 py-3 text-xs font-mono text-gray-700">{{ fecha.Fecha }}</td>
                                     <td class="px-4 py-3 text-center">
                                         <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="estadoClase(fecha.ActivoInactivo)">
                                             {{ estadoTexto(fecha.ActivoInactivo) }}
@@ -404,8 +392,21 @@ onMounted(() => {
                             </div>
                         </form>
                     </div>
-    </div>
+                </div>
+            </div>
         </div>
     </div>
-    </div>
 </template>
+<style scoped>
+/* Quitar flechas de inputs number en todos los navegadores */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: textfield; /* Estándar */
+}
+</style>
