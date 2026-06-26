@@ -180,8 +180,13 @@ Route::middleware(['auth.operador'])->group(function () {
             Route::get('/', [SucursalGestionController::class, 'index'])->name('sucursales-gestion.index');
             Route::get('/create', [SucursalGestionController::class, 'create'])->name('sucursales-gestion.create');
             Route::post('/', [SucursalGestionController::class, 'store'])->name('sucursales-gestion.store');
+            // ❌ ESTA RUTA ESTÁ MAL - tiene /gestion/sucursales/ adicional
+            // Route::get('/gestion/sucursales/siguiente-numero', [SucursalGestionController::class, 'obtenerSiguienteNumero'])->name('sucursales.siguiente-numero');
+            
+            // ✅ CORREGIR ASÍ:
+            Route::get('/siguiente-numero', [SucursalGestionController::class, 'obtenerSiguienteNumero'])->name('sucursales.siguiente-numero');
             Route::get('/{id}/edit', [SucursalGestionController::class, 'edit'])->name('sucursales-gestion.edit');
-            Route::put('/{id}', [SucursalGestionController::class, 'update'])->name('sucursales-gestion.update');
+            Route::put('/{id}', [SucursalGestionController::class, 'update'])->name('sucursales-gestion.update');    
         });
 
         // ---------- 3.5 TODOS ----------

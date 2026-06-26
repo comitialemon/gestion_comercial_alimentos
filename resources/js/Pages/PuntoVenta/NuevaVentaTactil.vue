@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -19,6 +19,10 @@ const props = defineProps({
   fechaFormateada: {
     type: String,
     default: null
+  },
+  tieneAlmacen: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -29,6 +33,14 @@ const form = ref({
 
 const errors = ref({})
 const loading = ref(false)
+
+// ✅ Computed para saber si se puede enviar
+const puedeEnviar = computed(() => {
+  return props.tieneAlmacen && 
+         form.value.lugar_venta_id && 
+         form.value.comisionista_id &&
+         !loading.value
+})
 
 const submitForm = () => {
   const newErrors = {}
@@ -87,6 +99,22 @@ const submitForm = () => {
           </div>
         </div>
 
+        <!-- ✅ MENSAJE DE ALMACÉN (DEBAJO DE FECHA) -->
+        <div v-if="!tieneAlmacen" class="px-4 pt-3">
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div class="flex items-start gap-2">
+              <i class="fas fa-exclamation-triangle text-amber-500 text-sm mt-0.5"></i>
+              <div>
+                <p class="text-sm font-medium text-amber-800">⚠️ Sin almacenes configurados</p>
+                <p class="text-xs text-amber-700 mt-0.5">
+                  Esta sucursal no tiene almacenes activos. 
+                  <br><span class="font-medium">No se puede iniciar una venta hasta que se configure un almacén.</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Formulario -->
         <div class="p-4 space-y-4">
           
@@ -98,7 +126,8 @@ const submitForm = () => {
             </label>
             <select
               v-model="form.lugar_venta_id"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white"
+              :disabled="!tieneAlmacen"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
               :class="{ 'border-rose-400 bg-rose-50': errors.lugar_venta_id }"
             >
               <option value="" disabled>📌 Selecciona</option>
@@ -119,7 +148,8 @@ const submitForm = () => {
             </label>
             <select
               v-model="form.comisionista_id"
-              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white"
+              :disabled="!tieneAlmacen"
+              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-primary-400 focus:ring-1 focus:ring-primary-200 bg-white disabled:bg-gray-100 disabled:cursor-not-allowed"
               :class="{ 'border-rose-400 bg-rose-50': errors.comisionista_id }"
             >
               <option value="" disabled>👤 Selecciona</option>
@@ -136,7 +166,7 @@ const submitForm = () => {
           <div class="bg-primary-50 rounded-lg p-2 text-center">
             <p class="text-[10px] text-primary-600 flex items-center justify-center gap-1">
               <i class="fas fa-check-circle text-[9px]"></i>
-              Completa todos los campos
+              {{ tieneAlmacen ? 'Completa todos los campos para iniciar la venta' : '⚠️ Configura un almacén primero' }}
             </p>
           </div>
         </div>
@@ -146,14 +176,18 @@ const submitForm = () => {
           <button
             type="button"
             @click="submitForm"
-            :disabled="loading"
-            class="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            :disabled="!puedeEnviar"
+            class="w-full py-2.5 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium text-sm shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             <i v-if="loading" class="fas fa-spinner fa-spin"></i>
             <i v-else class="fas fa-play text-xs"></i>
             <span>{{ loading ? 'Iniciando...' : 'Iniciar Venta' }}</span>
             <i v-if="!loading" class="fas fa-arrow-right text-[10px]"></i>
           </button>
+          <p v-if="!tieneAlmacen" class="text-[9px] text-amber-500 text-center mt-1">
+            <i class="fas fa-info-circle"></i>
+            No se puede iniciar venta sin almacenes
+          </p>
         </div>
 
         <!-- Separador -->
@@ -196,5 +230,10 @@ button:active {
 
 .transition-all {
   transition: all 0.2s ease;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 </style>

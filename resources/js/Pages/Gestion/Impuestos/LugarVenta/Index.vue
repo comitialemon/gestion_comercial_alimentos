@@ -100,7 +100,7 @@ const seleccionarSucursal = (sucursal) => {
     mostrarDropdown.value = false
     formData.value.sucursal_id = sucursal.id
     
-    router.get('/gestion/lugar-venta', { sucursal_id: sucursal.id }, {
+    router.get('/gestion/impuestos/lugar-venta', { sucursal_id: sucursal.id }, {
         preserveState: true,
         replace: true,
     })
@@ -112,7 +112,7 @@ const seleccionarTodas = () => {
     mostrarDropdown.value = false
     formData.value.sucursal_id = ''
     
-    router.get('/gestion/lugar-venta', {}, {
+    router.get('/gestion/impuestos/lugar-venta', {}, {
         preserveState: true,
         replace: true,
     })
@@ -208,7 +208,7 @@ const guardar = async () => {
     
     try {
         if (editando.value) {
-            await router.put(`/gestion/lugar-venta/${editId.value}`, datos, {
+            await router.put(`/gestion/impuestos/lugar-venta/${editId.value}`, datos, {
                 preserveScroll: true,
                 onSuccess: () => {
                     toast?.success('Éxito', 'Lugar actualizado correctamente')
@@ -219,7 +219,7 @@ const guardar = async () => {
                 }
             })
         } else {
-            await router.post('/gestion/lugar-venta', datos, {
+            await router.post('/gestion/impuestos/lugar-venta', datos, {
                 preserveScroll: true,
                 onSuccess: () => {
                     toast?.success('Éxito', 'Lugar creado correctamente')
@@ -252,7 +252,7 @@ const confirmarEliminar = async () => {
     
     eliminando.value = true
     
-    router.delete(`/gestion/lugar-venta/${eliminarId.value}`, {
+    router.delete(`/gestion/impuestos/lugar-venta/${eliminarId.value}`, {
         preserveScroll: true,
         onSuccess: () => {
             toast?.success('Éxito', `Lugar "${eliminarNombre.value}" eliminado correctamente`)

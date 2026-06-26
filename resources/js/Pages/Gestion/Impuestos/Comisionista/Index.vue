@@ -1,4 +1,3 @@
-<!-- resources/js/Pages/Gestion/Impuestos/Comisionista/Index.vue -->
 <script setup>
 import { ref, computed, watch, onMounted, inject } from 'vue'
 import { router, Link, usePage } from '@inertiajs/vue3'
@@ -82,7 +81,7 @@ const buscarIdentificador = async () => {
     mostrarResultados.value = true
     
     try {
-        const url = `/gestion/comisionista/buscar-identificador?q=${encodeURIComponent(termino)}`
+        const url = `/gestion/impuestos/comisionista/buscar-identificador?q=${encodeURIComponent(termino)}`
         const response = await axios.get(url)
         identificadoresList.value = response.data || []
     } catch (err) {
@@ -209,7 +208,7 @@ const guardar = async () => {
     
     try {
         if (editando.value) {
-            await router.put(`/gestion/comisionista/${editId.value}`, formData.value, {
+            await router.put(`/gestion/impuestos/comisionista/${editId.value}`, formData.value, {
                 preserveScroll: true,
                 onSuccess: () => {
                     toast?.success('Éxito', 'Comisionista actualizado correctamente')
@@ -220,7 +219,7 @@ const guardar = async () => {
                 }
             })
         } else {
-            await router.post('/gestion/comisionista', formData.value, {
+            await router.post('/gestion/impuestos/comisionista', formData.value, {
                 preserveScroll: true,
                 onSuccess: () => {
                     toast?.success('Éxito', 'Comisionista creado correctamente')
@@ -254,7 +253,7 @@ const confirmarEliminar = async () => {
     
     eliminando.value = true
     
-    router.delete(`/gestion/comisionista/${eliminarId.value}`, {
+    router.delete(`/gestion/impuestos/comisionista/${eliminarId.value}`, {
         preserveScroll: true,
         onSuccess: () => {
             toast?.success('Éxito', `Comisionista "${eliminarNombre.value}" eliminado correctamente`)
@@ -275,7 +274,7 @@ let searchTimeout
 watch(search, (newVal) => {
     clearTimeout(searchTimeout)
     searchTimeout = setTimeout(() => {
-        router.get('/gestion/comisionista', { search: newVal || undefined }, {
+        router.get('/gestion/impuestos/comisionista', { search: newVal || undefined }, {
             preserveState: true,
             replace: true,
         })

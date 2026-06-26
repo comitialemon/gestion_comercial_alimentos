@@ -70,7 +70,7 @@ const guardarAprobador = async () => {
     
     loading.value = true
     try {
-        await axios.post('/gestion/productos-aprobacion/config', {
+        await axios.post('/gestion/inventario/productos-aprobacion/config', {
             IdOperador: operadorSeleccionado.value
         })
         toast?.success('Éxito', 'Aprobador agregado correctamente')
@@ -89,7 +89,7 @@ const eliminarAprobador = async (id, nombre) => {
     if (!confirm(`¿Eliminar a "${nombre}" de los aprobadores?`)) return
     
     try {
-        const response = await axios.delete(`/gestion/productos-aprobacion/config/${id}`)
+        const response = await axios.delete(`/gestion/inventario/productos-aprobacion/config/${id}`)
         
         if (response.data.success) {
             toast?.success('Éxito', `Aprobador "${nombre}" eliminado correctamente`)
@@ -111,7 +111,7 @@ const toggleEstado = async (id, nombre, estadoActual) => {
     if (!confirm(`¿${mensaje === 'activar' ? 'Activar' : 'Desactivar'} a "${nombre}" como aprobador?`)) return
     
     try {
-        const response = await axios.post(`/gestion/productos-aprobacion/config/${id}/toggle`)
+        const response = await axios.post(`/gestion/inventario/productos-aprobacion/config/${id}/toggle`)
         
         if (response.data.success) {
             toast?.success('Éxito', `Aprobador ${accion === 'activar' ? 'activado' : 'desactivado'} correctamente`)

@@ -22,12 +22,9 @@ class SucursalGestionController extends Controller
         $plazas = ClientePlaza::orderBy('Plaza')
             ->get(['IdPlaza as id', 'Plaza as nombre']);
 
-        $categorias = ['MAYORISTA', 'GRANDE', 'MEDIANA', 'PEQUEÑA', 'MINI'];
-
         return Inertia::render('Gestion/Todos/Sucursales/Index', [
             'sucursales' => $sucursales,
             'plazas' => $plazas,
-            'categorias' => $categorias,
         ]);
     }
 
@@ -36,11 +33,8 @@ class SucursalGestionController extends Controller
         $plazas = ClientePlaza::orderBy('Plaza')
             ->get(['IdPlaza as id', 'Plaza as nombre']);
 
-        $categorias = ['MAYORISTA', 'GRANDE', 'MEDIANA', 'PEQUEÑA', 'MINI'];
-
         return Inertia::render('Gestion/Todos/Sucursales/Create', [
             'plazas' => $plazas,
-            'categorias' => $categorias,
         ]);
     }
 
@@ -52,12 +46,9 @@ class SucursalGestionController extends Controller
         $plazas = ClientePlaza::orderBy('Plaza')
             ->get(['IdPlaza as id', 'Plaza as nombre']);
 
-        $categorias = ['MAYORISTA', 'GRANDE', 'MEDIANA', 'PEQUEÑA', 'MINI'];
-
         return Inertia::render('Gestion/Todos/Sucursales/Create', [
             'sucursal' => $sucursal,
             'plazas' => $plazas,
-            'categorias' => $categorias,
             'editando' => true,
         ]);
     }
@@ -68,11 +59,9 @@ class SucursalGestionController extends Controller
             'IdPlaza' => 'required|exists:todos_cliente_plaza,IdPlaza',
             'Nombre' => 'required|string|max:255',
             'Direccion' => 'required|string|max:255',
-            'Telefono' => 'required|string|max:30',
             'Celular' => 'required|string|max:30',
             'NumeroSucursal' => 'nullable|integer',
             'Orden' => 'nullable|integer|min:0',
-            'Categoria' => 'required|string|in:MAYORISTA,GRANDE,MEDIANA,PEQUEÑA,MINI',
             'ActivoInactivo' => 'required|boolean',
             'ActivaInactivaR' => 'required|boolean',
         ]);
@@ -83,13 +72,11 @@ class SucursalGestionController extends Controller
                 'IdPlaza' => $request->IdPlaza,
                 'Nombre' => $request->Nombre,
                 'Direccion' => $request->Direccion,
-                'Telefono' => $request->Telefono,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
-                'ActivaInactivaR' => $request->ActivaInactivaR ? 0 : 1,
+                'ActivaInactivaR' => $request->ActivaInactivaR, // Ya viene como 0 o 1
                 'Orden' => $request->Orden ?? 0,
-                'Categoria' => $request->Categoria,
-                'ActivoInactivo' => $request->ActivoInactivo ? 0 : 1,
+                'ActivoInactivo' => $request->ActivoInactivo, // Ya viene como 0 o 1
                 'ControlInternoEfectivo' => 0,
                 'facturacion_habilitada' => 0,
             ]);
@@ -117,11 +104,9 @@ class SucursalGestionController extends Controller
             'IdPlaza' => 'required|exists:todos_cliente_plaza,IdPlaza',
             'Nombre' => 'required|string|max:255',
             'Direccion' => 'required|string|max:255',
-            'Telefono' => 'required|string|max:30',
             'Celular' => 'required|string|max:30',
             'NumeroSucursal' => 'nullable|integer',
             'Orden' => 'nullable|integer|min:0',
-            'Categoria' => 'required|string|in:MAYORISTA,GRANDE,MEDIANA,PEQUEÑA,MINI',
             'ActivoInactivo' => 'required|boolean',
             'ActivaInactivaR' => 'required|boolean',
         ]);
@@ -131,13 +116,11 @@ class SucursalGestionController extends Controller
                 'IdPlaza' => $request->IdPlaza,
                 'Nombre' => $request->Nombre,
                 'Direccion' => $request->Direccion,
-                'Telefono' => $request->Telefono,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
-                'ActivaInactivaR' => $request->ActivaInactivaR ? 0 : 1,
+                'ActivaInactivaR' => $request->ActivaInactivaR, // ✅ Ya viene como 0 o 1
                 'Orden' => $request->Orden ?? 0,
-                'Categoria' => $request->Categoria,
-                'ActivoInactivo' => $request->ActivoInactivo ? 0 : 1,
+                'ActivoInactivo' => $request->ActivoInactivo, // ✅ Ya viene como 0 o 1
             ]);
 
             return response()->json([
@@ -154,7 +137,6 @@ class SucursalGestionController extends Controller
             ], 500);
         }
     }
-
     public function destroy($id)
     {
         $sucursal = ClienteSucursal::porContexto()->findOrFail($id);
@@ -172,4 +154,5 @@ class SucursalGestionController extends Controller
             ], 500);
         }
     }
+    
 }

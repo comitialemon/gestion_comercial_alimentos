@@ -14,8 +14,11 @@ const props = defineProps({
     identificadores: Array,
 })
 
-// Formulario - SOLO los campos editables
+// Formulario - CON TODOS LOS CAMPOS QUE ESPERA EL CONTROLADOR
 const form = useForm({
+    // ✅ Agregar estos campos (solo lectura pero se envían)
+    Iniciales: props.operador?.Iniciales || '',
+    NombreAcceso: props.operador?.NombreAcceso || '',
     Clave: '',
     DireccionDomicilio: props.operador?.DireccionDomicilio || '',
     TelefonoDomicilio: props.operador?.TelefonoDomicilio || '',
@@ -29,7 +32,7 @@ const submitForm = () => {
         preserveScroll: true,
         onSuccess: () => {
             toast?.success('Éxito', 'Perfil actualizado correctamente')
-            form.Clave = '' // Limpiar campo de contraseña
+            form.Clave = ''
             mostrarClave.value = false
         },
         onError: (errors) => {
@@ -57,6 +60,10 @@ const submitForm = () => {
                 <!-- Formulario -->
                 <div class="bg-white rounded-lg shadow-sm p-5">
                     <form @submit.prevent="submitForm" class="space-y-4">
+                        <!-- Campos ocultos (se envían pero no se muestran) -->
+                        <input type="hidden" v-model="form.Iniciales" />
+                        <input type="hidden" v-model="form.NombreAcceso" />
+
                         <!-- Identificador (solo lectura) -->
                         <div>
                             <label class="block text-[11px] font-medium text-gray-700 mb-1">Persona (CI/NIT)</label>

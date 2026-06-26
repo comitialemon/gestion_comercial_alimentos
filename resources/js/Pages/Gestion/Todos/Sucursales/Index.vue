@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 import ModalSucursal from './ModalSucursal.vue'
 
@@ -23,6 +23,23 @@ const plazasExpandidas = ref({})
 // 🔥 BUSCADOR
 const searchTerm = ref('')
 
+// Vista actual: 'table' o 'cards'
+const vistaActual = ref('cards') // Por defecto cards en móvil
+
+// Detectar tamaño de pantalla
+const isMobile = ref(false)
+
+const checkScreenSize = () => {
+    isMobile.value = window.innerWidth < 768
+    // En móvil usar cards, en escritorio tabla
+    vistaActual.value = window.innerWidth < 768 ? 'cards' : 'table'
+}
+
+onMounted(() => {
+    checkScreenSize()
+    window.addEventListener('resize', checkScreenSize)
+})
+
 // Filtrar sucursales por búsqueda
 const sucursalesFiltradas = computed(() => {
     if (!props.sucursales) return []
@@ -33,9 +50,7 @@ const sucursalesFiltradas = computed(() => {
         s.Nombre?.toLowerCase().includes(termino) ||
         s.NumeroSucursal?.toString().includes(termino) ||
         s.Direccion?.toLowerCase().includes(termino) ||
-        s.Telefono?.includes(termino) ||
         s.Celular?.includes(termino) ||
-        s.Categoria?.toLowerCase().includes(termino) ||
         s.plaza?.Plaza?.toLowerCase().includes(termino)
     )
 })
@@ -99,7 +114,7 @@ const editarSucursal = (sucursal) => {
 // Recargar datos después de guardar
 const recargarDatos = async () => {
     try {
-        const response = await axios.get('/gestion/sucursales/data')
+        await axios.get('/gestion/sucursales/data')
         window.location.reload()
     } catch (error) {
         console.error('Error recargando:', error)
@@ -117,7 +132,7 @@ const estadoTexto = (activo) => {
 }
 
 const estadoClase = (activo) => {
-    return activo === 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+    return activo === 0 ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'
 }
 
 const activaInactivaRTexto = (valor) => {
@@ -125,26 +140,29 @@ const activaInactivaRTexto = (valor) => {
 }
 
 const activaInactivaRClase = (valor) => {
-    return valor === 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'
+    return valor === 0 ? 'bg-blue-100 text-blue-800 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200'
 }
 </script>
 
 <template>
     <div class="min-h-screen bg-gray-100">
-        <div class="py-4 px-3 sm:px-5 lg:px-6">
+        <div class="py-3 px-3 sm:py-4 sm:px-5 lg:px-6">
             <div class="max-w-full mx-auto">
                 <!-- Header -->
-                <div class="flex justify-between items-center mb-4">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
                             <i class="fas fa-store text-primary-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-lg font-bold text-gray-800">Sucursales</h1>
-                            <p class="text-[10px] text-gray-500">Administración de sucursales agrupadas por plaza</p>
+                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Sucursales</h1>
+                            <p class="text-[10px] text-gray-500 hidden xs:block">Administración de sucursales agrupadas por plaza</p>
                         </div>
                     </div>
-                    <button @click="nuevaSucursal" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition">
+                    <button 
+                        @click="nuevaSucursal" 
+                        class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 transition w-full sm:w-auto justify-center"
+                    >
                         <i class="fas fa-plus text-[10px]"></i> Nueva Sucursal
                     </button>
                 </div>
@@ -156,9 +174,8 @@ const activaInactivaRClase = (valor) => {
                         <input 
                             type="text" 
                             v-model="searchTerm" 
-                            placeholder="Buscar por nombre, número, dirección, teléfono, categoría o plaza..." 
+                            placeholder="Buscar sucursal..." 
                             class="w-full border rounded-lg pl-9 pr-10 py-2 text-sm focus:ring-2 focus:ring-primary-400 focus:outline-none"
-                            :style="{ borderColor: `var(--color-primary-300)` }"
                         />
                         <button 
                             v-if="searchTerm" 
@@ -180,66 +197,106 @@ const activaInactivaRClase = (valor) => {
                         <!-- Header del grupo -->
                         <div 
                             @click="togglePlaza(plaza.id)" 
-                            class="flex items-center justify-between px-4 py-2.5 bg-primary-50 cursor-pointer hover:bg-primary-100 transition-all duration-200 group"
+                            class="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-primary-50 cursor-pointer hover:bg-primary-100 transition-all duration-200 group"
                         >
-                            <div class="flex items-center gap-2">
-                                <i class="fas fa-chevron-right text-primary-600 text-[10px] transition-transform duration-300" :class="{ 'rotate-90': isExpanded(plaza.id) }"></i>
-                                <i class="fas fa-map-marker-alt text-primary-600 text-xs"></i>
-                                <h2 class="text-sm font-semibold text-primary-800">{{ plaza.nombre }}</h2>
-                                <span class="text-[10px] text-primary-500 bg-primary-100 px-1.5 py-0.5 rounded-full">
-                                    {{ plaza.sucursales.length }} sucursal(es)
+                            <div class="flex items-center gap-2 min-w-0">
+                                <i class="fas fa-chevron-right text-primary-600 text-[10px] transition-transform duration-300 flex-shrink-0" :class="{ 'rotate-90': isExpanded(plaza.id) }"></i>
+                                <i class="fas fa-map-marker-alt text-primary-600 text-xs flex-shrink-0"></i>
+                                <h2 class="text-xs sm:text-sm font-semibold text-primary-800 truncate">{{ plaza.nombre }}</h2>
+                                <span class="text-[10px] text-primary-500 bg-primary-100 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                                    {{ plaza.sucursales.length }}
                                 </span>
                             </div>
-                            <i class="fas fa-store text-primary-400 text-xs opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                            <i class="fas fa-store text-primary-400 text-xs opacity-50 group-hover:opacity-100 transition-opacity flex-shrink-0"></i>
                         </div>
 
-                        <!-- Tabla de sucursales -->
+                        <!-- Contenido del grupo -->
                         <Transition name="expand">
-                            <div v-show="isExpanded(plaza.id)" class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200">
-                                    <thead class="bg-gray-50">
-                                        <tr>
-                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
-                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Dirección</th>
-                                            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Teléfono</th>
-                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Orden</th>
-                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Categoría</th>
-                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                            <th class="px-4 py-2 text-center text-xs font-medium text-gray-500 uppercase">Activa/InactivaR</th>
-                                            <th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="bg-white divide-y divide-gray-200">
-                                        <tr v-for="sucursal in plaza.sucursales" :key="sucursal.IdClienteSucursal" class="hover:bg-gray-50 transition-colors duration-150">
-                                            <td class="px-4 py-2 text-xs font-mono text-gray-900">{{ sucursal.NumeroSucursal }}</td>
-                                            <td class="px-4 py-2 text-xs text-gray-700 max-w-[200px] truncate" :title="sucursal.Nombre">{{ sucursal.Nombre }}</td>
-                                            <td class="px-4 py-2 text-xs text-gray-500 max-w-[200px] truncate" :title="sucursal.Direccion">{{ sucursal.Direccion }}</td>
-                                            <td class="px-4 py-2 text-xs text-gray-500">{{ sucursal.Telefono }}</td>
-                                            <td class="px-4 py-2 text-xs text-center text-gray-500">{{ sucursal.Orden }}</td>
-                                            <td class="px-4 py-2 text-xs text-center">
-                                                <span class="px-1.5 py-0.5 text-[10px] rounded-full bg-blue-100 text-blue-800">
-                                                    {{ sucursal.Categoria }}
+                            <div v-show="isExpanded(plaza.id)">
+                                
+                                <!-- VISTA TABLA (Escritorio) -->
+                                <div v-if="vistaActual === 'table'" class="overflow-x-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase hidden lg:table-cell">Dirección</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase hidden xl:table-cell">Celular</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Orden</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            <tr v-for="sucursal in plaza.sucursales" :key="sucursal.IdClienteSucursal" class="hover:bg-gray-50 transition-colors duration-150">
+                                                <td class="px-3 py-2 text-xs font-mono text-gray-900">{{ sucursal.NumeroSucursal }}</td>
+                                                <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="sucursal.Nombre">{{ sucursal.Nombre }}</td>
+                                                <td class="px-3 py-2 text-xs text-gray-500 max-w-[150px] truncate hidden lg:table-cell" :title="sucursal.Direccion">{{ sucursal.Direccion }}</td>
+                                                <td class="px-3 py-2 text-xs text-gray-500 hidden xl:table-cell">{{ sucursal.Celular }}</td>
+                                                <td class="px-3 py-2 text-xs text-center text-gray-500">{{ sucursal.Orden }}</td>
+                                                <td class="px-3 py-2 text-center">
+                                                    <span class="px-1.5 py-0.5 text-[10px] rounded-full border" :class="estadoClase(sucursal.ActivoInactivo)">
+                                                        {{ estadoTexto(sucursal.ActivoInactivo) }}
+                                                    </span>
+                                                </td>
+                                                <td class="px-3 py-2 text-right">
+                                                    <button @click="editarSucursal(sucursal)" class="text-primary-600 hover:text-primary-800 text-xs transition p-1 hover:bg-primary-50 rounded" title="Editar">
+                                                        <i class="fas fa-edit text-xs"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <!-- VISTA TARJETAS (Móvil) -->
+                                <div v-else class="p-3 space-y-3">
+                                    <div v-for="sucursal in plaza.sucursales" :key="sucursal.IdClienteSucursal" 
+                                         class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
+                                        <!-- Encabezado de tarjeta -->
+                                        <div class="flex justify-between items-start mb-2">
+                                            <div class="flex items-center gap-2 min-w-0">
+                                                <span class="text-xs font-mono bg-gray-100 px-2 py-0.5 rounded text-gray-600 flex-shrink-0">
+                                                    #{{ sucursal.NumeroSucursal }}
                                                 </span>
-                                            </td>
-                                            <td class="px-4 py-2 text-center">
-                                                <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="estadoClase(sucursal.ActivoInactivo)">
-                                                    {{ estadoTexto(sucursal.ActivoInactivo) }}
-                                                </span>
-                                            </td>
-                                            <td class="px-4 py-2 text-center">
-                                                <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="activaInactivaRClase(sucursal.ActivaInactivaR)">
-                                                    {{ activaInactivaRTexto(sucursal.ActivaInactivaR) }}
-                                                </span>
-                                            </td>
-                                            <td class="px-4 py-2 text-right">
-                                                <button @click="editarSucursal(sucursal)" class="text-primary-600 hover:text-primary-800 text-xs transition" title="Editar">
-                                                    <i class="fas fa-edit text-xs"></i>
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                                <h3 class="text-sm font-semibold text-gray-800 truncate">{{ sucursal.Nombre }}</h3>
+                                            </div>
+                                            <button @click="editarSucursal(sucursal)" class="text-primary-600 hover:text-primary-800 text-xs p-1 hover:bg-primary-50 rounded flex-shrink-0">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </div>
+
+                                        <!-- Detalles de tarjeta -->
+                                        <div class="grid grid-cols-1 gap-1 text-xs">
+                                            <div class="flex items-start gap-2 text-gray-600">
+                                                <i class="fas fa-map-pin text-gray-400 w-4 text-center mt-0.5"></i>
+                                                <span class="truncate">{{ sucursal.Direccion }}</span>
+                                            </div>
+                                            <div class="flex items-center gap-2 text-gray-600">
+                                                <i class="fas fa-phone text-gray-400 w-4 text-center"></i>
+                                                <span>{{ sucursal.Celular }}</span>
+                                            </div>
+                                            <div class="flex items-center gap-2 text-gray-600">
+                                                <i class="fas fa-sort-numeric-up text-gray-400 w-4 text-center"></i>
+                                                <span>Orden: {{ sucursal.Orden }}</span>
+                                            </div>
+                                        </div>
+
+                                        <!-- Estados -->
+                                        <div class="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+                                            <span class="px-2 py-0.5 text-[10px] rounded-full border" :class="estadoClase(sucursal.ActivoInactivo)">
+                                                <i class="fas fa-circle text-[6px] mr-1"></i>
+                                                {{ estadoTexto(sucursal.ActivoInactivo) }}
+                                            </span>
+                                            <span class="px-2 py-0.5 text-[10px] rounded-full border" :class="activaInactivaRClase(sucursal.ActivaInactivaR)">
+                                                <i class="fas fa-check-circle text-[6px] mr-1"></i>
+                                                {{ activaInactivaRTexto(sucursal.ActivaInactivaR) }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
                             </div>
                         </Transition>
                     </div>
@@ -278,6 +335,7 @@ const activaInactivaRClase = (valor) => {
 </template>
 
 <style scoped>
+/* Animación de expansión */
 .expand-enter-active,
 .expand-leave-active {
     transition: all 0.25s ease-out;
@@ -300,5 +358,19 @@ const activaInactivaRClase = (valor) => {
 
 .rotate-90 {
     transform: rotate(90deg);
+}
+
+/* Breakpoint personalizado para móvil */
+@media (max-width: 639px) {
+    .xs\:block {
+        display: block !important;
+    }
+}
+
+/* Smooth transitions */
+.transition-shadow {
+    transition-property: box-shadow;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 200ms;
 }
 </style>

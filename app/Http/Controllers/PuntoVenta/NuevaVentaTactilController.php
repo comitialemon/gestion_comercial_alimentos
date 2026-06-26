@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Gestion\Impuestos\LugarVenta;
 use App\Models\Gestion\Impuestos\Comisionista;
 use App\Models\Gestion\Todos\Identificador;
+use App\Models\Gestion\Inventario\Almacen;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -14,14 +15,22 @@ class NuevaVentaTactilController extends Controller
 {
     public function create()
     {
-        $ventaActiva = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas')
-            ->where('IdCliente', session('cliente_id'))
-            ->where('IdClienteSucursal', session('cliente_sucursal_id'))
-            ->where('IdOperadorIngresa', session('operador_id'))
-            ->where('ActivoInactivo', 0)
-            ->where('NumeroFactura', 0)
-            ->first();
+        // ✅ VERIFICAR SI LA SUCURSAL TIENE ALMACENES
+        $sucursalId = session('cliente_sucursal_id');
+        $tieneAlmacen = Almacen::where('IdSucursal', $sucursalId)->exists();
+
+        // ✅ Verificar venta activa (SOLO si hay almacén)
+        $ventaActiva = null;
+        if ($tieneAlmacen) {
+            $ventaActiva = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdCliente', session('cliente_id'))
+                ->where('IdClienteSucursal', $sucursalId)
+                ->where('IdOperadorIngresa', session('operador_id'))
+                ->where('ActivoInactivo', 0)
+                ->where('NumeroFactura', 0)
+                ->first();
+        }
         
         if ($ventaActiva) {
             session([
@@ -62,38 +71,44 @@ class NuevaVentaTactilController extends Controller
                 'esCliente' => ($c->identificador->CI_NIT ?? null) == $clienteNit,
             ]);
 
-        // 🔥 OBTENER LA FECHA ACTUAL (para mostrar al vendedor)
-        $fechaHoy = date('Y-m-d');
         $fechaFormateada = date('d/m/Y');
 
         return Inertia::render('PuntoVenta/NuevaVentaTactil', [
             'lugaresVenta' => $lugaresVenta,
             'comisionistas' => $comisionistas,
             'fechaFormateada' => $fechaFormateada,
+            'tieneAlmacen' => $tieneAlmacen,
         ]);
     }
 
     public function store(Request $request)
     {
+        // ✅ Validar almacén ANTES de cualquier otra cosa
+        $sucursalId = session('cliente_sucursal_id');
+        $tieneAlmacen = Almacen::where('IdSucursal', $sucursalId)->exists();
+
+        if (!$tieneAlmacen) {
+            return redirect()->back()
+                ->with('error', '⚠️ Esta sucursal no tiene almacenes configurados. No se puede iniciar la venta.')
+                ->withInput();
+        }
+
         $request->validate([
             'lugar_venta_id' => 'required|integer|exists:impuestos_ventas_lugar_venta,IdLugar',
             'comisionista_id' => 'required|integer|exists:impuestos_ventas_comisionitas,IdComisionista',
         ]);
 
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
         $comisionista = Comisionista::with('identificador')
             ->findOrFail($request->comisionista_id);
 
-        // Obtener NIT de la empresa
         $clienteNit = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
             ->where('IdCliente', $clienteId)
             ->value('NIT');
 
-        // Determinar el IdNIT para la venta (como en Scriptcase)
         $idNIT = $comisionista->IdIdentificador;
         if ($comisionista->identificador && $comisionista->identificador->CI_NIT == $clienteNit) {
             $identificadorCero = Identificador::where('CI_NIT', 0)->first();
@@ -110,13 +125,11 @@ class NuevaVentaTactilController extends Controller
             $idNIT = $identificadorCero->IdIdentificador;
         }
 
-        // Determinar lugar de venta (Mayorista o Mostrador)
         $lugarVentaTexto = 'Mostrador';
         if ($comisionista->identificador && $comisionista->identificador->CI_NIT != $clienteNit) {
             $lugarVentaTexto = 'Mayorista';
         }
 
-        // 🔥 CREAR LA VENTA COMO EN SCRIPTCASE (usando NOW() para FechaVenta)
         $ventaId = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->insertGetId([
@@ -124,11 +137,11 @@ class NuevaVentaTactilController extends Controller
                 'IdClienteSucursal' => $sucursalId,
                 'IdOperadorIngresa' => $operadorId,
                 'IdOperadorActualiza' => $operadorId,
-                'FechaVenta' => now(),  // 🔥 COMO EN SCRIPTCASE
+                'FechaVenta' => now(),
                 'LugarVenta' => $lugarVentaTexto,
                 'IdComisionista' => $request->comisionista_id,
                 'IdNIT' => $idNIT,
-                'IdEstado' => 1,  // 🔥 COMO EN SCRIPTCASE (1 = activo)
+                'IdEstado' => 1,
                 'ActivoInactivo' => 0,
                 'NumeroFactura' => 0,
                 'NumeroAutorizacion' => '0',

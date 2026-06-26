@@ -16,14 +16,12 @@ class ClienteSucursal extends Model
         'IdPlaza',
         'Nombre',
         'Direccion',
-        'Telefono',
         'Celular',
         'NumeroSucursal',
         'ActivaInactivaR',
         'Orden',
-        'Categoria',
         'ActivoInactivo',
-        'ControlInternoEfectivo',  // 🔥 AGREGAR ESTE
+        'ControlInternoEfectivo',
         'facturacion_habilitada',
     ];
 
