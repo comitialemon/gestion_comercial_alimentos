@@ -53,6 +53,43 @@ class SucursalGestionController extends Controller
         ]);
     }
 
+    /**
+     * Obtener el siguiente número de sucursal disponible
+     */
+    public function obtenerSiguienteNumero()
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            // Obtener el máximo número de sucursal para este cliente
+            $maxNumero = ClienteSucursal::where('IdCliente', $clienteId)
+                ->max('NumeroSucursal');
+            
+            $siguienteNumero = ($maxNumero ?? 0) + 1;
+            
+            // Obtener el máximo orden
+            $maxOrden = ClienteSucursal::where('IdCliente', $clienteId)
+                ->max('Orden');
+            
+            $siguienteOrden = ($maxOrden ?? 0) + 1;
+            
+            return response()->json([
+                'success' => true,
+                'siguienteNumero' => $siguienteNumero,
+                'siguienteOrden' => $siguienteOrden,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error al obtener siguiente número: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener el siguiente número',
+                'siguienteNumero' => 1,
+                'siguienteOrden' => 1,
+            ], 500);
+        }
+    }
+
     public function store(Request $request)
     {
         $request->validate([
@@ -74,9 +111,9 @@ class SucursalGestionController extends Controller
                 'Direccion' => $request->Direccion,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
-                'ActivaInactivaR' => $request->ActivaInactivaR, // Ya viene como 0 o 1
+                'ActivaInactivaR' => $request->ActivaInactivaR,
                 'Orden' => $request->Orden ?? 0,
-                'ActivoInactivo' => $request->ActivoInactivo, // Ya viene como 0 o 1
+                'ActivoInactivo' => $request->ActivoInactivo,
                 'ControlInternoEfectivo' => 0,
                 'facturacion_habilitada' => 0,
             ]);
@@ -118,9 +155,9 @@ class SucursalGestionController extends Controller
                 'Direccion' => $request->Direccion,
                 'Celular' => $request->Celular,
                 'NumeroSucursal' => $request->NumeroSucursal ?? 0,
-                'ActivaInactivaR' => $request->ActivaInactivaR, // ✅ Ya viene como 0 o 1
+                'ActivaInactivaR' => $request->ActivaInactivaR,
                 'Orden' => $request->Orden ?? 0,
-                'ActivoInactivo' => $request->ActivoInactivo, // ✅ Ya viene como 0 o 1
+                'ActivoInactivo' => $request->ActivoInactivo,
             ]);
 
             return response()->json([
@@ -137,6 +174,7 @@ class SucursalGestionController extends Controller
             ], 500);
         }
     }
+
     public function destroy($id)
     {
         $sucursal = ClienteSucursal::porContexto()->findOrFail($id);
@@ -154,5 +192,4 @@ class SucursalGestionController extends Controller
             ], 500);
         }
     }
-    
 }

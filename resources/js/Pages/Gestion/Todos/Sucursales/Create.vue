@@ -14,7 +14,7 @@ const props = defineProps({
     editando: Boolean,
 })
 
-// Estado para el formulario
+// Estado para el formulario - CORREGIDO
 const form = useForm({
     IdPlaza: props.sucursal?.IdPlaza || '',
     Nombre: props.sucursal?.Nombre || '',
@@ -22,34 +22,37 @@ const form = useForm({
     Celular: props.sucursal?.Celular || '',
     NumeroSucursal: props.sucursal?.NumeroSucursal || '',
     Orden: props.sucursal?.Orden || 0,
-    ActivoInactivo: props.sucursal?.ActivoInactivo === 0 ? 1 : 0,
+    ActivoInactivo: props.sucursal?.ActivoInactivo ?? 0, // 0 = Activo, 1 = Inactivo
 })
 
 // Computed para el estado
 const estadoTexto = computed(() => {
-    return form.ActivoInactivo === 1 ? 'Activo' : 'Inactivo'
+    return form.ActivoInactivo === 0 ? 'Activo' : 'Inactivo'
 })
 
 const estadoColor = computed(() => {
-    return form.ActivoInactivo === 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
+    return form.ActivoInactivo === 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'
 })
 
-// Alternar estado
+// Alternar estado - CORREGIDO
 const toggleEstado = () => {
-    form.ActivoInactivo = form.ActivoInactivo === 1 ? 0 : 1
+    form.ActivoInactivo = form.ActivoInactivo === 0 ? 1 : 0
 }
 
 const submitForm = () => {
+    // Preparar datos - CORREGIDO
     const datos = {
-        IdPlaza: form.IdPlaza,
+        IdPlaza: parseInt(form.IdPlaza) || null,
         Nombre: form.Nombre.toUpperCase(),
         Direccion: form.Direccion,
         Celular: form.Celular,
         NumeroSucursal: parseInt(form.NumeroSucursal) || 0,
         Orden: parseInt(form.Orden) || 0,
-        ActivoInactivo: form.ActivoInactivo === 1 ? 0 : 1,
-        ActivaInactivaR: form.ActivoInactivo === 1 ? 0 : 1,
+        ActivoInactivo: form.ActivoInactivo, // 0 = Activo, 1 = Inactivo
+        ActivaInactivaR: form.ActivoInactivo, // 0 = Activa, 1 = Inactiva
     }
+    
+    console.log('📤 Enviando datos:', datos)
     
     if (props.editando) {
         router.put(`/gestion/sucursales/${props.sucursal.IdClienteSucursal}`, datos, {
@@ -59,6 +62,7 @@ const submitForm = () => {
                 router.get('/gestion/sucursales')
             },
             onError: (errors) => {
+                console.error('❌ Errores de validación:', errors)
                 toast?.error('Error', 'Verifique los datos ingresados')
             }
         })
@@ -70,6 +74,7 @@ const submitForm = () => {
                 router.get('/gestion/sucursales')
             },
             onError: (errors) => {
+                console.error('❌ Errores de validación:', errors)
                 toast?.error('Error', 'Verifique los datos ingresados')
             }
         })
@@ -235,20 +240,20 @@ const submitForm = () => {
                             <div class="flex items-center justify-between">
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700">Estado de la Sucursal</label>
-                                    <p class="text-sm text-gray-500">Active o desactive la sucursal para ventas</p>
+                                    <p class="text-sm text-gray-500">0=Activo / 1=Inactivo</p>
                                 </div>
                                 <button 
                                     type="button"
                                     @click="toggleEstado"
                                     class="relative inline-flex items-center h-10 rounded-full w-24 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                                    :class="form.ActivoInactivo === 1 ? 'bg-emerald-600' : 'bg-gray-300'"
+                                    :class="form.ActivoInactivo === 0 ? 'bg-emerald-600' : 'bg-gray-300'"
                                 >
                                     <span class="sr-only">Toggle estado</span>
                                     <span 
                                         class="inline-block h-8 w-8 transform rounded-full bg-white shadow-lg transition duration-200 flex items-center justify-center"
-                                        :class="form.ActivoInactivo === 1 ? 'translate-x-12' : 'translate-x-1'"
+                                        :class="form.ActivoInactivo === 0 ? 'translate-x-12' : 'translate-x-1'"
                                     >
-                                        <svg v-if="form.ActivoInactivo === 1" class="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <svg v-if="form.ActivoInactivo === 0" class="h-4 w-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                         </svg>
                                         <svg v-else class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -256,7 +261,7 @@ const submitForm = () => {
                                         </svg>
                                     </span>
                                     <span class="absolute inset-0 flex items-center justify-center px-4 text-white text-sm font-medium">
-                                        {{ form.ActivoInactivo === 1 ? 'ACTIVO' : 'INACTIVO' }}
+                                        {{ form.ActivoInactivo === 0 ? 'ACTIVO' : 'INACTIVO' }}
                                     </span>
                                 </button>
                             </div>
@@ -305,30 +310,25 @@ const submitForm = () => {
 </template>
 
 <style scoped>
-/* Estilos adicionales para mejorar la experiencia */
 input:focus, select:focus {
     outline: none;
 }
 
-/* Personalizar el toggle switch */
 .relative {
     transition: background-color 0.2s;
 }
 
-/* Animación suave para el toggle */
 .translate-x-1, .translate-x-12 {
     transition-property: transform;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 200ms;
 }
 
-/* Placeholder styling */
 input::placeholder {
     color: #9CA3AF;
     font-size: 0.875rem;
 }
 
-/* Select styling */
 select {
     appearance: none;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");

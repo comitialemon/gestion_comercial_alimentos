@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import ModalSucursal from './ModalSucursal.vue'
 
@@ -8,8 +8,7 @@ defineOptions({ layout: AppLayout })
 
 const props = defineProps({
     sucursales: Array,
-    plazas: Array,
-    categorias: Array
+    plazas: Array
 })
 
 // Estado para el modal
@@ -20,18 +19,17 @@ const sucursalSeleccionada = ref(null)
 // Estado para acordeón
 const plazasExpandidas = ref({})
 
-// 🔥 BUSCADOR
+// BUSCADOR
 const searchTerm = ref('')
 
 // Vista actual: 'table' o 'cards'
-const vistaActual = ref('cards') // Por defecto cards en móvil
+const vistaActual = ref('cards')
 
 // Detectar tamaño de pantalla
 const isMobile = ref(false)
 
 const checkScreenSize = () => {
     isMobile.value = window.innerWidth < 768
-    // En móvil usar cards, en escritorio tabla
     vistaActual.value = window.innerWidth < 768 ? 'cards' : 'table'
 }
 
@@ -127,6 +125,7 @@ const limpiarBusqueda = () => {
     searchTerm.value = ''
 }
 
+// ✅ FUNCIONES CORREGIDAS (0 = Activo, 1 = Inactivo)
 const estadoTexto = (activo) => {
     return activo === 0 ? 'Activo' : 'Inactivo'
 }
@@ -167,7 +166,7 @@ const activaInactivaRClase = (valor) => {
                     </button>
                 </div>
 
-                <!-- 🔥 BUSCADOR -->
+                <!-- BUSCADOR -->
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
                     <div class="relative">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
@@ -327,7 +326,6 @@ const activaInactivaRClase = (valor) => {
             v-model="modalOpen"
             :sucursal="sucursalSeleccionada"
             :plazas="plazas"
-            :categorias="categorias"
             :editando="editando"
             @saved="recargarDatos"
         />
@@ -335,7 +333,6 @@ const activaInactivaRClase = (valor) => {
 </template>
 
 <style scoped>
-/* Animación de expansión */
 .expand-enter-active,
 .expand-leave-active {
     transition: all 0.25s ease-out;
@@ -360,14 +357,12 @@ const activaInactivaRClase = (valor) => {
     transform: rotate(90deg);
 }
 
-/* Breakpoint personalizado para móvil */
 @media (max-width: 639px) {
     .xs\:block {
         display: block !important;
     }
 }
 
-/* Smooth transitions */
 .transition-shadow {
     transition-property: box-shadow;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);

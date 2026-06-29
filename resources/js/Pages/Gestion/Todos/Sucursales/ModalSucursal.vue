@@ -22,14 +22,14 @@ const emit = defineEmits(['update:modelValue', 'saved'])
 
 // Estado del formulario
 const form = ref({
-    IdPlaza: '',
+    IdPlaza: null,
     Nombre: '',
     Direccion: '',
     Celular: '',
     NumeroSucursal: '',
     Orden: 0,
-    ActivoInactivo: true,  // true = Activo (1), false = Inactivo (0)
-    ActivaInactivaR: true, // true = Activa (1), false = Inactiva (0)
+    ActivoInactivo: 0, // 0 = Activo, 1 = Inactivo
+    ActivaInactivaR: 0, // 0 = Activa, 1 = Inactiva
 })
 
 const loading = ref(false)
@@ -38,25 +38,25 @@ const errorMensaje = ref('')
 
 // Computed para mostrar los estados
 const estadoTexto = computed(() => {
-    return form.value.ActivoInactivo ? 'ACTIVO' : 'INACTIVO'
+    return form.value.ActivoInactivo === 0 ? 'ACTIVO' : 'INACTIVO'
 })
 
 const estadoColor = computed(() => {
-    return form.value.ActivoInactivo ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+    return form.value.ActivoInactivo === 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
 })
 
 const estadoRTexto = computed(() => {
-    return form.value.ActivaInactivaR ? 'ACTIVA' : 'INACTIVA'
+    return form.value.ActivaInactivaR === 0 ? 'ACTIVA' : 'INACTIVA'
 })
 
 const estadoRColor = computed(() => {
-    return form.value.ActivaInactivaR ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+    return form.value.ActivaInactivaR === 0 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
 })
 
 // Obtener el siguiente número disponible
 const obtenerSiguienteNumero = async () => {
     try {
-        const response = await axios.get('/sucursales/siguiente-numero')
+        const response = await axios.get('/gestion/sucursales/siguiente-numero')
         if (response.data.success) {
             if (!props.editando) {
                 form.value.NumeroSucursal = response.data.siguienteNumero
@@ -72,28 +72,40 @@ const obtenerSiguienteNumero = async () => {
     }
 }
 
-// Cargar datos al editar
+// Cargar datos al editar - CORREGIDO
 watch(() => props.sucursal, (newVal) => {
     if (newVal && props.editando) {
         console.log('📝 Cargando datos para editar:', newVal)
         form.value = {
-            IdPlaza: newVal.IdPlaza || '',
+            IdPlaza: newVal.IdPlaza || null,
             Nombre: newVal.Nombre || '',
             Direccion: newVal.Direccion || '',
             Celular: newVal.Celular || '',
             NumeroSucursal: newVal.NumeroSucursal || '',
             Orden: newVal.Orden || 0,
-            // 🔥 CORREGIDO: Activo = 1 → true, Inactivo = 0 → false
-            ActivoInactivo: newVal.ActivoInactivo === 1,
-            ActivaInactivaR: newVal.ActivaInactivaR === 1,
+            ActivoInactivo: newVal.ActivoInactivo ?? 0, // Mantener el valor de la BD
+            ActivaInactivaR: newVal.ActivaInactivaR ?? 0, // Mantener el valor de la BD
         }
         console.log('🔄 Formulario cargado:', form.value)
     }
-}, { immediate: true })
+}, { immediate: true, deep: true })
 
 // Cuando se abre el modal, obtener el siguiente número
 watch(() => props.modelValue, (newVal) => {
     if (newVal && !props.editando) {
+        // Resetear a valores por defecto para nueva sucursal
+        form.value = {
+            IdPlaza: null,
+            Nombre: '',
+            Direccion: '',
+            Celular: '',
+            NumeroSucursal: '',
+            Orden: 0,
+            ActivoInactivo: 0, // Por defecto Activo
+            ActivaInactivaR: 0, // Por defecto Activa
+        }
+        errors.value = {}
+        errorMensaje.value = ''
         obtenerSiguienteNumero()
     }
 }, { immediate: true })
@@ -101,14 +113,14 @@ watch(() => props.modelValue, (newVal) => {
 // Resetear formulario al cerrar
 const resetForm = () => {
     form.value = {
-        IdPlaza: '',
+        IdPlaza: null,
         Nombre: '',
         Direccion: '',
         Celular: '',
         NumeroSucursal: '',
         Orden: 0,
-        ActivoInactivo: true,  // Por defecto Activo (1)
-        ActivaInactivaR: true, // Por defecto Activa (1)
+        ActivoInactivo: 0,
+        ActivaInactivaR: 0,
     }
     errors.value = {}
     errorMensaje.value = ''
@@ -119,15 +131,40 @@ const cerrarModal = () => {
     resetForm()
 }
 
-// Alternar estados
+// Alternar estados - CORREGIDO
 const toggleEstado = () => {
-    form.value.ActivoInactivo = !form.value.ActivoInactivo
-    console.log('🔄 Estado ActivoInactivo cambiado a:', form.value.ActivoInactivo ? 'ACTIVO (1)' : 'INACTIVO (0)')
+    // Si es 0 (Activo) pasa a 1 (Inactivo), si es 1 (Inactivo) pasa a 0 (Activo)
+    form.value.ActivoInactivo = form.value.ActivoInactivo === 0 ? 1 : 0
+    console.log('🔄 Estado ActivoInactivo cambiado a:', form.value.ActivoInactivo === 0 ? 'ACTIVO (0)' : 'INACTIVO (1)')
 }
 
 const toggleEstadoR = () => {
-    form.value.ActivaInactivaR = !form.value.ActivaInactivaR
-    console.log('🔄 Estado ActivaInactivaR cambiado a:', form.value.ActivaInactivaR ? 'ACTIVA (1)' : 'INACTIVA (0)')
+    form.value.ActivaInactivaR = form.value.ActivaInactivaR === 0 ? 1 : 0
+    console.log('🔄 Estado ActivaInactivaR cambiado a:', form.value.ActivaInactivaR === 0 ? 'ACTIVA (0)' : 'INACTIVA (1)')
+}
+
+// Validar formulario antes de enviar
+const validarFormulario = () => {
+    const errores = {}
+    
+    if (!form.value.IdPlaza) {
+        errores.IdPlaza = ['La plaza es obligatoria']
+    }
+    
+    if (!form.value.Nombre || form.value.Nombre.trim() === '') {
+        errores.Nombre = ['El nombre es obligatorio']
+    }
+    
+    if (!form.value.Direccion || form.value.Direccion.trim() === '') {
+        errores.Direccion = ['La dirección es obligatoria']
+    }
+    
+    if (!form.value.Celular || form.value.Celular.trim() === '') {
+        errores.Celular = ['El celular es obligatorio']
+    }
+    
+    errors.value = errores
+    return Object.keys(errores).length === 0
 }
 
 const guardar = async () => {
@@ -135,23 +172,22 @@ const guardar = async () => {
     errors.value = {}
     errorMensaje.value = ''
     
-    console.log('📤 Datos a enviar:')
-    console.log('  - ActivoInactivo (boolean):', form.value.ActivoInactivo)
-    console.log('  - ActivoInactivo (convertido):', form.value.ActivoInactivo ? 1 : 0)
-    console.log('  - ActivaInactivaR (boolean):', form.value.ActivaInactivaR)
-    console.log('  - ActivaInactivaR (convertido):', form.value.ActivaInactivaR ? 1 : 0)
+    // Validación previa
+    if (!validarFormulario()) {
+        loading.value = false
+        return
+    }
     
-    // Preparar datos
+    // Preparar datos - CORREGIDO
     const data = {
-        IdPlaza: form.value.IdPlaza,
-        Nombre: form.value.Nombre.toUpperCase(),
-        Direccion: form.value.Direccion,
-        Celular: form.value.Celular,
+        IdPlaza: parseInt(form.value.IdPlaza),
+        Nombre: form.value.Nombre.toUpperCase().trim(),
+        Direccion: form.value.Direccion.trim(),
+        Celular: form.value.Celular.trim(),
         NumeroSucursal: parseInt(form.value.NumeroSucursal) || 0,
         Orden: parseInt(form.value.Orden) || 0,
-        // 🔥 CORREGIDO: true → 1 (Activo), false → 0 (Inactivo)
-        ActivoInactivo: form.value.ActivoInactivo ? 1 : 0,
-        ActivaInactivaR: form.value.ActivaInactivaR ? 1 : 0,
+        ActivoInactivo: form.value.ActivoInactivo, // 0 = Activo, 1 = Inactivo
+        ActivaInactivaR: form.value.ActivaInactivaR, // 0 = Activa, 1 = Inactiva
     }
     
     console.log('📦 Datos completos a enviar:', data)
@@ -160,10 +196,10 @@ const guardar = async () => {
         let response
         if (props.editando && props.sucursal) {
             console.log('✏️ EDITANDO sucursal ID:', props.sucursal.IdClienteSucursal)
-            response = await axios.put(`/sucursales/${props.sucursal.IdClienteSucursal}`, data)
+            response = await axios.put(`/gestion/sucursales/${props.sucursal.IdClienteSucursal}`, data)
         } else {
             console.log('➕ CREANDO nueva sucursal')
-            response = await axios.post('/sucursales', data)
+            response = await axios.post('/gestion/sucursales', data)
         }
         
         console.log('✅ Respuesta del servidor:', response.data)
@@ -185,6 +221,11 @@ const guardar = async () => {
             if (error.response.data?.errors) {
                 errors.value = error.response.data.errors
                 console.error('  - Errores de validación:', errors.value)
+                
+                const errorMessages = Object.values(errors.value).flat()
+                if (errorMessages.length > 0) {
+                    errorMensaje.value = errorMessages.join(' • ')
+                }
             } else if (error.response.data?.message) {
                 errorMensaje.value = error.response.data.message
             } else {
@@ -217,7 +258,7 @@ const guardar = async () => {
                     </button>
                 </div>
 
-                <!-- 🔥 Mostrar error si existe -->
+                <!-- Mostrar error si existe -->
                 <div v-if="errorMensaje" class="mx-5 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
                     <div class="flex items-start gap-2">
                         <i class="fas fa-exclamation-circle text-red-500 mt-0.5"></i>
@@ -236,12 +277,17 @@ const guardar = async () => {
                             Plaza <span class="text-red-500">*</span>
                         </label>
                         <select v-model="form.IdPlaza" class="w-full border rounded-lg px-3 py-2 text-sm" :class="{ 'border-red-500': errors.IdPlaza }">
-                            <option value="">Seleccione una plaza</option>
+                            <option :value="null">Seleccione una plaza</option>
                             <option v-for="plaza in plazas" :key="plaza.id" :value="plaza.id">
                                 {{ plaza.nombre }}
                             </option>
                         </select>
-                        <p v-if="errors.IdPlaza" class="text-xs text-red-500 mt-1">{{ errors.IdPlaza }}</p>
+                        <div v-if="errors.IdPlaza" class="text-xs text-red-500 mt-1">
+                            <span v-for="msg in errors.IdPlaza" :key="msg" class="block">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ msg }}
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Nombre -->
@@ -250,7 +296,12 @@ const guardar = async () => {
                             Nombre <span class="text-red-500">*</span>
                         </label>
                         <input type="text" v-model="form.Nombre" class="w-full border rounded-lg px-3 py-2 text-sm uppercase" :class="{ 'border-red-500': errors.Nombre }" placeholder="NOMBRE DE SUCURSAL" />
-                        <p v-if="errors.Nombre" class="text-xs text-red-500 mt-1">{{ errors.Nombre }}</p>
+                        <div v-if="errors.Nombre" class="text-xs text-red-500 mt-1">
+                            <span v-for="msg in errors.Nombre" :key="msg" class="block">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ msg }}
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Dirección -->
@@ -259,7 +310,12 @@ const guardar = async () => {
                             Dirección <span class="text-red-500">*</span>
                         </label>
                         <input type="text" v-model="form.Direccion" class="w-full border rounded-lg px-3 py-2 text-sm" :class="{ 'border-red-500': errors.Direccion }" placeholder="Dirección completa" />
-                        <p v-if="errors.Direccion" class="text-xs text-red-500 mt-1">{{ errors.Direccion }}</p>
+                        <div v-if="errors.Direccion" class="text-xs text-red-500 mt-1">
+                            <span v-for="msg in errors.Direccion" :key="msg" class="block">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ msg }}
+                            </span>
+                        </div>
                     </div>
 
                     <!-- Celular -->
@@ -268,7 +324,12 @@ const guardar = async () => {
                             Celular / WhatsApp <span class="text-red-500">*</span>
                         </label>
                         <input type="text" v-model="form.Celular" class="w-full border rounded-lg px-3 py-2 text-sm" :class="{ 'border-red-500': errors.Celular }" placeholder="9XXXXXXXX" />
-                        <p v-if="errors.Celular" class="text-xs text-red-500 mt-1">{{ errors.Celular }}</p>
+                        <div v-if="errors.Celular" class="text-xs text-red-500 mt-1">
+                            <span v-for="msg in errors.Celular" :key="msg" class="block">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ msg }}
+                            </span>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -288,7 +349,12 @@ const guardar = async () => {
                                 :readonly="!editando"
                                 placeholder="Auto" 
                             />
-                            <p v-if="errors.NumeroSucursal" class="text-xs text-red-500 mt-1">{{ errors.NumeroSucursal }}</p>
+                            <div v-if="errors.NumeroSucursal" class="text-xs text-red-500 mt-1">
+                                <span v-for="msg in errors.NumeroSucursal" :key="msg" class="block">
+                                    <i class="fas fa-exclamation-circle mr-1"></i>
+                                    {{ msg }}
+                                </span>
+                            </div>
                         </div>
 
                         <!-- Orden -->
@@ -308,14 +374,19 @@ const guardar = async () => {
                                 :readonly="!editando"
                                 placeholder="Auto" 
                             />
-                            <p v-if="errors.Orden" class="text-xs text-red-500 mt-1">{{ errors.Orden }}</p>
+                            <div v-if="errors.Orden" class="text-xs text-red-500 mt-1">
+                                <span v-for="msg in errors.Orden" :key="msg" class="block">
+                                    <i class="fas fa-exclamation-circle mr-1"></i>
+                                    {{ msg }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 
                     <!-- ESTADO ActivoInactivo (TOGGLE) -->
                     <div class="border rounded-lg p-4 bg-gray-50">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Estado <span class="text-xs text-gray-400">(Activo/Inactivo)</span>
+                            Estado <span class="text-xs text-gray-400">(0=Activo / 1=Inactivo)</span>
                         </label>
                         
                         <div class="flex items-center gap-4">
@@ -323,13 +394,13 @@ const guardar = async () => {
                                 type="button"
                                 @click="toggleEstado"
                                 class="relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500"
-                                :class="form.ActivoInactivo ? 'bg-emerald-600' : 'bg-gray-300'"
+                                :class="form.ActivoInactivo === 0 ? 'bg-emerald-600' : 'bg-gray-300'"
                             >
                                 <span 
                                     class="inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition duration-200 flex items-center justify-center"
-                                    :class="form.ActivoInactivo ? 'translate-x-9' : 'translate-x-1'"
+                                    :class="form.ActivoInactivo === 0 ? 'translate-x-9' : 'translate-x-1'"
                                 >
-                                    <svg v-if="form.ActivoInactivo" class="h-3 w-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg v-if="form.ActivoInactivo === 0" class="h-3 w-3 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                     </svg>
                                     <svg v-else class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,20 +412,20 @@ const guardar = async () => {
                                 {{ estadoTexto }}
                             </span>
                             <span class="text-xs text-gray-400">
-                                ({{ form.ActivoInactivo ? '1' : '0' }} en BD)
+                                ({{ form.ActivoInactivo === 0 ? '0=Activo' : '1=Inactivo' }} en BD)
                             </span>
                         </div>
                         
                         <p class="text-xs text-gray-500 mt-1">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Activo = 1, Inactivo = 0
+                            0 = Activo, 1 = Inactivo
                         </p>
                     </div>
 
                     <!-- ESTADO ActivaInactivaR (TOGGLE) -->
                     <div class="border rounded-lg p-4 bg-gray-50">
                         <label class="block text-sm font-medium text-gray-700 mb-2">
-                            Estado R <span class="text-xs text-gray-400">(Activa/Inactiva R)</span>
+                            Estado R <span class="text-xs text-gray-400">(0=Activa / 1=Inactiva)</span>
                         </label>
                         
                         <div class="flex items-center gap-4">
@@ -362,13 +433,13 @@ const guardar = async () => {
                                 type="button"
                                 @click="toggleEstadoR"
                                 class="relative inline-flex items-center h-8 rounded-full w-16 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-                                :class="form.ActivaInactivaR ? 'bg-blue-600' : 'bg-gray-300'"
+                                :class="form.ActivaInactivaR === 0 ? 'bg-blue-600' : 'bg-gray-300'"
                             >
                                 <span 
                                     class="inline-block h-6 w-6 transform rounded-full bg-white shadow-lg transition duration-200 flex items-center justify-center"
-                                    :class="form.ActivaInactivaR ? 'translate-x-9' : 'translate-x-1'"
+                                    :class="form.ActivaInactivaR === 0 ? 'translate-x-9' : 'translate-x-1'"
                                 >
-                                    <svg v-if="form.ActivaInactivaR" class="h-3 w-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <svg v-if="form.ActivaInactivaR === 0" class="h-3 w-3 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
                                     </svg>
                                     <svg v-else class="h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -380,13 +451,13 @@ const guardar = async () => {
                                 {{ estadoRTexto }}
                             </span>
                             <span class="text-xs text-gray-400">
-                                ({{ form.ActivaInactivaR ? '1' : '0' }} en BD)
+                                ({{ form.ActivaInactivaR === 0 ? '0=Activa' : '1=Inactiva' }} en BD)
                             </span>
                         </div>
                         
                         <p class="text-xs text-gray-500 mt-1">
                             <i class="fas fa-info-circle mr-1"></i>
-                            Activa = 1, Inactiva = 0
+                            0 = Activa, 1 = Inactiva
                         </p>
                     </div>
                 </div>
