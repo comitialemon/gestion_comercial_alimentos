@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models\Gestion\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
@@ -10,11 +11,18 @@ class UnidadMedida extends Model
     protected $primaryKey = 'IdUnidadMedida';
     public $timestamps = false;
 
-    protected $fillable = ['UnidadMedida'];
+    protected $fillable = [
+        'UnidadMedida'
+    ];
 
     // No tiene IdCliente, se comparte entre todas las empresas
     public function scopePorContexto($query)
     {
         return $query;
+    }
+
+    public function productos()
+    {
+        return $this->hasMany(ProductoDetalle::class, 'IdUnidadMedida', 'IdUnidadMedida');
     }
 }

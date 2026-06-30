@@ -97,6 +97,7 @@ use App\Http\Controllers\Gestion\Inventario\ComboOpcionController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController;
+use App\Http\Controllers\Gestion\Inventario\ProductoDetalleController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -412,6 +413,21 @@ Route::middleware(['auth.operador'])->group(function () {
             Route::prefix('asignar-productos-categoria')->group(function () {
                 Route::get('/', [AsignarProductoCategoriaController::class, 'index'])->name('gestion.inventario.asignar-productos-categoria.index');
                 Route::post('/', [AsignarProductoCategoriaController::class, 'store'])->name('gestion.inventario.asignar-productos-categoria.store');
+            });
+
+            // 🔥 AGREGAR ESTAS RUTAS:
+            Route::prefix('productos-detalle')->group(function () {
+                Route::get('/', [ProductoDetalleController::class, 'index'])->name('gestion.inventario.productos-detalle.index');
+                Route::post('/', [ProductoDetalleController::class, 'store'])->name('gestion.inventario.productos-detalle.store');
+                Route::get('/{id}/edit', [ProductoDetalleController::class, 'edit'])->name('gestion.inventario.productos-detalle.edit');
+                Route::put('/{id}', [ProductoDetalleController::class, 'update'])->name('gestion.inventario.productos-detalle.update');
+                Route::delete('/{id}', [ProductoDetalleController::class, 'destroy'])->name('gestion.inventario.productos-detalle.destroy');
+                Route::post('/{id}/toggle', [ProductoDetalleController::class, 'toggleEstado'])->name('gestion.inventario.productos-detalle.toggle');
+                Route::get('/api/productos', [ProductoDetalleController::class, 'getProductos'])->name('gestion.inventario.productos-detalle.api');
+                
+                // 🔥 RUTAS DE VALIDACIÓN AJAX (onBlur/onChange) - IGUAL QUE SCRIPTCASE
+                Route::get('/validar-codigo', [ProductoDetalleController::class, 'validarCodigo'])->name('gestion.inventario.productos-detalle.validar-codigo');
+                Route::get('/validar-descripcion', [ProductoDetalleController::class, 'validarDescripcion'])->name('gestion.inventario.productos-detalle.validar-descripcion');           
             });
 
             // Reporte de Inventario

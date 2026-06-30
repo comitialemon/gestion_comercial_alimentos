@@ -19,7 +19,7 @@ class ProductoDetalle extends Model
         'OrdenInformes',
         'Codigo',
         'Descripcion',
-        'Precio',
+        'Precio',        // 🔥 SIEMPRE 0
         'ActivoInactivo',
         'CkeckListRuta',
         'IdCliente',
@@ -31,69 +31,61 @@ class ProductoDetalle extends Model
         'CierrePermanente'
     ];
 
+    protected $casts = [
+        'ActivoInactivo' => 'integer',
+        'Precio' => 'decimal:2',
+        'OrdenInformes' => 'integer',
+        'CkeckListRuta' => 'boolean',
+        'CierrePermanente' => 'boolean'
+    ];
+
     /**
-     * Scope para filtrar por contexto
+     * Scope para filtrar por contexto (solo cliente)
      */
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
-                     //->where('IdSucursal', session('cliente_sucursal_id'));
     }
 
     /**
-     * Scope para productos activos
+     * Scope para productos activos (0 = Activo)
      */
     public function scopeActivos($query)
     {
         return $query->where('ActivoInactivo', 0);
     }
 
-    /**
-     * Relación con la unidad de medida
-     */
-    public function unidadMedida()
+    // ==================== RELACIONES ====================
+
+    public function grupoAnalisis()
     {
-        return $this->belongsTo(UnidadMedida::class, 'IdUnidadMedida', 'IdUnidadMedida');
+        return $this->belongsTo(ProductoGrupoAnalisis::class, 'IdGrupoAnalisis', 'IdGrupoAnalisis');
     }
 
-    /**
-     * Relación con la línea de producto
-     */
     public function linea()
     {
         return $this->belongsTo(ProductoLinea::class, 'IdLineaProducto', 'IdLinea');
     }
 
-    /**
-     * Relación con el estado del producto
-     */
     public function estado()
     {
         return $this->belongsTo(ProductoEstado::class, 'IdEstadoProducto', 'IdEstado');
     }
-    // Agregar esta relación:
-    public function preciosCosto()
+
+    public function unidadMedida()
     {
-        return $this->hasMany(ProductoPrecioCosto::class, 'IdProducto', 'IdProducto');
+        return $this->belongsTo(UnidadMedida::class, 'IdUnidadMedida', 'IdUnidadMedida');
     }
 
-    // Obtener el último precio costo
-    public function getUltimoPrecioCostoAttribute()
+    // ==================== ATRIBUTOS ====================
+
+    public function getEstadoTextoAttribute()
     {
-        $ultimo = $this->preciosCosto()
-            ->orderBy('IdPrecioCosto', 'desc')
-            ->first();
-        
-        return $ultimo ? (float) $ultimo->PrecioCosto : 0;
+        return $this->ActivoInactivo == 0 ? 'Activo' : 'Inactivo';
     }
 
-    // Obtener la fecha del último precio costo
-    public function getUltimaFechaPrecioCostoAttribute()
+    public function getEstadoClaseAttribute()
     {
-        $ultimo = $this->preciosCosto()
-            ->orderBy('IdPrecioCosto', 'desc')
-            ->first();
-        
-        return $ultimo ? $ultimo->IdFecha : null;
+        return $this->ActivoInactivo == 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
     }
 }
