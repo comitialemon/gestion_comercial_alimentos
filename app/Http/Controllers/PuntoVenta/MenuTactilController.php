@@ -83,20 +83,26 @@ class MenuTactilController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $identificadorComisionista = session('venta_tactil_comisionista_identificador');
 
-        // Obtener productos con su precio real (como en el modal)
+        // 🔥 CORREGIDO: Obtener productos con su imagen principal
         $productosQuery = ProductoVenta::porContexto()
+            ->with('imagenPrincipal') // 🔥 Cargar la imagen principal
             ->where('ActivoInactivo', 0)
             ->whereHas('categorias', function($q) use ($id) {
                 $q->where('inventario_producto_categoria.id_categoria', $id);
             })
             ->orderBy('Detalle')
-            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta', 'ImagenProducto']);  // 🔥 AGREGAR 'ImagenProducto'
-
+            ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
 
         // Calcular precio real para cada producto
         $productos = [];
         foreach ($productosQuery as $producto) {
-            $precioReal = $producto->PrecioVenta; // precio por defecto
+            // 🔥 Obtener URL de la imagen desde la relación
+            $imagenUrl = null;
+            if ($producto->imagenPrincipal) {
+                $imagenUrl = $producto->imagenPrincipal->url_thumbnail;
+            }
+
+            $precioReal = $producto->PrecioVenta;
             $tipoPrecio = 'default';
 
             // 1. Buscar precio mayorista (por comisionista)
@@ -137,7 +143,7 @@ class MenuTactilController extends Controller
                 'precio_real' => $precioReal,
                 'precio_normal' => (float) $producto->PrecioVenta,
                 'tipo_precio' => $tipoPrecio,
-                'imagen' => $producto->ImagenProducto ? asset($producto->ImagenProducto) : null,
+                'imagen' => $imagenUrl, // 🔥 Usar la URL de la imagen
             ];
         }
 
