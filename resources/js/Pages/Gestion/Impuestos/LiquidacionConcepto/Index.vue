@@ -26,7 +26,8 @@ props.conceptos?.forEach(item => {
     console.log(`📦 ${item.Concepto}:`, {
         requiere: item.requiere_identificador,
         usa: item.usa_identificador_factura,
-        activo: item.activo
+        activo: item.activo,
+        type_activo: typeof item.activo
     })
 })
 
@@ -76,7 +77,7 @@ const resetForm = () => {
     formData.value = {
         Concepto: '',
         IdCuenta: '',
-        activo: 1,
+        activo: 1,  // 🔥 Número, no string
         requiere_identificador: false,
         usa_identificador_factura: false
     }
@@ -91,7 +92,7 @@ const abrirModalCrear = () => {
     modalOpen.value = true
 }
 
-// 🔥 CORREGIDO: Abrir modal para editar - convertir correctamente
+// 🔥 CORREGIDO: Abrir modal para editar
 const abrirModalEditar = (item) => {
     if (!item) return
     
@@ -100,21 +101,28 @@ const abrirModalEditar = (item) => {
     editando.value = true
     editId.value = item.IdConceptoLiquidacion
     
-    // 🔥 IMPORTANTE: Convertir valores a boolean correctamente
-    const requiereBool = item.requiere_identificador === 1 || item.requiere_identificador === true
-    const usaBool = item.usa_identificador_factura === 1 || item.usa_identificador_factura === true
+    // 🔥 CONVERTIR activo a número (0 o 1)
+    let activoNum = 0
+    if (item.activo === true || item.activo === 1 || item.activo === '1') {
+        activoNum = 1
+    } else {
+        activoNum = 0
+    }
     
-    console.log('Conversión:', {
-        original_requiere: item.requiere_identificador,
-        convertido_requiere: requiereBool,
-        original_usa: item.usa_identificador_factura,
-        convertido_usa: usaBool
+    // Convertir booleanos
+    const requiereBool = (item.requiere_identificador === 1 || item.requiere_identificador === true)
+    const usaBool = (item.usa_identificador_factura === 1 || item.usa_identificador_factura === true)
+    
+    console.log('✅ Estado convertido:', {
+        original: item.activo,
+        tipo_original: typeof item.activo,
+        convertido: activoNum
     })
     
     formData.value = {
         Concepto: item.Concepto || '',
         IdCuenta: item.IdCuenta || '',
-        activo: item.activo,
+        activo: activoNum,
         requiere_identificador: requiereBool,
         usa_identificador_factura: usaBool
     }
@@ -146,10 +154,12 @@ const guardar = async () => {
         const dataToSend = {
             Concepto: formData.value.Concepto,
             IdCuenta: formData.value.IdCuenta,
-            activo: formData.value.activo,
+            activo: formData.value.activo,  // 🔥 Ya es número: 0 o 1
             requiere_identificador: formData.value.requiere_identificador ? 1 : 0,
             usa_identificador_factura: formData.value.usa_identificador_factura ? 1 : 0
         }
+        
+        console.log('📤 Enviando datos:', dataToSend)
         
         if (editando.value) {
             response = await axios.post(`/gestion/impuestos/liquidacion-concepto/${editId.value}`, {
@@ -240,7 +250,7 @@ const handleEscKey = (event) => {
     }
 }
 
-// Obtener clase de estado
+// 🔥 CORREGIDO: Obtener clase de estado
 const getEstadoClase = (activo) => {
     return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
 }
@@ -320,9 +330,6 @@ onUnmounted(() => {
                                     </div>
                                     <h3 class="font-semibold text-sm sm:text-base text-gray-800">{{ item.Concepto }}</h3>
                                 </div>
-                                <span class="px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-xs rounded-full" :class="getEstadoClase(item.activo)">
-                                    {{ getEstadoTexto(item.activo) }}
-                                </span>
                             </div>
                         </div>
                         
@@ -342,7 +349,7 @@ onUnmounted(() => {
                                 </div>
                             </div>
                             
-                            <!-- 🔥 Requiere Identificador - Mostrar correctamente -->
+                            <!-- Requiere Identificador -->
                             <div class="flex items-center justify-between border-t pt-2">
                                 <div class="flex items-center gap-2">
                                     <i class="fas fa-users text-gray-400 text-[10px] sm:text-xs"></i>
@@ -356,7 +363,7 @@ onUnmounted(() => {
                                 </div>
                             </div>
                             
-                            <!-- 🔥 Usa ID Factura - Mostrar correctamente -->
+                            <!-- Usa ID Factura -->
                             <div class="flex items-center justify-between">
                                 <div class="flex items-center gap-2">
                                     <i class="fas fa-qrcode text-gray-400 text-[10px] sm:text-xs"></i>
@@ -447,15 +454,13 @@ onUnmounted(() => {
                                 type="text"
                                 v-model="busquedaCuenta"
                                 @focus="mostrarListaCuentas = true"
-                                :disabled="editando"
                                 placeholder="Buscar cuenta..."
                                 class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
                                 :class="{ 
-                                    'border-red-500': errors.IdCuenta,
-                                    'bg-gray-100': editando
+                                    'border-red-500': errors.IdCuenta
                                 }"
                             />
-                            <div v-if="mostrarListaCuentas && cuentasFiltradas.length > 0 && !editando" 
+                            <div v-if="mostrarListaCuentas && cuentasFiltradas.length > 0" 
                                 class="absolute z-50 w-full max-h-48 overflow-y-auto bg-white border rounded-lg shadow-lg mt-1">
                                 <div 
                                     v-for="cuenta in cuentasFiltradas" 
@@ -472,16 +477,16 @@ onUnmounted(() => {
                             <p v-if="errors.IdCuenta" class="text-xs text-red-500 mt-1">{{ errors.IdCuenta }}</p>
                         </div>
                         
-                        <!-- Estado con radios y valor actual -->
+                        <!-- 🔥 ESTADO CON RADIOS CORREGIDOS - v-model.number -->
                         <div>
                             <label class="block text-[11px] sm:text-xs font-medium text-gray-700 mb-2">Estado</label>
                             <div class="flex gap-4">
                                 <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" :value="1" v-model="formData.activo" class="w-4 h-4 text-primary-600"/>
+                                    <input type="radio" :value="1" v-model.number="formData.activo" class="w-4 h-4 text-primary-600"/>
                                     <span class="text-sm">✓ Activo</span>
                                 </label>
                                 <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="radio" :value="0" v-model="formData.activo" class="w-4 h-4 text-primary-600"/>
+                                    <input type="radio" :value="0" v-model.number="formData.activo" class="w-4 h-4 text-primary-600"/>
                                     <span class="text-sm">✗ Inactivo</span>
                                 </label>
                             </div>

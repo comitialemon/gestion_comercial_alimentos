@@ -247,6 +247,47 @@ const guardarProducto = () => {
         formData.append('imagen', archivoImagen.value)
     }
     
+    // 🔥 Función para actualizar la imagen después de guardar
+    const actualizarImagen = (response) => {
+        console.log('📦 Respuesta del servidor:', response.data)
+        
+        // Si viene imagen_url en la respuesta
+        if (response.data.imagen_url) {
+            form.preview_url = response.data.imagen_url
+            console.log('✅ Imagen actualizada desde imagen_url:', response.data.imagen_url)
+            return
+        }
+        
+        // Si viene producto con imágenes
+        if (response.data.producto) {
+            const producto = response.data.producto
+            console.log('📦 Producto recibido:', producto)
+            
+            // Buscar en la relación imagenes
+            if (producto.imagenes && producto.imagenes.length > 0) {
+                const principal = producto.imagenes.find(img => img.EsPrincipal === 1) || producto.imagenes[0]
+                // Usar RutaThumbnail o url_thumbnail
+                const imgUrl = principal.RutaThumbnail || principal.url_thumbnail
+                if (imgUrl) {
+                    form.preview_url = imgUrl
+                    console.log('✅ Imagen actualizada desde imagenes:', imgUrl)
+                    return
+                }
+            }
+            
+            // Si tiene ImagenProducto directo
+            if (producto.ImagenProducto) {
+                form.preview_url = producto.ImagenProducto
+                console.log('✅ Imagen actualizada desde ImagenProducto:', producto.ImagenProducto)
+                return
+            }
+        }
+        
+        // Si no hay imagen, poner null
+        form.preview_url = null
+        console.log('⚠️ No se encontró imagen en la respuesta')
+    }
+    
     if (props.editando) {
         axios.post(`/gestion/inventario/productos-venta/${props.producto.IdDetalleProducto}`, formData, {
             headers: {
@@ -257,26 +298,35 @@ const guardarProducto = () => {
         .then(response => {
             if (response.data.success) {
                 toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
+                
+                // 🔥 Actualizar imagen
+                actualizarImagen(response)
+                
+                // Actualizar campos
                 if (response.data.producto) {
-                    form.id_categoria = response.data.producto.id_categoria
-                    form.Codigo = response.data.producto.Codigo
-                    form.Detalle = response.data.producto.Detalle
-                    form.PrecioVenta = response.data.producto.PrecioVenta
-                    form.preview_url = response.data.producto.ImagenProducto
+                    const producto = response.data.producto
+                    form.id_categoria = producto.id_categoria
+                    form.Codigo = producto.Codigo
+                    form.Detalle = producto.Detalle
+                    form.PrecioVenta = producto.PrecioVenta
                     
-                    archivoImagen.value = null
-                    eliminarImagenFlag.value = false
-                    
+                    // Actualizar props
                     if (props.producto) {
-                        props.producto = { ...props.producto, ...response.data.producto }
+                        props.producto = { ...props.producto, ...producto }
                     }
                 }
+                
+                // Limpiar archivos temporales
+                archivoImagen.value = null
+                eliminarImagenFlag.value = false
+                if (imgInput.value) imgInput.value.value = ''
+                
             } else {
                 toast?.error('Error', response.data.message || 'Error al actualizar')
             }
         })
         .catch(error => {
-            console.error('Errores:', error)
+            console.error('❌ Errores:', error)
             const message = error.response?.data?.message || 'Verifique los datos ingresados'
             toast?.error('Error', message)
         })
@@ -289,6 +339,10 @@ const guardarProducto = () => {
         .then(response => {
             if (response.data.success) {
                 toast?.success('Éxito', response.data.message || 'Producto creado correctamente')
+                
+                // 🔥 Actualizar imagen
+                actualizarImagen(response)
+                
                 productoGuardado.value = true
                 setTimeout(() => {
                     router.get(`/gestion/inventario/productos-venta/${response.data.producto_id}/edit`)
@@ -298,7 +352,7 @@ const guardarProducto = () => {
             }
         })
         .catch(error => {
-            console.error('Errores:', error)
+            console.error('❌ Errores:', error)
             const message = error.response?.data?.message || 'Verifique los datos ingresados'
             toast?.error('Error', message)
         })

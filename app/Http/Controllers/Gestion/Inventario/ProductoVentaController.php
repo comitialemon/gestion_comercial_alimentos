@@ -136,11 +136,9 @@ class ProductoVentaController extends Controller
         $identificadores = Identificador::orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
         
+        // 🔥 CORREGIDO: Traer TODOS los productos de inventario activos
         $productosInventario = ProductoDetalle::porContexto()
             ->where('ActivoInactivo', 0)
-            ->whereHas('estado', function($q) {
-                $q->where('Estado', 'Terminado');
-            })
             ->orderBy('Codigo')
             ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
         
@@ -151,7 +149,7 @@ class ProductoVentaController extends Controller
             'productosInventario' => $productosInventario,
         ]);
     }
-    
+
     public function edit($id)
     {
         $clienteId = session('cliente_id');
@@ -191,11 +189,9 @@ class ProductoVentaController extends Controller
         $identificadores = Identificador::orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
         
+        // 🔥 CORREGIDO: Traer TODOS los productos de inventario activos
         $productosInventario = ProductoDetalle::porContexto()
             ->where('ActivoInactivo', 0)
-            ->whereHas('estado', function($q) {
-                $q->where('Estado', 'Terminado');
-            })
             ->orderBy('Codigo')
             ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
         
@@ -734,6 +730,500 @@ class ProductoVentaController extends Controller
             'preciosSucursal' => $preciosSucursal,
             'preciosMayorista' => $preciosMayorista,
             'detallesInventario' => $detallesInventario,
+        ]);
+    }
+
+    // ==================== NUEVOS MÉTODOS AGREGADOS ====================
+    /**
+     * Store - Guardar detalle de inventario (producto que compone este producto)
+     */
+    public function storeDetalle(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+
+        Log::info('📝 storeDetalle - Datos recibidos:', $request->all());
+
+        $request->validate([
+            'IdDetalleProducto' => 'required|exists:inventario_relacion_ventainventario,IdDetalleProducto',
+            'IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
+            'Porcion' => 'required|numeric|min:0.000001',
+        ]);
+
+        try {
+            // Verificar que el producto principal existe
+            $productoPrincipal = ProductoVenta::where('IdCliente', $clienteId)
+                ->where('IdDetalleProducto', $request->IdDetalleProducto)
+                ->first();
+
+            if (!$productoPrincipal) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Producto no encontrado'
+                ], 404);
+            }
+
+            // Verificar que el producto de inventario existe
+            $productoInventario = ProductoDetalle::where('IdCliente', $clienteId)
+                ->where('IdProducto', $request->IdProducto)
+                ->first();
+
+            if (!$productoInventario) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Producto de inventario no encontrado'
+                ], 404);
+            }
+
+            // Verificar duplicado
+            $existe = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProducto', $request->IdDetalleProducto)
+                ->where('IdProducto', $request->IdProducto)
+                ->exists();
+
+            if ($existe) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este producto ya está en el detalle'
+                ], 422);
+            }
+
+            // Insertar detalle (sin IdCliente e IdSucursal)
+            $id = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->insertGetId([
+                    'IdDetalleProducto' => $request->IdDetalleProducto,
+                    'IdProducto' => $request->IdProducto,
+                    'Porcion' => $request->Porcion,
+                    'IdOperadorInserta' => $operadorId,
+                    'FechaInserta' => now(),
+                    'IdOperadorActualiza' => $operadorId,
+                    'FechaActualiza' => now(),
+                ]);
+
+            // 🔥 Obtener el detalle con el formato que espera el frontend
+            $detalle = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle as d')
+                ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
+                ->where('d.IdDetalleProductoPorcion', $id)
+                ->select(
+                    'd.IdDetalleProductoPorcion',
+                    'd.IdDetalleProducto',
+                    'd.IdProducto',
+                    'd.Porcion',
+                    'p.Codigo',
+                    'p.Descripcion'
+                )
+                ->first();
+
+            // 🔥 Formatear para que coincida con lo que espera el frontend
+            $detalleFormateado = [
+                'IdDetalleProductoPorcion' => $detalle->IdDetalleProductoPorcion,
+                'IdDetalleProducto' => $detalle->IdDetalleProducto,
+                'IdProducto' => $detalle->IdProducto,
+                'Porcion' => (float) $detalle->Porcion,
+                'producto' => [
+                    'Codigo' => $detalle->Codigo,
+                    'Descripcion' => $detalle->Descripcion
+                ]
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Producto agregado al detalle correctamente',
+                'detalle' => $detalleFormateado
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('❌ Error al guardar detalle: ' . $e->getMessage());
+            Log::error('❌ Stack trace: ' . $e->getTraceAsString());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update - Actualizar porción del detalle
+     */
+    public function updateDetalle(Request $request, $id)
+    {
+        $request->validate([
+            'Porcion' => 'required|numeric|min:0.000001',
+        ]);
+
+        try {
+            // 🔥 CORREGIDO: Eliminar where('IdCliente') porque no existe en la tabla
+            $updated = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProductoPorcion', $id)
+                ->update([
+                    'Porcion' => $request->Porcion,
+                    'IdOperadorActualiza' => session('operador_id'),
+                    'FechaActualiza' => now(),
+                ]);
+
+            if ($updated) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Porción actualizada correctamente'
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se encontró el detalle'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar detalle: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Destroy - Eliminar detalle
+     */
+    public function destroyDetalle($id)
+    {
+        try {
+            // 🔥 CORREGIDO: Eliminar where('IdCliente') porque no existe en la tabla
+            $deleted = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProductoPorcion', $id)
+                ->delete();
+
+            if ($deleted) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Producto eliminado del detalle correctamente'
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'No se encontró el detalle'
+            ], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar detalle: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ==================== MÉTODOS PARA PRECIO SUCURSAL ====================
+
+    /**
+     * Store - Guardar precio por sucursal
+     */
+    public function storePrecioSucursal(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+
+        $request->validate([
+            'IdProducto' => 'required|exists:inventario_relacion_ventainventario,IdDetalleProducto',
+            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'Precio' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            // Verificar que no esté duplicado
+            $existe = ProductoVentaPrecioSucursal::where('IdCliente', $clienteId)
+                ->where('IdProducto', $request->IdProducto)
+                ->where('IdSucursal', $request->IdSucursal)
+                ->exists();
+
+            if ($existe) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este precio ya existe para esta sucursal'
+                ], 422);
+            }
+
+            $precio = ProductoVentaPrecioSucursal::create([
+                'IdProducto' => $request->IdProducto,
+                'IdSucursal' => $request->IdSucursal,
+                'Precio' => $request->Precio,
+                'PrecioDiferenciadoA' => 'Sucursal',
+                'IdCliente' => $clienteId,
+                'IdOperadorInserta' => $operadorId,
+                'FechaInserta' => now(),
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
+            ]);
+
+            // Cargar relación con sucursal
+            $precio->load('sucursal');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio por sucursal guardado correctamente',
+                'precio' => $precio
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al guardar precio sucursal: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update - Actualizar precio por sucursal
+     */
+    public function updatePrecioSucursal(Request $request, $id)
+    {
+        $clienteId = session('cliente_id');
+
+        $request->validate([
+            'Precio' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            $precio = ProductoVentaPrecioSucursal::where('IdCliente', $clienteId)
+                ->where('IdPrecioSucursal', $id)
+                ->firstOrFail();
+
+            $precio->update([
+                'Precio' => $request->Precio,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio por sucursal actualizado correctamente',
+                'precio' => $precio->load('sucursal')
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar precio sucursal: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Destroy - Eliminar precio por sucursal
+     */
+    public function destroyPrecioSucursal($id)
+    {
+        $clienteId = session('cliente_id');
+
+        try {
+            $precio = ProductoVentaPrecioSucursal::where('IdCliente', $clienteId)
+                ->where('IdPrecioSucursal', $id)
+                ->firstOrFail();
+
+            $precio->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio por sucursal eliminado correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar precio sucursal: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ==================== MÉTODOS PARA PRECIO MAYORISTA ====================
+
+    /**
+     * Store - Guardar precio mayorista
+     */
+    public function storePrecioMayorista(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+
+        $request->validate([
+            'IdProducto' => 'required|exists:inventario_relacion_ventainventario,IdDetalleProducto',
+            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
+            'Precio' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            // Verificar que no esté duplicado
+            $existe = ProductoVentaPrecioMayorista::where('IdCliente', $clienteId)
+                ->where('IdProducto', $request->IdProducto)
+                ->where('IdSucursal', $request->IdSucursal)
+                ->where('IdIdentificador', $request->IdIdentificador)
+                ->exists();
+
+            if ($existe) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este precio mayorista ya existe para este comisionista'
+                ], 422);
+            }
+
+            $precio = ProductoVentaPrecioMayorista::create([
+                'IdProducto' => $request->IdProducto,
+                'IdSucursal' => $request->IdSucursal,
+                'IdIdentificador' => $request->IdIdentificador,
+                'Precio' => $request->Precio,
+                'IdCliente' => $clienteId,
+                'IdOperadorInserta' => $operadorId,
+                'FechaInserta' => now(),
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
+            ]);
+
+            // Cargar relaciones
+            $precio->load(['sucursal', 'identificador']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio mayorista guardado correctamente',
+                'precio' => $precio
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al guardar precio mayorista: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Update - Actualizar precio mayorista
+     */
+    public function updatePrecioMayorista(Request $request, $id)
+    {
+        $clienteId = session('cliente_id');
+
+        $request->validate([
+            'Precio' => 'required|numeric|min:0',
+        ]);
+
+        try {
+            $precio = ProductoVentaPrecioMayorista::where('IdCliente', $clienteId)
+                ->where('IdPrecioMayorista', $id)
+                ->firstOrFail();
+
+            $precio->update([
+                'Precio' => $request->Precio,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => now(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio mayorista actualizado correctamente',
+                'precio' => $precio->load(['sucursal', 'identificador'])
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al actualizar precio mayorista: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al actualizar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Destroy - Eliminar precio mayorista
+     */
+    public function destroyPrecioMayorista($id)
+    {
+        $clienteId = session('cliente_id');
+
+        try {
+            $precio = ProductoVentaPrecioMayorista::where('IdCliente', $clienteId)
+                ->where('IdPrecioMayorista', $id)
+                ->firstOrFail();
+
+            $precio->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precio mayorista eliminado correctamente'
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al eliminar precio mayorista: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Activar producto
+     */
+    public function activar($id)
+    {
+        $clienteId = session('cliente_id');
+        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+        
+        // Verificar que tenga detalle de inventario
+        $tieneDetalle = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_relacion_ventainventario_detalle')
+            ->where('IdDetalleProducto', $id)
+            ->exists();
+        
+        if (!$tieneDetalle) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No se puede activar. El producto no tiene relación con inventario.'
+            ], 422);
+        }
+        
+        $producto->update([
+            'ActivoInactivo' => ProductoVenta::COMERCIAL_ACTIVO,
+            'IdOperadorActualiza' => session('operador_id'),
+            'FechaActualiza' => now(),
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto activado correctamente'
+        ]);
+    }
+
+    /**
+     * Desactivar producto
+     */
+    public function desactivar($id)
+    {
+        $clienteId = session('cliente_id');
+        $producto = ProductoVenta::where('IdCliente', $clienteId)->findOrFail($id);
+        
+        $producto->update([
+            'ActivoInactivo' => ProductoVenta::COMERCIAL_INACTIVO,
+            'IdOperadorActualiza' => session('operador_id'),
+            'FechaActualiza' => now(),
+        ]);
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Producto desactivado correctamente'
         ]);
     }
 

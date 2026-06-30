@@ -482,25 +482,32 @@ Route::middleware(['auth.operador'])->group(function () {
                 Route::put('/{id}/estado', [InventarioFisicoMantenimientoController::class, 'updateEstado'])->name('gestion.inventario-fisico-mantenimiento.estado');
             });
 
-            // Productos Venta
+
             Route::prefix('productos-venta')->group(function () {
                 Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');
                 Route::get('/create', [ProductoVentaController::class, 'create'])->name('gestion.productos-venta.create');
                 Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
                 Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
                 Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
-                Route::post('/{id}/activar', [ProductoVentaController::class, 'activar']);
-                Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar']);
+                Route::post('/{id}/activar', [ProductoVentaController::class, 'activar'])->name('gestion.productos-venta.activar');
+                Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar'])->name('gestion.productos-venta.desactivar');
                 Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
+                
+                // 🔥 RUTAS PARA PRECIO SUCURSAL
                 Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
                 Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
                 Route::delete('/precio-sucursal/{id}', [ProductoVentaController::class, 'destroyPrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.destroy');
+                
+                // 🔥 RUTAS PARA PRECIO MAYORISTA
                 Route::post('/precio-mayorista', [ProductoVentaController::class, 'storePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.store');
                 Route::put('/precio-mayorista/{id}', [ProductoVentaController::class, 'updatePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.update');
                 Route::delete('/precio-mayorista/{id}', [ProductoVentaController::class, 'destroyPrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.destroy');
+                
+                // 🔥 RUTAS PARA DETALLE DE INVENTARIO
                 Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
                 Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
                 Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
+                
                 Route::get('/catalogo', [ProductoVentaController::class, 'catalogo'])->name('gestion.productos-venta.catalogo');
                 Route::post('/{id}/enviar-aprobacion', [ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
             });
