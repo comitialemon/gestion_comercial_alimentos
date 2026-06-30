@@ -308,4 +308,91 @@ class MenuTactilController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Versión simplificada de getDetallesCombo
+     */
+    public function getDetallesCombo($idProducto)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            // Obtener la composición del combo
+            $detalles = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProducto', $idProducto)
+                ->get();
+            
+            $composicion = [];
+            foreach ($detalles as $detalle) {
+                // Obtener el producto
+                $producto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle')
+                    ->where('IdProducto', $detalle->IdProducto)
+                    ->where('IdCliente', $clienteId)
+                    ->first();
+                
+                $composicion[] = [
+                    'id_producto' => $detalle->IdProducto,
+                    'nombre' => $producto->Descripcion ?? 'Producto',
+                    'codigo' => $producto->Codigo ?? '',
+                    'porcion' => (float) $detalle->Porcion,
+                ];
+            }
+            
+            // Obtener las opciones
+            $opciones = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_combo_opcion')
+                ->where('id_producto_combo', $idProducto)
+                ->where('activo', 1)
+                ->orderBy('orden')
+                ->get();
+            
+            $opcionesFormateadas = [];
+            foreach ($opciones as $opcion) {
+                // Obtener producto original
+                $original = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle')
+                    ->where('IdProducto', $opcion->id_producto_original)
+                    ->where('IdCliente', $clienteId)
+                    ->first();
+                
+                // Obtener producto sustituto
+                $sustituto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle')
+                    ->where('IdProducto', $opcion->id_producto_sustituto)
+                    ->where('IdCliente', $clienteId)
+                    ->first();
+                
+                $opcionesFormateadas[] = [
+                    'id_combo_opcion' => $opcion->id_combo_opcion,
+                    'id_producto_original' => $opcion->id_producto_original,
+                    'nombre_original' => $original->Descripcion ?? 'Producto',
+                    'id_producto_sustituto' => $opcion->id_producto_sustituto,
+                    'nombre_sustituto' => $sustituto->Descripcion ?? 'Producto',
+                    'codigo_sustituto' => $sustituto->Codigo ?? '',
+                    'orden' => $opcion->orden,
+                    'cantidad_maxima' => (int) ($opcion->cantidad ?? 1),
+                ];
+            }
+            
+            return response()->json([
+                'success' => true,
+                'combo' => [
+                    'id' => $idProducto,
+                    'nombre' => 'Combo',
+                    'precio_real' => 0,
+                    'composicion' => $composicion,
+                    'opciones' => $opcionesFormateadas,
+                ]
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en getDetallesCombo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
 }

@@ -16,6 +16,7 @@ class ComboOpcion extends Model
         'id_producto_original',
         'id_producto_sustituto',
         'orden',
+        'cantidad', // ✅ NUEVO CAMPO
         'es_default',
         'activo',
         'id_operador_inserta',
@@ -26,6 +27,7 @@ class ComboOpcion extends Model
 
     protected $casts = [
         'orden' => 'integer',
+        'cantidad' => 'integer', // ✅ NUEVO CAST
         'es_default' => 'boolean',
         'activo' => 'boolean',
     ];

@@ -80,6 +80,7 @@ const cargarOpcionesCombo = async (idCombo) => {
                     agrupadas[op.id_producto_original] = {
                         id_producto_original: op.id_producto_original,
                         nombre_original: op.nombre_original,
+                        cantidad_total: 1, // Por defecto
                         opciones: []
                     }
                 }
@@ -87,6 +88,7 @@ const cargarOpcionesCombo = async (idCombo) => {
                     id_sustituto: op.id_producto_sustituto,
                     nombre: op.nombre_sustituto,
                     codigo: op.codigo_sustituto,
+                    cantidad_maxima: op.cantidad_maxima || 1,
                     es_default: op.es_default === 1
                 })
             })
@@ -97,6 +99,63 @@ const cargarOpcionesCombo = async (idCombo) => {
         console.error('Error cargando opciones:', error)
         return []
     }
+}
+
+// 🔥 NUEVO: Cargar detalles completos del combo (con composición y cantidades)
+const cargarDetallesCombo = async (idCombo) => {
+    try {
+        const response = await axios.get(`/venta-tactil/combo/${idCombo}`)
+        if (response.data.success) {
+            return response.data.combo
+        }
+        return null
+    } catch (error) {
+        console.error('Error cargando detalles del combo:', error)
+        return null
+    }
+}
+
+// 🔥 NUEVO: Preparar opciones agrupadas desde el combo completo
+const prepararOpcionesAgrupadas = (comboCompleto) => {
+    if (!comboCompleto) return []
+    
+    const grupos = {}
+    
+    // Usar la composición para obtener las cantidades
+    comboCompleto.composicion?.forEach(item => {
+        const idOriginal = item.id_producto
+        
+        // Buscar opciones para este producto
+        const opcionesDelProducto = comboCompleto.opciones?.filter(
+            op => op.id_producto_original === idOriginal
+        ) || []
+        
+        grupos[idOriginal] = {
+            id_producto_original: idOriginal,
+            nombre_original: item.nombre || 'Producto',
+            cantidad_total: item.porcion || 1,
+            opciones: opcionesDelProducto.map(op => ({
+                id_sustituto: op.id_producto_sustituto,
+                nombre: op.nombre_sustituto,
+                codigo: op.codigo_sustituto || '',
+                cantidad_maxima: op.cantidad_maxima || item.porcion || 1
+            }))
+        }
+    })
+    
+    // Si no hay opciones, pero hay composición, crear grupos sin opciones
+    if (Object.keys(grupos).length === 0 && comboCompleto.composicion) {
+        comboCompleto.composicion.forEach(item => {
+            grupos[item.id_producto] = {
+                id_producto_original: item.id_producto,
+                nombre_original: item.nombre,
+                cantidad_total: item.porcion || 1,
+                opciones: []
+            }
+        })
+    }
+    
+    return Object.values(grupos)
 }
 
 const abrirModal = async (producto) => {
@@ -124,18 +183,36 @@ const cerrarModal = () => {
     }, 200)
 }
 
-// Abrir modal de personalización de múltiples combos
+// 🔥 MODIFICADO: Abrir modal de personalización de múltiples combos
 const abrirPersonalizacionCombos = async () => {
     comboActual.value = productoSeleccionado.value
     cantidadCombos.value = cantidad.value
     
-    // Cargar las opciones del combo
-    opcionesAgrupadas.value = await cargarOpcionesCombo(productoSeleccionado.value.id)
+    // 🔥 Cargar los detalles completos del combo (con composición y cantidades)
+    const comboCompleto = await cargarDetallesCombo(productoSeleccionado.value.id)
+    
+    if (comboCompleto) {
+        // Usar el combo completo con composición
+        comboActual.value = {
+            ...productoSeleccionado.value,
+            composicion: comboCompleto.composicion,
+            opciones: comboCompleto.opciones
+        }
+        
+        // Preparar las opciones agrupadas para el modal
+        opcionesAgrupadas.value = prepararOpcionesAgrupadas(comboCompleto)
+        
+        console.log('📦 Combo con composición:', comboCompleto)
+        console.log('📦 Opciones agrupadas:', opcionesAgrupadas.value)
+    } else {
+        // Fallback: usar las opciones del combo normal
+        opcionesAgrupadas.value = await cargarOpcionesCombo(productoSeleccionado.value.id)
+    }
     
     // Inicializar personalizaciones vacías para cada combo
     personalizacionesTemp.value = []
     for (let i = 0; i < cantidadCombos.value; i++) {
-        personalizacionesTemp.value.push({ personalizacion: {} })
+        personalizacionesTemp.value.push({ sustitutos: [] })
     }
     
     modalVisible.value = false
@@ -155,9 +232,7 @@ const agregarCombosPersonalizados = async (personalizaciones) => {
         if (response.data.success) {
             await cargarCarrito()
             toast?.success('¡Combos agregados!', `${comboActual.value.nombre} x ${personalizaciones.length}`)
-            modalPersonalizarVisible.value = false
-            comboActual.value = null
-            opcionesAgrupadas.value = []
+            cerrarModalPersonalizacion()
         } else {
             toast?.error('Error', response.data.message || 'Error al agregar')
         }
@@ -169,6 +244,14 @@ const agregarCombosPersonalizados = async (personalizaciones) => {
     }
 }
 
+// 🔥 NUEVO: Cerrar modal de personalización
+const cerrarModalPersonalizacion = () => {
+    modalPersonalizarVisible.value = false
+    comboActual.value = null
+    opcionesAgrupadas.value = []
+    personalizacionesTemp.value = []
+}
+
 // Agregar combo con opciones POR DEFECTO (sin abrir modal)
 const agregarComboDefault = async () => {
     if (cantidad.value < 1) {
@@ -178,10 +261,9 @@ const agregarComboDefault = async () => {
     
     loading.value = true
     try {
-        // Crear personalizaciones vacías (usará los productos originales)
         const personalizacionesDefault = []
         for (let i = 0; i < cantidad.value; i++) {
-            personalizacionesDefault.push({ personalizacion: {} })
+            personalizacionesDefault.push({ sustitutos: [] })
         }
         
         const response = await axios.post('/api/venta-tactil/agregar-combo', {
@@ -205,7 +287,7 @@ const agregarComboDefault = async () => {
     }
 }
 
-// Agregar producto simple al carrito (normal, sin combo)
+// Agregar producto simple al carrito
 const agregarProductoSimpleAlCarrito = async () => {
     if (cantidad.value < 1) {
         toast?.warning('Cantidad inválida', 'La cantidad debe ser al menos 1')
@@ -396,9 +478,8 @@ onMounted(() => cargarCarrito())
                 :combo="comboActual"
                 :opciones="opcionesAgrupadas"
                 :cantidad="cantidadCombos"
-                :precio-unitario="precioUnitario"
-                :personalizaciones-iniciales="personalizacionesTemp"
                 @confirm="agregarCombosPersonalizados"
+                @close="cerrarModalPersonalizacion"
             />
 
             <!-- Carrito flotante -->

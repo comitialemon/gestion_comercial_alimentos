@@ -704,9 +704,11 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::get('/nueva', [NuevaVentaTactilController::class, 'create'])->name('venta-tactil.nueva');
         Route::post('/nueva', [NuevaVentaTactilController::class, 'store'])->name('venta-tactil.nueva.store');
         Route::get('/', [MenuTactilController::class, 'index'])->name('venta-tactil.index');
-        Route::get('/categoria/{id}', [MenuTactilController::class, 'verCategoria'])->name('venta-tactil.categoria');
         Route::get('/carrito', [CarritoTactilController::class, 'index'])->name('venta-tactil.carrito');
         Route::get('/pago', [PagoVentaController::class, 'createTactil'])->name('venta-tactil.pago');
+        Route::get('/categoria/{id}', [MenuTactilController::class, 'verCategoria'])->name('venta-tactil.categoria');
+        Route::get('/combo/{id}', [MenuTactilController::class, 'getDetallesCombo']);
+
     });
 
     // ============================================================
@@ -889,6 +891,10 @@ Route::middleware(['auth.operador'])->group(function () {
         Route::post('/', [ComboOpcionController::class, 'store']);
         Route::put('/{id}', [ComboOpcionController::class, 'update']);
         Route::delete('/{id}', [ComboOpcionController::class, 'destroy']);
+        // ✅ NUEVAS RUTAS
+        Route::get('/{idProductoCombo}/con-cantidades', [ComboOpcionController::class, 'getOpcionesConCantidades']);
+        Route::post('/guardar-seleccion', [ComboOpcionController::class, 'guardarSeleccionCantidades']);
+        Route::post('/calcular-descuento', [ComboOpcionController::class, 'calcularDescuentoInventario']);
     });
 
     // ============================================================
