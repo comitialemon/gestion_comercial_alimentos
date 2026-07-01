@@ -427,7 +427,6 @@ onUnmounted(() => {
                                         <tr>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Producto</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Grupo</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Categoría</th>
                                             <th class="px-3 py-2 text-right text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Precio</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Estado</th>
@@ -439,9 +438,6 @@ onUnmounted(() => {
                                         <tr v-for="producto in productos.data" :key="producto.IdDetalleProducto" class="hover:bg-gray-50 transition">
                                             <td class="px-3 py-2 text-[11px] text-gray-600 font-mono">{{ producto.Codigo }}</td>
                                             <td class="px-3 py-2 text-[11px] text-gray-800">{{ producto.Detalle }}</td>
-                                            <td class="px-3 py-2 text-[11px] text-gray-500">
-                                                {{ producto.grupo?.Detalle || producto.grupo?.nombre || 'Sin Grupo' }}
-                                            </td>
                                             <td class="px-3 py-2">
                                                 <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="getCategoriaClase(producto)">
                                                     <i v-if="producto.categoria" class="fas fa-tag mr-1 text-[8px]"></i>
