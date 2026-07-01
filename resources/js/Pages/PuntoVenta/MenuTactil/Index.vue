@@ -181,7 +181,17 @@ defineExpose({
                     class="bg-white rounded-xl shadow-md hover:shadow-lg transition-all hover:scale-105 cursor-pointer overflow-hidden border border-gray-100"
                 >
                     <div class="h-28 sm:h-32 bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center p-2 sm:p-3">
-                        <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
+                        <!-- 🔥 SOLO CAMBIÉ ESTA PARTE 🔥 -->
+                        <img 
+                            v-if="cat.imagen_url" 
+                            :src="cat.imagen_url" 
+                            :srcset="cat.imagen_srcset"
+                            :sizes="cat.imagen_sizes"
+                            class="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            :alt="cat.nombre"
+                        >
                         <i v-else class="fas fa-folder-open text-4xl sm:text-5xl text-primary-300"></i>
                     </div>
                     <div class="p-2 sm:p-3 text-center">

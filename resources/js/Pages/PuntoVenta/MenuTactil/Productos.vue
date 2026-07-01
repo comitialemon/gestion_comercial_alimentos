@@ -359,7 +359,17 @@ onMounted(() => cargarCarrito())
                     class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100"
                 >
                     <div class="h-20 bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center overflow-hidden">
-                        <img v-if="prod.imagen" :src="prod.imagen" class="w-full h-full object-cover">
+                        <!-- 🔥 CAMBIADO: prod.imagen → prod.imagen_url -->
+                        <img 
+                            v-if="prod.imagen_url" 
+                            :src="prod.imagen_url" 
+                            :srcset="prod.imagen_srcset"
+                            :sizes="prod.imagen_sizes"
+                            class="w-full h-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                            :alt="prod.nombre"
+                        >
                         <i v-else class="fas fa-box-open text-2xl text-primary-400"></i>
                     </div>
                     <div class="p-2 text-center">
@@ -389,7 +399,12 @@ onMounted(() => cargarCarrito())
                     <div class="bg-primary-700 px-4 py-3">
                         <div class="flex items-center gap-2">
                             <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                                <img v-if="productoSeleccionado?.imagen" :src="productoSeleccionado.imagen" class="w-full h-full object-cover">
+                                <!-- 🔥 CAMBIADO: productoSeleccionado?.imagen → productoSeleccionado?.imagen_url -->
+                                <img 
+                                    v-if="productoSeleccionado?.imagen_url" 
+                                    :src="productoSeleccionado.imagen_url" 
+                                    class="w-full h-full object-cover"
+                                >
                                 <i v-else class="fas fa-box-open text-primary-600 text-sm"></i>
                             </div>
                             <div class="text-white flex-1">

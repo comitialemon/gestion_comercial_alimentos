@@ -46,8 +46,28 @@ class MenuTactilController extends Controller
         $categorias = CategoriaProducto::porContexto()
             ->whereNull('id_padre')
             ->where('activo', 1)
+            ->with('imagenPrincipal')
             ->orderBy('orden')
-            ->get();
+            ->get()
+            ->map(function($categoria) {
+                if ($categoria->imagenPrincipal) {
+                    $img = $categoria->imagenPrincipal;
+                    // 🔥 Mantener imagen_url para compatibilidad
+                    $categoria->imagen_url = $img->url_medium;
+                    // 🔥 Agregar srcset y sizes para responsive
+                    $categoria->imagen_srcset = implode(', ', [
+                        $img->url_thumbnail . ' 150w',
+                        $img->url_medium . ' 600w',
+                        $img->url_original . ' 1200w'
+                    ]);
+                    $categoria->imagen_sizes = '(max-width: 480px) 150px, (max-width: 768px) 300px, 400px';
+                } else {
+                    $categoria->imagen_url = null;
+                    $categoria->imagen_srcset = null;
+                    $categoria->imagen_sizes = null;
+                }
+                return $categoria;
+            });
 
         return Inertia::render('PuntoVenta/MenuTactil/Index', [
             'categorias' => $categorias,
@@ -66,8 +86,26 @@ class MenuTactilController extends Controller
         $subcategorias = CategoriaProducto::porContexto()
             ->where('id_padre', $id)
             ->where('activo', 1)
+            ->with('imagenPrincipal')
             ->orderBy('orden')
-            ->get();
+            ->get()
+            ->map(function($subcategoria) {
+                if ($subcategoria->imagenPrincipal) {
+                    $img = $subcategoria->imagenPrincipal;
+                    $subcategoria->imagen_url = $img->url_medium;
+                    $subcategoria->imagen_srcset = implode(', ', [
+                        $img->url_thumbnail . ' 150w',
+                        $img->url_medium . ' 600w',
+                        $img->url_original . ' 1200w'
+                    ]);
+                    $subcategoria->imagen_sizes = '(max-width: 480px) 150px, (max-width: 768px) 300px, 400px';
+                } else {
+                    $subcategoria->imagen_url = null;
+                    $subcategoria->imagen_srcset = null;
+                    $subcategoria->imagen_sizes = null;
+                }
+                return $subcategoria;
+            });
 
         if ($subcategorias->isNotEmpty()) {
             return Inertia::render('PuntoVenta/MenuTactil/Index', [
@@ -78,14 +116,16 @@ class MenuTactilController extends Controller
             ]);
         }
 
-        // Obtener datos del contexto
+        // ============================================================
+        // 🔥 PARTE DE PRODUCTOS - CORREGIDO
+        // ============================================================
+
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $identificadorComisionista = session('venta_tactil_comisionista_identificador');
 
-        // 🔥 CORREGIDO: Obtener productos con su imagen principal
+        // 🔥 Obtener productos con SU imagen principal (IMAGEN DE PRODUCTO, NO DE CATEGORÍA)
         $productosQuery = ProductoVenta::porContexto()
-            ->with('imagenPrincipal') // 🔥 Cargar la imagen principal
             ->where('ActivoInactivo', 0)
             ->whereHas('categorias', function($q) use ($id) {
                 $q->where('inventario_producto_categoria.id_categoria', $id);
@@ -93,19 +133,45 @@ class MenuTactilController extends Controller
             ->orderBy('Detalle')
             ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
 
-        // Calcular precio real para cada producto
+        // Calcular precio real para cada producto y obtener su imagen
         $productos = [];
         foreach ($productosQuery as $producto) {
-            // 🔥 Obtener URL de la imagen desde la relación
-            $imagenUrl = null;
-            if ($producto->imagenPrincipal) {
-                $imagenUrl = $producto->imagenPrincipal->url_thumbnail;
+            // 🔥 OBTENER LA IMAGEN DEL PRODUCTO
+            $imagen = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_producto_imagen')
+                ->where('IdProducto', $producto->id)
+                ->where('ActivoInactivo', 1)
+                ->where('EsPrincipal', 1)
+                ->first();
+
+            // 🔥 Si no tiene imagen principal, buscar cualquier imagen activa
+            if (!$imagen) {
+                $imagen = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_producto_imagen')
+                    ->where('IdProducto', $producto->id)
+                    ->where('ActivoInactivo', 1)
+                    ->first();
             }
 
+            // 🔥 Generar URLs de las imágenes (como con las categorías)
+            $imagenUrl = null;
+            $imagenSrcset = null;
+            $imagenSizes = null;
+
+            if ($imagen) {
+                $imagenUrl = asset($imagen->RutaMedium);
+                $imagenSrcset = implode(', ', [
+                    asset($imagen->RutaThumbnail) . ' 150w',
+                    asset($imagen->RutaMedium) . ' 600w',
+                    asset($imagen->RutaOriginal) . ' 1200w'
+                ]);
+                $imagenSizes = '(max-width: 480px) 150px, (max-width: 768px) 300px, 400px';
+            }
+
+            // Calcular precio
             $precioReal = $producto->PrecioVenta;
             $tipoPrecio = 'default';
 
-            // 1. Buscar precio mayorista (por comisionista)
             if ($identificadorComisionista) {
                 $precioMayorista = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_preciomayorista')
@@ -121,7 +187,6 @@ class MenuTactilController extends Controller
                 }
             }
 
-            // 2. Si no hay mayorista, buscar precio por sucursal
             if ($tipoPrecio === 'default') {
                 $precioSucursal = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_preciosucursal')
@@ -143,7 +208,9 @@ class MenuTactilController extends Controller
                 'precio_real' => $precioReal,
                 'precio_normal' => (float) $producto->PrecioVenta,
                 'tipo_precio' => $tipoPrecio,
-                'imagen' => $imagenUrl, // 🔥 Usar la URL de la imagen
+                'imagen_url' => $imagenUrl,        // 🔥 Para compatibilidad
+                'imagen_srcset' => $imagenSrcset,  // 🔥 Para responsive
+                'imagen_sizes' => $imagenSizes,    // 🔥 Para responsive
             ];
         }
 
