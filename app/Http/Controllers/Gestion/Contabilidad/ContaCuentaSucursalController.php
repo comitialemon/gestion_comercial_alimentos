@@ -39,19 +39,20 @@ class ContaCuentaSucursalController extends Controller
     }
 
     /**
-     * 🔥 GUARDAR ASIGNACIÓN - Validando D y H por separado
+     * 🔥 GUARDAR ASIGNACIÓN - Usa el nombre que escribe el usuario
      */
     public function store(Request $request)
     {
         $request->validate([
             'IdCuenta' => 'required|exists:conta_cuenta,IdCuenta',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'Cuenta' => 'required|string|max:255',  // ← EL NOMBRE QUE ESCRIBE EL USUARIO (ej: "Caja", "Banco")
             'DinamicaCuenta' => 'required|string|max:1|in:D,H',
         ]);
 
         $clienteId = session('cliente_id');
 
-        // 🔥 VERIFICAR SI YA EXISTE LA MISMA COMBINACIÓN (Cuenta + Sucursal + Dinámica)
+        // 🔥 VERIFICAR SI YA EXISTE (Cuenta + Sucursal + Dinámica)
         $existe = ContaCuentaSucursal::porContexto()
             ->where('IdCuenta', $request->IdCuenta)
             ->where('IdSucursal', $request->IdSucursal)
@@ -66,14 +67,11 @@ class ContaCuentaSucursalController extends Controller
         }
 
         try {
-            $cuentaOriginal = ContaCuenta::porContexto()
-                ->where('IdCuenta', $request->IdCuenta)
-                ->first(['Cuenta', 'Descripcion']);
-
+            // 🔥 GUARDAR EL NOMBRE QUE ESCRIBIÓ EL USUARIO (NO el número de cuenta)
             $asignacion = ContaCuentaSucursal::create([
                 'IdCuenta' => $request->IdCuenta,
-                'Cuenta' => $cuentaOriginal->Cuenta,
-                'Descripcion' => $cuentaOriginal->Descripcion,
+                'Cuenta' => $request->Cuenta,  // ← LO QUE ESCRIBIÓ EL USUARIO (ej: "Caja", "Banco")
+                'Descripcion' => $request->Cuenta,  // ← También guardamos el mismo nombre como descripción
                 'DinamicaCuenta' => strtoupper($request->DinamicaCuenta),
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $request->IdSucursal,
@@ -108,7 +106,7 @@ class ContaCuentaSucursalController extends Controller
         try {
             $asignacion = ContaCuentaSucursal::porContexto()->findOrFail($id);
             
-            // 🔥 VERIFICAR QUE NO HAYA DUPLICADO CON OTRA ASIGNACIÓN (misma cuenta + sucursal + dinámica)
+            // 🔥 VERIFICAR QUE NO HAYA DUPLICADO (misma cuenta + sucursal + dinámica)
             $duplicado = ContaCuentaSucursal::porContexto()
                 ->where('IdCuenta', $asignacion->IdCuenta)
                 ->where('IdSucursal', $asignacion->IdSucursal)
@@ -167,7 +165,7 @@ class ContaCuentaSucursalController extends Controller
     }
 
     /**
-     * 🔥 SINCRONIZAR TODAS LAS ASIGNACIONES
+     * 🔥 SINCRONIZAR - ACTUALIZA EL NOMBRE DE LA CUENTA DESDE LA TABLA ORIGINAL
      */
     public function sincronizar()
     {
@@ -179,13 +177,15 @@ class ContaCuentaSucursalController extends Controller
             $contador = 0;
             
             foreach ($asignaciones as $asignacion) {
+                // Obtener el número de cuenta de la tabla original
                 $cuentaOriginal = ContaCuenta::porContexto()
                     ->where('IdCuenta', $asignacion->IdCuenta)
                     ->first(['Cuenta', 'Descripcion']);
                 
                 if ($cuentaOriginal) {
+                    // 🔥 ACTUALIZAR EL CAMPO 'Cuenta' CON EL NÚMERO DE LA CUENTA ORIGINAL
                     $asignacion->update([
-                        'Cuenta' => $cuentaOriginal->Cuenta,
+                        'Cuenta' => $cuentaOriginal->Cuenta,  // ← NÚMERO DE CUENTA (ej: "1-01-01")
                         'Descripcion' => $cuentaOriginal->Descripcion,
                     ]);
                     $contador++;
