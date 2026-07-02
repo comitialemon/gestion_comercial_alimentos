@@ -93,14 +93,6 @@ const getEstadoTexto = (estado) => {
                                 <p class="text-xs text-gray-500 hidden sm:block">Listado de cuentas contables</p>
                             </div>
                         </div>
-                        <button 
-                            @click="irAdministracion"
-                            class="px-3 py-1.5 text-xs rounded-lg transition sm:w-auto w-full flex items-center justify-center gap-1"
-                            :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-700)` }"
-                        >
-                            <i class="fas fa-edit text-xs"></i>
-                            <span>Modificar Cuentas</span>
-                        </button>
                     </div>
                     <p class="text-xs text-gray-500 mt-2 sm:hidden">Listado de cuentas contables</p>
                 </div>

@@ -20,7 +20,12 @@
                 
                 <div v-if="productoExistente" class="bg-gray-50 rounded-lg p-2 sm:p-3 mb-3 sm:mb-4">
                     <p class="text-[8px] sm:text-xs text-gray-500 mb-0.5 sm:mb-1">Producto existente:</p>
-                    <p class="font-medium text-gray-800 text-[10px] sm:text-sm">{{ productoExistente.nombre || 'Producto desconocido' }}</p>
+                    <p class="font-medium text-gray-800 text-[10px] sm:text-sm">
+                        {{ productoExistente.Detalle || productoExistente.nombre || 'Producto desconocido' }}
+                    </p>
+                    <p v-if="productoExistente.Codigo" class="text-[8px] sm:text-xs text-gray-400 mt-0.5">
+                        Código: {{ productoExistente.Codigo }}
+                    </p>
                 </div>
                 
                 <p class="text-[10px] sm:text-sm text-gray-600 mb-3 sm:mb-4">

@@ -147,6 +147,8 @@ class ProductoVentaController extends Controller
             'sucursales' => $sucursales,
             'identificadores' => $identificadores,
             'productosInventario' => $productosInventario,
+            'clienteId' => $clienteId, // 🔥 AGREGAR ESTA LÍNEA
+
         ]);
     }
 
@@ -205,6 +207,8 @@ class ProductoVentaController extends Controller
             'identificadores' => $identificadores,
             'productosInventario' => $productosInventario,
             'editando' => true,
+            'clienteId' => $clienteId, // 🔥 AGREGAR ESTA LÍNEA
+
         ]);
     }
     
@@ -731,6 +735,123 @@ class ProductoVentaController extends Controller
             'preciosMayorista' => $preciosMayorista,
             'detallesInventario' => $detallesInventario,
         ]);
+    }
+
+    /**
+     * Verificar si existe un aprobador configurado para el cliente
+     */
+    public function verificarAprobador()
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            if (!$clienteId) {
+                return response()->json([
+                    'existe' => false,
+                    'mensaje' => 'No hay un cliente seleccionado'
+                ]);
+            }
+            
+            // 🔥 BUSCAR DIRECTO EN LA BASE DE DATOS (SIN SCOPES)
+            $configuracion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('producto_aprobacion_config')
+                ->where('IdCliente', $clienteId)
+                ->where('ActivoInactivo', 0)
+                ->first();
+            
+            if (!$configuracion) {
+                return response()->json([
+                    'existe' => false,
+                    'mensaje' => 'No hay un responsable configurado para aprobar productos. Contacte al administrador.'
+                ]);
+            }
+            
+            // Obtener el nombre del operador aprobador
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->where('IdOperador', $configuracion->IdOperador)
+                ->first();
+            
+            $nombreOperador = null;
+            if ($operador) {
+                $identificador = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_identificador')
+                    ->where('IdIdentificador', $operador->IdIdentificador)
+                    ->first();
+                $nombreOperador = $identificador ? $identificador->Nombre : 'No definido';
+            }
+            
+            return response()->json([
+                'existe' => true,
+                'aprobador' => $nombreOperador ?? 'No definido',
+                'mensaje' => 'Los productos serán enviados a aprobación por: ' . ($nombreOperador ?? 'No definido')
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error en verificarAprobador: ' . $e->getMessage());
+            
+            // 🔥 RETORNAR false PARA QUE NO BLOQUEE
+            return response()->json([
+                'existe' => false,
+                'mensaje' => 'Error al verificar aprobador'
+            ]);
+        }
+    }
+    /**
+     * Verificar si ya existe un producto con la misma composición
+     */
+    public function verificarComposicion(Request $request)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            $request->validate([
+                'productos_ids' => 'required|array',
+                'productos_ids.*' => 'exists:inventario_productodetalle,IdProducto',
+                'excluir_id' => 'nullable|exists:inventario_relacion_ventainventario,IdDetalleProducto'
+            ]);
+            
+            $productosIds = $request->productos_ids;
+            $excluirId = $request->excluir_id;
+            sort($productosIds);
+            
+            $productosVenta = ProductoVenta::where('IdCliente', $clienteId)
+                ->where('estado_aprobacion', '!=', ProductoVenta::APROBACION_RECHAZADO)
+                ->where('IdDetalleProducto', '!=', $excluirId)
+                ->get();
+            
+            foreach ($productosVenta as $producto) {
+                $detalles = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_detalle')
+                    ->where('IdDetalleProducto', $producto->IdDetalleProducto)
+                    ->pluck('IdProducto')
+                    ->toArray();
+                
+                sort($detalles);
+                
+                if ($detalles === $productosIds) {
+                    return response()->json([
+                        'existe' => true,
+                        'producto' => [
+                            'IdDetalleProducto' => $producto->IdDetalleProducto,
+                            'Codigo' => $producto->Codigo,
+                            'Detalle' => $producto->Detalle
+                        ]
+                    ]);
+                }
+            }
+            
+            return response()->json([
+                'existe' => false
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error verificando composición: ' . $e->getMessage());
+            
+            return response()->json([
+                'existe' => false
+            ]);
+        }
     }
 
     // ==================== NUEVOS MÉTODOS AGREGADOS ====================

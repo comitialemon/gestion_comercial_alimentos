@@ -28,6 +28,7 @@ const props = defineProps({
     editando: Boolean,
     errors: Object,
     flash: Object,
+    clienteId: Number, // 🔥 AGREGADO
 })
 
 const activeTab = ref(0)
@@ -35,6 +36,12 @@ const productoGuardado = ref(props.editando || false)
 const productoId = ref(props.producto?.IdDetalleProducto || null)
 const enviandoAprobacion = ref(false)
 const eliminando = ref(false)
+
+// 🔥 ESTADOS PARA APROBADOR
+const verificandoAprobador = ref(false)
+const aprobadorExiste = ref(true)
+const nombreAprobador = ref('')
+const modalAprobadorOpen = ref(false)
 
 // 🔥 ESTADOS PARA IMAGEN (FormData)
 const archivoImagen = ref(null)
@@ -85,11 +92,55 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
 
+// ==================== VERIFICAR APROBADOR ====================
+const verificarAprobador = async () => {
+    if (!props.clienteId) {
+        console.warn('No hay clienteId disponible')
+        return true // Permitir continuar si no hay cliente
+    }
+    
+    // Si el producto está en edición y ya está activo, no verificar
+    if (props.editando && props.producto?.ActivoInactivo === ESTADO_ACTIVO) {
+        return true
+    }
+    
+    verificandoAprobador.value = true
+    
+    try {
+        const response = await axios.get('/gestion/inventario/productos-venta/verificar-aprobador')
+        
+        if (response.data.existe) {
+            aprobadorExiste.value = true
+            nombreAprobador.value = response.data.aprobador || 'No definido'
+            
+            // Mostrar mensaje informativo solo la primera vez
+            if (!sessionStorage.getItem('aprobador_mostrado')) {
+                toast?.info('Información', response.data.mensaje || 'Productos serán enviados a aprobación')
+                sessionStorage.setItem('aprobador_mostrado', 'true')
+            }
+            return true
+        } else {
+            aprobadorExiste.value = false
+            nombreAprobador.value = ''
+            
+            // Mostrar modal de error
+            modalAprobadorOpen.value = true
+            return false
+        }
+    } catch (error) {
+        console.error('Error verificando aprobador:', error)
+        toast?.error('Error', 'No se pudo verificar la configuración de aprobación')
+        return false
+    } finally {
+        verificandoAprobador.value = false
+    }
+}
+
 // ==================== COMPUTED ====================
 const puedeEnviarAprobacion = computed(() => {
     if (!props.editando) return false
     const estado = props.producto?.ActivoInactivo
-    return estado === ESTADO_INACTIVO || estado === ESTADO_RECHAZADO
+    return (estado === ESTADO_INACTIVO || estado === ESTADO_RECHAZADO) && aprobadorExiste.value
 })
 
 const mostrarToggleEstado = computed(() => {
@@ -230,8 +281,16 @@ const preciosSucursalList = ref(props.preciosSucursal || [])
 const preciosMayoristaList = ref(props.preciosMayorista || [])
 const detallesList = ref(props.detalles || [])
 
-// 🔥 GUARDAR PRODUCTO
-const guardarProducto = () => {
+// 🔥 GUARDAR PRODUCTO (COMPLETO CON VERIFICACIÓN DE APROBADOR)
+const guardarProducto = async () => {
+    // 🔥 Verificar aprobador ANTES de guardar (solo para nuevos productos)
+    if (!props.editando) {
+        const aprobadorValido = await verificarAprobador()
+        if (!aprobadorValido) {
+            return // No continuar si no hay aprobador
+        }
+    }
+    
     const formData = new FormData()
     
     formData.append('id_categoria', form.id_categoria || '')
@@ -251,22 +310,18 @@ const guardarProducto = () => {
     const actualizarImagen = (response) => {
         console.log('📦 Respuesta del servidor:', response.data)
         
-        // Si viene imagen_url en la respuesta
         if (response.data.imagen_url) {
             form.preview_url = response.data.imagen_url
             console.log('✅ Imagen actualizada desde imagen_url:', response.data.imagen_url)
             return
         }
         
-        // Si viene producto con imágenes
         if (response.data.producto) {
             const producto = response.data.producto
             console.log('📦 Producto recibido:', producto)
             
-            // Buscar en la relación imagenes
             if (producto.imagenes && producto.imagenes.length > 0) {
                 const principal = producto.imagenes.find(img => img.EsPrincipal === 1) || producto.imagenes[0]
-                // Usar RutaThumbnail o url_thumbnail
                 const imgUrl = principal.RutaThumbnail || principal.url_thumbnail
                 if (imgUrl) {
                     form.preview_url = imgUrl
@@ -275,7 +330,6 @@ const guardarProducto = () => {
                 }
             }
             
-            // Si tiene ImagenProducto directo
             if (producto.ImagenProducto) {
                 form.preview_url = producto.ImagenProducto
                 console.log('✅ Imagen actualizada desde ImagenProducto:', producto.ImagenProducto)
@@ -283,7 +337,6 @@ const guardarProducto = () => {
             }
         }
         
-        // Si no hay imagen, poner null
         form.preview_url = null
         console.log('⚠️ No se encontró imagen en la respuesta')
     }
@@ -299,10 +352,8 @@ const guardarProducto = () => {
             if (response.data.success) {
                 toast?.success('Éxito', response.data.message || 'Producto actualizado correctamente')
                 
-                // 🔥 Actualizar imagen
                 actualizarImagen(response)
                 
-                // Actualizar campos
                 if (response.data.producto) {
                     const producto = response.data.producto
                     form.id_categoria = producto.id_categoria
@@ -310,13 +361,11 @@ const guardarProducto = () => {
                     form.Detalle = producto.Detalle
                     form.PrecioVenta = producto.PrecioVenta
                     
-                    // Actualizar props
                     if (props.producto) {
                         props.producto = { ...props.producto, ...producto }
                     }
                 }
                 
-                // Limpiar archivos temporales
                 archivoImagen.value = null
                 eliminarImagenFlag.value = false
                 if (imgInput.value) imgInput.value.value = ''
@@ -340,7 +389,6 @@ const guardarProducto = () => {
             if (response.data.success) {
                 toast?.success('Éxito', response.data.message || 'Producto creado correctamente')
                 
-                // 🔥 Actualizar imagen
                 actualizarImagen(response)
                 
                 productoGuardado.value = true
@@ -376,22 +424,23 @@ const descartarBorrador = async () => {
 }
 
 const verificarComposicionAntesDeEnviar = async () => {
-     if (detallesList.value.length === 0) {
+    if (detallesList.value.length === 0) {
         toast?.error('Atención', 'Agregue productos al detalle antes de enviar a aprobación')
         return false
     }
     
     const productosIds = detallesList.value.map(d => d.IdProducto)
-    const porciones = detallesList.value.map(d => d.Porcion)
     
     try {
-        const response = await axios.post('/api/productos-venta/verificar-composicion', {
+        const response = await axios.post('/gestion/inventario/productos-venta/verificar-composicion', {
             productos_ids: productosIds,
-            porciones: porciones,
             excluir_id: props.producto?.IdDetalleProducto || null
         })
         
+        console.log('🔍 Respuesta de verificarComposicion:', response.data) // 🔥 AGREGAR ESTO
+        
         if (response.data.existe) {
+            console.log('📦 Producto duplicado encontrado:', response.data.producto) // 🔥 AGREGAR ESTO
             productoDuplicado.value = response.data.producto
             modalDuplicadoOpen.value = true
             return false
@@ -417,9 +466,17 @@ const cancelarCreacion = async () => {
     }, 500)
 }
 
+// 🔥 ENVIAR APROBACIÓN (COMPLETO CON VERIFICACIÓN DE APROBADOR)
 const enviarAprobacion = async () => {
+    // 🔥 Verificar aprobador ANTES de enviar
+    const aprobadorValido = await verificarAprobador()
+    if (!aprobadorValido) {
+        return
+    }
+    
     const composicionValida = await verificarComposicionAntesDeEnviar()
     if (!composicionValida) return
+    
     enviandoAprobacion.value = true
     try {
         await axios.post(`/gestion/inventario/productos-venta/${props.producto.IdDetalleProducto}/enviar-aprobacion`)
@@ -489,12 +546,17 @@ const toggleMenu = () => {
     menuAbierto.value = !menuAbierto.value
 }
 
+// 🔥 TABS
 const tabs = [
-    { id: 0, icon: 'fa-store', label: 'Sucursal', fullLabel: 'Precio Sucursal' },
-    { id: 1, icon: 'fa-chart-line', label: 'Mayorista', fullLabel: 'Precio Mayorista' },
-    { id: 2, icon: 'fa-cubes', label: 'Detalle', fullLabel: 'Inventario Detalle' },
+    { id: 0, icon: 'fa-cubes', label: 'Detalle', fullLabel: 'Inventario Detalle' },
+    { id: 1, icon: 'fa-store', label: 'Sucursal', fullLabel: 'Precio Sucursal' },
+    { id: 2, icon: 'fa-chart-line', label: 'Mayorista', fullLabel: 'Precio Comisionista' },
     { id: 3, icon: 'fa-random', label: 'Combo', fullLabel: 'Opciones Combo' },
 ]
+
+const cargarOpciones = (opciones) => {
+    console.log('Opciones de combo actualizadas:', opciones)
+}
 </script>
 
 <template>
@@ -527,9 +589,8 @@ const tabs = [
                         </span>
                     </div>
                     
-                    <!-- 🔥 BOTONES - VISIBLES EN DESKTOP, TOGGLE EN MÓVIL -->
+                    <!-- 🔥 BOTONES -->
                     <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                        <!-- Botón toggle en móvil -->
                         <button 
                             @click="toggleMenu"
                             class="sm:hidden flex-1 px-3 py-1.5 bg-white border rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
@@ -540,7 +601,6 @@ const tabs = [
                             <i class="fas text-[10px]" :class="menuAbierto ? 'fa-chevron-up' : 'fa-chevron-down'" :style="{ color: `var(--color-primary-600)` }"></i>
                         </button>
                         
-                        <!-- 🔥 BOTONES DESKTOP - SIEMPRE VISIBLES -->
                         <div class="hidden sm:flex flex-wrap items-center gap-2">
                             <button type="button" @click="router.get('/gestion/inventario/productos-venta')" 
                                     class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">
@@ -569,13 +629,12 @@ const tabs = [
                             </button>
                         </div>
                         
-                        <!-- Botón Guardar (visible siempre) -->
                         <button @click="guardarProducto" 
-                                :disabled="form.processing || (editando && !puedeEditar)" 
+                                :disabled="form.processing || (editando && !puedeEditar) || verificandoAprobador" 
                                 class="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-emerald-600 text-white rounded-md text-[11px] sm:text-xs hover:bg-emerald-700 transition disabled:opacity-50 flex items-center justify-center gap-1.5">
-                            <i v-if="form.processing" class="fas fa-spinner fa-spin text-[10px] sm:text-xs"></i>
+                            <i v-if="form.processing || verificandoAprobador" class="fas fa-spinner fa-spin text-[10px] sm:text-xs"></i>
                             <i v-else class="fas fa-save text-[10px] sm:text-xs"></i>
-                            {{ form.processing ? 'Guardando...' : 'Guardar' }}
+                            {{ form.processing ? 'Guardando...' : (verificandoAprobador ? 'Verificando...' : 'Guardar') }}
                         </button>
                     </div>
                 </div>
@@ -645,7 +704,6 @@ const tabs = [
                      :class="{ 'opacity-70': editando && props.producto?.ActivoInactivo === 2 }">
                     
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
-                        <!-- Campo Categoría -->
                         <div>
                             <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Categoría *</label>
                             <div class="flex gap-2">
@@ -747,7 +805,6 @@ const tabs = [
                             </button>
                         </div>
                         
-                        <!-- Previsualización -->
                         <div v-if="form.preview_url" class="mt-1.5 sm:mt-2 flex items-center gap-2 sm:gap-3 flex-wrap">
                             <img :src="form.preview_url" class="w-10 h-10 sm:w-14 sm:h-14 object-cover rounded-md border"
                                  :style="{ borderColor: `var(--color-primary-200)` }">
@@ -770,9 +827,8 @@ const tabs = [
                     </div>
                 </div>
 
-                <!-- 🔥 NUEVO DISEÑO DE TABS - BOTONES EN GRID -->
+                <!-- 🔥 TABS -->
                 <div v-if="editando || productoGuardado" class="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <!-- Versión Desktop: Tabs horizontales -->
                     <div class="hidden sm:block border-b border-gray-200 overflow-x-auto">
                         <nav class="flex justify-center -mb-px flex-nowrap min-w-max">
                             <button v-for="tab in tabs" :key="tab.id"
@@ -786,7 +842,6 @@ const tabs = [
                         </nav>
                     </div>
 
-                    <!-- 🔥 Versión Móvil: Botones en Grid 2 columnas -->
                     <div class="sm:hidden grid grid-cols-2 gap-1.5 p-1.5 bg-gray-50 border-b border-gray-200">
                         <button v-for="tab in tabs" :key="tab.id"
                                 @click="activeTab = tab.id" 
@@ -803,9 +858,16 @@ const tabs = [
                         </button>
                     </div>
 
-                    <!-- Contenido de las pestañas -->
                     <div class="p-2 sm:p-4">
                         <div v-show="activeTab === 0">
+                            <InventarioDetalleTab 
+                                :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
+                                :productos-inventario="productosInventario"
+                                :detalles-iniciales="detallesList"
+                                @update="detallesList = $event"
+                            />
+                        </div>
+                        <div v-show="activeTab === 1">
                             <PrecioSucursalTab 
                                 :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
                                 :sucursales="sucursales"
@@ -813,21 +875,13 @@ const tabs = [
                                 @update="preciosSucursalList = $event"
                             />
                         </div>
-                        <div v-show="activeTab === 1">
+                        <div v-show="activeTab === 2">
                             <PrecioMayoristaTab 
                                 :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
                                 :sucursales="sucursales"
                                 :identificadores="identificadores"
                                 :precios-iniciales="preciosMayoristaList"
                                 @update="preciosMayoristaList = $event"
-                            />
-                        </div>
-                        <div v-show="activeTab === 2">
-                            <InventarioDetalleTab 
-                                :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
-                                :productos-inventario="productosInventario"
-                                :detalles-iniciales="detallesList"
-                                @update="detallesList = $event"
                             />
                         </div>
                         <div v-show="activeTab === 3">
@@ -863,6 +917,33 @@ const tabs = [
             @continuar="modalDuplicadoOpen = false"
             @cancelar="cancelarCreacion"
         />
+
+        <!-- 🔥 MODAL DE APROBADOR NO CONFIGURADO -->
+        <div v-if="modalAprobadorOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="modalAprobadorOpen = false">
+            <div class="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden animate-fade-in-up">
+                <div class="bg-red-50 p-4 text-center">
+                    <div class="w-12 h-12 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-3">
+                        <i class="fas fa-user-shield text-red-600 text-xl"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-900">No hay aprobador configurado</h3>
+                    <p class="text-sm text-gray-500 mt-1">
+                        No existe un responsable configurado para aprobar productos en este cliente.
+                    </p>
+                    <p class="text-xs text-red-500 mt-2">
+                        <i class="fas fa-exclamation-triangle mr-1"></i>
+                        Contacte al administrador para configurar un aprobador.
+                    </p>
+                </div>
+                <div class="p-4">
+                    <button 
+                        @click="modalAprobadorOpen = false"
+                        class="w-full px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
+                    >
+                        Entendido
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -882,6 +963,21 @@ const tabs = [
     animation: slide-down 0.2s ease-out;
 }
 
+.animate-fade-in-up {
+    animation: fade-in-up 0.2s ease-out;
+}
+
+@keyframes fade-in-up {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 input:focus {
     --tw-ring-offset-width: 0px;
     --tw-ring-offset-color: #fff;
@@ -892,7 +988,6 @@ input:focus {
     outline-offset: 2px;
 }
 
-/* Scroll suave */
 * {
     scroll-behavior: smooth;
 }

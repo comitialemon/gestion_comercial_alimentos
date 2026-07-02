@@ -254,10 +254,23 @@ Route::middleware(['auth.operador'])->group(function () {
         // ============================================================
         Route::prefix('contabilidad')->group(function () {
             
-            // Cuentas (Listado)
+            // ===== CUENTAS =====
             Route::prefix('cuentas')->group(function () {
+                // ⚠️ IMPORTANTE: Las rutas específicas VAN ANTES que las rutas con {id}
+                
+                // Vista de solo lectura (Index - la que ya tenías)
                 Route::get('/', [CuentaController::class, 'index'])->name('gestion.contabilidad.cuentas.index');
+                
+                // Vista de administración (CRUD completo)
+                Route::get('/admin', [CuentaController::class, 'admin'])->name('gestion.contabilidad.cuentas.admin');
+                
+                // Operaciones CRUD (estas van DESPUÉS de las rutas específicas)
+                Route::post('/', [CuentaController::class, 'store'])->name('gestion.contabilidad.cuentas.store');
+                Route::put('/{id}', [CuentaController::class, 'update'])->name('gestion.contabilidad.cuentas.update');
+                Route::delete('/{id}', [CuentaController::class, 'destroy'])->name('gestion.contabilidad.cuentas.destroy');
+                Route::post('/{id}/toggle-estado', [CuentaController::class, 'toggleEstado'])->name('gestion.contabilidad.cuentas.toggle-estado');
             });
+
 
             // Balance General A3
             Route::prefix('balance-general-a3')->group(function () {
@@ -485,34 +498,40 @@ Route::middleware(['auth.operador'])->group(function () {
                 Route::put('/{id}/estado', [InventarioFisicoMantenimientoController::class, 'updateEstado'])->name('gestion.inventario-fisico-mantenimiento.estado');
             });
 
-
+            // En tu archivo de rutas, dentro del grupo de productos-venta
             Route::prefix('productos-venta')->group(function () {
+                // ========== RUTAS ESTÁTICAS (SIN PARÁMETROS) ==========
                 Route::get('/', [ProductoVentaController::class, 'index'])->name('gestion.productos-venta.index');
                 Route::get('/create', [ProductoVentaController::class, 'create'])->name('gestion.productos-venta.create');
                 Route::post('/', [ProductoVentaController::class, 'store'])->name('gestion.productos-venta.store');
+                
+                Route::get('/catalogo', [ProductoVentaController::class, 'catalogo'])->name('gestion.productos-venta.catalogo');
+                
+                // 🔥 RUTAS DE VERIFICACIÓN (DEBEN IR ANTES DE LAS RUTAS CON {id})
+                Route::get('/verificar-aprobador', [ProductoVentaController::class, 'verificarAprobador'])->name('gestion.productos-venta.verificar-aprobador');
+                Route::post('/verificar-composicion', [ProductoVentaController::class, 'verificarComposicion'])->name('gestion.productos-venta.verificar-composicion');
+                
+                // ========== RUTAS CON PARÁMETROS {id} (AL FINAL) ==========
                 Route::get('/{id}/edit', [ProductoVentaController::class, 'edit'])->name('gestion.productos-venta.edit');
                 Route::put('/{id}', [ProductoVentaController::class, 'update'])->name('gestion.productos-venta.update');
+                Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
                 Route::post('/{id}/activar', [ProductoVentaController::class, 'activar'])->name('gestion.productos-venta.activar');
                 Route::post('/{id}/desactivar', [ProductoVentaController::class, 'desactivar'])->name('gestion.productos-venta.desactivar');
-                Route::delete('/{id}', [ProductoVentaController::class, 'destroy'])->name('gestion.productos-venta.destroy');
+                Route::post('/{id}/enviar-aprobacion', [ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
                 
-                // 🔥 RUTAS PARA PRECIO SUCURSAL
+                // ========== RUTAS DE PRECIOS (CON ID O SIN) ==========
                 Route::post('/precio-sucursal', [ProductoVentaController::class, 'storePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.store');
                 Route::put('/precio-sucursal/{id}', [ProductoVentaController::class, 'updatePrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.update');
                 Route::delete('/precio-sucursal/{id}', [ProductoVentaController::class, 'destroyPrecioSucursal'])->name('gestion.productos-venta.precio-sucursal.destroy');
                 
-                // 🔥 RUTAS PARA PRECIO MAYORISTA
                 Route::post('/precio-mayorista', [ProductoVentaController::class, 'storePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.store');
                 Route::put('/precio-mayorista/{id}', [ProductoVentaController::class, 'updatePrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.update');
                 Route::delete('/precio-mayorista/{id}', [ProductoVentaController::class, 'destroyPrecioMayorista'])->name('gestion.productos-venta.precio-mayorista.destroy');
                 
-                // 🔥 RUTAS PARA DETALLE DE INVENTARIO
+                // ========== RUTAS DE DETALLE ==========
                 Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
                 Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
                 Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
-                
-                Route::get('/catalogo', [ProductoVentaController::class, 'catalogo'])->name('gestion.productos-venta.catalogo');
-                Route::post('/{id}/enviar-aprobacion', [ProductoVentaController::class, 'enviarAprobacion'])->name('gestion.productos-venta.enviar-aprobacion');
             });
 
             // Productos Aprobación Config

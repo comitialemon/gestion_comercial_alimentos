@@ -42,12 +42,6 @@ const mostrarResultados = ref(false)
 const buscandoIdentificador = ref(false)
 const identificadorSeleccionado = ref(null)
 
-// Modal de eliminación
-const modalEliminarOpen = ref(false)
-const eliminarId = ref(null)
-const eliminarNombre = ref('')
-const eliminando = ref(false)
-
 // Verificar mensajes flash al cargar
 onMounted(() => {
     const flashSuccess = page.props.flash?.success
@@ -235,40 +229,6 @@ const guardar = async () => {
     }
 }
 
-// Eliminar
-const abrirModalEliminar = (id, nombre) => {
-    eliminarId.value = id
-    eliminarNombre.value = nombre || 'Comisionista'
-    modalEliminarOpen.value = true
-}
-
-const cerrarModalEliminar = () => {
-    modalEliminarOpen.value = false
-    eliminarId.value = null
-    eliminarNombre.value = ''
-}
-
-const confirmarEliminar = async () => {
-    if (!eliminarId.value) return
-    
-    eliminando.value = true
-    
-    router.delete(`/gestion/impuestos/comisionista/${eliminarId.value}`, {
-        preserveScroll: true,
-        onSuccess: () => {
-            toast?.success('Éxito', `Comisionista "${eliminarNombre.value}" eliminado correctamente`)
-            cerrarModalEliminar()
-        },
-        onError: (err) => {
-            toast?.error('Error', 'No se pudo eliminar el comisionista')
-            cerrarModalEliminar()
-        },
-        onFinish: () => {
-            eliminando.value = false
-        }
-    })
-}
-
 // Búsqueda con debounce
 let searchTimeout
 watch(search, (newVal) => {
@@ -441,18 +401,12 @@ watch(search, (newVal) => {
                             </div>
                         </div>
                         
-                        <div class="flex justify-end gap-3 pt-3 border-t border-gray-100 mt-2">
+                        <div class="flex justify-end pt-3 border-t border-gray-100 mt-2">
                             <button 
                                 @click="editar(item)" 
-                                class="text-emerald-600 hover:text-emerald-800 text-xs flex items-center gap-1"
+                                class="text-emerald-600 hover:text-emerald-800 text-xs flex items-center gap-1 px-3 py-1 hover:bg-emerald-50 rounded transition"
                             >
                                 <i class="fas fa-edit"></i> Editar
-                            </button>
-                            <button 
-                                @click="abrirModalEliminar(item.IdComisionista, item.identificador?.Nombre)" 
-                                class="text-red-600 hover:text-red-800 text-xs flex items-center gap-1"
-                            >
-                                <i class="fas fa-trash-alt"></i> Eliminar
                             </button>
                         </div>
                     </div>
@@ -490,11 +444,8 @@ watch(search, (newVal) => {
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 whitespace-nowrap text-right">
-                                        <button @click="editar(item)" class="text-emerald-600 hover:text-emerald-800 mr-2 transition" title="Editar">
+                                        <button @click="editar(item)" class="text-emerald-600 hover:text-emerald-800 transition p-1 hover:bg-emerald-50 rounded" title="Editar">
                                             <i class="fas fa-edit text-xs"></i>
-                                        </button>
-                                        <button @click="abrirModalEliminar(item.IdComisionista, item.identificador?.Nombre)" class="text-red-600 hover:text-red-800 transition" title="Eliminar">
-                                            <i class="fas fa-trash-alt text-xs"></i>
                                         </button>
                                     </td>
                                 </tr>
@@ -530,43 +481,6 @@ watch(search, (newVal) => {
                             />
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal de confirmación para eliminar -->
-        <div v-if="modalEliminarOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="cerrarModalEliminar">
-            <div class="bg-white rounded-xl shadow-xl max-w-sm w-full overflow-hidden animate-fade-in-up">
-                <div class="bg-red-50 p-4 text-center">
-                    <div class="w-12 h-12 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-3">
-                        <i class="fas fa-trash-alt text-red-600 text-xl"></i>
-                    </div>
-                    <h3 class="text-lg font-semibold text-gray-900">¿Eliminar comisionista?</h3>
-                    <p class="text-sm text-gray-500 mt-1">
-                        ¿Estás seguro de que deseas eliminar a 
-                        <span class="font-semibold text-gray-700">"{{ eliminarNombre }}"</span>?
-                    </p>
-                    <p class="text-xs text-red-500 mt-2">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        Esta acción no se puede deshacer.
-                    </p>
-                </div>
-                <div class="p-4 flex gap-3">
-                    <button 
-                        @click="cerrarModalEliminar"
-                        class="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
-                    >
-                        Cancelar
-                    </button>
-                    <button 
-                        @click="confirmarEliminar"
-                        :disabled="eliminando"
-                        class="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
-                    >
-                        <i v-if="eliminando" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-trash-alt"></i>
-                        {{ eliminando ? 'Eliminando...' : 'Eliminar' }}
-                    </button>
                 </div>
             </div>
         </div>
