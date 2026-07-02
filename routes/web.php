@@ -98,7 +98,10 @@ use App\Http\Controllers\Gestion\Reportes\ControlInterno\ArqueoCajaChicaCIContro
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioDetalleController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoReimprimeController;
 use App\Http\Controllers\Gestion\Inventario\ProductoDetalleController;
-
+use App\Http\Controllers\Gestion\Reportes\Operacion\ArqueoCajaBolivianosAutomaticoController;
+use App\Http\Controllers\Gestion\Reportes\Operacion\ArqueoCajaChicaAutomaticoController;
+use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioRelacionVentaController;
+use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -680,7 +683,9 @@ Route::middleware(['auth.operador'])->group(function () {
                     Route::get('/pdf', [InventarioFisicoReimprimeController::class, 'generarPdf'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
                 });
             });
+
         });
+
     });
 
     // ============================================================
@@ -931,6 +936,37 @@ Route::middleware(['auth.operador'])->group(function () {
                 Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
             });
         });
+        // ---------- REPORTES DE OPERACIÓN ----------
+        Route::prefix('reportes')->group(function () {
+            
+            // Arqueo Caja Bolivianos - Automático (Operador Logueado)
+            Route::prefix('arqueo-caja-bolivianos-automatico')->group(function () {
+                Route::get('/', [ArqueoCajaBolivianosAutomaticoController::class, 'index'])
+                    ->name('gestion.reportes.operacion.arqueo-caja-bolivianos-automatico');
+                Route::get('/pdf', [ArqueoCajaBolivianosAutomaticoController::class, 'generarPdf'])
+                    ->name('gestion.reportes.operacion.arqueo-caja-bolivianos-automatico.pdf');
+            });
+        
+            // Arqueo Caja Chica - Automático (Operador Logueado)
+            Route::prefix('arqueo-caja-chica-automatico')->group(function () {
+                Route::get('/', [ArqueoCajaChicaAutomaticoController::class, 'index'])
+                    ->name('gestion.reportes.operacion.arqueo-caja-chica-automatico');
+                Route::get('/pdf', [ArqueoCajaChicaAutomaticoController::class, 'generarPdf'])
+                    ->name('gestion.reportes.operacion.arqueo-caja-chica-automatico.pdf');
+            });
+
+            // Inventario Relación Venta
+            Route::prefix('inventario-relacion-venta')->group(function () {
+                Route::get('/', [InventarioRelacionVentaController::class, 'index'])->name('operacion.reportes.inventario-relacion-venta');
+            });
+            // Inventario Tipo Operación
+            Route::prefix('inventario-tipo-operacion')->group(function () {
+                Route::get('/', [InventarioTipoOperacionController::class, 'index'])->name('operacion.reportes.inventario-tipo-operacion');
+                Route::get('/exportar', [InventarioTipoOperacionController::class, 'exportar'])->name('operacion.reportes.inventario-tipo-operacion.exportar');
+            });
+        
+        });
+
     });
 
     // ============================================================
