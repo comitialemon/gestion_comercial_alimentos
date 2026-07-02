@@ -24,11 +24,13 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // Obtener operadores del cliente
+        // Obtener TODOS los operadores del cliente
         $operadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador')
             ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->join('todos_operador_sucursaldb', 'todos_operador.IdOperador', '=', 'todos_operador_sucursaldb.IdOperador')
             ->where('todos_operador.ActivoInactivo', 1)
+            ->where('todos_operador_sucursaldb.IdCliente', $clienteId)
             ->orderBy('todos_identificador.Nombre')
             ->get([
                 'todos_operador.IdOperador as id',
@@ -47,6 +49,34 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             'operadores' => $operadores,
             'fechas' => $fechas,
         ]);
+    }
+    
+    /**
+     * API: Obtener operadores por sucursal
+     */
+    public function getOperadoresPorSucursal(Request $request)
+    {
+        try {
+            $sucursalId = $request->sucursal_id;
+            
+            // 🔥 CONSULTA SIMPLIFICADA - SIN FILTROS ADICIONALES
+            $operadores = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                ->join('todos_operador_sucursaldb', 'todos_operador.IdOperador', '=', 'todos_operador_sucursaldb.IdOperador')
+                ->where('todos_operador_sucursaldb.IdSucursal', $sucursalId)
+                ->select(
+                    'todos_operador.IdOperador as id',
+                    DB::raw("CONCAT(todos_identificador.CI_NIT, '-', todos_identificador.Nombre) as nombre_completo"),
+                    'todos_identificador.IdIdentificador'
+                )
+                ->get();
+            
+            return response()->json($operadores);
+            
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
     }
     
     /**
@@ -69,7 +99,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         // OBTENER DATOS DE CONFIGURACIÓN
         // =============================================
         
-        // Obtener cuenta de Caja Bolivianos desde parámetros
         $idCuentaBolivianos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_parametros_cuentas')
             ->where('IdCliente', $clienteId)
@@ -79,7 +108,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             throw new \Exception('No se encontró la cuenta de Caja Bolivianos en los parámetros');
         }
         
-        // Obtener identificador del operador
         $operadorData = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador')
             ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
@@ -94,7 +122,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $identificadorOperador = $operadorData->IdIdentificador;
         $nombreOperador = $operadorData->Nombre;
         
-        // Obtener fecha del arqueo
         $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha')
             ->where('IdFecha', $fechaId)
@@ -103,13 +130,11 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $fecha = $fechaData->Fecha;
         $fechaCabecera = date('d-m-Y', strtotime($fecha));
         
-        // Datos de la empresa
         $empresa = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
             ->where('IdCliente', $clienteId)
             ->first(['Nombre']);
         
-        // Nombre de la sucursal
         $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdClienteSucursal', $sucursalId)
@@ -122,7 +147,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         // CALCULAR SALDOS ANTERIORES
         // =============================================
         
-        // Saldo Debe Anterior
         $totalAnteriorDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario_propiamente')
             ->join('conta_diario', 'conta_diario_propiamente.IdDiario', '=', 'conta_diario.IdDiario')
@@ -135,7 +159,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorOperador)
             ->sum('conta_diario_propiamente.MontoBolivianos');
         
-        // Saldo Haber Anterior
         $totalAnteriorHaber = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario_propiamente')
             ->join('conta_diario', 'conta_diario_propiamente.IdDiario', '=', 'conta_diario.IdDiario')
@@ -201,7 +224,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         // GENERAR PDF CON TCPDF
         // =============================================
         
-        // Ancho de página: 80mm (ticket térmico)
         $pdf = new TCPDF('P', 'mm', array(80, 300), true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
@@ -209,12 +231,8 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->SetAutoPageBreak(true, 10);
         $pdf->AddPage();
         
-        // Fuentes
         $pdf->SetFont('helvetica', 'B', 10);
         
-        // =============================================
-        // CABECERA
-        // =============================================
         $y = 10;
         
         $pdf->SetXY(5, $y);
@@ -226,34 +244,25 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->Cell(70, 4, $nombreSucursal, 0, 1, 'C');
         $y += 6;
         
-        // Título
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 5, 'Arqueo - (Caja Bolivianos)', 0, 1, 'C');
         $y += 5;
         
-        // Operador
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 4, $nombreOperador, 0, 1, 'C');
         $y += 5;
         
-        // Fecha
         $pdf->SetFont('helvetica', '', 8);
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 4, $fechaCabecera, 0, 1, 'C');
         $y += 8;
         
-        // =============================================
-        // LÍNEA SEPARADORA
-        // =============================================
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 2, '------------------------------------------------', 0, 1, 'L');
         $y += 3;
         
-        // =============================================
-        // SALDO ANTERIOR
-        // =============================================
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetXY(5, $y);
         $pdf->Cell(45, 4, 'Saldo Anterior', 0, 0, 'L');
@@ -265,9 +274,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->Cell(70, 2, '------------------------------------------------', 0, 1, 'L');
         $y += 6;
         
-        // =============================================
-        // INGRESOS
-        // =============================================
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 4, 'MAS : Ingresos', 0, 1, 'L');
@@ -281,28 +287,22 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             $totalIngresos += $monto;
             
             $glosaCompleta = $ingreso->Glosa . ', No ' . $ingreso->NumeroDiario;
-            
-            // Calcular altura del MultiCell
             $alturaTexto = $pdf->getStringHeight(50, $glosaCompleta);
             $alturaFila = max(4, $alturaTexto);
             
-            // GLOSA
             $pdf->SetXY(5, $y);
             $pdf->MultiCell(50, $alturaFila, $glosaCompleta, 0, 'L');
             $y = $pdf->GetY();
             
-            // MONTO
             $pdf->SetXY(55, $y - $alturaFila);
             $pdf->Cell(20, $alturaFila, number_format($monto, 2, '.', ','), 0, 1, 'R');
             
-            // Control de página
             if ($y > 260) {
                 $pdf->AddPage();
                 $y = 20;
             }
         }
         
-        // Total Ingresos
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 2, '------------------------------------------------', 0, 1, 'L');
         $y += 3;
@@ -314,9 +314,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->Cell(20, 4, number_format($totalIngresos, 2, '.', ','), 0, 1, 'R');
         $y += 6;
         
-        // =============================================
-        // EGRESOS
-        // =============================================
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 4, 'MENOS : Egresos', 0, 1, 'L');
@@ -329,30 +326,23 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
             $monto = (float) $egreso->MontoBolivianos;
             $totalEgresos += $monto;
             
-            // Obtener nombre del identificador
             $glosaCompleta = $egreso->Glosa;
-            
-            // Calcular altura del MultiCell
             $alturaTexto = $pdf->getStringHeight(50, $glosaCompleta);
             $alturaFila = max(4, $alturaTexto);
             
-            // GLOSA
             $pdf->SetXY(5, $y);
             $pdf->MultiCell(50, $alturaFila, $glosaCompleta, 0, 'L');
             $y = $pdf->GetY();
             
-            // MONTO
             $pdf->SetXY(55, $y - $alturaFila);
             $pdf->Cell(20, $alturaFila, number_format($monto, 2, '.', ','), 0, 1, 'R');
             
-            // Control de página
             if ($y > 260) {
                 $pdf->AddPage();
                 $y = 20;
             }
         }
         
-        // Total Egresos
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 2, '------------------------------------------------', 0, 1, 'L');
         $y += 3;
@@ -364,9 +354,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->Cell(20, 4, number_format($totalEgresos, 2, '.', ','), 0, 1, 'R');
         $y += 6;
         
-        // =============================================
-        // SALDO ACTUAL
-        // =============================================
         $saldoActual = $totalAnteriorSaldo + $totalIngresos - $totalEgresos;
         
         $pdf->SetXY(5, $y);
@@ -383,9 +370,6 @@ class ArqueoCajaBolivianosCIOperadorController extends Controller
         $pdf->SetXY(5, $y);
         $pdf->Cell(70, 4, '=============================', 0, 1, 'C');
         
-        // =============================================
-        // SALIDA DEL PDF
-        // =============================================
         $nombreArchivo = 'ArqueoCajaBolivianos_Operador_' . $nombreOperador . '_' . $fechaCabecera . '.pdf';
         
         $pdf->Output($nombreArchivo, 'I');

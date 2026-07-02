@@ -676,11 +676,12 @@ Route::middleware(['auth.operador'])->group(function () {
                     Route::get('/', [ArqueoCajaBolivianosController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos');
                     Route::get('/pdf', [ArqueoCajaBolivianosController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos.pdf');
                 });
-
                 // Arqueo Caja Bolivianos por Operador
                 Route::prefix('arqueo-caja-bolivianos-ci-operador')->group(function () {
                     Route::get('/', [ArqueoCajaBolivianosCIOperadorController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador');
                     Route::get('/pdf', [ArqueoCajaBolivianosCIOperadorController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.pdf');
+                    // 🔥 NUEVA RUTA PARA OBTENER OPERADORES POR SUCURSAL
+                    Route::get('/operadores', [ArqueoCajaBolivianosCIOperadorController::class, 'getOperadoresPorSucursal'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.operadores');
                 });
 
                 // Arqueo Caja Chica por Operador

@@ -22,16 +22,6 @@ class ContaCuentaSucursalController extends Controller
             ->orderBy('Cuenta')
             ->get();
 
-        \Log::info('Asignaciones con cuentas:', [
-            'total' => $asignaciones->count(),
-            'primera' => $asignaciones->first() ? [
-                'id' => $asignaciones->first()->IdCuentaSucursales,
-                'cuenta_id' => $asignaciones->first()->IdCuenta,
-                'cuenta_nombre' => $asignaciones->first()->cuenta ? $asignaciones->first()->cuenta->Cuenta : 'NULL',
-                'cuenta_descripcion' => $asignaciones->first()->cuenta ? $asignaciones->first()->cuenta->Descripcion : 'NULL'
-            ] : 'ninguna'
-        ]);
-
         $cuentas = ContaCuenta::porContexto()
             ->where('AbiertoCerrado', 0)
             ->orderBy('Cuenta')
@@ -49,37 +39,41 @@ class ContaCuentaSucursalController extends Controller
     }
 
     /**
-     * 🔥 GUARDAR ASIGNACIÓN - Usa el nombre que escribe el usuario
+     * 🔥 GUARDAR ASIGNACIÓN - Validando D y H por separado
      */
     public function store(Request $request)
     {
         $request->validate([
             'IdCuenta' => 'required|exists:conta_cuenta,IdCuenta',
-            'Cuenta' => 'required|string|max:255',  // ← El nombre que escribe el usuario
-            'DinamicaCuenta' => 'required|string|max:1',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'DinamicaCuenta' => 'required|string|max:1|in:D,H',
         ]);
 
         $clienteId = session('cliente_id');
 
-        // Verificar si ya existe esta asignación
+        // 🔥 VERIFICAR SI YA EXISTE LA MISMA COMBINACIÓN (Cuenta + Sucursal + Dinámica)
         $existe = ContaCuentaSucursal::porContexto()
             ->where('IdCuenta', $request->IdCuenta)
             ->where('IdSucursal', $request->IdSucursal)
+            ->where('DinamicaCuenta', strtoupper($request->DinamicaCuenta))
             ->exists();
 
         if ($existe) {
             return response()->json([
                 'success' => false,
-                'message' => 'Esta cuenta ya está asignada a esta sucursal'
+                'message' => "Esta cuenta ya está asignada a esta sucursal con dinámica {$request->DinamicaCuenta}"
             ], 422);
         }
 
         try {
-            // 🔥 GUARDAR EL NOMBRE QUE ESCRIBIÓ EL USUARIO
+            $cuentaOriginal = ContaCuenta::porContexto()
+                ->where('IdCuenta', $request->IdCuenta)
+                ->first(['Cuenta', 'Descripcion']);
+
             $asignacion = ContaCuentaSucursal::create([
                 'IdCuenta' => $request->IdCuenta,
-                'Cuenta' => $request->Cuenta,  // ← LO QUE ESCRIBIÓ EL USUARIO
+                'Cuenta' => $cuentaOriginal->Cuenta,
+                'Descripcion' => $cuentaOriginal->Descripcion,
                 'DinamicaCuenta' => strtoupper($request->DinamicaCuenta),
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $request->IdSucursal,
@@ -102,14 +96,33 @@ class ContaCuentaSucursalController extends Controller
         }
     }
 
+    /**
+     * 🔥 ACTUALIZAR ASIGNACIÓN
+     */
     public function update(Request $request, $id)
     {
         $request->validate([
-            'DinamicaCuenta' => 'required|string|max:1',
+            'DinamicaCuenta' => 'required|string|max:1|in:D,H',
         ]);
 
         try {
             $asignacion = ContaCuentaSucursal::porContexto()->findOrFail($id);
+            
+            // 🔥 VERIFICAR QUE NO HAYA DUPLICADO CON OTRA ASIGNACIÓN (misma cuenta + sucursal + dinámica)
+            $duplicado = ContaCuentaSucursal::porContexto()
+                ->where('IdCuenta', $asignacion->IdCuenta)
+                ->where('IdSucursal', $asignacion->IdSucursal)
+                ->where('DinamicaCuenta', strtoupper($request->DinamicaCuenta))
+                ->where('IdCuentaSucursales', '!=', $id)
+                ->exists();
+
+            if ($duplicado) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Ya existe otra asignación para esta cuenta, sucursal y dinámica {$request->DinamicaCuenta}"
+                ], 422);
+            }
+
             $asignacion->update([
                 'DinamicaCuenta' => strtoupper($request->DinamicaCuenta),
             ]);
@@ -131,6 +144,9 @@ class ContaCuentaSucursalController extends Controller
         }
     }
 
+    /**
+     * 🔥 ELIMINAR ASIGNACIÓN
+     */
     public function destroy($id)
     {
         try {
@@ -146,6 +162,47 @@ class ContaCuentaSucursalController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * 🔥 SINCRONIZAR TODAS LAS ASIGNACIONES
+     */
+    public function sincronizar()
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            $asignaciones = ContaCuentaSucursal::porContexto()->get();
+            
+            $contador = 0;
+            
+            foreach ($asignaciones as $asignacion) {
+                $cuentaOriginal = ContaCuenta::porContexto()
+                    ->where('IdCuenta', $asignacion->IdCuenta)
+                    ->first(['Cuenta', 'Descripcion']);
+                
+                if ($cuentaOriginal) {
+                    $asignacion->update([
+                        'Cuenta' => $cuentaOriginal->Cuenta,
+                        'Descripcion' => $cuentaOriginal->Descripcion,
+                    ]);
+                    $contador++;
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Se sincronizaron {$contador} asignaciones correctamente",
+                'total' => $contador
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error al sincronizar asignaciones: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al sincronizar: ' . $e->getMessage()
             ], 500);
         }
     }

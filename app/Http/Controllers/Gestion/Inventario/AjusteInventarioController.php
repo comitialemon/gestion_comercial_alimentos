@@ -331,17 +331,17 @@ class AjusteInventarioController extends Controller
             return redirect()->back()->with('error', 'Error al contabilizar: ' . $e->getMessage());
         }
     }
-/**
- * Calcular total de un ajuste
- */
-private function calcularTotal($detalles)
-{
-    $total = 0;
-    foreach ($detalles as $detalle) {
-        $total += $detalle->Bolivianos;
+    /**
+     * Calcular total de un ajuste
+     */
+    private function calcularTotal($detalles)
+    {
+        $total = 0;
+        foreach ($detalles as $detalle) {
+            $total += $detalle->Bolivianos;
+        }
+        return $total;
     }
-    return $total;
-}
 
     /**
      * Mostrar ajuste contabilizado
