@@ -32,6 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'facturacion.requerida' => \App\Http\Middleware\EnsureFacturacionMapped::class,
             'verificar.contexto'    => \App\Http\Middleware\VerificarContexto::class,
             'evitar.contexto.duplicado' => \App\Http\Middleware\EvitarContextoDuplicado::class,
+            'verificar.fecha' => \App\Http\Middleware\VerificarFecha::class,
+
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

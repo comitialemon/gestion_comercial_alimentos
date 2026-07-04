@@ -102,6 +102,8 @@ use App\Http\Controllers\Gestion\Reportes\Operacion\ArqueoCajaBolivianosAutomati
 use App\Http\Controllers\Gestion\Reportes\Operacion\ArqueoCajaChicaAutomaticoController;
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioRelacionVentaController;
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionController;
+use App\Http\Controllers\Gestion\Impuestos\VentaEditarController;
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -115,7 +117,7 @@ Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 // ============================================
 // RUTAS PROTEGIDAS (Con autenticación)
 // ============================================
-Route::middleware(['auth.operador'])->group(function () {
+Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
     // ==================== HOME / REDIRECCIONES ====================
     Route::get('/', function () {
@@ -544,6 +546,26 @@ Route::middleware(['auth.operador'])->group(function () {
                 Route::post('/votar/{id}', [ProductoVentaController::class, 'votarAprobacion'])->name('gestion.productos-aprobacion.votar');
                 Route::get('/ver/{id}', [ProductoVentaController::class, 'verAprobacion'])->name('gestion.productos-aprobacion.ver');
             });
+        });
+
+        // ============================================================
+        // 3.13.1 REPROCESA INVENTARIO
+        // ============================================================
+        Route::prefix('/ventas-editar')->group(function () {
+            
+            // 📋 GRID - Listado de ventas
+            Route::get('/', [VentaEditarController::class, 'index'])->name('gestion.ventas-editar.index');
+            
+            // ✏️ FORMULARIO DE EDICIÓN
+            Route::get('/{id}/edit', [VentaEditarController::class, 'edit'])->name('gestion.ventas-editar.edit');
+            
+            // 🔥 REPROCESAR INVENTARIO (POST)
+            Route::post('/{id}/reprocesar', [VentaEditarController::class, 'reprocesarInventario'])->name('gestion.ventas-editar.reprocesar');
+            
+            // 💾 ACTUALIZAR VENTA (PUT)
+            Route::put('/{id}', [VentaEditarController::class, 'update'])->name('gestion.ventas-editar.update');
+            // 🔥 BUSCAR PRODUCTOS (NUEVO)
+            Route::get('/buscar-productos', [VentaEditarController::class, 'buscarProductos'])->name('gestion.ventas-editar.buscar-productos');
         });
 
         // ============================================================

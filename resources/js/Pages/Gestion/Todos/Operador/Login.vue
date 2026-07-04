@@ -2,6 +2,11 @@
 import { useForm } from '@inertiajs/vue3'
 import { route } from 'ziggy-js'
 import { Ziggy } from '@/ziggy'
+import { usePage } from '@inertiajs/vue3'
+
+// Obtener errores y flash messages
+const { props } = usePage()
+const errorFecha = props.flash?.error_fecha || props.errors?.error_fecha
 
 const form = useForm({
   usuario: '',
@@ -25,6 +30,17 @@ const submit = () => {
         </div>
         <h1 class="text-xl sm:text-2xl font-bold">Acceso al Sistema</h1>
         <p class="text-xs sm:text-sm text-white/80 mt-1">Ingresa tus credenciales para continuar</p>
+      </div>
+
+      <!-- ALERTA DE ERROR DE FECHA -->
+      <div v-if="errorFecha" class="mx-4 mt-4 p-3 bg-red-50 border-l-4 border-red-500 rounded-lg">
+        <div class="flex items-start gap-2">
+          <i class="fas fa-exclamation-circle text-red-500 text-lg mt-0.5"></i>
+          <div>
+            <p class="text-sm font-medium text-red-800">Fecha no habilitada</p>
+            <p class="text-xs text-red-600">{{ errorFecha }}</p>
+          </div>
+        </div>
       </div>
 
       <!-- Formulario -->
