@@ -119,15 +119,18 @@ onUnmounted(() => {
     <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4" @click.self="cerrar">
         <div class="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             
-            <!-- Header -->
-            <div class="bg-primary text-white p-3 sm:p-4 flex-shrink-0">
+            <!-- Header - Usando variables CSS dinámicas -->
+            <div 
+                class="p-3 sm:p-4 flex-shrink-0 text-white"
+                :style="{ backgroundColor: 'var(--color-primary, #61131a)' }"
+            >
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                     <div>
-                        <h3 class="text-white font-bold text-sm sm:text-base lg:text-lg">
+                        <h3 class="font-bold text-sm sm:text-base lg:text-lg text-white">
                             <i class="fas fa-chart-line mr-2"></i>Movimientos de Inventario
                         </h3>
                         <p class="text-white text-xs sm:text-sm opacity-90 mt-1">{{ producto?.Descripcion || 'Producto' }}</p>
-                        <div class="flex flex-wrap gap-2 sm:gap-4 mt-1 text-xs opacity-75">
+                        <div class="flex flex-wrap gap-2 sm:gap-4 mt-1 text-xs opacity-75 text-white">
                             <span>Código: {{ producto?.Codigo || '-' }}</span>
                             <span>Rango: {{ fechaInicial }} al {{ fechaFinal }}</span>
                         </div>
@@ -141,14 +144,18 @@ onUnmounted(() => {
             <!-- Cuerpo -->
             <div class="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
                 <div v-if="cargandoMovimientos" class="text-center py-12">
-                    <i class="fas fa-spinner fa-spin text-3xl text-primary"></i>
+                    <i class="fas fa-spinner fa-spin text-3xl" :style="{ color: 'var(--color-primary, #61131a)' }"></i>
                     <p class="mt-3 text-gray-500 text-sm">Cargando movimientos...</p>
                 </div>
                 
                 <div v-else-if="errorMessage" class="text-center py-12">
                     <i class="fas fa-exclamation-triangle text-5xl text-red-400 mb-3 block"></i>
                     <p class="text-red-600 text-sm">{{ errorMessage }}</p>
-                    <button @click="cargarMovimientos" class="mt-3 px-4 py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-700 transition">
+                    <button 
+                        @click="cargarMovimientos" 
+                        class="mt-3 px-4 py-2 text-white rounded-lg text-sm hover:opacity-90 transition"
+                        :style="{ backgroundColor: 'var(--color-primary, #61131a)' }"
+                    >
                         Reintentar
                     </button>
                 </div>
@@ -282,7 +289,11 @@ onUnmounted(() => {
             
             <!-- Footer -->
             <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0">
-                <button @click="cerrar" class="px-3 py-1.5 sm:px-4 sm:py-2 bg-primary text-white rounded-lg text-sm hover:bg-primary-700 transition flex items-center gap-2">
+                <button 
+                    @click="cerrar" 
+                    class="px-3 py-1.5 sm:px-4 sm:py-2 text-white rounded-lg text-sm hover:opacity-90 transition flex items-center gap-2"
+                    :style="{ backgroundColor: 'var(--color-primary, #61131a)' }"
+                >
                     <i class="fas fa-times"></i>
                     <span>Cerrar</span>
                 </button>
@@ -292,14 +303,31 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+/* 🔥 Clases auxiliares que usan variables CSS */
 .bg-primary {
-    background-color: #61131a;
+    background-color: var(--color-primary, #61131a) !important;
 }
+
 .text-primary {
-    color: #61131a;
+    color: var(--color-primary, #61131a) !important;
 }
+
 .border-primary {
-    border-color: #61131a;
+    border-color: var(--color-primary, #61131a) !important;
+}
+
+/* 🔥 Hover usando variables CSS */
+.hover\:bg-primary-700:hover {
+    background-color: var(--color-primary-700, #4a0f14) !important;
+}
+
+.hover\:bg-primary-800:hover {
+    background-color: var(--color-primary-800, #3d0a0f) !important;
+}
+
+/* 🔥 Focus usando variables CSS */
+.focus\:ring-primary-500:focus {
+    --tw-ring-color: var(--color-primary-500, #61131a) !important;
 }
 
 /* Asegurar que los textos sean legibles en PC */
