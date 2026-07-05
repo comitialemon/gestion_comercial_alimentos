@@ -25,7 +25,7 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // Obtener datos del operador logueado
+        // Obtener datos del operador logueado (incluyendo IdIdentificador)
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador')
             ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
@@ -36,7 +36,7 @@ class ArqueoCajaChicaAutomaticoController extends Controller
                 'todos_identificador.IdIdentificador'
             ]);
         
-        // Obtener fechas disponibles (SIN DATE_FORMAT)
+        // Obtener fechas disponibles
         $fechas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha')
             ->where('Fecha', '>', '2020-01-01')
@@ -84,11 +84,11 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('IdCliente', $clienteId)
             ->value('CajaChica');
         
-        // Si no existe, buscar en conta_cuentas
+        // Si no existe, buscar en conta_cuenta
         if (!$idCuentaCajaChica) {
             $idCuentaCajaChica = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('conta_cuentas')
-                ->where('Nombre', 'like', '%Caja Chica%')
+                ->table('conta_cuenta')
+                ->where('Descripcion', 'like', '%Caja Chica%')
                 ->where('IdCliente', $clienteId)
                 ->value('IdCuenta');
         }
@@ -96,6 +96,22 @@ class ArqueoCajaChicaAutomaticoController extends Controller
         if (!$idCuentaCajaChica) {
             throw new \Exception('No se encontró la cuenta de Caja Chica en los parámetros. Verifique la configuración.');
         }
+        
+        // 🔥 OBTENER EL IDENTIFICADOR DEL OPERADOR LOGUEADO
+        $operadorData = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', $operadorId)
+            ->first([
+                'todos_operador.IdOperador',
+                'todos_identificador.IdIdentificador',  // ← Este es el campo clave
+                'todos_identificador.Nombre',
+                'todos_identificador.CI_NIT'
+            ]);
+        
+        $identificadorOperador = $operadorData->IdIdentificador;
+        $nombreOperador = $operadorData->Nombre ?? 'Sin operador';
+        $ciNitOperador = $operadorData->CI_NIT ?? '';
         
         // Obtener fecha del arqueo
         $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
@@ -118,24 +134,12 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['Nombre']);
         
-        // Nombre del operador
-        $operadorData = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_operador')
-            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
-            ->where('todos_operador.IdOperador', $operadorId)
-            ->first([
-                'todos_operador.IdOperador',
-                'todos_identificador.Nombre',
-                'todos_identificador.CI_NIT'
-            ]);
-        
         $nombreCliente = $empresa->Nombre ?? '';
         $nombreSucursal = $sucursal->Nombre ?? '';
-        $nombreOperador = $operadorData->Nombre ?? 'Sin operador';
-        $ciNitOperador = $operadorData->CI_NIT ?? '';
         
         // =============================================
         // CALCULAR SALDOS ANTERIORES
+        // 🔥 USANDO IdIdentificador EN LUGAR DE IdOperadorIngreso
         // =============================================
         
         // Saldo Debe Anterior
@@ -148,7 +152,7 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('conta_diario_propiamente.D_H', 'D')
             ->where('conta_diario_propiamente.IdCuenta', $idCuentaCajaChica)
             ->where('conta_diario.IdSucursal', $sucursalId)
-            ->where('conta_diario.IdOperadorIngreso', $operadorId)
+            ->where('conta_diario_propiamente.IdIdentificador', $identificadorOperador)  // ← CAMBIADO
             ->sum('conta_diario_propiamente.MontoBolivianos');
         
         // Saldo Haber Anterior
@@ -161,13 +165,14 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('conta_diario_propiamente.D_H', 'H')
             ->where('conta_diario_propiamente.IdCuenta', $idCuentaCajaChica)
             ->where('conta_diario.IdSucursal', $sucursalId)
-            ->where('conta_diario.IdOperadorIngreso', $operadorId)
+            ->where('conta_diario_propiamente.IdIdentificador', $identificadorOperador)  // ← CAMBIADO
             ->sum('conta_diario_propiamente.MontoBolivianos');
         
         $totalAnteriorSaldo = (float) $totalAnteriorDebe - (float) $totalAnteriorHaber;
         
         // =============================================
-        // OBTENER INGRESOS DEL DÍA
+        // OBTENER INGRESOS DEL DÍA (DEBE)
+        // 🔥 USANDO IdIdentificador EN LUGAR DE IdOperadorIngreso
         // =============================================
         
         $ingresos = DB::connection('mysql_gestion_comercial_alimentos')
@@ -180,7 +185,7 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('conta_diario.IdCliente', $clienteId)
             ->where('conta_diario.Contabilizado', 1)
             ->where('conta_diario.IdSucursal', $sucursalId)
-            ->where('conta_diario.IdOperadorIngreso', $operadorId)
+            ->where('conta_diario_propiamente.IdIdentificador', $identificadorOperador)  // ← CAMBIADO
             ->select(
                 'conta_diario_propiamente.Glosa',
                 'conta_diario_propiamente.MontoBolivianos',
@@ -191,7 +196,8 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->get();
         
         // =============================================
-        // OBTENER EGRESOS DEL DÍA
+        // OBTENER EGRESOS DEL DÍA (HABER)
+        // 🔥 USANDO IdIdentificador EN LUGAR DE IdOperadorIngreso
         // =============================================
         
         $egresos = DB::connection('mysql_gestion_comercial_alimentos')
@@ -204,7 +210,7 @@ class ArqueoCajaChicaAutomaticoController extends Controller
             ->where('conta_diario.IdCliente', $clienteId)
             ->where('conta_diario.Contabilizado', 1)
             ->where('conta_diario.IdSucursal', $sucursalId)
-            ->where('conta_diario.IdOperadorIngreso', $operadorId)
+            ->where('conta_diario_propiamente.IdIdentificador', $identificadorOperador)  // ← CAMBIADO
             ->select(
                 'conta_diario_propiamente.Glosa',
                 'conta_diario_propiamente.MontoBolivianos',

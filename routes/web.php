@@ -104,6 +104,7 @@ use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioRelacionVentaContr
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionController;
 use App\Http\Controllers\Gestion\Impuestos\VentaEditarController;
 use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarRangoController;
+use App\Http\Controllers\Gestion\Reportes\InformeVentasController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -690,6 +691,20 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/exportar', [ResultadosComparativoController::class, 'exportar'])->name('gestion.reportes.resultados-comparativo.exportar');
             });
 
+            // ============================================================
+            // DETALLE VENTAS SUPERVISOR - INFORME PUNTO DE VENTA
+            // ============================================================
+            Route::prefix('/informe-ventas')->group(function () {
+                // 📋 Grid
+                Route::get('/', [InformeVentasController::class, 'index'])
+                    ->name('gestion.reportes.informe-ventas.index');
+                
+                // 🔥 Reimprimir factura - Redirige al PDF de PagoVentaController
+                Route::get('/{id}/reimprimir', [InformeVentasController::class, 'reimprimir'])
+                    ->name('gestion.reportes.informe-ventas.reimprimir');
+            });
+
+
             // ---------- CONTROL INTERNO ----------
             Route::prefix('control-interno')->group(function () {
                 // Informe Sucursal
@@ -742,6 +757,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/pdf', [InventarioFisicoReimprimeController::class, 'generarPdf'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
                 });
             });
+
 
         });
 
