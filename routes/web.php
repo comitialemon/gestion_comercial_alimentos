@@ -105,6 +105,7 @@ use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionContr
 use App\Http\Controllers\Gestion\Impuestos\VentaEditarController;
 use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarRangoController;
 use App\Http\Controllers\Gestion\Reportes\InformeVentasController;
+use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionSucursalController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1034,10 +1035,25 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::prefix('inventario-relacion-venta')->group(function () {
                 Route::get('/', [InventarioRelacionVentaController::class, 'index'])->name('operacion.reportes.inventario-relacion-venta');
             });
-            // Inventario Tipo Operación
+            // ============================================================
+            // REPORTE - INVENTARIO POR TIPO DE OPERACIÓN (SUCURSAL LOGUEADA)
+            // ============================================================           
             Route::prefix('inventario-tipo-operacion')->group(function () {
                 Route::get('/', [InventarioTipoOperacionController::class, 'index'])->name('operacion.reportes.inventario-tipo-operacion');
                 Route::get('/exportar', [InventarioTipoOperacionController::class, 'exportar'])->name('operacion.reportes.inventario-tipo-operacion.exportar');
+            });
+
+            // ============================================================
+            // REPORTE - INVENTARIO POR TIPO DE OPERACIÓN (escogiendo SUCURSAL)
+            // ============================================================
+            Route::prefix('/inventario-tipo-operacion-sucursal')->group(function () {
+                // 📋 Formulario con selector de sucursal
+                Route::get('/', [InventarioTipoOperacionSucursalController::class, 'index'])
+                    ->name('operacion.reportes.inventario-tipo-operacion-sucursal');
+                
+                // 🔥 Exportar Excel
+                Route::get('/exportar', [InventarioTipoOperacionSucursalController::class, 'exportar'])
+                    ->name('operacion.reportes.inventario-tipo-operacion-sucursal.exportar');
             });
         
         });
