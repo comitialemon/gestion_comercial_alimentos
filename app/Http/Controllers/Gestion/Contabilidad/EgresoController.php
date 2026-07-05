@@ -499,32 +499,70 @@ class EgresoController extends Controller
         }
     }
 
-    /**
-     * Vista para gestión de estados (Activar/Inactivar egresos)
+/**
+     * Vista para gestión de estados (Activar/Inactivar egresos) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
     {
-        $query = Egreso::porContexto()
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        \Log::info('=== GESTION ESTADO EGRESOS ===');
+        \Log::info('Cliente ID: ' . $clienteId);
+        \Log::info('Sucursal actual: ' . $sucursalId);
+        \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
+        
+        // =============================================
+        // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
+        // =============================================
+        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        \Log::info('Sucursales encontradas: ' . $sucursales->count());
+        
+        // =============================================
+        // 🔥 CONSULTA PRINCIPAL - SIN usar scope porContexto()
+        // =============================================
+        $query = Egreso::where('IdCliente', $clienteId)
             ->with(['identificador']);
-
-        // 🔥 FILTRAR POR ESTADO
+        
+        // 🔥 FILTRO POR SUCURSAL
+        if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
+            $query->where('IdSucursal', $request->sucursal_id);
+            \Log::info('Filtrando por sucursal: ' . $request->sucursal_id);
+        } else {
+            // Por defecto, mostrar la sucursal logueada
+            $query->where('IdSucursal', $sucursalId);
+            \Log::info('Filtrando por sucursal actual: ' . $sucursalId);
+        }
+        
+        // 🔥 FILTRO POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->where('ActivoInactivo', 1);
+                \Log::info('Filtrando por activos');
             } elseif ($request->estado === 'inactivos') {
                 $query->where('ActivoInactivo', 0);
+                \Log::info('Filtrando por inactivos');
             }
         }
-
-        // 🔥 NUEVO: BUSCADOR por número de egreso (búsqueda en servidor)
+        
+        // 🔥 BUSCADOR por número de egreso
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
             $query->where('NumeroEgreso', 'LIKE', "%{$buscar}%");
+            \Log::info('Buscando: ' . $buscar);
         }
-
+        
         $egresos = $query->orderBy('IdEgreso', 'desc')->paginate(20);
-
-        // Agregar número de diario y fecha formateada
+        
+        \Log::info('Egresos encontrados: ' . $egresos->count());
+        
+        // Enriquecer datos
         $egresos->getCollection()->transform(function ($egreso) {
             $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
@@ -540,13 +578,25 @@ class EgresoController extends Controller
             
             $egreso->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
             
+            // 🔥 Agregar nombre de sucursal
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $egreso->IdSucursal)
+                ->first();
+            
+            $egreso->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
+            $egreso->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
+            
             return $egreso;
         });
-
+        
         return Inertia::render('Gestion/Contabilidad/Egresos/GestionEstado', [
             'egresos' => $egresos,
+            'sucursales' => $sucursales,
+            'sucursalActual' => $sucursalId,
             'filtroEstado' => $request->estado,
-            'buscar' => $request->buscar,  // 🔥 Enviar el término de búsqueda a la vista
+            'buscar' => $request->buscar,
+            'sucursalSeleccionada' => $request->sucursal_id,
         ]);
     }
 
@@ -556,11 +606,12 @@ class EgresoController extends Controller
     public function cambiarEstado($id)
     {
         try {
-            $egreso = Egreso::porContexto()->findOrFail($id);
+            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
+            $egreso = Egreso::where('IdCliente', session('cliente_id'))
+                ->where('IdEgreso', $id)
+                ->firstOrFail();
             
-            // 🔥 SOLO PERMITIR DESACTIVAR (Activo → Borrador)
             if ($egreso->ActivoInactivo == 1) {
-                // Desactivar (pasar a borrador)
                 $egreso->update(['ActivoInactivo' => 0]);
                 
                 return response()->json([
@@ -569,7 +620,6 @@ class EgresoController extends Controller
                     'nuevo_estado' => 0
                 ]);
             } else {
-                // Si ya está inactivo, no permitir activar
                 return response()->json([
                     'success' => false,
                     'message' => 'Este egreso ya está en estado BORRADOR. Solo se activa al editarlo y guardarlo.'

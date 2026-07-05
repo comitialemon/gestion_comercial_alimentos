@@ -763,79 +763,108 @@ class CompraController extends Controller
     }
 
     /**
-     * Vista para gestión de estados (Activar/Inactivar compras)
+     * Vista para gestión de estados (Activar/Inactivar compras) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
     {
-        \Log::info('=== gestionEstado COMPRAS: INICIO ===');
-        \Log::info('Parámetros recibidos:', $request->all());
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         
-        try {
-            $query = Compra::porContexto()
-                ->with(['proveedor']);
-
-            if ($request->filled('estado')) {
-                if ($request->estado === 'activos') {
-                    $query->where('ActivoInactivo', 1);
-                } elseif ($request->estado === 'inactivos') {
-                    $query->where('ActivoInactivo', 0);
-                }
-            }
-
-            if ($request->filled('buscar')) {
-                $buscar = $request->buscar;
-                $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
-            }
-
-            $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
-
-            \Log::info('Compras encontradas: ' . $compras->total());
-
-            return Inertia::render('Gestion/Impuestos/Compras/GestionEstado', [
-                'compras' => $compras,
-                'filtroEstado' => $request->estado,
-                'buscar' => $request->buscar,
-            ]);
-            
-        } catch (\Exception $e) {
-            \Log::error('Error en gestionEstado: ' . $e->getMessage());
-            \Log::error('Trace: ' . $e->getTraceAsString());
-            
-            return Inertia::render('Gestion/Impuestos/Compras/GestionEstado', [
-                'compras' => collect(['data' => [], 'total' => 0]),
-                'filtroEstado' => '',
-                'buscar' => '',
-            ]);
+        \Log::info('=== GESTION ESTADO COMPRAS ===');
+        \Log::info('Cliente ID: ' . $clienteId);
+        \Log::info('Sucursal actual: ' . $sucursalId);
+        \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
+        
+        // =============================================
+        // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
+        // =============================================
+        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        // =============================================
+        // CONSULTA PRINCIPAL - SIN usar scope porContexto()
+        // =============================================
+        $query = Compra::where('IdCliente', $clienteId)
+            ->with(['proveedor']);
+        
+        // 🔥 FILTRO POR SUCURSAL
+        if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
+            $query->where('IdSucursal', $request->sucursal_id);
+        } else {
+            // Por defecto, mostrar la sucursal logueada
+            $query->where('IdSucursal', $sucursalId);
         }
+        
+        // 🔥 FILTRO POR ESTADO
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->where('ActivoInactivo', 1);
+            } elseif ($request->estado === 'inactivos') {
+                $query->where('ActivoInactivo', 0);
+            }
+        }
+        
+        // 🔥 BUSCADOR por número correlativo
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
+        }
+        
+        $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
+        
+        // Enriquecer datos
+        $compras->getCollection()->transform(function ($compra) {
+            // 🔥 Agregar nombre de sucursal
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $compra->IdSucursal)
+                ->first();
+            
+            $compra->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
+            $compra->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
+            
+            return $compra;
+        });
+        
+        return Inertia::render('Gestion/Impuestos/Compras/GestionEstado', [
+            'compras' => $compras,
+            'sucursales' => $sucursales,
+            'sucursalActual' => $sucursalId,
+            'filtroEstado' => $request->estado,
+            'buscar' => $request->buscar,
+            'sucursalSeleccionada' => $request->sucursal_id,
+        ]);
     }
+
     /**
-     * Cambiar estado (Activar/Inactivar)
+     * Cambiar estado (SOLO DESACTIVAR - Activo → Borrador)
      */
     public function cambiarEstado($id)
     {
         try {
-            $compra = Compra::porContexto()->findOrFail($id);
+            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
+            $compra = Compra::where('IdCliente', session('cliente_id'))
+                ->where('IdCompras', $id)
+                ->firstOrFail();
             
-            $nuevoEstado = $compra->ActivoInactivo == 1 ? 0 : 1;
-            
-            if ($nuevoEstado == 1 && $compra->ActivoInactivo == 0) {
-                if (!$compra->IdFecha || !$compra->IdAlmacen || !$compra->IdTipoFactura || !$compra->NumeroFactura) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No se puede activar: Faltan datos obligatorios'
-                    ], 400);
-                }
+            if ($compra->ActivoInactivo == 1) {
+                $compra->update(['ActivoInactivo' => 0]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Compra desactivada correctamente (pasó a Borrador)',
+                    'nuevo_estado' => 0
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Esta compra ya está en estado BORRADOR. Solo se activa al editarla y guardarla.'
+                ], 400);
             }
-            
-            $compra->update(['ActivoInactivo' => $nuevoEstado]);
-            
-            $mensaje = $nuevoEstado == 1 ? 'Compra activada correctamente' : 'Compra desactivada correctamente';
-            
-            return response()->json([
-                'success' => true,
-                'message' => $mensaje,
-                'nuevo_estado' => $nuevoEstado
-            ]);
             
         } catch (\Exception $e) {
             Log::error('Error al cambiar estado de compra: ' . $e->getMessage());

@@ -566,15 +566,44 @@ class AjusteInventarioController extends Controller
         ]);
     }
 
-    /**
-     * Vista para gestión de estados (Activar/Inactivar ajustes)
+/**
+     * Vista para gestión de estados (Activar/Inactivar ajustes) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
     {
-        $query = AjusteInventario::porContexto()
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        \Log::info('=== GESTION ESTADO AJUSTES ===');
+        \Log::info('Cliente ID: ' . $clienteId);
+        \Log::info('Sucursal actual: ' . $sucursalId);
+        \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
+        
+        // =============================================
+        // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
+        // =============================================
+        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        // =============================================
+        // CONSULTA PRINCIPAL - SIN usar scope porContexto()
+        // =============================================
+        $query = AjusteInventario::where('IdCliente', $clienteId)
             ->with(['tipoOperacion', 'almacen']);
-
-        // FILTRAR POR ESTADO
+        
+        // 🔥 FILTRO POR SUCURSAL
+        if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
+            $query->where('IdSucursal', $request->sucursal_id);
+        } else {
+            // Por defecto, mostrar la sucursal logueada
+            $query->where('IdSucursal', $sucursalId);
+        }
+        
+        // 🔥 FILTRO POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->where('ActivoInactivo', 1);
@@ -582,17 +611,18 @@ class AjusteInventarioController extends Controller
                 $query->where('ActivoInactivo', 0);
             }
         }
-
-        // BUSCADOR por número de ajuste
+        
+        // 🔥 BUSCADOR por número de ajuste
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
             $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
         }
-
+        
         $ajustes = $query->orderBy('IdAjustesPrincipal', 'desc')->paginate(20);
-
-        // Agregar fecha formateada
+        
+        // Enriquecer datos
         $ajustes->getCollection()->transform(function ($ajuste) {
+            // Fecha formateada
             $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_fecha')
                 ->where('IdFecha', $ajuste->IdFecha)
@@ -600,48 +630,56 @@ class AjusteInventarioController extends Controller
             
             $ajuste->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
             
+            // 🔥 Agregar nombre de sucursal
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $ajuste->IdSucursal)
+                ->first();
+            
+            $ajuste->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
+            $ajuste->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
+            
             return $ajuste;
         });
-
+        
         return Inertia::render('Gestion/Inventario/AjusteInventario/GestionEstado', [
             'ajustes' => $ajustes,
+            'sucursales' => $sucursales,
+            'sucursalActual' => $sucursalId,
             'filtroEstado' => $request->estado,
             'buscar' => $request->buscar,
+            'sucursalSeleccionada' => $request->sucursal_id,
         ]);
     }
 
     /**
-     * Cambiar estado (Activar/Inactivar)
+     * Cambiar estado (SOLO DESACTIVAR - Activo → Borrador)
      */
     public function cambiarEstado($id)
     {
         try {
-            $ajuste = AjusteInventario::porContexto()->findOrFail($id);
+            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
+            $ajuste = AjusteInventario::where('IdCliente', session('cliente_id'))
+                ->where('IdAjustesPrincipal', $id)
+                ->firstOrFail();
             
-            $nuevoEstado = $ajuste->ActivoInactivo == 1 ? 0 : 1;
-            
-            // Validación al activar
-            if ($nuevoEstado == 1 && $ajuste->ActivoInactivo == 0) {
-                if (!$ajuste->IdFecha || !$ajuste->IdTipoOperacion || !$ajuste->IdAlmacen) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'No se puede activar: Faltan datos obligatorios'
-                    ], 400);
-                }
+            if ($ajuste->ActivoInactivo == 1) {
+                $ajuste->update(['ActivoInactivo' => 0]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Ajuste desactivado correctamente (pasó a Borrador)',
+                    'nuevo_estado' => 0
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este ajuste ya está en estado BORRADOR. Solo se activa al editarlo y guardarlo.'
+                ], 400);
             }
             
-            $ajuste->update(['ActivoInactivo' => $nuevoEstado]);
-            
-            $mensaje = $nuevoEstado == 1 ? 'Ajuste activado correctamente' : 'Ajuste desactivado correctamente';
-            
-            return response()->json([
-                'success' => true,
-                'message' => $mensaje,
-                'nuevo_estado' => $nuevoEstado
-            ]);
-            
         } catch (\Exception $e) {
-            Log::error('Error al cambiar estado: ' . $e->getMessage());
+            Log::error('Error al cambiar estado de ajuste: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cambiar estado: ' . $e->getMessage()

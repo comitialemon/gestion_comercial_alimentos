@@ -736,14 +736,44 @@ class IngresoController extends Controller
         return $fechas->merge($fechasAux)->unique('id');
     }
 
-    /**
-     * Vista para gestión de estados (Activar/Inactivar ingresos)
+/**
+     * Vista para gestión de estados (Activar/Inactivar ingresos) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
     {
-        $query = Ingreso::porContexto()
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        \Log::info('=== GESTION ESTADO INGRESOS ===');
+        \Log::info('Cliente ID: ' . $clienteId);
+        \Log::info('Sucursal actual: ' . $sucursalId);
+        \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
+        
+        // =============================================
+        // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
+        // =============================================
+        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        // =============================================
+        // CONSULTA PRINCIPAL - SIN usar scope porContexto()
+        // =============================================
+        $query = Ingreso::where('IdCliente', $clienteId)
             ->with(['identificador']);
-
+        
+        // 🔥 FILTRO POR SUCURSAL
+        if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
+            $query->where('IdSucursal', $request->sucursal_id);
+        } else {
+            // Por defecto, mostrar la sucursal logueada
+            $query->where('IdSucursal', $sucursalId);
+        }
+        
+        // 🔥 FILTRO POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->where('ActivoInactivo', 1);
@@ -751,38 +781,65 @@ class IngresoController extends Controller
                 $query->where('ActivoInactivo', 0);
             }
         }
-
+        
+        // 🔥 BUSCADOR por número de ingreso
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
             $query->where('NumeroIngreso', 'LIKE', "%{$buscar}%");
         }
-
+        
         $ingresos = $query->orderBy('IdIngreso', 'desc')->paginate(20);
-
-        foreach ($ingresos as $ingreso) {
-            $ingreso->fecha_formateada = DB::connection('mysql_gestion_comercial_alimentos')
+        
+        // Enriquecer datos
+        $ingresos->getCollection()->transform(function ($ingreso) {
+            $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('conta_diario')
+                ->where('IdDiario', $ingreso->IdDiario)
+                ->value('NumeroDiario');
+            
+            $ingreso->numero_diario = $numeroDiario ?? '-';
+            
+            $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_fecha')
                 ->where('IdFecha', $ingreso->IdFecha)
-                ->value(DB::raw("DATE_FORMAT(Fecha, '%d/%m/%Y')"));
-        }
-
+                ->first();
+            
+            $ingreso->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
+            
+            // 🔥 Agregar nombre de sucursal
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $ingreso->IdSucursal)
+                ->first();
+            
+            $ingreso->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
+            $ingreso->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
+            
+            return $ingreso;
+        });
+        
         return Inertia::render('Gestion/Contabilidad/Ingresos/GestionEstado', [
             'ingresos' => $ingresos,
+            'sucursales' => $sucursales,
+            'sucursalActual' => $sucursalId,
             'filtroEstado' => $request->estado,
             'buscar' => $request->buscar,
+            'sucursalSeleccionada' => $request->sucursal_id,
         ]);
     }
+
     /**
      * Cambiar estado (SOLO DESACTIVAR - Activo → Borrador)
      */
     public function cambiarEstado($id)
     {
         try {
-            $ingreso = Ingreso::porContexto()->findOrFail($id);
+            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
+            $ingreso = Ingreso::where('IdCliente', session('cliente_id'))
+                ->where('IdIngreso', $id)
+                ->firstOrFail();
             
-            // 🔥 SOLO PERMITIR DESACTIVAR (Activo → Borrador)
             if ($ingreso->ActivoInactivo == 1) {
-                // Desactivar (pasar a borrador)
                 $ingreso->update(['ActivoInactivo' => 0]);
                 
                 return response()->json([
@@ -791,7 +848,6 @@ class IngresoController extends Controller
                     'nuevo_estado' => 0
                 ]);
             } else {
-                // Si ya está inactivo, no permitir activar
                 return response()->json([
                     'success' => false,
                     'message' => 'Este ingreso ya está en estado BORRADOR. Solo se activa al editarlo y guardarlo.'

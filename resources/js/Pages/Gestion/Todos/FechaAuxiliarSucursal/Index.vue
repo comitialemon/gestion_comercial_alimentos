@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
@@ -38,7 +38,15 @@ const mostrarSucursales = ref(false)
 const fechaBusqueda = ref('')
 const mostrarFechas = ref(false)
 
-// Toast state
+// Referencias para los inputs
+const sucursalInputRef = ref(null)
+const fechaInputRef = ref(null)
+
+// Posiciones para dropdowns
+const sucursalPos = ref({ top: 0, left: 0, width: 0 })
+const fechaPos = ref({ top: 0, left: 0, width: 0 })
+
+// Toast
 const toast = ref({
     show: false,
     message: '',
@@ -48,7 +56,6 @@ const toast = ref({
 
 let toastTimeout = null
 
-// Mostrar toast
 const showToast = (message, type = 'success', title = '') => {
     if (toastTimeout) clearTimeout(toastTimeout)
     
@@ -71,7 +78,7 @@ const showToast = (message, type = 'success', title = '') => {
     }, 4000)
 }
 
-// 🔥 COMPUTADOS PARA FILTRADO
+// 🔥 COMPUTADOS
 const sucursalesDisponibles = computed(() => {
     if (!props.sucursales) return []
     if (!sucursalBusqueda.value) return props.sucursales
@@ -103,7 +110,34 @@ const getFechaDisplay = (id) => {
     return fecha?.display || ''
 }
 
-// 🔥 ACCIONES DE AUTOCOMPLETADO - SUCURSAL
+// 🔥 Calcular posición del dropdown desde el input
+const calcularPosDesdeInput = (inputElement) => {
+    if (!inputElement) return { top: 0, left: 0, width: 250 }
+    
+    const rect = inputElement.getBoundingClientRect()
+    return {
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX,
+        width: Math.max(rect.width, 250)
+    }
+}
+
+// 🔥 ABRIR SUCURSAL
+const abrirSucursal = async (event) => {
+    // Esperar a que el DOM se actualice
+    await nextTick()
+    
+    // Usar el evento para obtener el input o la referencia
+    const input = event?.target || sucursalInputRef.value
+    if (input) {
+        sucursalPos.value = calcularPosDesdeInput(input)
+    }
+    
+    if (sucursalesDisponibles.value.length > 0) {
+        mostrarSucursales.value = true
+    }
+}
+
 const seleccionarSucursal = (sucursal) => {
     nuevaFila.value.sucursal_id = sucursal.id
     sucursalBusqueda.value = sucursal.display
@@ -116,7 +150,20 @@ const limpiarSucursal = () => {
     mostrarSucursales.value = false
 }
 
-// 🔥 ACCIONES DE AUTOCOMPLETADO - FECHA
+// 🔥 ABRIR FECHA
+const abrirFecha = async (event) => {
+    await nextTick()
+    
+    const input = event?.target || fechaInputRef.value
+    if (input) {
+        fechaPos.value = calcularPosDesdeInput(input)
+    }
+    
+    if (fechasDisponibles.value.length > 0) {
+        mostrarFechas.value = true
+    }
+}
+
 const seleccionarFecha = (fecha) => {
     nuevaFila.value.fecha_id = fecha.IdFecha
     fechaBusqueda.value = fecha.display
@@ -129,12 +176,25 @@ const limpiarFecha = () => {
     mostrarFechas.value = false
 }
 
-// Agregar nueva fila (mostrar selectores)
+// Agregar nueva fila
 const agregarFila = () => {
     nuevaFila.value.agregando = true
-    // Limpiar búsquedas
     sucursalBusqueda.value = ''
     fechaBusqueda.value = ''
+    // Resetear posiciones después de renderizar
+    setTimeout(() => {
+        actualizarPosiciones()
+    }, 100)
+}
+
+// Actualizar posiciones manualmente
+const actualizarPosiciones = () => {
+    if (sucursalInputRef.value) {
+        sucursalPos.value = calcularPosDesdeInput(sucursalInputRef.value)
+    }
+    if (fechaInputRef.value) {
+        fechaPos.value = calcularPosDesdeInput(fechaInputRef.value)
+    }
 }
 
 // Cancelar agregar
@@ -146,6 +206,8 @@ const cancelarAgregar = () => {
     }
     sucursalBusqueda.value = ''
     fechaBusqueda.value = ''
+    mostrarSucursales.value = false
+    mostrarFechas.value = false
 }
 
 // Guardar nueva fila
@@ -203,7 +265,7 @@ const eliminarRegistro = async (id, display) => {
     }
 }
 
-// 🔥 CERRAR SUGERENCIAS AL HACER CLICK FUERA
+// 🔥 CERRAR SUGERENCIAS
 const handleClickOutside = (event) => {
     const sucursalContainer = document.querySelector('.sucursal-autocomplete')
     if (sucursalContainer && !sucursalContainer.contains(event.target)) {
@@ -216,18 +278,32 @@ const handleClickOutside = (event) => {
     }
 }
 
+// Actualizar posiciones al hacer scroll/resize
+const updatePositions = () => {
+    if (mostrarSucursales.value && sucursalInputRef.value) {
+        sucursalPos.value = calcularPosDesdeInput(sucursalInputRef.value)
+    }
+    if (mostrarFechas.value && fechaInputRef.value) {
+        fechaPos.value = calcularPosDesdeInput(fechaInputRef.value)
+    }
+}
+
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
+    window.addEventListener('scroll', updatePositions)
+    window.addEventListener('resize', updatePositions)
 })
 
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside)
+    window.removeEventListener('scroll', updatePositions)
+    window.removeEventListener('resize', updatePositions)
 })
 </script>
 
 <template>
     <div class="min-h-screen relative" :style="{ backgroundColor: `var(--color-primary-50)` }">
-        <!-- Toast Notification -->
+        <!-- Toast -->
         <div 
             v-if="toast.show"
             class="fixed top-4 right-4 left-4 sm:left-auto sm:right-4 sm:min-w-[320px] z-50 animate-slide-in"
@@ -302,7 +378,7 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- Versión Desktop: Tabla -->
+                <!-- Desktop: Tabla -->
                 <div class="hidden md:block bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -317,14 +393,15 @@ onUnmounted(() => {
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <!-- Fila para agregar nuevo -->
                                 <tr v-if="nuevaFila.agregando" class="bg-primary-50">
-                                    <td class="px-3 py-2">
-                                        <!-- 🔥 AUTOCOMPLETADO SUCURSAL -->
+                                    <td class="px-3 py-2 relative">
                                         <div class="sucursal-autocomplete relative">
                                             <input 
+                                                ref="sucursalInputRef"
                                                 type="text"
                                                 v-model="sucursalBusqueda"
-                                                @focus="mostrarSucursales = true"
-                                                @input="mostrarSucursales = true"
+                                                @focus="abrirSucursal($event)"
+                                                @input="abrirSucursal($event)"
+                                                @click="abrirSucursal($event)"
                                                 class="w-full border rounded-lg px-2 py-1.5 text-sm pr-6"
                                                 :style="{ borderColor: `var(--color-primary-300)` }"
                                                 placeholder="Escriba para buscar..."
@@ -338,30 +415,17 @@ onUnmounted(() => {
                                             >
                                                 <i class="fas fa-times"></i>
                                             </button>
-                                            
-                                            <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
-                                                class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                <div 
-                                                    v-for="s in sucursalesDisponibles" 
-                                                    :key="s.id"
-                                                    @click="seleccionarSucursal(s)"
-                                                    class="px-2 py-1.5 cursor-pointer border-b last:border-b-0 text-sm hover:bg-gray-50"
-                                                    :class="nuevaFila.sucursal_id === s.id ? 'bg-primary-50' : ''"
-                                                    :style="nuevaFila.sucursal_id === s.id ? { backgroundColor: `var(--color-primary-50)` } : {}"
-                                                >
-                                                    {{ s.display }}
-                                                </div>
-                                            </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <!-- 🔥 AUTOCOMPLETADO FECHA -->
+                                    <td class="px-3 py-2 relative">
                                         <div class="fecha-autocomplete relative">
                                             <input 
+                                                ref="fechaInputRef"
                                                 type="text"
                                                 v-model="fechaBusqueda"
-                                                @focus="mostrarFechas = true"
-                                                @input="mostrarFechas = true"
+                                                @focus="abrirFecha($event)"
+                                                @input="abrirFecha($event)"
+                                                @click="abrirFecha($event)"
                                                 class="w-full border rounded-lg px-2 py-1.5 text-sm pr-6"
                                                 :style="{ borderColor: `var(--color-primary-300)` }"
                                                 placeholder="Escriba para buscar..."
@@ -375,20 +439,6 @@ onUnmounted(() => {
                                             >
                                                 <i class="fas fa-times"></i>
                                             </button>
-                                            
-                                            <div v-if="mostrarFechas && fechasDisponibles.length > 0" 
-                                                class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                                <div 
-                                                    v-for="f in fechasDisponibles" 
-                                                    :key="f.IdFecha"
-                                                    @click="seleccionarFecha(f)"
-                                                    class="px-2 py-1.5 cursor-pointer border-b last:border-b-0 text-sm hover:bg-gray-50"
-                                                    :class="nuevaFila.fecha_id === f.IdFecha ? 'bg-primary-50' : ''"
-                                                    :style="nuevaFila.fecha_id === f.IdFecha ? { backgroundColor: `var(--color-primary-50)` } : {}"
-                                                >
-                                                    {{ f.display }}
-                                                </div>
-                                            </div>
                                         </div>
                                     </td>
                                     <td class="px-3 py-2 text-xs text-gray-400">
@@ -452,9 +502,8 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Versión Móvil/Tablet: Cards -->
+                <!-- Móvil/Tablet: Cards -->
                 <div class="md:hidden space-y-3">
-                    <!-- Card para agregar nuevo -->
                     <div v-if="nuevaFila.agregando" class="bg-white rounded-xl shadow-sm overflow-hidden border-2" :style="{ borderColor: `var(--color-primary-200)` }">
                         <div class="p-3" :style="{ backgroundColor: `var(--color-primary-50)` }">
                             <div class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
@@ -466,52 +515,34 @@ onUnmounted(() => {
                                     <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Sucursal</label>
                                     <div class="sucursal-autocomplete relative">
                                         <input 
+                                            ref="sucursalInputRef"
                                             type="text"
                                             v-model="sucursalBusqueda"
-                                            @focus="mostrarSucursales = true"
-                                            @input="mostrarSucursales = true"
+                                            @focus="abrirSucursal($event)"
+                                            @input="abrirSucursal($event)"
+                                            @click="abrirSucursal($event)"
                                             class="w-full border rounded-lg px-2 py-1.5 text-sm pr-6"
                                             :style="{ borderColor: `var(--color-primary-300)` }"
                                             placeholder="Escriba para buscar..."
                                             autocomplete="off"
                                         />
-                                        <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
-                                            class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                            <div 
-                                                v-for="s in sucursalesDisponibles" 
-                                                :key="s.id"
-                                                @click="seleccionarSucursal(s)"
-                                                class="px-2 py-1.5 cursor-pointer border-b last:border-b-0 text-sm hover:bg-gray-50"
-                                            >
-                                                {{ s.display }}
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                                 <div>
                                     <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Fecha</label>
                                     <div class="fecha-autocomplete relative">
                                         <input 
+                                            ref="fechaInputRef"
                                             type="text"
                                             v-model="fechaBusqueda"
-                                            @focus="mostrarFechas = true"
-                                            @input="mostrarFechas = true"
+                                            @focus="abrirFecha($event)"
+                                            @input="abrirFecha($event)"
+                                            @click="abrirFecha($event)"
                                             class="w-full border rounded-lg px-2 py-1.5 text-sm pr-6"
                                             :style="{ borderColor: `var(--color-primary-300)` }"
                                             placeholder="Escriba para buscar..."
                                             autocomplete="off"
                                         />
-                                        <div v-if="mostrarFechas && fechasDisponibles.length > 0" 
-                                            class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                                            <div 
-                                                v-for="f in fechasDisponibles" 
-                                                :key="f.IdFecha"
-                                                @click="seleccionarFecha(f)"
-                                                class="px-2 py-1.5 cursor-pointer border-b last:border-b-0 text-sm hover:bg-gray-50"
-                                            >
-                                                {{ f.display }}
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -535,7 +566,7 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Cards de registros existentes -->
+                    <!-- Cards registros -->
                     <div v-for="registro in registrosLocal" :key="registro.id" class="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition-shadow">
                         <div class="p-3 border-l-4" :style="{ borderLeftColor: `var(--color-primary-500)` }">
                             <div class="flex justify-between items-start">
@@ -586,6 +617,56 @@ onUnmounted(() => {
                 </div>
             </div>
         </div>
+
+        <!-- 🔥 DROPDOWN SUCURSAL - FLOTANTE -->
+        <div 
+            v-if="mostrarSucursales && sucursalesDisponibles.length > 0"
+            class="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto"
+            :style="{
+                top: sucursalPos.top + 'px',
+                left: sucursalPos.left + 'px',
+                width: Math.max(sucursalPos.width, 250) + 'px'
+            }"
+        >
+            <div 
+                v-for="s in sucursalesDisponibles" 
+                :key="s.id"
+                @click="seleccionarSucursal(s)"
+                class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 text-sm flex justify-between items-center"
+                :class="nuevaFila.sucursal_id === s.id ? 'bg-primary-50' : ''"
+                :style="nuevaFila.sucursal_id === s.id ? { backgroundColor: `var(--color-primary-50)` } : {}"
+            >
+                <span>{{ s.display }}</span>
+                <span v-if="nuevaFila.sucursal_id === s.id" class="text-primary-600">
+                    <i class="fas fa-check-circle text-xs"></i>
+                </span>
+            </div>
+        </div>
+
+        <!-- 🔥 DROPDOWN FECHA - FLOTANTE -->
+        <div 
+            v-if="mostrarFechas && fechasDisponibles.length > 0"
+            class="fixed z-[9999] bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto"
+            :style="{
+                top: fechaPos.top + 'px',
+                left: fechaPos.left + 'px',
+                width: Math.max(fechaPos.width, 250) + 'px'
+            }"
+        >
+            <div 
+                v-for="f in fechasDisponibles" 
+                :key="f.IdFecha"
+                @click="seleccionarFecha(f)"
+                class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100 last:border-0 text-sm flex justify-between items-center"
+                :class="nuevaFila.fecha_id === f.IdFecha ? 'bg-primary-50' : ''"
+                :style="nuevaFila.fecha_id === f.IdFecha ? { backgroundColor: `var(--color-primary-50)` } : {}"
+            >
+                <span>{{ f.display }}</span>
+                <span v-if="nuevaFila.fecha_id === f.IdFecha" class="text-primary-600">
+                    <i class="fas fa-check-circle text-xs"></i>
+                </span>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -614,29 +695,5 @@ select:focus, input:focus {
 
 .animate-slide-in {
     animation: slideIn 0.3s ease-out;
-}
-
-.transition-all {
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 150ms;
-}
-
-.transition-shadow {
-    transition-property: box-shadow;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
-}
-
-@media (max-width: 640px) {
-    .space-y-3 {
-        margin-top: 0.75rem;
-    }
-}
-
-@media (hover: none) {
-    button:active {
-        transform: scale(0.97);
-    }
 }
 </style>
