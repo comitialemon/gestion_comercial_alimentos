@@ -103,6 +103,7 @@ use App\Http\Controllers\Gestion\Reportes\Operacion\ArqueoCajaChicaAutomaticoCon
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioRelacionVentaController;
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionController;
 use App\Http\Controllers\Gestion\Impuestos\VentaEditarController;
+use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarRangoController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -566,6 +567,22 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::put('/{id}', [VentaEditarController::class, 'update'])->name('gestion.ventas-editar.update');
             // 🔥 BUSCAR PRODUCTOS (NUEVO)
             Route::get('/buscar-productos', [VentaEditarController::class, 'buscarProductos'])->name('gestion.ventas-editar.buscar-productos');
+        });
+        // ============================================================
+        // REPROCESAR RANGO DE FACTURAS
+        // ============================================================
+        Route::prefix('/ventas-reprocesar-rango')->group(function () {
+            // 📋 Formulario
+            Route::get('/', [VentaReprocesarRangoController::class, 'index'])
+                ->name('gestion.ventas-reprocesar-rango.index');
+            
+            // 🔥 API: Obtener facturas por sucursal
+            Route::get('/facturas-por-sucursal', [VentaReprocesarRangoController::class, 'getFacturasPorSucursal'])
+                ->name('gestion.ventas-reprocesar-rango.facturas');
+            
+            // 🔥 Procesar rango de facturas
+            Route::post('/procesar', [VentaReprocesarRangoController::class, 'procesarRango'])
+                ->name('gestion.ventas-reprocesar-rango.procesar');
         });
 
         // ============================================================
