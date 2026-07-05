@@ -55,6 +55,31 @@ const sucursalesDisponibles = computed(() => {
     )
 })
 
+// ⚡ FILTRO EN TIEMPO REAL PARA FACTURA INICIAL
+const facturasInicialesFiltradas = computed(() => {
+    if (!facturasDisponibles.value) return []
+    // Si el usuario ya seleccionó una y sale el texto "N° X", o si está vacío, mostrar todas
+    if (!facturaInicialBusqueda.value || facturaInicialBusqueda.value.startsWith('N°')) {
+        return facturasDisponibles.value
+    }
+    const termino = facturaInicialBusqueda.value.trim()
+    return facturasDisponibles.value.filter(f => 
+        f.numero && f.numero.toString().includes(termino)
+    )
+})
+
+// ⚡ FILTRO EN TIEMPO REAL PARA FACTURA FINAL
+const facturasFinalesFiltradas = computed(() => {
+    if (!facturasDisponibles.value) return []
+    if (!facturaFinalBusqueda.value || facturaFinalBusqueda.value.startsWith('N°')) {
+        return facturasDisponibles.value
+    }
+    const termino = facturaFinalBusqueda.value.trim()
+    return facturasDisponibles.value.filter(f => 
+        f.numero && f.numero.toString().includes(termino)
+    )
+})
+
 const sucursalNombre = computed(() => {
     if (!sucursalId.value) return ''
     return props.sucursales?.find(s => s.id === sucursalId.value)?.nombre || ''
@@ -70,8 +95,6 @@ const facturaFinalSeleccionada = computed(() => {
     return facturasDisponibles.value.find(f => f.id == facturaFinalId.value)
 })
 
-const facturasFiltradas = computed(() => facturasDisponibles.value || [])
-
 const rangoValido = computed(() => {
     if (!facturaInicialId.value || !facturaFinalId.value) return true
     return parseInt(facturaInicialId.value) <= parseInt(facturaFinalId.value)
@@ -79,7 +102,7 @@ const rangoValido = computed(() => {
 
 const rangoInfo = computed(() => {
     if (!facturaInicialSeleccionada.value || !facturaFinalSeleccionada.value) return ''
-    const count = facturasFiltradas.value.filter(
+    const count = facturasDisponibles.value.filter(
         f => f.id >= parseInt(facturaInicialId.value) && f.id <= parseInt(facturaFinalId.value)
     ).length
     return `N° ${facturaInicialSeleccionada.value.numero} → N° ${facturaFinalSeleccionada.value.numero} (${count} u.)`
@@ -150,59 +173,34 @@ const validarRango = () => {
 const ejecutarProcesar = async () => {
     procesando.value = true
     mostrarModalConfirmacion.value = false
-    
     try {
         const response = await axios.post('/gestion/ventas-reprocesar-rango/procesar', {
             sucursal_id: sucursalId.value,
             factura_inicial_id: facturaInicialId.value,
             factura_final_id: facturaFinalId.value,
         })
-        
-        if (response.data.success) {
-            resultadoExito.value = true
-            resultadoMensaje.value = response.data.message
-            resultadoDetalles.value = {
-                total: response.data.total || 0,
-                total_movimientos: response.data.total_movimientos || 0,
-                facturas: response.data.facturas || [],
-                productos: response.data.productos || [],  // 🔥 NUEVO
-                errores: response.data.errores || []
-            }
-            toast?.success('✅ Éxito', response.data.message)
-        } else {
-            resultadoExito.value = false
-            resultadoMensaje.value = response.data.message || 'Error al reprocesar'
-            resultadoDetalles.value = {
-                total: 0,
-                total_movimientos: 0,
-                facturas: [],
-                productos: [],
-                errores: []
-            }
-            toast?.error('❌ Error', response.data.message)
-        }
-        
-        mostrarModalResultado.value = true
-        
-    } catch (error) {
-        console.error('Error:', error)
-        const mensaje = error.response?.data?.message || 'Error al reprocesar'
-        
-        resultadoExito.value = false
-        resultadoMensaje.value = mensaje
+        resultadoExito.value = !!response.data.success
+        resultadoMensaje.value = response.data.message
         resultadoDetalles.value = {
-            total: 0,
-            total_movimientos: 0,
-            facturas: [],
-            productos: [],
-            errores: []
+            total: response.data.total || 0,
+            facturas: response.data.facturas || [],
+            errores: response.data.errores || []
         }
-        
-        toast?.error('❌ Error', mensaje)
+        resultadoExito.value ? toast?.success('✅', response.data.message) : toast?.error('❌', response.data.message)
+        mostrarModalResultado.value = true
+    } catch (error) {
+        const msg = error.response?.data?.message || 'Error al reprocesar'
+        resultadoExito.value = false
+        resultadoMensaje.value = msg
+        toast?.error('❌', msg)
         mostrarModalResultado.value = true
     } finally {
         procesando.value = false
     }
+}
+
+const volver = () => {
+    router.get('/gestion/ventas-editar')
 }
 
 const handleClickOutside = (event) => {
@@ -226,7 +224,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 
 <template>
     <div class="min-h-screen bg-slate-50 py-6">
-        <div class="max-w-2xl mx-auto px-4">
+        <div class="max-w-4xl mx-auto px-4">
             
             <div class="flex items-center gap-3 mb-4">
                 <button @click="volver" class="text-slate-400 hover:text-slate-600 transition p-1">
@@ -238,8 +236,9 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                 </div>
             </div>
 
-            <div class="bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                <div class="p-4 space-y-4">
+            <div class="bg-white rounded-lg border border-slate-200 shadow-sm">
+                
+                <div class="p-6 space-y-6">
                     
                     <div class="sucursal-autocomplete relative">
                         <label class="block text-xs font-semibold text-slate-600 mb-1">📍 Sucursal</label>
@@ -248,7 +247,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                 type="text"
                                 v-model="sucursalBusqueda"
                                 @focus="mostrarSucursales = true"
-                                class="w-full pl-3 pr-8 py-1.5 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                                class="w-full pl-3 pr-8 py-2 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
                                 placeholder="Buscar sucursal..."
                                 autocomplete="off"
                             />
@@ -257,11 +256,11 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                             </button>
                         </div>
                         
-                        <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-md max-h-48 overflow-y-auto text-sm">
+                        <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[300px] overflow-y-auto text-sm w-[inherit] max-w-[864px]">
                             <div 
                                 v-for="sucursal in sucursalesDisponibles" :key="sucursal.id"
                                 @click="seleccionarSucursal(sucursal)"
-                                class="px-3 py-1.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
+                                class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                 :class="sucursalId == sucursal.id ? 'bg-blue-50 text-blue-700' : ''"
                             >
                                 <span class="font-medium">{{ sucursal.nombre }}</span>
@@ -270,7 +269,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-2 gap-4">
                         <div class="autocomplete-inicial relative">
                             <label class="block text-xs font-semibold text-slate-600 mb-1">📄 Desde Factura</label>
                             <div class="relative">
@@ -278,8 +277,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                     type="text"
                                     v-model="facturaInicialBusqueda"
                                     @focus="mostrarFacturaInicial = true"
-                                    class="w-full pl-3 pr-8 py-1.5 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:bg-slate-50 disabled:text-slate-400"
-                                    placeholder="N° Inicial"
+                                    class="w-full pl-3 pr-8 py-2 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                                    placeholder="Escribe N° de factura..."
                                     :disabled="!sucursalId || loading"
                                     autocomplete="off"
                                 />
@@ -288,14 +287,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                 </button>
                             </div>
                             
-                            <div v-if="mostrarFacturaInicial && facturasFiltradas.length > 0" class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-md max-h-48 overflow-y-auto text-sm">
+                            <div v-if="mostrarFacturaInicial && facturasInicialesFiltradas.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[350px] overflow-y-auto text-sm w-[inherit] max-w-[420px]">
                                 <div 
-                                    v-for="factura in facturasFiltradas" :key="factura.id"
+                                    v-for="factura in facturasInicialesFiltradas" :key="factura.id"
                                     @click="seleccionarFacturaInicial(factura)"
-                                    class="px-3 py-1.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
+                                    class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                     :class="facturaInicialId == factura.id ? 'bg-blue-50 text-blue-700' : ''"
                                 >
-                                    <span>N° {{ factura.numero }}</span>
+                                    <span class="font-medium">N° {{ factura.numero }}</span>
                                 </div>
                             </div>
                         </div>
@@ -307,8 +306,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                     type="text"
                                     v-model="facturaFinalBusqueda"
                                     @focus="mostrarFacturaFinal = true"
-                                    class="w-full pl-3 pr-8 py-1.5 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:bg-slate-50 disabled:text-slate-400"
-                                    placeholder="N° Final"
+                                    class="w-full pl-3 pr-8 py-2 text-sm rounded-md border border-slate-300 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all disabled:bg-slate-50 disabled:text-slate-400"
+                                    placeholder="Escribe N° de factura..."
                                     :disabled="!sucursalId || loading"
                                     autocomplete="off"
                                 />
@@ -317,14 +316,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                 </button>
                             </div>
                             
-                            <div v-if="mostrarFacturaFinal && facturasFiltradas.length > 0" class="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-md shadow-md max-h-48 overflow-y-auto text-sm">
+                            <div v-if="mostrarFacturaFinal && facturasFinalesFiltradas.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[350px] overflow-y-auto text-sm w-[inherit] max-w-[420px]">
                                 <div 
-                                    v-for="factura in facturasFiltradas" :key="factura.id"
+                                    v-for="factura in facturasFinalesFiltradas" :key="factura.id"
                                     @click="seleccionarFacturaFinal(factura)"
-                                    class="px-3 py-1.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
+                                    class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                     :class="facturaFinalId == factura.id ? 'bg-blue-50 text-blue-700' : ''"
                                 >
-                                    <span>N° {{ factura.numero }}</span>
+                                    <span class="font-medium">N° {{ factura.numero }}</span>
                                 </div>
                             </div>
                         </div>
@@ -336,12 +335,12 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                     </div>
                 </div>
 
-                <div class="px-4 py-3 bg-slate-50 border-t border-slate-100 text-right">
+                <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-right rounded-b-lg">
                     <button
                         type="button"
                         @click="validarRango() && (mostrarModalConfirmacion = true)"
                         :disabled="procesando || !sucursalId || !facturaInicialId || !facturaFinalId || !rangoValido"
-                        class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                        class="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md shadow-sm hover:bg-blue-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-2"
                     >
                         <i v-if="procesando" class="fas fa-spinner fa-spin"></i>
                         <i v-else class="fas fa-sync-alt"></i>
@@ -379,3 +378,12 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
         </div>
     </div>
 </template>
+
+<style scoped>
+:deep(*) {
+    overflow: visible !important;
+}
+.overflow-y-auto {
+    overflow-y: auto !important;
+}
+</style>
