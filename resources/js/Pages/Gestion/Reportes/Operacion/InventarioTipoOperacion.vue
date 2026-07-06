@@ -25,8 +25,8 @@ const props = defineProps({
 })
 
 // ==================== ESTADO ====================
-const fechaInicialId = ref(props.fechaDefault || '')
-const fechaFinalId = ref(props.fechaDefault || '')
+const fechaInicialId = ref(null)
+const fechaFinalId = ref(null)
 const estadoProductoId = ref('')
 const loading = ref(false)
 
@@ -85,30 +85,33 @@ const estadoSeleccionado = computed(() => {
 
 // ==================== ACCIONES ====================
 const seleccionarFechaInicial = (fecha) => {
+    console.log('📅 Seleccionando fecha inicial:', fecha)
     fechaInicialId.value = fecha.IdFecha
     fechaInicialBusqueda.value = fecha.fecha_formateada
     mostrarFechasInicial.value = false
 }
 
 const limpiarFechaInicial = () => {
-    fechaInicialId.value = ''
+    fechaInicialId.value = null
     fechaInicialBusqueda.value = ''
     mostrarFechasInicial.value = false
 }
 
 const seleccionarFechaFinal = (fecha) => {
+    console.log('📅 Seleccionando fecha final:', fecha)
     fechaFinalId.value = fecha.IdFecha
     fechaFinalBusqueda.value = fecha.fecha_formateada
     mostrarFechasFinal.value = false
 }
 
 const limpiarFechaFinal = () => {
-    fechaFinalId.value = ''
+    fechaFinalId.value = null
     fechaFinalBusqueda.value = ''
     mostrarFechasFinal.value = false
 }
 
 const seleccionarEstado = (estado) => {
+    console.log('📌 Seleccionando estado:', estado)
     estadoProductoId.value = estado.IdEstado
     estadoBusqueda.value = estado.Estado
     mostrarEstados.value = false
@@ -122,6 +125,11 @@ const limpiarEstado = () => {
 
 // ==================== GENERAR REPORTE ====================
 const generarReporte = () => {
+    console.log('🔍 === VALORES ANTES DE ENVIAR ===')
+    console.log('estado_producto:', estadoProductoId.value, 'Tipo:', typeof estadoProductoId.value)
+    console.log('fecha_inicial:', fechaInicialId.value, 'Tipo:', typeof fechaInicialId.value)
+    console.log('fecha_final:', fechaFinalId.value, 'Tipo:', typeof fechaFinalId.value)
+    
     if (!estadoProductoId.value) {
         alert('Seleccione un estado de producto')
         return
@@ -137,7 +145,17 @@ const generarReporte = () => {
     
     loading.value = true
     
-    window.open(`/operacion/reportes/inventario-tipo-operacion/exportar?estado_producto=${estadoProductoId.value}&fecha_inicial=${fechaInicialId.value}&fecha_final=${fechaFinalId.value}`, '_blank')
+    const params = new URLSearchParams({
+        estado_producto: estadoProductoId.value,
+        fecha_inicial: fechaInicialId.value,
+        fecha_final: fechaFinalId.value
+    })
+    
+    const url = `/operacion/reportes/inventario-tipo-operacion/exportar?${params.toString()}`
+    
+    console.log('📤 URL COMPLETA:', url)
+    
+    window.open(url, '_blank')
     
     setTimeout(() => {
         loading.value = false
@@ -150,12 +168,41 @@ const volver = () => {
 
 // ==================== LIFECYCLE ====================
 onMounted(() => {
-    // Si hay fecha default, cargarla en los buscadores
+    console.log('📋 === DATOS RECIBIDOS EN EL COMPONENTE ===')
+    console.log('Fechas disponibles:', props.fechas)
+    console.log('Estados disponibles:', props.estados)
+    console.log('Fecha default:', props.fechaDefault)
+    
+    // Si hay fecha default, usarla
     if (props.fechaDefault) {
         const fecha = props.fechas?.find(f => f.IdFecha === props.fechaDefault)
         if (fecha) {
+            console.log('📅 Usando fecha default:', fecha)
+            fechaInicialId.value = fecha.IdFecha
             fechaInicialBusqueda.value = fecha.fecha_formateada
+            fechaFinalId.value = fecha.IdFecha
             fechaFinalBusqueda.value = fecha.fecha_formateada
+        }
+    } else if (props.fechas && props.fechas.length > 0) {
+        // Si no hay fecha default, usar la más reciente
+        const fechaMasReciente = props.fechas[0]
+        console.log('📅 Usando fecha más reciente:', fechaMasReciente)
+        fechaInicialId.value = fechaMasReciente.IdFecha
+        fechaInicialBusqueda.value = fechaMasReciente.fecha_formateada
+        fechaFinalId.value = fechaMasReciente.IdFecha
+        fechaFinalBusqueda.value = fechaMasReciente.fecha_formateada
+    }
+    
+    // Seleccionar estado "Terminado" (IdEstado = 2) por defecto
+    if (props.estados && props.estados.length > 0) {
+        const estadoTerminado = props.estados.find(e => e.IdEstado === 2)
+        if (estadoTerminado) {
+            console.log('📌 Usando estado "Terminado":', estadoTerminado)
+            estadoProductoId.value = estadoTerminado.IdEstado
+            estadoBusqueda.value = estadoTerminado.Estado
+        } else {
+            estadoProductoId.value = props.estados[0].IdEstado
+            estadoBusqueda.value = props.estados[0].Estado
         }
     }
 })

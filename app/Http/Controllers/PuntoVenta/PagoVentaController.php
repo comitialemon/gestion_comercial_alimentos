@@ -446,7 +446,44 @@ class PagoVentaController extends Controller
                 ->value('IdAlmacen');
         }
         
-        $idTipoOperacion = 2;
+        // 🔥 OBTENER EL ID DE "Ventas" PARA ESTE CLIENTE
+        $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('Detalle', 'Ventas')
+            ->where('ActivoInactivo', 0)
+            ->value('IdTipoOperacion');
+
+        // Si no encuentra, buscar sin distinguir mayúsculas
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where(DB::raw('UPPER(Detalle)'), 'VENTAS')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+
+        // Si aún no encuentra, buscar por LIKE
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Detalle', 'LIKE', '%Ventas%')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+
+        // Si no encuentra NADA, lanzar error
+        if (!$idTipoOperacion) {
+            Log::error('❌ No se encontró tipo de operación VENTAS para el cliente ' . $clienteId);
+            throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
+        }
+
+        Log::info('🔑 Tipo de Operación VENTAS encontrado:', [
+            'cliente' => $clienteId,
+            'id_tipo_operacion' => $idTipoOperacion
+        ]);
         
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas_detalle')

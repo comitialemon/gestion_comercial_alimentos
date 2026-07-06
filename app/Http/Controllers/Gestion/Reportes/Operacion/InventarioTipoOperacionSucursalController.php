@@ -10,6 +10,7 @@ use PhpOffice\PhpSpreadsheet\Writer\Xls;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Style\Color;
 use Inertia\Inertia;
 
 class InventarioTipoOperacionSucursalController extends Controller
@@ -73,7 +74,7 @@ class InventarioTipoOperacionSucursalController extends Controller
         ]);
         
         $clienteId = session('cliente_id');
-        $sucursalId = $request->sucursal_id; // 🔥 Usar la seleccionada
+        $sucursalId = $request->sucursal_id;
         $estadoProducto = $request->estado_producto;
         $fechaInicialId = $request->fecha_inicial;
         $fechaFinalId = $request->fecha_final;
@@ -152,11 +153,10 @@ class InventarioTipoOperacionSucursalController extends Controller
             ->orderBy('Detalle')
             ->get(['IdTipoOperacion', 'Detalle', 'Concepto']);
         
-        // 2. Obtener todos los productos filtrados (con sucursal seleccionada)
+        // 2. 🔥 CORREGIDO - Obtener todos los productos SIN filtro de sucursal
         $productos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_productodetalle')
             ->where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId) // 🔥 Sucursal seleccionada
             ->where('IdEstadoProducto', $estadoProducto)
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Codigo', 'Descripcion']);
@@ -200,7 +200,7 @@ class InventarioTipoOperacionSucursalController extends Controller
             )
             ->whereIn('IdProducto', $idProductos)
             ->where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId) // 🔥 Sucursal seleccionada
+            ->where('IdSucursal', $sucursalId) // 🔥 MOVIMIENTOS filtrados por sucursal
             ->where('IdFecha', '<=', $fechaFinalId)
             ->whereIn('IdTipoDeOperacion', $tiposOperacionIds)
             ->groupBy('IdProducto', 'IdTipoDeOperacion', 'D_H')
@@ -301,25 +301,23 @@ class InventarioTipoOperacionSucursalController extends Controller
         $worksheet->getStyle('B7:B8')->getAlignment()->setVertical('center');
         
         // SECCIÓN AUMENTOS - Empieza en C
-        $colActual = 2; // C
-        $colInicioAumentos = 2; // C
+        $colActual = 2;
+        $colInicioAumentos = 2;
         
         if (count($tiposConD) > 0) {
             $worksheet->setCellValue($columna[$colInicioAumentos] . '7', 'AUMENTOS');
             $worksheet->mergeCells($columna[$colInicioAumentos] . '7:' . $columna[$colInicioAumentos + count($tiposConD) - 1] . '7');
             
             $worksheet->getStyle($columna[$colInicioAumentos] . '7:' . $columna[$colInicioAumentos + count($tiposConD) - 1] . '7')
-                ->getAlignment()->setHorizontal('center');
-            $worksheet->getStyle($columna[$colInicioAumentos] . '7:' . $columna[$colInicioAumentos + count($tiposConD) - 1] . '7')
-                ->getAlignment()->setVertical('center');
+                ->getAlignment()->setHorizontal('center')->setVertical('center')->setWrapText(true);
             $worksheet->getStyle($columna[$colInicioAumentos] . '7')->getFont()->setBold(true);
             
             $colDetalle = $colInicioAumentos;
             foreach ($tiposConD as $idTipo) {
                 $worksheet->setCellValue($columna[$colDetalle] . '8', $tiposOperacionDetalle[$idTipo]);
                 $worksheet->getColumnDimension($columna[$colDetalle])->setWidth(15);
-                $worksheet->getStyle($columna[$colDetalle] . '8')->getAlignment()->setHorizontal('center');
-                $worksheet->getStyle($columna[$colDetalle] . '8')->getAlignment()->setVertical('center');
+                $worksheet->getStyle($columna[$colDetalle] . '8')
+                    ->getAlignment()->setHorizontal('center')->setVertical('center')->setWrapText(true);
                 $worksheet->getStyle($columna[$colDetalle] . '8')->getFont()->setBold(true);
                 $colDetalle++;
             }
@@ -334,17 +332,15 @@ class InventarioTipoOperacionSucursalController extends Controller
             $worksheet->mergeCells($columna[$colInicioDisminuciones] . '7:' . $columna[$colInicioDisminuciones + count($tiposConH) - 1] . '7');
             
             $worksheet->getStyle($columna[$colInicioDisminuciones] . '7:' . $columna[$colInicioDisminuciones + count($tiposConH) - 1] . '7')
-                ->getAlignment()->setHorizontal('center');
-            $worksheet->getStyle($columna[$colInicioDisminuciones] . '7:' . $columna[$colInicioDisminuciones + count($tiposConH) - 1] . '7')
-                ->getAlignment()->setVertical('center');
+                ->getAlignment()->setHorizontal('center')->setVertical('center')->setWrapText(true);
             $worksheet->getStyle($columna[$colInicioDisminuciones] . '7')->getFont()->setBold(true);
             
             $colDetalle = $colInicioDisminuciones;
             foreach ($tiposConH as $idTipo) {
                 $worksheet->setCellValue($columna[$colDetalle] . '8', $tiposOperacionDetalle[$idTipo]);
                 $worksheet->getColumnDimension($columna[$colDetalle])->setWidth(15);
-                $worksheet->getStyle($columna[$colDetalle] . '8')->getAlignment()->setHorizontal('center');
-                $worksheet->getStyle($columna[$colDetalle] . '8')->getAlignment()->setVertical('center');
+                $worksheet->getStyle($columna[$colDetalle] . '8')
+                    ->getAlignment()->setHorizontal('center')->setVertical('center')->setWrapText(true);
                 $worksheet->getStyle($columna[$colDetalle] . '8')->getFont()->setBold(true);
                 $colDetalle++;
             }
@@ -357,9 +353,7 @@ class InventarioTipoOperacionSucursalController extends Controller
         $worksheet->mergeCells($columna[$colSaldoFinal] . '7:' . $columna[$colSaldoFinal] . '8');
         $worksheet->getColumnDimension($columna[$colSaldoFinal])->setWidth(15);
         $worksheet->getStyle($columna[$colSaldoFinal] . '7:' . $columna[$colSaldoFinal] . '8')
-            ->getAlignment()->setHorizontal('center');
-        $worksheet->getStyle($columna[$colSaldoFinal] . '7:' . $columna[$colSaldoFinal] . '8')
-            ->getAlignment()->setVertical('center');
+            ->getAlignment()->setHorizontal('center')->setVertical('center')->setWrapText(true);
         $worksheet->getStyle($columna[$colSaldoFinal] . '7')->getFont()->setBold(true);
         
         // =============================================
@@ -446,26 +440,20 @@ class InventarioTipoOperacionSucursalController extends Controller
             $rangoCompleto = 'A7:' . $columna[$colSaldoFinal] . $ultimaFila;
             $worksheet->getStyle($rangoCompleto)->applyFromArray($styleBorde);
             
-            // Formato de números para todas las columnas numéricas
+            // Formato de números
             $rangoNumeros = 'B9:' . $columna[$colSaldoFinal] . $ultimaFila;
             $worksheet->getStyle($rangoNumeros)->getNumberFormat()->setFormatCode(' #,##0.00 ;(#,##0.00)');
-            
-            // Alinear números a la derecha
             $worksheet->getStyle($rangoNumeros)->getAlignment()->setHorizontal('right');
             
             // NEGATIVOS EN COLOR ROJO
-            $styleNegativo = [
-                'font' => [
-                    'color' => ['argb' => 'FFFF0000'],
-                ],
-            ];
-            
             for ($fila = 9; $fila <= $ultimaFila; $fila++) {
                 for ($col = 1; $col <= $colSaldoFinal; $col++) {
                     $celda = $columna[$col] . $fila;
                     $valor = $worksheet->getCell($celda)->getValue();
                     if (is_numeric($valor) && $valor < 0) {
-                        $worksheet->getStyle($celda)->applyFromArray($styleNegativo);
+                        $worksheet->getStyle($celda)
+                            ->getFont()
+                            ->setColor(new Color(Color::COLOR_RED));
                     }
                 }
             }

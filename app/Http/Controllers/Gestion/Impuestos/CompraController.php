@@ -283,6 +283,73 @@ class CompraController extends Controller
             'total_compra' => $nuevoTotal
         ]);
     }
+    /**
+     * Obtener el ID del tipo de operación "Compras" para el cliente
+     */
+    private function getIdTipoOperacionCompras($clienteId)
+    {
+        // Buscar por Detalle exacto "Compras"
+        $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('Detalle', 'Compras')
+            ->where('ActivoInactivo', 0)
+            ->value('IdTipoOperacion');
+        
+        // Si no encuentra, buscar sin distinguir mayúsculas
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where(DB::raw('UPPER(Detalle)'), 'COMPRAS')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+        
+        // Si aún no encuentra, buscar por LIKE
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Detalle', 'LIKE', '%Compras%')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+        
+        // Si aún no encuentra, buscar por Concepto 'Ingreso' y Detalle que contenga 'Compra'
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Concepto', 'Ingreso')
+                ->where('Detalle', 'LIKE', '%Compra%')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+        
+        // Último recurso: tomar el primer tipo activo con Concepto 'Ingreso'
+        if (!$idTipoOperacion) {
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Concepto', 'Ingreso')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+        }
+        
+        // Si no encuentra NADA, lanzar error
+        if (!$idTipoOperacion) {
+            Log::error('❌ No se encontró tipo de operación COMPRAS para el cliente ' . $clienteId);
+            throw new \Exception('No se encontró el tipo de operación "Compras" para este cliente');
+        }
+        
+        Log::info('🔑 Tipo de Operación COMPRAS encontrado:', [
+            'cliente' => $clienteId,
+            'id_tipo_operacion' => $idTipoOperacion
+        ]);
+        
+        return $idTipoOperacion;
+    }
 
     public function contabilizar($id)
     {
@@ -413,7 +480,7 @@ class CompraController extends Controller
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->insert([
-                        'IdTipoDeOperacion' => 1,
+                        'IdTipoDeOperacion' => $this->getIdTipoOperacionCompras($clienteId),  // 🔥 AHORA DINÁMICO
                         'IdDocumento' => $idDiario,
                         'IdFecha' => $compra->IdFecha,
                         'IdAlmacen' => $compra->IdAlmacen,
