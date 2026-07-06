@@ -742,7 +742,10 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 // Arqueo Caja Chica por Operador
                 Route::prefix('arqueo-caja-chica-ci')->group(function () {
                     Route::get('/', [ArqueoCajaChicaCIController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci');
-                    Route::get('/pdf', [ArqueoCajaChicaCIController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');
+                    Route::get('/pdf', [ArqueoCajaChicaCIController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');                
+                    // 🔥 NUEVA RUTA PARA OBTENER OPERADORES POR SUCURSAL
+                    Route::get('/operadores', [ArqueoCajaChicaCIController::class, 'getOperadoresPorSucursal'])
+                        ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.operadores');
                 });
 
                 // Inventario Detallado

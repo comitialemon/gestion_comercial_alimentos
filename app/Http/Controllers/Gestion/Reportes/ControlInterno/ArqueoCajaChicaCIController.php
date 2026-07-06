@@ -48,6 +48,91 @@ class ArqueoCajaChicaCIController extends Controller
             'fechas' => $fechas,
         ]);
     }
+    /**
+     * API: Obtener operadores por sucursal (VERSIÓN DEPURADA)
+     */
+    public function getOperadoresPorSucursal(Request $request)
+    {
+        try {
+            $sucursalId = $request->sucursal_id;
+            $clienteId = session('cliente_id');
+            
+            // 🔥 PRIMERO: Verificar que lleguen los parámetros
+            \Log::info('=== getOperadoresPorSucursal ===');
+            \Log::info('sucursal_id: ' . $sucursalId);
+            \Log::info('cliente_id: ' . $clienteId);
+            
+            // 🔥 SEGUNDO: Verificar si la sucursal existe
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $sucursalId)
+                ->first();
+            
+            \Log::info('Sucursal encontrada: ' . ($sucursal ? $sucursal->Nombre : 'NO EXISTE'));
+            
+            // 🔥 TERCERO: Consulta SIMPLIFICADA - Sin filtro de cliente primero
+            $operadores = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                ->join('todos_operador_sucursaldb', 'todos_operador.IdOperador', '=', 'todos_operador_sucursaldb.IdOperador')
+                ->where('todos_operador_sucursaldb.IdSucursal', $sucursalId)
+                ->where('todos_operador.ActivoInactivo', 1)
+                ->select(
+                    'todos_operador.IdOperador as id',
+                    DB::raw("CONCAT(todos_identificador.CI_NIT, '-', todos_identificador.Nombre) as nombre_completo"),
+                    'todos_identificador.IdIdentificador',
+                    'todos_operador_sucursaldb.IdSucursal',
+                    'todos_operador_sucursaldb.IdCliente'
+                )
+                ->get();
+            
+            \Log::info('Operadores encontrados (sin filtro cliente): ' . $operadores->count());
+            
+            // 🔥 CUARTO: Si no hay operadores, probar sin el filtro ActivoInactivo
+            if ($operadores->isEmpty()) {
+                \Log::info('Intentando sin filtro ActivoInactivo...');
+                
+                $operadores = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador')
+                    ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                    ->join('todos_operador_sucursaldb', 'todos_operador.IdOperador', '=', 'todos_operador_sucursaldb.IdOperador')
+                    ->where('todos_operador_sucursaldb.IdSucursal', $sucursalId)
+                    ->select(
+                        'todos_operador.IdOperador as id',
+                        DB::raw("CONCAT(todos_identificador.CI_NIT, '-', todos_identificador.Nombre) as nombre_completo"),
+                        'todos_operador.ActivoInactivo'
+                    )
+                    ->get();
+                
+                \Log::info('Operadores encontrados (sin ActivoInactivo): ' . $operadores->count());
+            }
+            
+            // 🔥 QUINTO: Si aún no hay operadores, verificar directamente en la tabla
+            if ($operadores->isEmpty()) {
+                \Log::info('Verificando si hay registros en todos_operador_sucursaldb para esta sucursal...');
+                
+                $registrosSucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador_sucursaldb')
+                    ->where('IdSucursal', $sucursalId)
+                    ->get();
+                
+                \Log::info('Registros en todos_operador_sucursaldb: ' . $registrosSucursal->count());
+                
+                if ($registrosSucursal->isNotEmpty()) {
+                    foreach ($registrosSucursal as $reg) {
+                        \Log::info('  - IdOperador: ' . $reg->IdOperador . ', IdCliente: ' . $reg->IdCliente . ', IdSucursal: ' . $reg->IdSucursal);
+                    }
+                }
+            }
+            
+            return response()->json($operadores);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en getOperadoresPorSucursal: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
     
     /**
      * Genera el PDF de Arqueo de Caja Chica por Operador

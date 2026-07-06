@@ -28,6 +28,8 @@ const mostrarSucursales = ref(false)
 const operadorId = ref('')
 const operadorBusqueda = ref('')
 const mostrarOperadores = ref(false)
+const operadoresFiltrados = ref([])
+const cargandoOperadores = ref(false)
 
 const fechaId = ref('')
 const fechaBusqueda = ref('')
@@ -48,13 +50,16 @@ const sucursalesDisponibles = computed(() => {
 })
 
 const operadoresDisponibles = computed(() => {
-    if (!props.operadores) return []
-    if (!operadorBusqueda.value) return props.operadores
-    
-    const termino = operadorBusqueda.value.toLowerCase()
-    return props.operadores.filter(o => 
-        o.nombre_completo?.toLowerCase().includes(termino)
-    )
+    if (sucursalId.value) {
+        const lista = operadoresFiltrados.value
+        if (!operadorBusqueda.value) return lista
+        
+        const termino = operadorBusqueda.value.toLowerCase()
+        return lista.filter(o => 
+            o.nombre_completo?.toLowerCase().includes(termino)
+        )
+    }
+    return []
 })
 
 const fechasDisponibles = computed(() => {
@@ -75,7 +80,7 @@ const sucursalNombre = computed(() => {
 
 const operadorNombre = computed(() => {
     if (!operadorId.value) return ''
-    const op = props.operadores?.find(o => o.id === operadorId.value)
+    const op = operadoresDisponibles.value?.find(o => o.id === operadorId.value)
     return op?.nombre_completo || ''
 })
 
@@ -86,16 +91,56 @@ const fechaSeleccionadaTexto = computed(() => {
 })
 
 // ==================== ACCIONES ====================
-const seleccionarSucursal = (sucursal) => {
+const seleccionarSucursal = async (sucursal) => {
     sucursalId.value = sucursal.id
     sucursalBusqueda.value = sucursal.nombre
     mostrarSucursales.value = false
+    
+    // Limpiar operador seleccionado
+    operadorId.value = ''
+    operadorBusqueda.value = ''
+    
+    // Cargar operadores de la sucursal
+    await cargarOperadoresPorSucursal(sucursal.id)
 }
 
 const limpiarSucursal = () => {
     sucursalId.value = ''
     sucursalBusqueda.value = ''
     mostrarSucursales.value = false
+    operadoresFiltrados.value = []
+    operadorId.value = ''
+    operadorBusqueda.value = ''
+}
+
+const cargarOperadoresPorSucursal = async (sucursalIdParam) => {
+    if (!sucursalIdParam) {
+        operadoresFiltrados.value = []
+        return
+    }
+    
+    cargandoOperadores.value = true
+    
+    try {
+        const response = await fetch(`/gestion/reportes/control-interno/arqueo-caja-chica-ci/operadores?sucursal_id=${sucursalIdParam}`)
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        
+        const data = await response.json()
+        operadoresFiltrados.value = data || []
+        
+        if (operadoresFiltrados.value.length === 1) {
+            operadorId.value = operadoresFiltrados.value[0].id
+            operadorBusqueda.value = operadoresFiltrados.value[0].nombre_completo
+        }
+    } catch (error) {
+        console.error('Error al cargar operadores:', error)
+        operadoresFiltrados.value = []
+    } finally {
+        cargandoOperadores.value = false
+    }
 }
 
 const seleccionarOperador = (operador) => {
@@ -122,7 +167,6 @@ const limpiarFecha = () => {
     mostrarFechas.value = false
 }
 
-// ==================== GENERAR PDF ====================
 const generarReporte = () => {
     if (!sucursalId.value) {
         alert('Seleccione una sucursal')
@@ -270,6 +314,7 @@ onUnmounted(() => {
                                     :style="{ borderColor: `var(--color-primary-300)` }"
                                     placeholder="Escriba para buscar operador..."
                                     autocomplete="off"
+                                    :disabled="!sucursalId || cargandoOperadores"
                                 />
                                 <button 
                                     v-if="operadorBusqueda"
@@ -280,7 +325,15 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                                 
-                                <div v-if="mostrarOperadores && operadoresDisponibles.length > 0" 
+                                <!-- Cargando -->
+                                <div v-if="cargandoOperadores" 
+                                    class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
+                                    <i class="fas fa-spinner fa-spin mr-2"></i>
+                                    Cargando operadores...
+                                </div>
+                                
+                                <!-- Lista de operadores -->
+                                <div v-else-if="mostrarOperadores && operadoresDisponibles.length > 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                     <div 
                                         v-for="op in operadoresDisponibles" 
@@ -295,6 +348,20 @@ onUnmounted(() => {
                                         </div>
                                         <i v-if="operadorId === op.id" class="fas fa-check-circle text-xs" :style="{ color: `var(--color-primary-600)` }"></i>
                                     </div>
+                                </div>
+                                
+                                <!-- Mensaje cuando no hay operadores -->
+                                <div v-else-if="mostrarOperadores && sucursalId && operadoresDisponibles.length === 0 && !cargandoOperadores" 
+                                    class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    No hay operadores asignados a esta sucursal
+                                </div>
+                                
+                                <!-- Mensaje cuando no hay sucursal seleccionada -->
+                                <div v-else-if="mostrarOperadores && !sucursalId && !cargandoOperadores" 
+                                    class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow-lg p-3 text-center text-gray-500 text-sm">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Primero seleccione una sucursal
                                 </div>
                             </div>
                         </div>
@@ -413,5 +480,10 @@ input:focus {
     transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
+}
+
+input:disabled {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
 }
 </style>
