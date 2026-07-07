@@ -378,6 +378,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/mis-liquidaciones', [LiquidacionVendedorController::class, 'liquidacionesPorOperador'])->name('liquidacion-vendedor.mis-liquidaciones');
                 Route::get('/reimprimir/{id}', [LiquidacionVendedorController::class, 'reimprimir'])->name('liquidacion-vendedor.reimprimir');
                 Route::get('/pdf/{id}', [LiquidacionVendedorController::class, 'pdf'])->name('liquidacion-vendedor.pdf');
+                    // NUEVA RUTA - Liquidaciones por Sucursal
+                Route::get('/sucursal', [LiquidacionVendedorController::class, 'liquidacionesPorSucursal'])
+                    ->name('liquidacion-vendedor.sucursal');    
             });
 
             // Mantenimiento Métodos de Pago

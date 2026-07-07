@@ -82,5 +82,24 @@ class LiquidacionVendedor extends Model
         
         return $numero ?? null;
     }
+
+    // Relación directa con el operador (incluye el nombre)
+    public function operador()
+    {
+        return $this->belongsTo(\App\Models\Gestion\Todos\Operador::class, 'iDoperadorVendedor', 'IdOperador');
+    }
+
+    // Relación para obtener el nombre del operador a través del identificador
+    public function operadorIdentificador()
+    {
+        return $this->hasOneThrough(
+            \App\Models\Gestion\Todos\Identificador::class,
+            \App\Models\Gestion\Todos\Operador::class,
+            'IdOperador',        // Llave foránea en operador (PK)
+            'IdIdentificador',   // Llave foránea en identificador (PK)
+            'iDoperadorVendedor', // Llave local en liquidacion
+            'IdIdentificador'    // Llave local en operador
+        );
+    }
     
 }

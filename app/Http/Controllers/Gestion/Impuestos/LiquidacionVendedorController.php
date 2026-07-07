@@ -1176,6 +1176,69 @@ class LiquidacionVendedorController extends Controller
         ]);
     }
 
+    //------LIQUIDACIONES POR SUCURSAL (TODOS LOS OPERADORES)-----
+    /**
+     * Listado de liquidaciones de TODOS los operadores de la sucursal
+     */
+    public function liquidacionesPorSucursal()
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // 🔥 USAR QUERY BUILDER CON JOIN para traer el nombre del operador directamente
+        $liquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->leftJoin('todos_fecha as f', 'lv.IdFecha', '=', 'f.IdFecha')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.ActivoInactivo', 1)
+            ->select(
+                'lv.*',
+                'i.Nombre as nombre_operador',
+                'f.Fecha as fecha_venta',
+                DB::raw('(SELECT NumeroDiario FROM conta_diario WHERE IdDiario = lv.IdDiario) as numero_diario')
+            )
+            ->orderBy('lv.IdFecha', 'desc')
+            ->orderBy('lv.iDLiquidacionVendedor', 'desc')
+            ->paginate(20);
+        
+        // Obtener información de la sucursal
+        $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first();
+        
+        $nombreSucursal = $sucursal ? $sucursal->Nombre : 'Sucursal';
+        
+        // 🔥 RESUMEN POR OPERADOR (sin el N/A)
+        $resumenOperadores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.ActivoInactivo', 1)
+            ->select(
+                'i.Nombre as nombre_operador',
+                DB::raw('COUNT(*) as total_liquidaciones'),
+                DB::raw('SUM(lv.vEntasConfirma) as total_ventas'),
+                DB::raw('SUM(lv.dIfVendedorConfirma) as total_diferencia')
+            )
+            ->groupBy('i.Nombre')
+            ->orderBy('total_ventas', 'desc')
+            ->get();
+        
+        return Inertia::render('Gestion/Impuestos/LiquidacionVendedor/IndexSucursal', [
+            'liquidaciones' => $liquidaciones,
+            'resumenOperadores' => $resumenOperadores,
+            'titulo' => 'Liquidaciones por Sucursal',
+            'subtitulo' => 'Historial completo de liquidaciones - ' . $nombreSucursal,
+            'nombreSucursal' => $nombreSucursal,
+        ]);
+    }
+
     /**
      * Reimprimir PDF de una liquidación existente
      */
