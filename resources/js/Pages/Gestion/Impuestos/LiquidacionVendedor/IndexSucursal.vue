@@ -18,8 +18,6 @@ const windowWidth = ref(window.innerWidth)
 const mostrarResumen = ref(true)
 
 const isMobile = computed(() => windowWidth.value < 640)
-const isTablet = computed(() => windowWidth.value >= 640 && windowWidth.value < 1024)
-const isDesktop = computed(() => windowWidth.value >= 1024)
 
 const handleResize = () => {
     windowWidth.value = window.innerWidth
@@ -33,10 +31,8 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
 
-const formatearFecha = (fecha) => {
-    if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO')
-}
+// 🔥 YA NO NECESITAS formatearFecha() - la fecha viene formateada del backend
+// Solo conservamos formatearNumero para los montos
 
 const formatearNumero = (value) => {
     if (value === undefined || value === null) return '0.00'
@@ -78,22 +74,13 @@ const totalVentasSucursal = computed(() => {
     if (!props.liquidaciones?.data) return 0
     return props.liquidaciones.data.reduce((sum, item) => sum + (item.vEntasConfirma || 0), 0)
 })
-
-// 🔥 FORMATEAR FECHA PARA TARJETAS
-const formatearFechaTarjeta = (fecha) => {
-    if (!fecha) return '-'
-    const d = new Date(fecha)
-    return d.toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
-}
 </script>
 
 <template>
     <div class="min-h-screen bg-gray-100 pb-20">
         <div class="py-2 px-2 sm:py-3 sm:px-3 lg:py-4 lg:px-5">
             <div class="max-w-full lg:max-w-7xl mx-auto">
-                <!-- ========================================== -->
-                <!-- HEADER RESPONSIVE                          -->
-                <!-- ========================================== -->
+                <!-- HEADER -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
                     <div class="flex items-center gap-2">
                         <div class="w-7 h-7 sm:w-8 sm:h-8 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
@@ -118,9 +105,7 @@ const formatearFechaTarjeta = (fecha) => {
                     </div>
                 </div>
 
-                <!-- ========================================== -->
-                <!-- RESUMEN POR OPERADOR (todas las pantallas) -->
-                <!-- ========================================== -->
+                <!-- RESUMEN POR OPERADOR -->
                 <div v-if="resumenOperadores?.length > 0" class="bg-white rounded-lg shadow-sm p-2 sm:p-3 mb-3 sm:mb-4">
                     <div class="flex justify-between items-center mb-1.5 sm:mb-2">
                         <h3 class="text-xs sm:text-sm font-semibold text-gray-700 flex items-center gap-1.5">
@@ -135,7 +120,6 @@ const formatearFechaTarjeta = (fecha) => {
                     </div>
                     
                     <div v-if="mostrarResumen" class="overflow-x-auto -mx-1 sm:mx-0">
-                        <!-- 🔥 TABLA ESCRITORIO / TABLET -->
                         <table v-if="!isMobile" class="min-w-full text-[10px] sm:text-xs">
                             <thead>
                                 <tr class="bg-gray-50">
@@ -159,7 +143,7 @@ const formatearFechaTarjeta = (fecha) => {
                             </tbody>
                         </table>
 
-                        <!-- 🔥 TARJETAS MÓVIL -->
+                        <!-- TARJETAS MÓVIL -->
                         <div v-else class="space-y-1.5">
                             <div v-for="op in resumenOperadores" :key="op.nombre_operador" class="bg-gray-50 rounded-md p-2 flex justify-between items-center">
                                 <div class="flex-1 min-w-0">
@@ -181,27 +165,23 @@ const formatearFechaTarjeta = (fecha) => {
                     </div>
                 </div>
 
-                <!-- ========================================== -->
-                <!-- LISTADO DE LIQUIDACIONES                   -->
-                <!-- ========================================== -->
+                <!-- LISTADO DE LIQUIDACIONES -->
                 
-                <!-- 🔥 TARJETAS MÓVIL -->
+                <!-- TARJETAS MÓVIL -->
                 <div v-if="isMobile" class="space-y-2.5">
                     <div v-for="liquidacion in liquidaciones.data" :key="liquidacion.iDLiquidacionVendedor" class="bg-white rounded-lg shadow-sm p-3">
-                        <!-- Cabecera -->
                         <div class="flex justify-between items-start border-b border-gray-100 pb-2 mb-2">
                             <div class="flex items-center gap-2">
                                 <span class="text-xs font-mono font-bold text-primary-600 bg-primary-50 px-2 py-0.5 rounded">
                                     #{{ liquidacion.iDLiquidacionVendedor }}
                                 </span>
-                                <span class="text-[9px] text-gray-400">{{ formatearFechaTarjeta(liquidacion.fecha_venta) }}</span>
+                                <span class="text-[9px] text-gray-400">{{ liquidacion.fecha_formateada }}</span> <!-- 🔥 USAR fecha_formateada -->
                             </div>
                             <button @click="reimprimirPDF(liquidacion.iDLiquidacionVendedor)" class="text-primary-600 hover:text-primary-800">
                                 <i class="fas fa-print text-xs sm:text-sm"></i>
                             </button>
                         </div>
                         
-                        <!-- Datos principales -->
                         <div class="space-y-1.5">
                             <div class="flex justify-between items-center">
                                 <span class="text-[10px] text-gray-500">Operador</span>
@@ -220,7 +200,6 @@ const formatearFechaTarjeta = (fecha) => {
                             </div>
                         </div>
                         
-                        <!-- Totales -->
                         <div class="mt-2 pt-2 border-t border-gray-100 flex justify-between items-center">
                             <div>
                                 <span class="text-[9px] text-gray-400 block">Total Ventas</span>
@@ -242,7 +221,7 @@ const formatearFechaTarjeta = (fecha) => {
                     </div>
                 </div>
 
-                <!-- 🔥 TABLA TABLET Y ESCRITORIO -->
+                <!-- TABLA TABLET Y ESCRITORIO -->
                 <div v-else class="bg-white rounded-lg shadow-sm overflow-hidden">
                     <div class="overflow-x-auto">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -268,7 +247,7 @@ const formatearFechaTarjeta = (fecha) => {
                                         </span>
                                     </td>
                                     <td class="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs text-gray-500 whitespace-nowrap">
-                                        {{ formatearFecha(liquidacion.fecha_venta) }}
+                                        {{ liquidacion.fecha_formateada }} <!-- 🔥 USAR fecha_formateada -->
                                     </td>
                                     <td class="px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-xs">
                                         <span 
@@ -309,9 +288,7 @@ const formatearFechaTarjeta = (fecha) => {
                         </table>
                     </div>
 
-                    <!-- ========================================== -->
-                    <!-- PAGINACIÓN RESPONSIVE                      -->
-                    <!-- ========================================== -->
+                    <!-- PAGINACIÓN -->
                     <div v-if="liquidaciones.links && liquidaciones.links.length > 1" class="px-2 sm:px-3 py-1.5 sm:py-2 border-t border-gray-200 bg-gray-50">
                         <div class="flex flex-col xs:flex-row justify-between items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs">
                             <div class="text-gray-500 text-[9px] sm:text-xs">
@@ -342,7 +319,6 @@ const formatearFechaTarjeta = (fecha) => {
 </template>
 
 <style scoped>
-/* 🔥 BREAKPOINTS PERSONALIZADOS */
 @media (max-width: 480px) {
     .xs\:inline { display: inline !important; }
     .xs\:hidden { display: none !important; }
@@ -353,7 +329,6 @@ const formatearFechaTarjeta = (fecha) => {
     .xs\:hidden { display: none !important; }
 }
 
-/* 🔥 MEJORAS DE TOUCH EN MÓVIL */
 @media (max-width: 640px) {
     button, 
     [role="button"],
@@ -362,21 +337,18 @@ const formatearFechaTarjeta = (fecha) => {
         min-width: 36px;
     }
     
-    /* Scroll suave en tablas */
     .overflow-x-auto {
         -webkit-overflow-scrolling: touch;
         scroll-behavior: smooth;
     }
 }
 
-/* 🔥 ANIMACIONES SUAVES */
 .transition-colors {
     transition-property: background-color, border-color, color, fill, stroke;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
 }
 
-/* 🔥 MEJORAR SCROLL EN TABLAS */
 .overflow-x-auto::-webkit-scrollbar {
     height: 4px;
 }

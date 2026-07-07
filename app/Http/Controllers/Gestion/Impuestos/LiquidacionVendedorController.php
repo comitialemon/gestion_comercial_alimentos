@@ -1137,7 +1137,6 @@ class LiquidacionVendedorController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
-
     //------LIQUIDACIONES-----
     /**
      * Listado de liquidaciones del operador logueado
@@ -1148,16 +1147,23 @@ class LiquidacionVendedorController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
         
-        $liquidaciones = LiquidacionVendedor::porContexto()
-            ->where('iDoperadorVendedor', $operadorId)
-            ->with(['fecha', 'detalles.concepto'])
-            ->orderBy('iDLiquidacionVendedor', 'desc')
+        // 🔥 USAR QUERY BUILDER CON JOIN (mismo enfoque que sucursal)
+        $liquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->leftJoin('todos_fecha as f', 'lv.IdFecha', '=', 'f.IdFecha')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.iDoperadorVendedor', $operadorId)
+            ->where('lv.ActivoInactivo', 1)
+            ->select(
+                'lv.*',
+                DB::raw("DATE_FORMAT(f.Fecha, '%d/%m/%Y') as fecha_formateada"), // 🔥 YA FORMATEADA
+                'f.Fecha as fecha_liquidacion',
+                DB::raw('(SELECT NumeroDiario FROM conta_diario WHERE IdDiario = lv.IdDiario) as numero_diario')
+            )
+            ->orderBy('lv.IdFecha', 'desc')
+            ->orderBy('lv.iDLiquidacionVendedor', 'desc')
             ->paginate(20);
-        
-        // 🔥 AGREGAR NÚMERO DE DIARIO A CADA LIQUIDACIÓN
-        foreach ($liquidaciones as $liquidacion) {
-            $liquidacion->numero_diario = $liquidacion->numero_diario;
-        }
         
         // Obtener el nombre del operador actual
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
@@ -1179,30 +1185,53 @@ class LiquidacionVendedorController extends Controller
     //------LIQUIDACIONES POR SUCURSAL (TODOS LOS OPERADORES)-----
     /**
      * Listado de liquidaciones de TODOS los operadores de la sucursal
+     * con número correlativo por sucursal
      */
     public function liquidacionesPorSucursal()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        // 🔥 USAR QUERY BUILDER CON JOIN para traer el nombre del operador directamente
+        // 🔥 USAR QUERY BUILDER CON JOIN
         $liquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->leftJoin('todos_fecha as f', 'lv.IdFecha', '=', 'f.IdFecha')
             ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
-            ->leftJoin('todos_fecha as f', 'lv.IdFecha', '=', 'f.IdFecha')
             ->where('lv.iDcliente', $clienteId)
             ->where('lv.iDsucursal', $sucursalId)
             ->where('lv.ActivoInactivo', 1)
             ->select(
                 'lv.*',
+                DB::raw("DATE_FORMAT(f.Fecha, '%d/%m/%Y') as fecha_formateada"), // 🔥 YA FORMATEADA
+                'f.Fecha as fecha_liquidacion', // Original por si acaso
                 'i.Nombre as nombre_operador',
-                'f.Fecha as fecha_venta',
                 DB::raw('(SELECT NumeroDiario FROM conta_diario WHERE IdDiario = lv.IdDiario) as numero_diario')
             )
             ->orderBy('lv.IdFecha', 'desc')
             ->orderBy('lv.iDLiquidacionVendedor', 'desc')
             ->paginate(20);
+        
+        // 🔥 ASIGNAR NÚMERO CORRELATIVO POR SUCURSAL
+        $todasLiquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor')
+            ->where('iDcliente', $clienteId)
+            ->where('iDsucursal', $sucursalId)
+            ->where('ActivoInactivo', 1)
+            ->orderBy('IdFecha', 'asc')
+            ->orderBy('iDLiquidacionVendedor', 'asc')
+            ->get(['iDLiquidacionVendedor']);
+        
+        $correlativoMap = [];
+        $contador = 1;
+        foreach ($todasLiquidaciones as $item) {
+            $correlativoMap[$item->iDLiquidacionVendedor] = $contador++;
+        }
+        
+        // Asignar correlativo a cada liquidación de la paginación
+        foreach ($liquidaciones as $liquidacion) {
+            $liquidacion->correlativo_sucursal = $correlativoMap[$liquidacion->iDLiquidacionVendedor] ?? '-';
+        }
         
         // Obtener información de la sucursal
         $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
@@ -1212,7 +1241,7 @@ class LiquidacionVendedorController extends Controller
         
         $nombreSucursal = $sucursal ? $sucursal->Nombre : 'Sucursal';
         
-        // 🔥 RESUMEN POR OPERADOR (sin el N/A)
+        // 🔥 RESUMEN POR OPERADOR (estadísticas)
         $resumenOperadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas_liquidacion_vendedor as lv')
             ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
