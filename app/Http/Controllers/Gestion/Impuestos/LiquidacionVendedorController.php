@@ -1268,6 +1268,164 @@ class LiquidacionVendedorController extends Controller
         ]);
     }
 
+    //------LIQUIDACIONES POR SUCURSAL (SUPERUSUARIO)-----
+    /**
+     * Listado de liquidaciones de TODOS los operadores de una sucursal seleccionada
+     * Para superusuarios que pueden ver todas las sucursales del cliente
+     * Con filtro por operador
+     */
+    public function liquidacionesPorSucursalSupervisor(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        
+        // 🔥 VALIDAR PARÁMETROS
+        $request->validate([
+            'sucursal_id' => 'nullable|integer',
+            'operador_id' => 'nullable|integer',
+        ]);
+        
+        // 🔥 OBTENER TODAS LAS SUCURSALES (INCLUYENDO INACTIVAS)
+        $todasSucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'ActivoInactivo']);
+        
+        // Si no hay sucursales, redirigir
+        if ($todasSucursales->isEmpty()) {
+            return back()->with('error', 'No hay sucursales disponibles para este cliente');
+        }
+        
+        // 🔥 CONSTRUIR LISTA PARA EL SELECTOR DE SUCURSALES
+        $sucursalesParaSelector = $todasSucursales->map(function($item) {
+            return [
+                'id' => $item->id,
+                'nombre' => $item->ActivoInactivo == 1 
+                    ? $item->nombre 
+                    : $item->nombre ,
+                'activa' => $item->ActivoInactivo == 1
+            ];
+        });
+        
+        // 🔥 OBTENER LA SUCURSAL SELECCIONADA
+        $sucursalActiva = $todasSucursales->firstWhere('ActivoInactivo', 1);
+        $sucursalId = $request->sucursal_id 
+            ?? ($sucursalActiva ? $sucursalActiva->id : $todasSucursales->first()->id);
+        
+        // 🔥 OBTENER TODOS LOS OPERADORES DE LA SUCURSAL SELECCIONADA
+        $operadores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.ActivoInactivo', 1)
+            ->select(
+                'o.IdOperador as id',
+                'i.Nombre as nombre'
+            )
+            ->distinct()
+            ->orderBy('i.Nombre')
+            ->get();
+        
+        // 🔥 OBTENER EL OPERADOR SELECCIONADO
+        $operadorId = $request->operador_id;
+        
+        // 🔥 CONSTRUIR QUERY DE LIQUIDACIONES
+        $query = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->leftJoin('todos_fecha as f', 'lv.IdFecha', '=', 'f.IdFecha')
+            ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.ActivoInactivo', 1);
+        
+        // 🔥 APLICAR FILTRO POR OPERADOR (si se seleccionó uno)
+        if ($operadorId) {
+            $query->where('lv.iDoperadorVendedor', $operadorId);
+        }
+        
+        $liquidaciones = $query->select(
+                'lv.*',
+                DB::raw("DATE_FORMAT(f.Fecha, '%d/%m/%Y') as fecha_formateada"),
+                'f.Fecha as fecha_liquidacion',
+                'i.Nombre as nombre_operador',
+                DB::raw('(SELECT NumeroDiario FROM conta_diario WHERE IdDiario = lv.IdDiario) as numero_diario')
+            )
+            ->orderBy('lv.IdFecha', 'desc')
+            ->orderBy('lv.iDLiquidacionVendedor', 'desc')
+            ->paginate(20);
+        
+        // 🔥 OBTENER EL NOMBRE DE LA SUCURSAL SELECCIONADA
+        $sucursalSeleccionada = $todasSucursales->firstWhere('id', $sucursalId);
+        $nombreSucursal = $sucursalSeleccionada ? $sucursalSeleccionada->nombre : 'Sucursal';
+        
+        // 🔥 RESUMEN POR OPERADOR DE LA SUCURSAL SELECCIONADA (CON FILTRO)
+        $resumenQuery = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor as lv')
+            ->join('todos_operador as o', 'lv.iDoperadorVendedor', '=', 'o.IdOperador')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('lv.iDcliente', $clienteId)
+            ->where('lv.iDsucursal', $sucursalId)
+            ->where('lv.ActivoInactivo', 1);
+        
+        // 🔥 APLICAR FILTRO POR OPERADOR AL RESUMEN
+        if ($operadorId) {
+            $resumenQuery->where('lv.iDoperadorVendedor', $operadorId);
+        }
+        
+        $resumenOperadores = $resumenQuery->select(
+                'i.Nombre as nombre_operador',
+                DB::raw('COUNT(*) as total_liquidaciones'),
+                DB::raw('SUM(lv.vEntasConfirma) as total_ventas'),
+                DB::raw('SUM(lv.dIfVendedorConfirma) as total_diferencia')
+            )
+            ->groupBy('i.Nombre')
+            ->orderBy('total_ventas', 'desc')
+            ->get();
+        
+        // 🔥 ASIGNAR NÚMERO CORRELATIVO POR SUCURSAL (siempre basado en todas las liquidaciones de la sucursal)
+        $todasLiquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas_liquidacion_vendedor')
+            ->where('iDcliente', $clienteId)
+            ->where('iDsucursal', $sucursalId)
+            ->where('ActivoInactivo', 1)
+            ->orderBy('IdFecha', 'asc')
+            ->orderBy('iDLiquidacionVendedor', 'asc')
+            ->get(['iDLiquidacionVendedor']);
+        
+        $correlativoMap = [];
+        $contador = 1;
+        foreach ($todasLiquidaciones as $item) {
+            $correlativoMap[$item->iDLiquidacionVendedor] = $contador++;
+        }
+        
+        foreach ($liquidaciones as $liquidacion) {
+            $liquidacion->correlativo_sucursal = $correlativoMap[$liquidacion->iDLiquidacionVendedor] ?? '-';
+        }
+        
+        // 🔥 NOMBRE DEL OPERADOR SELECCIONADO
+        $nombreOperadorSeleccionado = null;
+        if ($operadorId) {
+            $operadorSeleccionado = $operadores->firstWhere('id', $operadorId);
+            $nombreOperadorSeleccionado = $operadorSeleccionado ? $operadorSeleccionado->nombre : null;
+        }
+        
+        return Inertia::render('Gestion/Impuestos/LiquidacionVendedor/IndexSupervisor', [
+            'liquidaciones' => $liquidaciones,
+            'resumenOperadores' => $resumenOperadores,
+            'sucursales' => $sucursalesParaSelector,
+            'sucursalSeleccionada' => $sucursalId,
+            'nombreSucursal' => $nombreSucursal,
+            'operadores' => $operadores,
+            'operadorSeleccionado' => $operadorId,
+            'nombreOperadorSeleccionado' => $nombreOperadorSeleccionado,
+            'titulo' => 'Liquidaciones por Sucursal',
+            'subtitulo' => 'Visión general de todas las liquidaciones por sucursal',
+        ]);
+    }
+
     /**
      * Reimprimir PDF de una liquidación existente
      */

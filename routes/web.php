@@ -380,7 +380,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/pdf/{id}', [LiquidacionVendedorController::class, 'pdf'])->name('liquidacion-vendedor.pdf');
                     // NUEVA RUTA - Liquidaciones por Sucursal
                 Route::get('/sucursal', [LiquidacionVendedorController::class, 'liquidacionesPorSucursal'])
-                    ->name('liquidacion-vendedor.sucursal');    
+                    ->name('liquidacion-vendedor.sucursal'); 
+                // 🔥 NUEVA RUTA - Supervisor (puede ver todas las sucursales)
+                Route::get('/supervisor', [LiquidacionVendedorController::class, 'liquidacionesPorSucursalSupervisor'])->name('liquidacion-vendedor.supervisor');   
             });
 
             // Mantenimiento Métodos de Pago
