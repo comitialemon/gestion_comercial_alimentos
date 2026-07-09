@@ -16,6 +16,8 @@ const props = defineProps({
     identificadores: Array,
     editando: Boolean,
     esBorrador: Boolean,
+    esContabilizado: Boolean,
+    esDesactivado: Boolean,  // ← NUEVO
 })
 
 const isMobile = ref(false)
@@ -200,10 +202,6 @@ const guardarEdicionUnidades = async (item, index) => {
     }
 }
 
-const setTimeoutFn = (fn, delay) => {
-    return setTimeout(fn, delay)
-}
-
 const cargarDetalles = async () => {
     if (!form.value.IdFisico) return
     try {
@@ -307,12 +305,39 @@ const cancelarConfirmacion = () => {
     mostrarConfirmacion.value = false
 }
 
+// ==================== INICIALIZAR ====================
 const inicializar = () => {
+    // 🔥 SIEMPRE activar cabeceraGuardada si existe inventarioFisico con IdFisico
+    if (props.inventarioFisico && props.inventarioFisico.IdFisico) {
+        cabeceraGuardada.value = true
+        
+        // Cargar datos del formulario (solo si tienen valor válido)
+        if (props.inventarioFisico.IdFecha && props.inventarioFisico.IdFecha != 0) {
+            form.value.IdFecha = props.inventarioFisico.IdFecha
+        }
+        if (props.inventarioFisico.IdSucursal && props.inventarioFisico.IdSucursal != 0) {
+            form.value.IdSucursal = props.inventarioFisico.IdSucursal
+            cargarAlmacenes(props.inventarioFisico.IdSucursal)
+        }
+        if (props.inventarioFisico.IdAlmacen && props.inventarioFisico.IdAlmacen != 0) {
+            form.value.IdAlmacen = props.inventarioFisico.IdAlmacen
+        }
+        if (props.inventarioFisico.IdRealizadoPor && props.inventarioFisico.IdRealizadoPor != 0) {
+            form.value.IdRealizadoPor = props.inventarioFisico.IdRealizadoPor
+        }
+        if (props.inventarioFisico.IdEncargadoSucursal && props.inventarioFisico.IdEncargadoSucursal != 0) {
+            form.value.IdEncargadoSucursal = props.inventarioFisico.IdEncargadoSucursal
+        }
+        if (props.inventarioFisico.Observacion) {
+            form.value.Observacion = props.inventarioFisico.Observacion
+        }
+    }
+    
+    // 🔥 Cargar nombres en autocompletar
     if (form.value.IdSucursal && props.sucursales) {
         const sucursal = props.sucursales.find(s => s.id === form.value.IdSucursal)
         if (sucursal) {
             busquedaSucursal.value = sucursal.nombre
-            cargarAlmacenes(sucursal.id)
         }
     }
     
@@ -326,6 +351,7 @@ const inicializar = () => {
         if (encargado) busquedaEncargado.value = encargado.texto
     }
     
+    // 🔥 Cargar detalles si existen
     if (props.detalles && props.detalles.length > 0) {
         detallesGrid.value = props.detalles
         cabeceraGuardada.value = true
@@ -374,10 +400,8 @@ onUnmounted(() => {
     animation: fadeInUp 0.3s ease-out;
 }
 
-/* 🔥 Estilo para el input de edición en móvil */
 .edit-input {
     font-size: 14px !important;
-    /* Para evitar zoom en iOS */
 }
 </style>
 
@@ -398,10 +422,11 @@ onUnmounted(() => {
                     </div>
                     
                     <div class="flex gap-1.5 sm:gap-2 w-full sm:w-auto">
+                        <!-- 🔥 BOTÓN GUARDAR (deshabilitado si está contabilizado) -->
                         <button 
                             @click="guardarCabecera"
-                            :disabled="guardandoCabecera"
-                            class="flex-1 sm:flex-none bg-primary-600 hover:bg-primary-700 text-white px-2 sm:px-3 py-1.5 rounded text-[10px] sm:text-xs flex items-center justify-center gap-1 transition disabled:opacity-50"
+                            :disabled="guardandoCabecera || props.esContabilizado"
+                            class="flex-1 sm:flex-none bg-primary-600 hover:bg-primary-700 text-white px-2 sm:px-3 py-1.5 rounded text-[10px] sm:text-xs flex items-center justify-center gap-1 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <i v-if="guardandoCabecera" class="fas fa-spinner fa-spin text-[9px] sm:text-[10px]"></i>
                             <i v-else class="fas fa-save text-[9px] sm:text-[10px]"></i>
@@ -409,8 +434,9 @@ onUnmounted(() => {
                             <span class="xs:hidden">{{ guardandoCabecera ? '...' : 'Guardar' }}</span>
                         </button>
                         
+                        <!-- 🔥 BOTÓN CONTABILIZAR (solo si hay productos y no está contabilizado) -->
                         <button 
-                            v-if="cabeceraGuardada && detallesGrid.length > 0"
+                            v-if="cabeceraGuardada && detallesGrid.length > 0 && !props.esContabilizado"
                             @click="contabilizar"
                             :disabled="contabilizando"
                             class="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-2 sm:px-3 py-1.5 rounded text-[10px] sm:text-xs flex items-center justify-center gap-1 transition disabled:opacity-50"
@@ -420,6 +446,28 @@ onUnmounted(() => {
                             <span class="hidden xs:inline">{{ contabilizando ? 'Contabilizando...' : 'Contabilizar' }}</span>
                             <span class="xs:hidden">{{ contabilizando ? '...' : 'Contab.' }}</span>
                         </button>
+                        
+                        <!-- 🔥 INDICADOR DE CONTABILIZADO -->
+                        <span v-if="props.esContabilizado" class="bg-green-100 text-green-800 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
+                            <i class="fas fa-check-circle"></i>
+                            Contabilizado N° {{ props.inventarioFisico?.NumeroCorrelativo }}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 🔥 ALERTA DE BORRADOR -->
+                <div v-if="props.esBorrador" class="bg-amber-50 border border-amber-200 rounded-lg p-2 mb-4">
+                    <div class="flex items-center gap-2 text-amber-700 text-xs">
+                        <i class="fas fa-info-circle"></i>
+                        <span>Borrador en progreso. Complete los datos y guarde la cabecera.</span>
+                    </div>
+                </div>
+
+                <!-- 🔥 ALERTA DE CONTABILIZADO -->
+                <div v-if="props.esContabilizado" class="bg-green-50 border border-green-200 rounded-lg p-2 mb-4">
+                    <div class="flex items-center gap-2 text-green-700 text-xs">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Documento contabilizado. Solo lectura.</span>
                     </div>
                 </div>
 
@@ -430,7 +478,7 @@ onUnmounted(() => {
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 text-[10px] sm:text-xs">
                         <div>
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Fecha *</label>
-                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" :class="{'border-red-500': errors.IdFecha}">
+                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" :class="{'border-red-500': errors.IdFecha}" :disabled="props.esContabilizado">
                                 <option value="">Seleccione</option>
                                 <option v-for="f in fechas" :key="f.id" :value="f.id">{{ f.fecha_display }}</option>
                             </select>
@@ -448,6 +496,7 @@ onUnmounted(() => {
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdSucursal}"
+                                :disabled="props.esContabilizado"
                             />
                             <div v-if="mostrarSucursales && sucursalesFiltradas.length > 0" 
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
@@ -467,7 +516,7 @@ onUnmounted(() => {
                                 v-model="form.IdAlmacen"
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdAlmacen}"
-                                :disabled="cargandoAlmacenes || (!form.IdSucursal)"
+                                :disabled="cargandoAlmacenes || (!form.IdSucursal) || props.esContabilizado"
                             >
                                 <option value="">-- Seleccione --</option>
                                 <option v-for="alm in almacenesDisponibles" :key="alm.id" :value="alm.id">
@@ -488,6 +537,7 @@ onUnmounted(() => {
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdRealizadoPor}"
+                                :disabled="props.esContabilizado"
                             />
                             <div v-if="mostrarRealizadoPor && realizadosPorFiltrados.length > 0" 
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
@@ -512,6 +562,7 @@ onUnmounted(() => {
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdEncargadoSucursal}"
+                                :disabled="props.esContabilizado"
                             />
                             <div v-if="mostrarEncargado && encargadosFiltrados.length > 0" 
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
@@ -527,7 +578,7 @@ onUnmounted(() => {
 
                         <div class="sm:col-span-2 lg:col-span-4">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Observación</label>
-                            <textarea v-model="form.Observacion" rows="1.5 sm:rows-2" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" placeholder="Notas..."></textarea>
+                            <textarea v-model="form.Observacion" rows="1.5 sm:rows-2" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" placeholder="Notas..." :disabled="props.esContabilizado"></textarea>
                         </div>
                     </div>
                 </div>
@@ -545,9 +596,11 @@ onUnmounted(() => {
                                     placeholder="Buscar producto..."
                                     class="w-full border rounded-md pl-7 pr-2 py-1.5 text-[10px] sm:text-xs focus:ring-2 focus:outline-none"
                                     :style="{ borderColor: 'var(--color-primary-300)' }"
+                                    :disabled="props.esContabilizado"
                                 />
                             </div>
                             <button 
+                                v-if="!props.esContabilizado"
                                 @click="reprocesarProductos"
                                 :disabled="reprocesando"
                                 class="bg-primary-600 hover:bg-primary-700 text-white px-2.5 sm:px-3 py-1.5 rounded text-[10px] sm:text-xs flex items-center justify-center gap-1 transition disabled:opacity-50"
@@ -578,7 +631,7 @@ onUnmounted(() => {
                                     <td class="px-2 sm:px-3 py-1.5 sm:py-2 text-[9px] sm:text-[11px]">{{ item.Descripcion }}</td>
                                     <td class="px-2 sm:px-3 py-1.5 sm:py-2 text-right text-[9px] sm:text-[11px]">{{ Number(item.UnidadesSaldo).toFixed(2) }}</td>
                                     <td class="px-2 sm:px-3 py-1.5 sm:py-2 text-right">
-                                        <div v-if="editandoUnidades === idx" class="flex gap-1 justify-end">
+                                        <div v-if="editandoUnidades === idx && !props.esContabilizado" class="flex gap-1 justify-end">
                                             <input type="number" step="0.01" v-model.number="editandoValorTemp" 
                                                    class="w-16 sm:w-20 border rounded px-1 py-0.5 text-[9px] sm:text-xs text-right no-spinner">
                                             <button @click="guardarEdicionUnidades(item, idx)" class="bg-green-500 text-white px-1 rounded text-[9px] sm:text-[10px]">✓</button>
@@ -586,7 +639,7 @@ onUnmounted(() => {
                                         </div>
                                         <div v-else class="flex items-center justify-end gap-1">
                                             <span class="text-[9px] sm:text-[11px]">{{ Number(item.Unidades).toFixed(2) }}</span>
-                                            <button @click="iniciarEdicionUnidades(item, idx)" class="text-blue-500 hover:text-blue-700 transition">
+                                            <button v-if="!props.esContabilizado" @click="iniciarEdicionUnidades(item, idx)" class="text-blue-500 hover:text-blue-700 transition">
                                                 <i class="fas fa-edit text-[9px] sm:text-[10px]"></i>
                                             </button>
                                         </div>
@@ -631,7 +684,7 @@ onUnmounted(() => {
                                     
                                     <!-- Botón de edición -->
                                     <div class="flex-shrink-0 ml-2">
-                                        <button v-if="editandoUnidades !== idx" 
+                                        <button v-if="editandoUnidades !== idx && !props.esContabilizado" 
                                                 @click="iniciarEdicionUnidades(item, idx)" 
                                                 class="bg-primary-50 hover:bg-primary-100 text-primary-600 px-2.5 py-1.5 rounded-lg text-[10px] sm:text-xs flex items-center gap-1.5 transition border border-primary-200">
                                             <i class="fas fa-pen text-[8px] sm:text-[9px]"></i>
@@ -649,7 +702,7 @@ onUnmounted(() => {
                                     
                                     <div class="bg-primary-50 rounded-lg p-1.5 sm:p-2 text-center border border-primary-200">
                                         <span class="text-[7px] sm:text-[8px] text-gray-500 block">Conteo</span>
-                                        <span v-if="editandoUnidades === idx" class="block">
+                                        <span v-if="editandoUnidades === idx && !props.esContabilizado" class="block">
                                             <input type="number" step="0.01" v-model.number="editandoValorTemp" 
                                                    class="w-full border rounded px-1 py-0.5 text-[10px] sm:text-xs text-center no-spinner edit-input"
                                                    :style="{ borderColor: 'var(--color-primary-300)' }"
@@ -672,7 +725,7 @@ onUnmounted(() => {
                                 </div>
                                 
                                 <!-- Botones de acción cuando está editando -->
-                                <div v-if="editandoUnidades === idx" class="flex gap-2 mt-1">
+                                <div v-if="editandoUnidades === idx && !props.esContabilizado" class="flex gap-2 mt-1">
                                     <button @click="guardarEdicionUnidades(item, idx)" 
                                             class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-[10px] sm:text-xs font-medium transition flex items-center justify-center gap-1.5">
                                         <i class="fas fa-check text-[8px] sm:text-[9px]"></i> Guardar Conteo

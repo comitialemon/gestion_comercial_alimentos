@@ -54,7 +54,8 @@ class InventarioFisicoController extends Controller
     }
 
     /**
-     * Entrada principal - Busca borrador pendiente o muestra formulario vacío
+     * Entrada principal - Busca borrador pendiente o crea uno nuevo
+     * IGUAL A SCRIPTCASE: Siempre redirige a edit si existe borrador
      */
     public function create()
     {
@@ -67,63 +68,36 @@ class InventarioFisicoController extends Controller
                 ->with('error', 'Debe seleccionar una empresa primero');
         }
 
-        // Buscar borrador pendiente
+        // 🔥 BUSCAR CUALQUIER DOCUMENTO EDITABLE (ActivoInactivo = 0)
+        // Incluye tanto borradores nuevos (NumeroCorrelativo = 0) 
+        // como documentos desactivados para edición (NumeroCorrelativo > 0)
         $borrador = InventarioFisico::where('IdCliente', $clienteId)
             ->where('IdOperador', $operadorId)
-            ->where('ActivoInactivo', 0)
-            ->where('NumeroCorrelativo', 0)
+            ->where('ActivoInactivo', 0)  // ← SOLO documentos editables
             ->first();
 
-        // Datos para selects
-        $fechas = Fecha::where('IdFecha', '>', 0)
-            ->orderBy('Fecha', 'desc')
-            ->get(['IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d-%m-%Y') as fecha_display")]);
-
-        $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
-            ->orderBy('Nombre')
-            ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
-
-        $identificadores = Identificador::orderBy('CI_NIT')
-            ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
-            ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
-
-        // Cargar almacenes si hay sucursal en el borrador
-        $almacenes = [];
-        if ($borrador && $borrador->IdSucursal) {
-            $almacenes = Almacen::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $borrador->IdSucursal)
-                ->orderBy('Almacen')
-                ->get(['IdAlmacen as id', 'Almacen as nombre']);
-        }
-
-        // Cargar detalles si existe borrador
-        $detalles = [];
+        // 🔥 SI EXISTE DOCUMENTO EDITABLE → REDIRIGIR A EDIT
         if ($borrador) {
-            $detalles = InventarioFisicoDetalle::where('IdFisico', $borrador->IdFisico)
-                ->with('producto')
-                ->get()
-                ->map(function($detalle) {
-                    return [
-                        'IdFisicoPropiamente' => $detalle->IdFisicoPropiamente,
-                        'IdProducto' => $detalle->IdProducto,
-                        'Codigo' => $detalle->producto?->Codigo,
-                        'Descripcion' => $detalle->producto?->Descripcion,
-                        'UnidadesSaldo' => (float) $detalle->UnidadesSaldo,
-                        'Unidades' => (float) $detalle->Unidades,
-                        'UnidadesAjuste' => (float) $detalle->UnidadesAjuste,
-                    ];
-                });
+            return redirect()->route('gestion.inventario-fisico.edit', $borrador->IdFisico)
+                ->with('info', 'Continúe con el inventario físico en progreso');
         }
 
-        return Inertia::render('Gestion/Inventario/InventarioFisico/Create', [
-            'inventarioFisico' => $borrador,
-            'detalles' => $detalles,
-            'fechas' => $fechas,
-            'sucursales' => $sucursales,
-            'almacenes' => $almacenes,
-            'identificadores' => $identificadores,
-            'esBorrador' => true,
+        // 🔥 SI NO EXISTE → CREAR NUEVO BORRADOR
+        $nuevoBorrador = InventarioFisico::create([
+            'NumeroCorrelativo' => 0,
+            'IdFecha' => 0,
+            'IdAlmacen' => 0,
+            'IdRealizadoPor' => 0,
+            'IdEncargadoSucursal' => 0,
+            'Observacion' => '',
+            'ActivoInactivo' => 0,
+            'IdCliente' => $clienteId,
+            'IdSucursal' => $sucursalId ?? 0,
+            'IdOperador' => $operadorId,
         ]);
+
+        return redirect()->route('gestion.inventario-fisico.edit', $nuevoBorrador->IdFisico)
+            ->with('success', 'Nuevo inventario físico creado. Complete los datos y guarde.');
     }
 
     /**
@@ -133,13 +107,26 @@ class InventarioFisicoController extends Controller
     {
         $clienteId = session('cliente_id');
 
+        // 🔥 BUSCAR POR ID Y CLIENTE (sin filtrar por NumeroCorrelativo)
         $inventarioFisico = InventarioFisico::where('IdCliente', $clienteId)
+            ->where('IdFisico', $id)
             ->with(['fecha', 'sucursal', 'almacen', 'realizadoPor', 'encargadoSucursal'])
-            ->findOrFail($id);
+            ->firstOrFail();
         
+        // 🔥 DETERMINAR EL ESTADO REAL
         $esBorrador = $inventarioFisico->NumeroCorrelativo == 0;
-        $esContabilizado = $inventarioFisico->NumeroCorrelativo > 0;
+        $esContabilizado = $inventarioFisico->NumeroCorrelativo > 0 && $inventarioFisico->ActivoInactivo == 1;
+        $esDesactivado = $inventarioFisico->NumeroCorrelativo > 0 && $inventarioFisico->ActivoInactivo == 0;
 
+        // 🔥 LOG PARA DEPURACIÓN
+        \Log::info('=== EDIT INVENTARIO FISICO ===', [
+            'IdFisico' => $id,
+            'NumeroCorrelativo' => $inventarioFisico->NumeroCorrelativo,
+            'ActivoInactivo' => $inventarioFisico->ActivoInactivo,
+            'Estado' => $esDesactivado ? 'DESACTIVADO (editable)' : ($esContabilizado ? 'CONTABILIZADO' : 'BORRADOR')
+        ]);
+
+        // 🔥 CARGAR DETALLES
         $detalles = InventarioFisicoDetalle::where('IdFisico', $id)
             ->with('producto')
             ->orderBy('IdFisicoPropiamente')
@@ -156,6 +143,7 @@ class InventarioFisicoController extends Controller
                 ];
             });
 
+        // 🔥 CARGAR SELECTS
         $fechas = Fecha::where('IdFecha', '>', 0)
             ->orderBy('Fecha', 'desc')
             ->get(['IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d-%m-%Y') as fecha_display")]);
@@ -168,9 +156,9 @@ class InventarioFisicoController extends Controller
             ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
             ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
 
-        // Obtener almacenes si hay sucursal seleccionada
+        // 🔥 CARGAR ALMACENES
         $almacenes = [];
-        if ($inventarioFisico->IdSucursal) {
+        if ($inventarioFisico->IdSucursal && $inventarioFisico->IdSucursal != 0) {
             $almacenes = Almacen::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $inventarioFisico->IdSucursal)
                 ->orderBy('Almacen')
@@ -186,6 +174,7 @@ class InventarioFisicoController extends Controller
             'identificadores' => $identificadores,
             'esBorrador' => $esBorrador,
             'esContabilizado' => $esContabilizado,
+            'esDesactivado' => $esDesactivado,  // ← NUEVO FLAG
         ]);
     }
 
@@ -214,12 +203,15 @@ class InventarioFisicoController extends Controller
 
             if ($id) {
                 // 🔥 ACTUALIZAR: Buscar y actualizar
-                $inventarioFisico = InventarioFisico::findOrFail($id);
+                $inventarioFisico = InventarioFisico::where('IdCliente', $clienteId)
+                    ->where('IdOperador', $operadorId)
+                    ->findOrFail($id);
                 
-                if ($inventarioFisico->NumeroCorrelativo != 0) {
+                // ✅ PERMITIR EDICIÓN SI ESTÁ DESACTIVADO (ActivoInactivo = 0)
+                if ($inventarioFisico->ActivoInactivo == 1) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'No se puede modificar un inventario ya contabilizado'
+                        'message' => 'No se puede modificar un inventario contabilizado'
                     ], 400);
                 }
                 
@@ -232,38 +224,32 @@ class InventarioFisicoController extends Controller
                     'Observacion' => $request->Observacion,
                 ]);
             } else {
-                // 🔥 CREAR: Buscar borrador o crear nuevo
-                $borrador = InventarioFisico::where('IdCliente', $clienteId)
+                // 🔥 CREAR: Verificar que NO exista otro editable
+                $editableExistente = InventarioFisico::where('IdCliente', $clienteId)
                     ->where('IdOperador', $operadorId)
                     ->where('ActivoInactivo', 0)
-                    ->where('NumeroCorrelativo', 0)
                     ->first();
 
-                if ($borrador) {
-                    $borrador->update([
-                        'IdFecha' => $request->IdFecha,
-                        'IdSucursal' => $request->IdSucursal,
-                        'IdAlmacen' => $request->IdAlmacen,
-                        'IdRealizadoPor' => $request->IdRealizadoPor,
-                        'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
-                        'Observacion' => $request->Observacion,
-                    ]);
-                    $id = $borrador->IdFisico;
-                } else {
-                    $borrador = InventarioFisico::create([
-                        'NumeroCorrelativo' => 0,
-                        'IdFecha' => $request->IdFecha,
-                        'IdSucursal' => $request->IdSucursal,
-                        'IdAlmacen' => $request->IdAlmacen,
-                        'IdRealizadoPor' => $request->IdRealizadoPor,
-                        'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
-                        'Observacion' => $request->Observacion,
-                        'ActivoInactivo' => 0,
-                        'IdCliente' => $clienteId,
-                        'IdOperador' => $operadorId,
-                    ]);
-                    $id = $borrador->IdFisico;
+                if ($editableExistente) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Ya existe un inventario físico en progreso. Complete o elimine ese primero.'
+                    ], 400);
                 }
+
+                $borrador = InventarioFisico::create([
+                    'NumeroCorrelativo' => 0,
+                    'IdFecha' => $request->IdFecha,
+                    'IdSucursal' => $request->IdSucursal,
+                    'IdAlmacen' => $request->IdAlmacen,
+                    'IdRealizadoPor' => $request->IdRealizadoPor,
+                    'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
+                    'Observacion' => $request->Observacion,
+                    'ActivoInactivo' => 0,
+                    'IdCliente' => $clienteId,
+                    'IdOperador' => $operadorId,
+                ]);
+                $id = $borrador->IdFisico;
             }
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
@@ -303,10 +289,11 @@ class InventarioFisicoController extends Controller
 
         $inventarioFisico = InventarioFisico::findOrFail($id);
         
-        if ($inventarioFisico->NumeroCorrelativo != 0) {
+        // ✅ PERMITIR EDICIÓN SI ESTÁ DESACTIVADO (ActivoInactivo = 0)
+        if ($inventarioFisico->ActivoInactivo == 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'No se puede modificar un inventario ya contabilizado'
+                'message' => 'No se puede modificar un inventario contabilizado'
             ], 400);
         }
         
@@ -491,10 +478,12 @@ class InventarioFisicoController extends Controller
 
         $inventarioFisico = InventarioFisico::findOrFail($id);
         
-        if ($inventarioFisico->NumeroCorrelativo > 0) {
+        // ✅ PERMITIR EDICIÓN SI ESTÁ DESACTIVADO (ActivoInactivo = 0)
+        // Bloquear solo si está CONTABILIZADO (ActivoInactivo = 1)
+        if ($inventarioFisico->ActivoInactivo == 1) {
             return response()->json([
                 'success' => false,
-                'message' => 'No se puede modificar un inventario ya contabilizado'
+                'message' => 'No se puede modificar un inventario contabilizado'
             ], 400);
         }
 
@@ -516,111 +505,111 @@ class InventarioFisicoController extends Controller
         ]);
     }
 
-        /**
-         * CONTABILIZAR (IGUAL A SCRIPTCASE)
-         */
-        public function contabilizar($id)
-        {
-            try {
-                DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+    /**
+     * CONTABILIZAR (IGUAL A SCRIPTCASE)
+     */
+    public function contabilizar($id)
+    {
+        try {
+            DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-                $inventarioFisico = InventarioFisico::findOrFail($id);
-                
-                // Validar que la cabecera esté completa
-                if (!$inventarioFisico->IdFecha || $inventarioFisico->IdFecha == 0 || 
-                    !$inventarioFisico->IdSucursal || $inventarioFisico->IdSucursal == 0 || 
-                    !$inventarioFisico->IdAlmacen || $inventarioFisico->IdAlmacen == 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Complete la cabecera antes de contabilizar'
-                    ], 400);
-                }
-
-                // Obtener el IdTipoOperacion para "Inventario Fisico"
-                $idTipoOperacion = $this->getTipoOperacionInventarioFisico();
-                $detalleTipoOperacion = $this->getDetalleTipoOperacion($idTipoOperacion);
-                
-                // ===== MANEJO DE CORRELATIVO =====
-                $numeroCorrelativoActual = $inventarioFisico->NumeroCorrelativo;
-
-                if ($numeroCorrelativoActual == 0) {
-                    // NUEVO DOCUMENTO - Generar nuevo correlativo
-                    $maxCorrelativo = InventarioFisico::where('IdSucursal', $inventarioFisico->IdSucursal)
-                        ->max('NumeroCorrelativo');
-                    $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
-                    
-                    $inventarioFisico->update([
-                        'NumeroCorrelativo' => $numeroCorrelativo,
-                        'ActivoInactivo' => 1,
-                    ]);
-                    $mensaje = "Inventario Físico contabilizado correctamente. N° {$numeroCorrelativo}";
-                } else {
-                    // REPROCESAMIENTO - Mantener el correlativo existente
-                    $numeroCorrelativo = $numeroCorrelativoActual;
-                    $inventarioFisico->update(['ActivoInactivo' => 1]);
-                    $mensaje = "Inventario Físico reprocesado correctamente. N° {$numeroCorrelativo}";
-                }
-                
-                // 🔥 ELIMINAR REGISTROS ANTERIORES DEL MISMO DOCUMENTO
-                InventarioPropiamente::where('IdTipoDeOperacion', $idTipoOperacion)
-                    ->where('IdDocumento', $id)
-                    ->delete();
-
-                // 🔥 OBTENER DETALLES EXISTENTES (NO RECALCULAR)
-                $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
-
-                // 🔥 GENERAR NUEVOS MOVIMIENTOS CON LOS DETALLES EXISTENTES
-                foreach ($detalles as $detalle) {
-                    // Calcular saldo en libros hasta la fecha del inventario
-                    $saldoLibrosFecha = InventarioPropiamente::where('IdProducto', $detalle->IdProducto)
-                        ->where('IdCliente', $inventarioFisico->IdCliente)
-                        ->where('IdSucursal', $inventarioFisico->IdSucursal)
-                        ->where('IdFecha', '<=', $inventarioFisico->IdFecha)
-                        ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
-                        ->value('saldo') ?? 0;
-
-                    // Recalcular ajuste (por si cambió el saldo)
-                    $ajuste = $detalle->Unidades - $saldoLibrosFecha;
-                    
-                    // Actualizar UnidadesAjuste en el detalle
-                    $detalle->update(['UnidadesAjuste' => $ajuste]);
-                    
-                    // Solo insertar en inventario_propiamente si hay ajuste
-                    if ($ajuste != 0) {
-                        $d_h = $ajuste > 0 ? 'D' : 'H';
-                        $glosa = "Ajuste por Inventario Físico No. {$numeroCorrelativo} - {$detalleTipoOperacion}";
-                        
-                        InventarioPropiamente::create([
-                            'IdTipoDeOperacion' => $idTipoOperacion,
-                            'IdDocumento' => $id,
-                            'IdFecha' => $inventarioFisico->IdFecha,
-                            'IdAlmacen' => $inventarioFisico->IdAlmacen,
-                            'IdProducto' => $detalle->IdProducto,
-                            'Glosa' => $glosa,
-                            'D_H' => $d_h,
-                            'Unidades' => abs($ajuste),
-                            'Bolivianos' => 0,
-                            'IdCliente' => $inventarioFisico->IdCliente,
-                            'IdSucursal' => $inventarioFisico->IdSucursal,
-                        ]);
-                    }
-                }
-
-                DB::connection('mysql_gestion_comercial_alimentos')->commit();
-
+            $inventarioFisico = InventarioFisico::findOrFail($id);
+            
+            // Validar que la cabecera esté completa
+            if (!$inventarioFisico->IdFecha || $inventarioFisico->IdFecha == 0 || 
+                !$inventarioFisico->IdSucursal || $inventarioFisico->IdSucursal == 0 || 
+                !$inventarioFisico->IdAlmacen || $inventarioFisico->IdAlmacen == 0) {
                 return response()->json([
-                    'success' => true,
-                    'message' => $mensaje,
-                    'numero_correlativo' => $numeroCorrelativo,
-                    'pdf_url' => route('gestion.inventario-fisico.pdf', $id),
-                ]);
-
-            } catch (\Exception $e) {
-                DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-                Log::error('Error en contabilizar: ' . $e->getMessage());
-                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+                    'success' => false,
+                    'message' => 'Complete la cabecera antes de contabilizar'
+                ], 400);
             }
+
+            // Obtener el IdTipoOperacion para "Inventario Fisico"
+            $idTipoOperacion = $this->getTipoOperacionInventarioFisico();
+            $detalleTipoOperacion = $this->getDetalleTipoOperacion($idTipoOperacion);
+            
+            // ===== MANEJO DE CORRELATIVO =====
+            $numeroCorrelativoActual = $inventarioFisico->NumeroCorrelativo;
+
+            if ($numeroCorrelativoActual == 0) {
+                // NUEVO DOCUMENTO - Generar nuevo correlativo
+                $maxCorrelativo = InventarioFisico::where('IdSucursal', $inventarioFisico->IdSucursal)
+                    ->max('NumeroCorrelativo');
+                $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+                
+                $inventarioFisico->update([
+                    'NumeroCorrelativo' => $numeroCorrelativo,
+                    'ActivoInactivo' => 1,
+                ]);
+                $mensaje = "Inventario Físico contabilizado correctamente. N° {$numeroCorrelativo}";
+            } else {
+                // REPROCESAMIENTO - Mantener el correlativo existente
+                $numeroCorrelativo = $numeroCorrelativoActual;
+                $inventarioFisico->update(['ActivoInactivo' => 1]);
+                $mensaje = "Inventario Físico reprocesado correctamente. N° {$numeroCorrelativo}";
+            }
+            
+            // 🔥 ELIMINAR REGISTROS ANTERIORES DEL MISMO DOCUMENTO
+            InventarioPropiamente::where('IdTipoDeOperacion', $idTipoOperacion)
+                ->where('IdDocumento', $id)
+                ->delete();
+
+            // 🔥 OBTENER DETALLES EXISTENTES (NO RECALCULAR)
+            $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
+
+            // 🔥 GENERAR NUEVOS MOVIMIENTOS CON LOS DETALLES EXISTENTES
+            foreach ($detalles as $detalle) {
+                // Calcular saldo en libros hasta la fecha del inventario
+                $saldoLibrosFecha = InventarioPropiamente::where('IdProducto', $detalle->IdProducto)
+                    ->where('IdCliente', $inventarioFisico->IdCliente)
+                    ->where('IdSucursal', $inventarioFisico->IdSucursal)
+                    ->where('IdFecha', '<=', $inventarioFisico->IdFecha)
+                    ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
+                    ->value('saldo') ?? 0;
+
+                // Recalcular ajuste (por si cambió el saldo)
+                $ajuste = $detalle->Unidades - $saldoLibrosFecha;
+                
+                // Actualizar UnidadesAjuste en el detalle
+                $detalle->update(['UnidadesAjuste' => $ajuste]);
+                
+                // Solo insertar en inventario_propiamente si hay ajuste
+                if ($ajuste != 0) {
+                    $d_h = $ajuste > 0 ? 'D' : 'H';
+                    $glosa = "Ajuste por Inventario Físico No. {$numeroCorrelativo} - {$detalleTipoOperacion}";
+                    
+                    InventarioPropiamente::create([
+                        'IdTipoDeOperacion' => $idTipoOperacion,
+                        'IdDocumento' => $id,
+                        'IdFecha' => $inventarioFisico->IdFecha,
+                        'IdAlmacen' => $inventarioFisico->IdAlmacen,
+                        'IdProducto' => $detalle->IdProducto,
+                        'Glosa' => $glosa,
+                        'D_H' => $d_h,
+                        'Unidades' => abs($ajuste),
+                        'Bolivianos' => 0,
+                        'IdCliente' => $inventarioFisico->IdCliente,
+                        'IdSucursal' => $inventarioFisico->IdSucursal,
+                    ]);
+                }
+            }
+
+            DB::connection('mysql_gestion_comercial_alimentos')->commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => $mensaje,
+                'numero_correlativo' => $numeroCorrelativo,
+                'pdf_url' => route('gestion.inventario-fisico.pdf', $id),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+            Log::error('Error en contabilizar: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
+    }
 
     /**
      * REPROCESAR (solo actualiza lista, NO genera movimientos)
@@ -956,5 +945,43 @@ class InventarioFisicoController extends Controller
         
         $pdf->Output('inventario_fisico_' . $inventarioFisico->NumeroCorrelativo . '.pdf', 'I');
         exit;
+    }
+
+    /**
+     * Desactivar un documento contabilizado para editarlo
+     * IGUAL QUE en CompraController::cambiarEstado()
+     */
+    public function desactivar($id)
+    {
+        try {
+            $inventarioFisico = InventarioFisico::where('IdCliente', session('cliente_id'))
+                ->where('IdFisico', $id)
+                ->firstOrFail();
+            
+            // ✅ Solo se puede desactivar si está contabilizado (ActivoInactivo = 1)
+            if ($inventarioFisico->ActivoInactivo == 1) {
+                $inventarioFisico->update([
+                    'ActivoInactivo' => 0  // ← Ahora es editable
+                ]);
+                
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Documento desactivado correctamente. Ahora puede editarlo.',
+                    'nuevo_estado' => 0
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este documento ya está en estado editable.'
+                ], 400);
+            }
+            
+        } catch (\Exception $e) {
+            Log::error('Error al desactivar inventario físico: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al desactivar: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }
