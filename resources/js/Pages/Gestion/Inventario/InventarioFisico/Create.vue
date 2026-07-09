@@ -238,11 +238,9 @@ const guardarCabecera = async () => {
     
     guardandoCabecera.value = true
     try {
-        const url = form.value.IdFisico 
-            ? `${API_BASE}/${form.value.IdFisico}/cabecera`
-            : `${API_BASE}/cabecera`
+        // 🔥 SIEMPRE POST a /cabecera (el Controller maneja si es creación o actualización)
+        const response = await axios.post(`${API_BASE}/cabecera`, form.value)
         
-        const response = await axios.put(url, form.value)
         if (response.data.success) {
             if (response.data.id) {
                 form.value.IdFisico = response.data.id

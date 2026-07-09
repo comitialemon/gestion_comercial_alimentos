@@ -488,18 +488,29 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // Inventario Físico
             Route::prefix('inventario-fisico')->group(function () {
+                // ========== RUTAS PRINCIPALES ==========
                 Route::get('/', [InventarioFisicoController::class, 'create'])->name('gestion.inventario-fisico.index');
-                Route::get('/{id}', function ($id) {
-                    return redirect()->route('gestion.inventario-fisico.edit', $id);
-                });
                 Route::get('/{id}/edit', [InventarioFisicoController::class, 'edit'])->name('gestion.inventario-fisico.edit');
                 Route::delete('/{id}', [InventarioFisicoController::class, 'destroy'])->name('gestion.inventario-fisico.destroy');
+                
+                // ========== RUTAS DE CABECERA ==========
+                // 🔥 NUEVA: POST para crear o actualizar (unificada)
+                Route::post('/cabecera', [InventarioFisicoController::class, 'storeCabecera']);
+                // Mantener PUT para compatibilidad
                 Route::put('/{id}/cabecera', [InventarioFisicoController::class, 'updateCabecera']);
+                
+                // ========== RUTAS DE PRODUCTOS ==========
                 Route::post('/{id}/sincronizar', [InventarioFisicoController::class, 'sincronizarProductos']);
+                Route::post('/{id}/reprocesar', [InventarioFisicoController::class, 'reprocesar']);
                 Route::put('/{id}/detalle/{detalleId}/unidades', [InventarioFisicoController::class, 'actualizarUnidades']);
+                
+                // ========== RUTAS DE CONTABILIZACIÓN ==========
                 Route::post('/{id}/contabilizar', [InventarioFisicoController::class, 'contabilizar']);
                 Route::get('/{id}/detalles', [InventarioFisicoController::class, 'getDetalles']);
                 Route::get('/{id}/pdf', [InventarioFisicoController::class, 'pdf'])->name('gestion.inventario-fisico.pdf');
+                
+                // ========== RUTA GENÉRICA (compatibilidad) ==========
+                Route::put('/{id}', [InventarioFisicoController::class, 'update']);
             });
 
             // Inventario Físico Mantenimiento

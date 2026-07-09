@@ -19,7 +19,39 @@ use TCPDF;
 
 class InventarioFisicoController extends Controller
 {
-    const TIPO_OPERACION_AJUSTE = 22;
+    /**
+     * Obtener el IdTipoOperacion para "Inventario Fisico" del cliente logueado
+     */
+    private function getTipoOperacionInventarioFisico()
+    {
+        $clienteId = session('cliente_id');
+        
+        $tipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('Detalle', 'Inventario Fisico')
+            ->where('ActivoInactivo', 0)
+            ->first();
+        
+        if (!$tipoOperacion) {
+            throw new \Exception('No se encontró el tipo de operación "Inventario Fisico" para el cliente');
+        }
+        
+        return $tipoOperacion->IdTipoOperacion;
+    }
+
+    /**
+     * Obtener el detalle del tipo de operación
+     */
+    private function getDetalleTipoOperacion($idTipoOperacion)
+    {
+        $tipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdTipoOperacion', $idTipoOperacion)
+            ->first();
+        
+        return $tipoOperacion->Detalle ?? 'Inventario Físico';
+    }
 
     /**
      * Entrada principal - Busca borrador pendiente o muestra formulario vacío
@@ -35,14 +67,14 @@ class InventarioFisicoController extends Controller
                 ->with('error', 'Debe seleccionar una empresa primero');
         }
 
-        // 🔥 BUSCAR BORRADOR PENDIENTE (como en AjusteInventario)
+        // Buscar borrador pendiente
         $borrador = InventarioFisico::where('IdCliente', $clienteId)
             ->where('IdOperador', $operadorId)
             ->where('ActivoInactivo', 0)
             ->where('NumeroCorrelativo', 0)
             ->first();
 
-        // Datos para selects (siempre se cargan)
+        // Datos para selects
         $fechas = Fecha::where('IdFecha', '>', 0)
             ->orderBy('Fecha', 'desc')
             ->get(['IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d-%m-%Y') as fecha_display")]);
@@ -54,6 +86,15 @@ class InventarioFisicoController extends Controller
         $identificadores = Identificador::orderBy('CI_NIT')
             ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
             ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
+
+        // Cargar almacenes si hay sucursal en el borrador
+        $almacenes = [];
+        if ($borrador && $borrador->IdSucursal) {
+            $almacenes = Almacen::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $borrador->IdSucursal)
+                ->orderBy('Almacen')
+                ->get(['IdAlmacen as id', 'Almacen as nombre']);
+        }
 
         // Cargar detalles si existe borrador
         $detalles = [];
@@ -79,6 +120,7 @@ class InventarioFisicoController extends Controller
             'detalles' => $detalles,
             'fechas' => $fechas,
             'sucursales' => $sucursales,
+            'almacenes' => $almacenes,
             'identificadores' => $identificadores,
             'esBorrador' => true,
         ]);
@@ -96,6 +138,7 @@ class InventarioFisicoController extends Controller
             ->findOrFail($id);
         
         $esBorrador = $inventarioFisico->NumeroCorrelativo == 0;
+        $esContabilizado = $inventarioFisico->NumeroCorrelativo > 0;
 
         $detalles = InventarioFisicoDetalle::where('IdFisico', $id)
             ->with('producto')
@@ -125,20 +168,31 @@ class InventarioFisicoController extends Controller
             ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
             ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
 
+        // Obtener almacenes si hay sucursal seleccionada
+        $almacenes = [];
+        if ($inventarioFisico->IdSucursal) {
+            $almacenes = Almacen::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $inventarioFisico->IdSucursal)
+                ->orderBy('Almacen')
+                ->get(['IdAlmacen as id', 'Almacen as nombre']);
+        }
+
         return Inertia::render('Gestion/Inventario/InventarioFisico/Create', [
             'inventarioFisico' => $inventarioFisico,
             'detalles' => $detalles,
             'fechas' => $fechas,
             'sucursales' => $sucursales,
+            'almacenes' => $almacenes,
             'identificadores' => $identificadores,
             'esBorrador' => $esBorrador,
+            'esContabilizado' => $esContabilizado,
         ]);
     }
 
     /**
-     * Guardar cabecera (crea borrador si no existe)
+     * Guardar cabecera (CREA o ACTUALIZA) - NUEVO MÉTODO UNIFICADO
      */
-    public function updateCabecera(Request $request, $id = null)
+    public function storeCabecera(Request $request)
     {
         $request->validate([
             'IdFecha' => 'required|exists:todos_fecha,IdFecha',
@@ -153,38 +207,99 @@ class InventarioFisicoController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // Si no hay ID, crear nuevo borrador
-        if (!$id || $id == 0 || $id === 'null') {
-            $borrador = InventarioFisico::where('IdCliente', $clienteId)
-                ->where('IdOperador', $operadorId)
-                ->where('ActivoInactivo', 0)
-                ->where('NumeroCorrelativo', 0)
-                ->first();
+        $id = $request->IdFisico;
 
-            if (!$borrador) {
-                $borrador = InventarioFisico::create([
-                    'NumeroCorrelativo' => 0,
+        try {
+            DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+
+            if ($id) {
+                // 🔥 ACTUALIZAR: Buscar y actualizar
+                $inventarioFisico = InventarioFisico::findOrFail($id);
+                
+                if ($inventarioFisico->NumeroCorrelativo != 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No se puede modificar un inventario ya contabilizado'
+                    ], 400);
+                }
+                
+                $inventarioFisico->update([
                     'IdFecha' => $request->IdFecha,
+                    'IdSucursal' => $request->IdSucursal,
                     'IdAlmacen' => $request->IdAlmacen,
                     'IdRealizadoPor' => $request->IdRealizadoPor,
                     'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
                     'Observacion' => $request->Observacion,
-                    'ActivoInactivo' => 0,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId ?? 0,
-                    'IdOperador' => $operadorId,
                 ]);
             } else {
-                $borrador->update([
-                    'IdFecha' => $request->IdFecha,
-                    'IdAlmacen' => $request->IdAlmacen,
-                    'IdRealizadoPor' => $request->IdRealizadoPor,
-                    'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
-                    'Observacion' => $request->Observacion,
-                ]);
+                // 🔥 CREAR: Buscar borrador o crear nuevo
+                $borrador = InventarioFisico::where('IdCliente', $clienteId)
+                    ->where('IdOperador', $operadorId)
+                    ->where('ActivoInactivo', 0)
+                    ->where('NumeroCorrelativo', 0)
+                    ->first();
+
+                if ($borrador) {
+                    $borrador->update([
+                        'IdFecha' => $request->IdFecha,
+                        'IdSucursal' => $request->IdSucursal,
+                        'IdAlmacen' => $request->IdAlmacen,
+                        'IdRealizadoPor' => $request->IdRealizadoPor,
+                        'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
+                        'Observacion' => $request->Observacion,
+                    ]);
+                    $id = $borrador->IdFisico;
+                } else {
+                    $borrador = InventarioFisico::create([
+                        'NumeroCorrelativo' => 0,
+                        'IdFecha' => $request->IdFecha,
+                        'IdSucursal' => $request->IdSucursal,
+                        'IdAlmacen' => $request->IdAlmacen,
+                        'IdRealizadoPor' => $request->IdRealizadoPor,
+                        'IdEncargadoSucursal' => $request->IdEncargadoSucursal,
+                        'Observacion' => $request->Observacion,
+                        'ActivoInactivo' => 0,
+                        'IdCliente' => $clienteId,
+                        'IdOperador' => $operadorId,
+                    ]);
+                    $id = $borrador->IdFisico;
+                }
             }
-            $id = $borrador->IdFisico;
+
+            DB::connection('mysql_gestion_comercial_alimentos')->commit();
+
+            // Sincronizar productos automáticamente (FUERA de la transacción)
+            $this->sincronizarProductosLogic($id);
+
+            return response()->json([
+                'success' => true,
+                'id' => $id,
+                'message' => 'Cabecera guardada y productos sincronizados'
+            ]);
+
+        } catch (\Exception $e) {
+            DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+            Log::error('Error guardando cabecera: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
+    }
+
+    /**
+     * Actualizar cabecera (SOLO ACTUALIZA - mantiene compatibilidad con PUT)
+     */
+    public function updateCabecera(Request $request, $id)
+    {
+        $request->validate([
+            'IdFecha' => 'required|exists:todos_fecha,IdFecha',
+            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'IdAlmacen' => 'required|exists:inventario_almacen,IdAlmacen',
+            'IdRealizadoPor' => 'required|exists:todos_identificador,IdIdentificador',
+            'IdEncargadoSucursal' => 'required|exists:todos_identificador,IdIdentificador',
+            'Observacion' => 'nullable|string',
+        ]);
 
         $inventarioFisico = InventarioFisico::findOrFail($id);
         
@@ -204,13 +319,13 @@ class InventarioFisicoController extends Controller
             'Observacion' => $request->Observacion,
         ]);
 
-        // Sincronizar productos automáticamente después de guardar cabecera
+        // Sincronizar productos automáticamente
         $this->sincronizarProductosLogic($id);
 
         return response()->json([
-            'success' => true, 
+            'success' => true,
             'id' => $id,
-            'message' => 'Cabecera guardada y productos sincronizados'
+            'message' => 'Cabecera actualizada y productos sincronizados'
         ]);
     }
 
@@ -233,93 +348,114 @@ class InventarioFisicoController extends Controller
      */
     private function sincronizarProductosLogic($id)
     {
-        $inventarioFisico = InventarioFisico::findOrFail($id);
-        
-        if ($inventarioFisico->NumeroCorrelativo != 0) {
-            return;
-        }
-        
-        $fechaId = $inventarioFisico->IdFecha;
-        $sucursalId = $inventarioFisico->IdSucursal;
-        $clienteId = $inventarioFisico->IdCliente;
-
-        // Guardar unidades actuales (conteo físico) para preservarlas
-        $unidadesActuales = [];
-        $detallesExistentes = InventarioFisicoDetalle::where('IdFisico', $id)->get();
-        foreach ($detallesExistentes as $det) {
-            if ($det->Unidades > 0) {
-                $unidadesActuales[$det->IdProducto] = $det->Unidades;
+        try {
+            $inventarioFisico = InventarioFisico::findOrFail($id);
+            
+            if ($inventarioFisico->NumeroCorrelativo != 0) {
+                return;
             }
-        }
+            
+            $fechaId = $inventarioFisico->IdFecha;
+            $sucursalId = $inventarioFisico->IdSucursal;
+            $clienteId = $inventarioFisico->IdCliente;
 
-        // Eliminar registros basura (Unidades = 0)
-        InventarioFisicoDetalle::where('IdFisico', $id)
-            ->where('Unidades', 0)
-            ->delete();
+            // Obtener el IdTipoOperacion para "Inventario Fisico"
+            $idTipoOperacion = $this->getTipoOperacionInventarioFisico();
 
-        // Resetear UnidadesAjuste y UnidadesSaldo
-        InventarioFisicoDetalle::where('IdFisico', $id)
-            ->update(['UnidadesAjuste' => 0, 'UnidadesSaldo' => 0]);
+            // Guardar unidades actuales (conteo físico) para preservarlas
+            $unidadesActuales = [];
+            $detallesExistentes = InventarioFisicoDetalle::where('IdFisico', $id)->get();
+            foreach ($detallesExistentes as $det) {
+                if ($det->Unidades > 0) {
+                    $unidadesActuales[$det->IdProducto] = $det->Unidades;
+                }
+            }
 
-        // Recorrer todos los productos
-        $todosProductos = ProductoDetalle::where('IdCliente', $clienteId)
-            ->orderBy('Descripcion')
-            ->get();
+            // ELIMINAR REGISTROS BASURA (Unidades = 0)
+            InventarioFisicoDetalle::where('IdFisico', $id)
+                ->where('Unidades', 0)
+                ->delete();
 
-        foreach ($todosProductos as $producto) {
-            $saldoCalculado = InventarioPropiamente::where('IdProducto', $producto->IdProducto)
-                ->where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('IdFecha', '<=', $fechaId)
-                ->where(function($q) use ($id) {
-                    $q->where('IdTipoDeOperacion', '!=', self::TIPO_OPERACION_AJUSTE)
-                      ->orWhere('IdDocumento', '!=', $id);
-                })
-                ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
-                ->value('saldo') ?? 0;
+            // ELIMINAR REGISTROS ANTERIORES DEL MISMO DOCUMENTO
+            InventarioPropiamente::where('IdTipoDeOperacion', $idTipoOperacion)
+                ->where('IdDocumento', $id)
+                ->delete();
 
-            $detalleExistente = InventarioFisicoDetalle::where('IdFisico', $id)
-                ->where('IdProducto', $producto->IdProducto)
-                ->first();
+            // Resetear UnidadesAjuste y UnidadesSaldo
+            InventarioFisicoDetalle::where('IdFisico', $id)
+                ->update(['UnidadesAjuste' => 0, 'UnidadesSaldo' => 0]);
 
-            $conteoPreservado = $unidadesActuales[$producto->IdProducto] ?? 0;
+            // RECORRER TODOS LOS PRODUCTOS
+            $todosProductos = ProductoDetalle::where('IdCliente', $clienteId)
+                ->orderBy('Descripcion')
+                ->get();
 
-            $debeEstarEnDetalle = false;
-            if ($producto->ActivoInactivo == 0) {
-                $debeEstarEnDetalle = true;
-            } else {
-                if ($saldoCalculado != 0 || $conteoPreservado > 0) {
+            foreach ($todosProductos as $producto) {
+                // CALCULAR SALDO ACTUAL (excluyendo el inventario fisico actual)
+                $saldoCalculado = InventarioPropiamente::where('IdProducto', $producto->IdProducto)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdFecha', '<=', $fechaId)
+                    ->where(function($q) use ($id, $idTipoOperacion) {
+                        $q->where('IdTipoDeOperacion', '!=', $idTipoOperacion)
+                          ->orWhere('IdDocumento', '!=', $id);
+                    })
+                    ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
+                    ->value('saldo') ?? 0;
+
+                $detalleExistente = InventarioFisicoDetalle::where('IdFisico', $id)
+                    ->where('IdProducto', $producto->IdProducto)
+                    ->first();
+
+                $conteoPreservado = $unidadesActuales[$producto->IdProducto] ?? 0;
+
+                // REGLA DE NEGOCIO
+                $debeEstarEnDetalle = false;
+                if ($producto->ActivoInactivo == 0) {
+                    // ACTIVO: Siempre debe estar
                     $debeEstarEnDetalle = true;
-                }
-            }
-
-            if ($debeEstarEnDetalle) {
-                if ($detalleExistente) {
-                    $detalleExistente->update([
-                        'UnidadesSaldo' => $saldoCalculado,
-                        'Unidades' => $conteoPreservado > 0 ? $conteoPreservado : $detalleExistente->Unidades,
-                    ]);
                 } else {
-                    InventarioFisicoDetalle::create([
-                        'IdFisico' => $id,
-                        'IdProducto' => $producto->IdProducto,
-                        'UnidadesSaldo' => $saldoCalculado,
-                        'Unidades' => $conteoPreservado,
-                        'UnidadesAjuste' => 0,
-                    ]);
+                    // INACTIVO: Solo si tiene saldo O ya tiene conteo fisico
+                    if ($saldoCalculado != 0 || $conteoPreservado > 0) {
+                        $debeEstarEnDetalle = true;
+                    }
                 }
-            } else {
-                if ($detalleExistente) {
-                    $detalleExistente->delete();
+
+                if ($debeEstarEnDetalle) {
+                    if ($detalleExistente) {
+                        // YA EXISTE → SOLO ACTUALIZAR UNIDADESSALDO (PRESERVAR TODO LO DEMAS)
+                        $detalleExistente->update([
+                            'UnidadesSaldo' => $saldoCalculado,
+                            'Unidades' => $conteoPreservado > 0 ? $conteoPreservado : $detalleExistente->Unidades,
+                        ]);
+                    } else {
+                        // NO EXISTE → INSERTAR COMPLETO
+                        InventarioFisicoDetalle::create([
+                            'IdFisico' => $id,
+                            'IdProducto' => $producto->IdProducto,
+                            'UnidadesSaldo' => $saldoCalculado,
+                            'Unidades' => $conteoPreservado,
+                            'UnidadesAjuste' => 0,
+                        ]);
+                    }
+                } else {
+                    // NO DEBE ESTAR EN DETALLE → ELIMINAR SI EXISTE
+                    if ($detalleExistente) {
+                        $detalleExistente->delete();
+                    }
                 }
             }
-        }
 
-        // Recalcular UnidadesAjuste
-        $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
-        foreach ($detalles as $detalle) {
-            $ajuste = $detalle->Unidades - $detalle->UnidadesSaldo;
-            $detalle->update(['UnidadesAjuste' => $ajuste]);
+            // RECALCULAR UNIDADESAJUSTE
+            $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
+            foreach ($detalles as $detalle) {
+                $ajuste = $detalle->Unidades - $detalle->UnidadesSaldo;
+                $detalle->update(['UnidadesAjuste' => $ajuste]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('Error en sincronizarProductosLogic: ' . $e->getMessage());
+            throw $e;
         }
     }
 
@@ -366,6 +502,7 @@ class InventarioFisicoController extends Controller
             ->where('IdFisicoPropiamente', $detalleId)
             ->firstOrFail();
 
+        // UnidadesAjuste = Unidades - UnidadesSaldo
         $ajuste = $request->Unidades - $detalle->UnidadesSaldo;
         
         $detalle->update([
@@ -379,107 +516,111 @@ class InventarioFisicoController extends Controller
         ]);
     }
 
-    /**
-     * CONTABILIZAR
-     */
-    public function contabilizar($id)
-    {
-        try {
-            DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+        /**
+         * CONTABILIZAR (IGUAL A SCRIPTCASE)
+         */
+        public function contabilizar($id)
+        {
+            try {
+                DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-            $inventarioFisico = InventarioFisico::findOrFail($id);
-            
-            if (!$inventarioFisico->IdFecha || $inventarioFisico->IdFecha == 0 || 
-                !$inventarioFisico->IdSucursal || $inventarioFisico->IdSucursal == 0 || 
-                !$inventarioFisico->IdAlmacen || $inventarioFisico->IdAlmacen == 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Complete la cabecera antes de contabilizar'
-                ], 400);
-            }
-
-            $tipoOperacionData = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_tipooperacion')
-                ->where('IdTipoOperacion', self::TIPO_OPERACION_AJUSTE)
-                ->first();
-            
-            $detalleTipoOperacion = $tipoOperacionData->Detalle ?? 'Ajuste Inventario Físico';
-            $numeroCorrelativoActual = $inventarioFisico->NumeroCorrelativo;
-
-            if ($numeroCorrelativoActual == 0) {
-                $maxCorrelativo = InventarioFisico::where('IdSucursal', $inventarioFisico->IdSucursal)
-                    ->max('NumeroCorrelativo');
-                $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
+                $inventarioFisico = InventarioFisico::findOrFail($id);
                 
-                $inventarioFisico->update([
-                    'NumeroCorrelativo' => $numeroCorrelativo,
-                    'ActivoInactivo' => 1,
-                ]);
-                $mensaje = "Inventario Físico contabilizado correctamente. N° {$numeroCorrelativo}";
-            } else {
-                $numeroCorrelativo = $numeroCorrelativoActual;
-                $inventarioFisico->update(['ActivoInactivo' => 1]);
-                $mensaje = "Inventario Físico reprocesado correctamente. N° {$numeroCorrelativo}";
-            }
-            
-            // Eliminar movimientos anteriores
-            InventarioPropiamente::where('IdTipoDeOperacion', self::TIPO_OPERACION_AJUSTE)
-                ->where('IdDocumento', $id)
-                ->delete();
-
-            // Guardar unidades actuales para preservarlas
-            $unidadesActuales = [];
-            $detallesExistentes = InventarioFisicoDetalle::where('IdFisico', $id)->get();
-            foreach ($detallesExistentes as $det) {
-                if ($det->Unidades > 0) {
-                    $unidadesActuales[$det->IdProducto] = $det->Unidades;
+                // Validar que la cabecera esté completa
+                if (!$inventarioFisico->IdFecha || $inventarioFisico->IdFecha == 0 || 
+                    !$inventarioFisico->IdSucursal || $inventarioFisico->IdSucursal == 0 || 
+                    !$inventarioFisico->IdAlmacen || $inventarioFisico->IdAlmacen == 0) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Complete la cabecera antes de contabilizar'
+                    ], 400);
                 }
-            }
 
-            // Recalcular saldos y actualizar detalles
-            $this->recalcularSaldosYDetalles($id, $unidadesActuales);
-
-            $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
-
-            // Generar nuevos movimientos
-            foreach ($detalles as $detalle) {
-                $ajuste = $detalle->UnidadesAjuste;
+                // Obtener el IdTipoOperacion para "Inventario Fisico"
+                $idTipoOperacion = $this->getTipoOperacionInventarioFisico();
+                $detalleTipoOperacion = $this->getDetalleTipoOperacion($idTipoOperacion);
                 
-                if ($ajuste != 0) {
-                    $d_h = $ajuste > 0 ? 'D' : 'H';
-                    $glosa = "Ajuste por Inventario Físico No. {$numeroCorrelativo} - {$detalleTipoOperacion}";
+                // ===== MANEJO DE CORRELATIVO =====
+                $numeroCorrelativoActual = $inventarioFisico->NumeroCorrelativo;
+
+                if ($numeroCorrelativoActual == 0) {
+                    // NUEVO DOCUMENTO - Generar nuevo correlativo
+                    $maxCorrelativo = InventarioFisico::where('IdSucursal', $inventarioFisico->IdSucursal)
+                        ->max('NumeroCorrelativo');
+                    $numeroCorrelativo = ($maxCorrelativo ?? 0) + 1;
                     
-                    InventarioPropiamente::create([
-                        'IdTipoDeOperacion' => self::TIPO_OPERACION_AJUSTE,
-                        'IdDocumento' => $id,
-                        'IdFecha' => $inventarioFisico->IdFecha,
-                        'IdAlmacen' => $inventarioFisico->IdAlmacen,
-                        'IdProducto' => $detalle->IdProducto,
-                        'Glosa' => $glosa,
-                        'D_H' => $d_h,
-                        'Unidades' => abs($ajuste),
-                        'Bolivianos' => 0,
-                        'IdCliente' => $inventarioFisico->IdCliente,
-                        'IdSucursal' => $inventarioFisico->IdSucursal,
+                    $inventarioFisico->update([
+                        'NumeroCorrelativo' => $numeroCorrelativo,
+                        'ActivoInactivo' => 1,
                     ]);
+                    $mensaje = "Inventario Físico contabilizado correctamente. N° {$numeroCorrelativo}";
+                } else {
+                    // REPROCESAMIENTO - Mantener el correlativo existente
+                    $numeroCorrelativo = $numeroCorrelativoActual;
+                    $inventarioFisico->update(['ActivoInactivo' => 1]);
+                    $mensaje = "Inventario Físico reprocesado correctamente. N° {$numeroCorrelativo}";
                 }
+                
+                // 🔥 ELIMINAR REGISTROS ANTERIORES DEL MISMO DOCUMENTO
+                InventarioPropiamente::where('IdTipoDeOperacion', $idTipoOperacion)
+                    ->where('IdDocumento', $id)
+                    ->delete();
+
+                // 🔥 OBTENER DETALLES EXISTENTES (NO RECALCULAR)
+                $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
+
+                // 🔥 GENERAR NUEVOS MOVIMIENTOS CON LOS DETALLES EXISTENTES
+                foreach ($detalles as $detalle) {
+                    // Calcular saldo en libros hasta la fecha del inventario
+                    $saldoLibrosFecha = InventarioPropiamente::where('IdProducto', $detalle->IdProducto)
+                        ->where('IdCliente', $inventarioFisico->IdCliente)
+                        ->where('IdSucursal', $inventarioFisico->IdSucursal)
+                        ->where('IdFecha', '<=', $inventarioFisico->IdFecha)
+                        ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
+                        ->value('saldo') ?? 0;
+
+                    // Recalcular ajuste (por si cambió el saldo)
+                    $ajuste = $detalle->Unidades - $saldoLibrosFecha;
+                    
+                    // Actualizar UnidadesAjuste en el detalle
+                    $detalle->update(['UnidadesAjuste' => $ajuste]);
+                    
+                    // Solo insertar en inventario_propiamente si hay ajuste
+                    if ($ajuste != 0) {
+                        $d_h = $ajuste > 0 ? 'D' : 'H';
+                        $glosa = "Ajuste por Inventario Físico No. {$numeroCorrelativo} - {$detalleTipoOperacion}";
+                        
+                        InventarioPropiamente::create([
+                            'IdTipoDeOperacion' => $idTipoOperacion,
+                            'IdDocumento' => $id,
+                            'IdFecha' => $inventarioFisico->IdFecha,
+                            'IdAlmacen' => $inventarioFisico->IdAlmacen,
+                            'IdProducto' => $detalle->IdProducto,
+                            'Glosa' => $glosa,
+                            'D_H' => $d_h,
+                            'Unidades' => abs($ajuste),
+                            'Bolivianos' => 0,
+                            'IdCliente' => $inventarioFisico->IdCliente,
+                            'IdSucursal' => $inventarioFisico->IdSucursal,
+                        ]);
+                    }
+                }
+
+                DB::connection('mysql_gestion_comercial_alimentos')->commit();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $mensaje,
+                    'numero_correlativo' => $numeroCorrelativo,
+                    'pdf_url' => route('gestion.inventario-fisico.pdf', $id),
+                ]);
+
+            } catch (\Exception $e) {
+                DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+                Log::error('Error en contabilizar: ' . $e->getMessage());
+                return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
             }
-
-            DB::connection('mysql_gestion_comercial_alimentos')->commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => $mensaje,
-                'numero_correlativo' => $numeroCorrelativo,
-                'pdf_url' => route('gestion.inventario-fisico.pdf', $id),
-            ]);
-
-        } catch (\Exception $e) {
-            DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-            Log::error('Error en contabilizar: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
-    }
 
     /**
      * REPROCESAR (solo actualiza lista, NO genera movimientos)
@@ -535,7 +676,10 @@ class InventarioFisicoController extends Controller
         $sucursalId = $inventarioFisico->IdSucursal;
         $clienteId = $inventarioFisico->IdCliente;
 
-        // Eliminar registros basura (Unidades = 0)
+        // Obtener el IdTipoOperacion para "Inventario Fisico"
+        $idTipoOperacion = $this->getTipoOperacionInventarioFisico();
+
+        // ELIMINAR REGISTROS BASURA (Unidades = 0)
         InventarioFisicoDetalle::where('IdFisico', $id)
             ->where('Unidades', 0)
             ->delete();
@@ -544,18 +688,19 @@ class InventarioFisicoController extends Controller
         InventarioFisicoDetalle::where('IdFisico', $id)
             ->update(['UnidadesAjuste' => 0, 'UnidadesSaldo' => 0]);
 
-        // Recorrer todos los productos
+        // RECORRER TODOS LOS PRODUCTOS
         $todosProductos = ProductoDetalle::where('IdCliente', $clienteId)
             ->orderBy('Descripcion')
             ->get();
 
         foreach ($todosProductos as $producto) {
+            // CALCULAR SALDO ACTUAL (excluyendo el inventario fisico actual)
             $saldoCalculado = InventarioPropiamente::where('IdProducto', $producto->IdProducto)
                 ->where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('IdFecha', '<=', $fechaId)
-                ->where(function($q) use ($id) {
-                    $q->where('IdTipoDeOperacion', '!=', self::TIPO_OPERACION_AJUSTE)
+                ->where(function($q) use ($id, $idTipoOperacion) {
+                    $q->where('IdTipoDeOperacion', '!=', $idTipoOperacion)
                       ->orWhere('IdDocumento', '!=', $id);
                 })
                 ->selectRaw("COALESCE(SUM(CASE D_H WHEN 'D' THEN Unidades WHEN 'H' THEN -Unidades ELSE 0 END), 0) as saldo")
@@ -567,6 +712,7 @@ class InventarioFisicoController extends Controller
 
             $conteoPreservado = $unidadesActuales[$producto->IdProducto] ?? 0;
 
+            // REGLA DE NEGOCIO
             $debeEstarEnDetalle = false;
             if ($producto->ActivoInactivo == 0) {
                 $debeEstarEnDetalle = true;
@@ -598,7 +744,7 @@ class InventarioFisicoController extends Controller
             }
         }
 
-        // Recalcular UnidadesAjuste
+        // RECALCULAR UNIDADESAJUSTE
         $detalles = InventarioFisicoDetalle::where('IdFisico', $id)->get();
         foreach ($detalles as $detalle) {
             $ajuste = $detalle->Unidades - $detalle->UnidadesSaldo;
@@ -647,6 +793,14 @@ class InventarioFisicoController extends Controller
         $inventarioFisico->delete();
 
         return response()->json(['success' => true, 'message' => 'Borrador eliminado correctamente']);
+    }
+
+    /**
+     * Actualizar inventario (para compatibilidad con rutas RESTful)
+     */
+    public function update(Request $request, $id)
+    {
+        return $this->updateCabecera($request, $id);
     }
 
     /**
