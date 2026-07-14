@@ -6,7 +6,7 @@ use App\Models\Gestion\Menu\MenuAdministrador;
 use App\Models\Gestion\Menu\MenuOperador;
 use App\Models\Gestion\Todos\OperadorTipo;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;  // 🔥 AGREGAR
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
@@ -19,9 +19,123 @@ class MenuOperadorService
         $this->g = DB::connection('mysql_gestion_comercial_alimentos');
     }
 
+    // =============================================
+    // MÉTODOS PARA ASIGNACIÓN DE MENÚS
+    // =============================================
+
     /**
-     * 🔥 NUEVO: Obtiene el árbol de menú con CACHÉ POR VERSIÓN
-     * Este es el método que llamará el middleware
+     * Asignar menús a un operador (incluye padres automáticamente)
+     */
+    public function asignarMenusConPadres(int $operadorId, int $clienteId, array $menuIds): void
+    {
+        try {
+            DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+
+            // 1. Obtener todos los menús incluyendo padres
+            $todosLosMenus = $this->obtenerMenusConPadres($menuIds);
+
+            // 2. Eliminar asignaciones existentes
+            MenuOperador::where('IdOperador', $operadorId)
+                ->where('IdCliente', $clienteId)
+                ->delete();
+
+            // 3. Insertar nuevas asignaciones
+            foreach ($todosLosMenus as $menuId) {
+                MenuOperador::create([
+                    'IdMenu' => $menuId,
+                    'IdCliente' => $clienteId,
+                    'IdOperador' => $operadorId,
+                ]);
+            }
+
+            // 4. Invalidar caché
+            MenuOperadorService::invalidarCache();
+
+            DB::connection('mysql_gestion_comercial_alimentos')->commit();
+
+            Log::info('Menús asignados correctamente', [
+                'operador_id' => $operadorId,
+                'cliente_id' => $clienteId,
+                'menus_asignados' => $todosLosMenus,
+                'total' => count($todosLosMenus)
+            ]);
+
+        } catch (\Exception $e) {
+            DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+            Log::error('Error al asignar menús: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    /**
+     * Obtener todos los menús incluyendo sus padres
+     */
+    private function obtenerMenusConPadres(array $menuIds): array
+    {
+        if (empty($menuIds)) {
+            return [];
+        }
+
+        $resultados = [];
+        $porProcesar = $menuIds;
+
+        while (!empty($porProcesar)) {
+            $actual = array_shift($porProcesar);
+            
+            // Si ya está en la lista, saltar
+            if (in_array($actual, $resultados)) {
+                continue;
+            }
+            
+            // Obtener el menú y su padre
+            $menu = MenuAdministrador::select('Id', 'Parent')
+                ->where('Id', $actual)
+                ->first();
+            
+            if (!$menu) {
+                continue;
+            }
+            
+            // Agregar el menú actual
+            $resultados[] = $actual;
+            
+            // Si tiene padre y no está en la lista, agregarlo para procesar
+            if ($menu->Parent > 0 && !in_array($menu->Parent, $resultados)) {
+                $porProcesar[] = $menu->Parent;
+            }
+        }
+
+        return $resultados;
+    }
+
+    /**
+     * Obtiene los menús asignados a un operador (IDs)
+     */
+    public function obtenerMenusAsignados(int $operadorId, int $clienteId): array
+    {
+        return MenuOperador::where('IdOperador', $operadorId)
+            ->where('IdCliente', $clienteId)
+            ->pluck('IdMenu')
+            ->map(fn($id) => (int)$id)
+            ->toArray();
+    }
+
+    /**
+     * Invalida la caché del menú globalmente
+     */
+    public static function invalidarCache(): void
+    {
+        $nuevaVersion = time();
+        Cache::forever('menu_global_version', $nuevaVersion);
+        Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
+    }
+
+    // =============================================
+    // MÉTODOS PARA OBTENER ÁRBOL DE MENÚS
+    // =============================================
+
+    /**
+     * Obtiene el árbol de menú con CACHÉ POR VERSIÓN
      */
     public function obtenerArbol(int $tipoId, int $operadorId, int $clienteId): array
     {
@@ -37,8 +151,7 @@ class MenuOperadorService
             return [];
         }
 
-        // 🔥 CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
-        // La versión global permite invalidar TODA la caché del menú de un solo golpe
+        // CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
         $version = Cache::rememberForever('menu_global_version', fn() => time());
         
         $cacheKey = "menu_v{$version}_{$modo}_" . (
@@ -48,7 +161,6 @@ class MenuOperadorService
         );
 
         // Cache por 24 horas (86400 segundos)
-        // Si se invalida la versión, esta clave queda huérfana y expira sola
         return Cache::remember($cacheKey, 86400, function () use ($modo, $menuOperador, $columna) {
             Log::info('MENU.regenerando_cache', ['modo' => $modo]);
             
@@ -68,28 +180,7 @@ class MenuOperadorService
     }
 
     /**
-     * 🔥 NUEVO: Invalida la caché del menú globalmente
-     * Solo incrementa la versión, no necesita borrar claves una por una
-     */
-    public static function invalidarCache(): void
-    {
-        $nuevaVersion = time();
-        Cache::forever('menu_global_version', $nuevaVersion);
-        Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
-    }
-
-    /**
-     * Método original (lo mantienes para compatibilidad, pero puedes deprecarlo)
-     */
-    public function getMenuTreeForOperador(int $operadorId, int $clienteId, int $tipoId): array
-    {
-        // Delegar al nuevo método
-        return $this->obtenerArbol($tipoId, $operadorId, $clienteId);
-    }
-
-    /**
-     * Obtiene el árbol completo de menús (para asignación)
-     * Este NO necesita caché porque solo lo usan administradores
+     * Obtiene el árbol completo de menús (para asignación en administración)
      */
     public function getMenuCompleto(): array
     {
