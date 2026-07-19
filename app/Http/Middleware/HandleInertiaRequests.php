@@ -73,7 +73,7 @@ class HandleInertiaRequests extends Middleware
                 'id'      => (int) session('operador_id'),
                 'nombre'  => (string) $operadorNombre,
                 'tipo_id' => (int) session('operador_tipo_id'),
-                'tipo_detalle' => $operadorTipoDetalle, // 🔥 "VentaMostrador", "Administrador", etc.
+                'tipo_detalle' => $operadorTipoDetalle,
             ],
         ];
 
@@ -86,7 +86,7 @@ class HandleInertiaRequests extends Middleware
             'ready' => (bool) (session()->has('cliente_id') && session()->has('cliente_sucursal_id')),
         ];
 
-        // 🔥 MENÚ: Usamos el servicio que ya tiene caché
+        // 🔥 MENÚ
         $menu = [];
         if ($ctx['ready'] && !empty($auth['operador']['tipo_id'])) {
             $menu = $this->menuService->obtenerArbol(
@@ -96,6 +96,9 @@ class HandleInertiaRequests extends Middleware
             );
         }
 
+        // 🔥 ZONA HORARIA - DEFINIRLA AQUÍ
+        $zonaHoraria = session('zona_horaria', config('app.timezone', 'America/La_Paz'));
+
         return array_merge(parent::share($request), [
             'auth'            => $auth,
             'ctx'             => $ctx,
@@ -103,7 +106,8 @@ class HandleInertiaRequests extends Middleware
             'empresaNombre'   => $empresaNombre,
             'sucursalNombre'  => $sucursalNombre,
             'operadorNombre'  => $operadorNombre,
-            'theme'           => $theme, // 🔥 Tema dinámico
+            'theme'           => $theme,
+            'zonaHoraria'     => $zonaHoraria, // ✅ AHORA ESTÁ DEFINIDA
         ]);
     }
 

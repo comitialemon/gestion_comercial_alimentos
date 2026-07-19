@@ -7,29 +7,54 @@ use App\Models\Gestion\Impuestos\LugarVenta;
 use App\Models\Gestion\Impuestos\Comisionista;
 use App\Models\Gestion\Todos\Identificador;
 use App\Models\Gestion\Inventario\Almacen;
+use App\Services\TimezoneService;
+use App\Services\Gestion\PuntoVenta\VentaPendienteService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;  // ✅ AGREGAR ESTA LÍNEA
 
 class NuevaVentaTactilController extends Controller
 {
+    protected $timezoneService;
+    protected $ventaPendienteService;
+
+    public function __construct(
+        TimezoneService $timezoneService,
+        VentaPendienteService $ventaPendienteService
+    ) {
+        $this->timezoneService = $timezoneService;
+        $this->ventaPendienteService = $ventaPendienteService;
+    }
+
+    /**
+     * 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
+     */
+    private function getFechaHoraCliente()
+    {
+        return $this->timezoneService->getFechaHoraActual();
+    }
+
     public function create()
     {
         // ✅ VERIFICAR SI LA SUCURSAL TIENE ALMACENES
         $sucursalId = session('cliente_sucursal_id');
         $tieneAlmacen = Almacen::where('IdSucursal', $sucursalId)->exists();
 
+        // 🔥 LIMPIAR VENTAS PENDIENTES DE DÍAS ANTERIORES
+        $resultado = $this->ventaPendienteService->limpiarVentasPendientes();
+        
+        if ($resultado['limpiadas'] > 0) {
+            Log::info('🧹 Ventas pendientes limpiadas automáticamente', [
+                'cantidad' => $resultado['limpiadas']
+            ]);
+        }
+
         // ✅ Verificar venta activa (SOLO si hay almacén)
         $ventaActiva = null;
         if ($tieneAlmacen) {
-            $ventaActiva = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('impuestos_ventas')
-                ->where('IdCliente', session('cliente_id'))
-                ->where('IdClienteSucursal', $sucursalId)
-                ->where('IdOperadorIngresa', session('operador_id'))
-                ->where('ActivoInactivo', 0)
-                ->where('NumeroFactura', 0)
-                ->first();
+            // 🔥 BUSCAR SOLO VENTAS DEL DÍA ACTUAL
+            $ventaActiva = $this->ventaPendienteService->verificarVentaPendienteHoy();
         }
         
         if ($ventaActiva) {
@@ -71,7 +96,8 @@ class NuevaVentaTactilController extends Controller
                 'esCliente' => ($c->identificador->CI_NIT ?? null) == $clienteNit,
             ]);
 
-        $fechaFormateada = date('d/m/Y');
+        // 🔥 FECHA CORRECTA SEGÚN CLIENTE
+        $fechaFormateada = $this->timezoneService->formatDate($this->timezoneService->now(), 'd/m/Y');
 
         return Inertia::render('PuntoVenta/NuevaVentaTactil', [
             'lugaresVenta' => $lugaresVenta,
@@ -117,9 +143,8 @@ class NuevaVentaTactilController extends Controller
                     'CI_NIT' => 0,
                     'Nombre' => 'SIN NIT',
                     'IdOperadorIngreso' => $operadorId,
-                    'FechaIngreso' => now(),
                     'IdOperadorEdita' => $operadorId,
-                    'FechaEdita' => now(),
+                    'FechaEdita' => $this->getFechaHoraCliente(),
                 ]);
             }
             $idNIT = $identificadorCero->IdIdentificador;
@@ -130,6 +155,9 @@ class NuevaVentaTactilController extends Controller
             $lugarVentaTexto = 'Mayorista';
         }
 
+        // 🔥 FECHA CORRECTA SEGÚN CLIENTE
+        $fechaActual = $this->getFechaHoraCliente();
+
         $ventaId = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->insertGetId([
@@ -137,7 +165,8 @@ class NuevaVentaTactilController extends Controller
                 'IdClienteSucursal' => $sucursalId,
                 'IdOperadorIngresa' => $operadorId,
                 'IdOperadorActualiza' => $operadorId,
-                'FechaVenta' => now(),
+                'FechaVenta' => $fechaActual,
+                'FechaUltimaActualizcion' => $fechaActual,
                 'LugarVenta' => $lugarVentaTexto,
                 'IdComisionista' => $request->comisionista_id,
                 'IdNIT' => $idNIT,

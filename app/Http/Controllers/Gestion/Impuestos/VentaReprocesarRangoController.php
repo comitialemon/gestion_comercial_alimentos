@@ -5,12 +5,28 @@ namespace App\Http\Controllers\Gestion\Impuestos;
 use App\Http\Controllers\Controller;
 use App\Models\Gestion\Impuestos\Venta;
 use App\Models\Gestion\Todos\ClienteSucursal;
+use App\Services\TimezoneService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
 class VentaReprocesarRangoController extends Controller
 {
+    protected $timezoneService;
+
+    public function __construct(TimezoneService $timezoneService)
+    {
+        $this->timezoneService = $timezoneService;
+    }
+
+    /**
+     * 🔥 OBTENER FECHA ACTUAL DEL CLIENTE
+     */
+    private function getFechaCliente()
+    {
+        return $this->timezoneService->getFechaActual();
+    }
+
     /**
      * 📋 Formulario para reprocesar rango de facturas
      */
@@ -79,6 +95,7 @@ class VentaReprocesarRangoController extends Controller
 
     /**
      * 🔥 PROCESAR RANGO DE FACTURAS (Reprocesar inventario)
+     * ✅ CORREGIDO: Lógica de combos con personalización + zona horaria
      */
     public function procesarRango(Request $request)
     {
@@ -128,8 +145,29 @@ class VentaReprocesarRangoController extends Controller
             $totalProcesadas = 0;
             $facturasProcesadas = [];
             $errores = [];
-            $todosLosProductos = []; // 🔥 NUEVO: Para agrupar productos
-            $totalMovimientos = 0;    // 🔥 NUEVO: Total de movimientos
+            $todosLosProductos = [];
+            $totalMovimientos = 0;
+            
+            // 🔥 OBTENER ID DEL TIPO DE OPERACIÓN "VENTAS"
+            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Detalle', 'Ventas')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+
+            if (!$idTipoOperacion) {
+                $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_tipooperacion')
+                    ->where('IdCliente', $clienteId)
+                    ->where(DB::raw('UPPER(Detalle)'), 'VENTAS')
+                    ->where('ActivoInactivo', 0)
+                    ->value('IdTipoOperacion');
+            }
+
+            if (!$idTipoOperacion) {
+                throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
+            }
             
             foreach ($facturas as $factura) {
                 try {
@@ -149,15 +187,23 @@ class VentaReprocesarRangoController extends Controller
                     
                     $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
                     
-                    // Eliminar movimientos anteriores
+                    // 🔥 ELIMINAR movimientos anteriores de esta factura
                     DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('inventario_propiamente')
-                        ->where('IdTipoDeOperacion', 2)
+                        ->where('IdTipoDeOperacion', $idTipoOperacion)
                         ->where('IdDocumento', $idVentas)
                         ->delete();
                     
-                    // Obtener fecha
-                    $fechaVenta = date('Y-m-d', strtotime($factura->FechaVenta));
+                    // 🔥 OBTENER FECHA CORRECTA DEL CLIENTE (usar la fecha de la venta, pero corregir si es necesario)
+                    $fechaVentaOriginal = date('Y-m-d', strtotime($factura->FechaVenta));
+                    $fechaCliente = $this->getFechaCliente();
+                    
+                    // Si la fecha de la venta es diferente a la fecha actual, usar la fecha de la venta (pero advertir)
+                    $fechaVenta = $fechaVentaOriginal;
+                    if ($fechaVentaOriginal !== $fechaCliente) {
+                        \Log::warning('⚠️ La fecha de la venta (' . $fechaVentaOriginal . ') es diferente a la fecha actual del cliente (' . $fechaCliente . '). Se usará la fecha de la venta.');
+                        $fechaVenta = $fechaVentaOriginal;
+                    }
                     
                     $idFecha = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('todos_fecha')
@@ -208,7 +254,7 @@ class VentaReprocesarRangoController extends Controller
                         $reciboFactura = "Recibo";
                     }
                     
-                    // Procesar detalles
+                    // Procesar detalles - 🔥 CON LÓGICA CORREGIDA DE COMBOS
                     $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('impuestos_ventas_detalle')
                         ->where('idventas', $idVentas)
@@ -217,61 +263,180 @@ class VentaReprocesarRangoController extends Controller
                     $movimientosFactura = 0;
                     
                     foreach ($detalles as $detalle) {
-                        $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
-                            ->table('inventario_relacion_ventainventario_detalle')
-                            ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
-                            ->get();
-                        
-                        foreach ($productosPorcion as $porcion) {
-                            $cantidadDescontar = $porcion->Porcion * $detalle->unidades;
+                        // 🔥 VERIFICAR SI TIENE PERSONALIZACIÓN
+                        if ($detalle->personalizacion && $detalle->personalizacion != 'null') {
+                            $personalizaciones = json_decode($detalle->personalizacion, true);
                             
-                            // Obtener nombre del producto
-                            $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
-                                ->table('inventario_productodetalle')
-                                ->where('IdProducto', $porcion->IdProducto)
-                                ->value('Descripcion');
+                            \Log::info('Reprocesando combo con personalización', [
+                                'id_combo' => $detalle->idrelacionventainventario,
+                                'personalizaciones' => $personalizaciones
+                            ]);
                             
-                            // 🔥 Agrupar productos por nombre
-                            $key = $nombreProducto ?? 'Producto #' . $porcion->IdProducto;
-                            if (!isset($todosLosProductos[$key])) {
-                                $todosLosProductos[$key] = [
-                                    'nombre' => $key,
-                                    'cantidad' => 0,
-                                    'facturas' => []
-                                ];
-                            }
-                            $todosLosProductos[$key]['cantidad'] += $cantidadDescontar;
-                            if (!in_array($numeroFactura, $todosLosProductos[$key]['facturas'])) {
-                                $todosLosProductos[$key]['facturas'][] = $numeroFactura;
-                            }
+                            // Obtener composición original
+                            $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
+                                ->table('inventario_relacion_ventainventario_detalle')
+                                ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
+                                ->get()
+                                ->keyBy('IdProducto');
                             
-                            $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
-                                ->table('inventario_productodetalle_precio_costo')
-                                ->where('IdProducto', $porcion->IdProducto)
-                                ->orderBy('IdPrecioCosto', 'DESC')
-                                ->value('PrecioCosto');
+                            // ✅ CANASTA ACUMULADORA PARA ESTE COMBO
+                            $productosADescontar = [];
                             
-                            $costoTotal = $cantidadDescontar * ($precioCosto ?? 0);
-                            
-                            if ($idEstado == 1) {
-                                DB::connection('mysql_gestion_comercial_alimentos')
-                                    ->table('inventario_propiamente')
-                                    ->insert([
-                                        'IdTipoDeOperacion' => 2,
-                                        'IdDocumento' => $idVentas,
-                                        'IdFecha' => $idFecha,
-                                        'IdAlmacen' => $idAlmacen,
-                                        'IdProducto' => $porcion->IdProducto,
-                                        'Glosa' => "{$reciboFactura} Ventas No {$numeroFactura}; Op.{$nombreOperador}",
-                                        'D_H' => 'H',
-                                        'Unidades' => $cantidadDescontar,
-                                        'Bolivianos' => $costoTotal,
-                                        'IdCliente' => $clienteId,
-                                        'IdSucursal' => $sucursalId,
-                                    ]);
+                            // Procesar cada combo individual
+                            foreach ($personalizaciones as $index => $personalizacion) {
+                                $sustitutos = $personalizacion['sustitutos'] ?? [];
                                 
-                                $movimientosFactura++;
-                                $totalMovimientos++;
+                                foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
+                                    $cantidadOriginal = (float) $composicion->Porcion;
+                                    
+                                    // Calcular cuánto se reemplaza
+                                    $totalReemplazado = 0;
+                                    foreach ($sustitutos as $sustituto) {
+                                        if ($sustituto['id_producto_original'] == $idProductoOriginal) {
+                                            $totalReemplazado += $sustituto['cantidad'] ?? 0;
+                                        }
+                                    }
+                                    
+                                    // ACUMULAR PRODUCTOS ORIGINALES (los que NO se reemplazaron)
+                                    $quedanOriginales = $cantidadOriginal - $totalReemplazado;
+                                    if ($quedanOriginales > 0) {
+                                        if (!isset($productosADescontar[$idProductoOriginal])) {
+                                            $productosADescontar[$idProductoOriginal] = 0;
+                                        }
+                                        $productosADescontar[$idProductoOriginal] += $quedanOriginales;
+                                    }
+                                    
+                                    // ACUMULAR SUSTITUTOS (los que se agregaron)
+                                    foreach ($sustitutos as $sustituto) {
+                                        if ($sustituto['id_producto_original'] == $idProductoOriginal) {
+                                            $idSustituto = $sustituto['id_producto_sustituto'];
+                                            $cantidadSustituto = $sustituto['cantidad'] ?? 0;
+                                            
+                                            if ($cantidadSustituto > 0) {
+                                                if (!isset($productosADescontar[$idSustituto])) {
+                                                    $productosADescontar[$idSustituto] = 0;
+                                                }
+                                                $productosADescontar[$idSustituto] += $cantidadSustituto;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // 🔥 REGISTRAR TODOS LOS PRODUCTOS ACUMULADOS
+                            foreach ($productosADescontar as $idProducto => $cantidadTotal) {
+                                if ($cantidadTotal <= 0) continue;
+                                
+                                // Obtener nombre del producto
+                                $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                                    ->table('inventario_productodetalle')
+                                    ->where('IdProducto', $idProducto)
+                                    ->value('Descripcion');
+                                
+                                // Agrupar para el resumen
+                                $key = $nombreProducto ?? 'Producto #' . $idProducto;
+                                if (!isset($todosLosProductos[$key])) {
+                                    $todosLosProductos[$key] = [
+                                        'nombre' => $key,
+                                        'cantidad' => 0,
+                                        'facturas' => []
+                                    ];
+                                }
+                                $todosLosProductos[$key]['cantidad'] += $cantidadTotal;
+                                if (!in_array($numeroFactura, $todosLosProductos[$key]['facturas'])) {
+                                    $todosLosProductos[$key]['facturas'][] = $numeroFactura;
+                                }
+                                
+                                // Obtener precio costo
+                                $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
+                                    ->table('inventario_productodetalle_precio_costo')
+                                    ->where('IdProducto', $idProducto)
+                                    ->orderBy('IdPrecioCosto', 'DESC')
+                                    ->value('PrecioCosto');
+                                
+                                $costoTotal = $cantidadTotal * ($precioCosto ?? 0);
+                                
+                                if ($idEstado == 1) {
+                                    DB::connection('mysql_gestion_comercial_alimentos')
+                                        ->table('inventario_propiamente')
+                                        ->insert([
+                                            'IdTipoDeOperacion' => $idTipoOperacion,
+                                            'IdDocumento' => $idVentas,
+                                            'IdFecha' => $idFecha,
+                                            'IdAlmacen' => $idAlmacen,
+                                            'IdProducto' => $idProducto,
+                                            'Glosa' => "{$reciboFactura} Ventas No {$numeroFactura}; Op.{$nombreOperador}",
+                                            'D_H' => 'H',
+                                            'Unidades' => $cantidadTotal,
+                                            'Bolivianos' => $costoTotal,
+                                            'IdCliente' => $clienteId,
+                                            'IdSucursal' => $sucursalId,
+                                        ]);
+                                    
+                                    $movimientosFactura++;
+                                    $totalMovimientos++;
+                                }
+                            }
+                            
+                        } else {
+                            // 🔥 SIN PERSONALIZACIÓN - usar la composición normal
+                            $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
+                                ->table('inventario_relacion_ventainventario_detalle')
+                                ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
+                                ->get();
+                            
+                            foreach ($productosPorcion as $porcion) {
+                                $cantidadDescontar = $porcion->Porcion * $detalle->unidades;
+                                
+                                // Obtener nombre del producto
+                                $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                                    ->table('inventario_productodetalle')
+                                    ->where('IdProducto', $porcion->IdProducto)
+                                    ->value('Descripcion');
+                                
+                                // Agrupar para el resumen
+                                $key = $nombreProducto ?? 'Producto #' . $porcion->IdProducto;
+                                if (!isset($todosLosProductos[$key])) {
+                                    $todosLosProductos[$key] = [
+                                        'nombre' => $key,
+                                        'cantidad' => 0,
+                                        'facturas' => []
+                                    ];
+                                }
+                                $todosLosProductos[$key]['cantidad'] += $cantidadDescontar;
+                                if (!in_array($numeroFactura, $todosLosProductos[$key]['facturas'])) {
+                                    $todosLosProductos[$key]['facturas'][] = $numeroFactura;
+                                }
+                                
+                                // Obtener precio costo
+                                $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
+                                    ->table('inventario_productodetalle_precio_costo')
+                                    ->where('IdProducto', $porcion->IdProducto)
+                                    ->orderBy('IdPrecioCosto', 'DESC')
+                                    ->value('PrecioCosto');
+                                
+                                $costoTotal = $cantidadDescontar * ($precioCosto ?? 0);
+                                
+                                if ($idEstado == 1) {
+                                    DB::connection('mysql_gestion_comercial_alimentos')
+                                        ->table('inventario_propiamente')
+                                        ->insert([
+                                            'IdTipoDeOperacion' => $idTipoOperacion,
+                                            'IdDocumento' => $idVentas,
+                                            'IdFecha' => $idFecha,
+                                            'IdAlmacen' => $idAlmacen,
+                                            'IdProducto' => $porcion->IdProducto,
+                                            'Glosa' => "{$reciboFactura} Ventas No {$numeroFactura}; Op.{$nombreOperador}",
+                                            'D_H' => 'H',
+                                            'Unidades' => $cantidadDescontar,
+                                            'Bolivianos' => $costoTotal,
+                                            'IdCliente' => $clienteId,
+                                            'IdSucursal' => $sucursalId,
+                                        ]);
+                                    
+                                    $movimientosFactura++;
+                                    $totalMovimientos++;
+                                }
                             }
                         }
                     }
@@ -284,7 +449,7 @@ class VentaReprocesarRangoController extends Controller
                         'movimientos' => $movimientosFactura
                     ];
                     
-                    \Log::info('✅ Factura ' . $numeroFactura . ' procesada correctamente');
+                    \Log::info('✅ Factura ' . $numeroFactura . ' procesada correctamente - ' . $movimientosFactura . ' movimientos');
                     
                 } catch (\Exception $e) {
                     \Log::error('❌ Error procesando factura ' . $factura->IdVentas . ': ' . $e->getMessage());
@@ -295,8 +460,9 @@ class VentaReprocesarRangoController extends Controller
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
             
             \Log::info('✅ RANGO DE FACTURAS REPROCESADO CON ÉXITO');
+            \Log::info('Total facturas: ' . $totalProcesadas . ' | Movimientos: ' . $totalMovimientos);
             
-            // 🔥 Convertir productos a array para el modal
+            // Convertir productos a array para el modal
             $productosArray = [];
             foreach ($todosLosProductos as $producto) {
                 $productosArray[] = [
@@ -315,9 +481,9 @@ class VentaReprocesarRangoController extends Controller
                 'success' => true,
                 'message' => $mensaje,
                 'total' => $totalProcesadas,
-                'total_movimientos' => $totalMovimientos, // 🔥 NUEVO
+                'total_movimientos' => $totalMovimientos,
                 'facturas' => $facturasProcesadas,
-                'productos' => $productosArray, // 🔥 NUEVO: Lista de productos afectados
+                'productos' => $productosArray,
                 'errores' => $errores,
             ]);
             

@@ -21,7 +21,16 @@ class Cliente extends Model
         'NombreRepresentanteLegal',
         'IdFechaInicioOperaciones',
         'facturacion_habilitada',
+        'zona_horaria',  // 🔥 AGREGAR
     ];
+
+    /**
+     * Obtiene la zona horaria del cliente o la predeterminada
+     */
+    public function getZonaHorariaAttribute($value)
+    {
+        return $value ?? 'America/La_Paz';
+    }
 
     /**
      * Obtiene las sucursales de esta empresa

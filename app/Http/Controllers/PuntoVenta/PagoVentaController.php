@@ -7,6 +7,7 @@ use App\Models\Gestion\Impuestos\Venta;
 use App\Models\Gestion\Contabilidad\MetodoPagoMapeo;
 use App\Models\Gestion\Contabilidad\ContaCuenta;
 use App\Services\Impuestos\VentaService;
+use App\Services\TimezoneService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -17,10 +18,20 @@ use App\Models\Gestion\Impuestos\VentaLiquidacionConcepto;
 class PagoVentaController extends Controller
 {
     protected $ventaService;
+    protected $timezoneService;
 
-    public function __construct(VentaService $ventaService)
+    public function __construct(VentaService $ventaService, TimezoneService $timezoneService)
     {
         $this->ventaService = $ventaService;
+        $this->timezoneService = $timezoneService;
+    }
+
+    /**
+     * 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
+     */
+    private function getFechaHoraCliente()
+    {
+        return $this->timezoneService->getFechaHoraActual();
     }
 
     /**
@@ -29,7 +40,8 @@ class PagoVentaController extends Controller
      */
     private function generarTicketDia($clienteId, $sucursalId, $fechaVenta)
     {
-        $fechaStr = date('Y-m-d', strtotime($fechaVenta));
+        // 🔥 Usar la fecha correcta del cliente
+        $fechaStr = $this->getFechaCliente();
         
         $maxTicket = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
@@ -247,6 +259,7 @@ class PagoVentaController extends Controller
     /**
      * Procesar pago SIN facturación (completo con inventario)
      * 🔥 SE GENERA EL TICKETDIA AQUÍ AL FINALIZAR EL PAGO
+     * 🔥 CORREGIDO: Usa zona horaria del cliente
      */
     public function procesarPagoSinFacturacion(Request $request)
     {
@@ -257,7 +270,7 @@ class PagoVentaController extends Controller
                 'tipo_venta' => 'required|string|in:normal,tactil',
                 'id_identificador_cliente' => 'required|exists:todos_identificador,IdIdentificador',
                 'identificadores_por_concepto' => 'nullable|array',
-                'observacion' => 'nullable|string|max:200', // 🔥 Agregar esto
+                'observacion' => 'nullable|string|max:200',
             ]);
 
             DB::beginTransaction();
@@ -268,7 +281,11 @@ class PagoVentaController extends Controller
             $idIdentificadorClienteComprador = $request->id_identificador_cliente;
             $identificadoresPorConcepto = $request->identificadores_por_concepto ?? [];
             
-            // 🔥 Obtener la venta para tener la fecha
+            // 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
+            $fechaHoraCliente = $this->getFechaHoraCliente();
+            $fechaCliente = $this->getFechaCliente();
+            
+            // Obtener la venta
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
@@ -278,7 +295,24 @@ class PagoVentaController extends Controller
                 throw new \Exception('Venta no encontrada');
             }
             
-            // 🔥 Obtener TODOS los conceptos activos del cliente
+            // 🔥 CORREGIR FECHA DE VENTA SI ES NECESARIO
+            $fechaVentaActual = $venta->FechaVenta;
+            $fechaVentaDate = date('Y-m-d', strtotime($fechaVentaActual));
+            $fechaHoy = $fechaCliente;
+            
+            $fechaVentaFinal = $fechaVentaActual;
+            if ($fechaVentaDate !== $fechaHoy) {
+                $horaOriginal = date('H:i:s', strtotime($fechaVentaActual));
+                $fechaVentaFinal = $fechaHoy . ' ' . $horaOriginal;
+                
+                Log::info('📅 Fecha de venta corregida', [
+                    'venta_id' => $ventaId,
+                    'fecha_original' => $fechaVentaActual,
+                    'fecha_corregida' => $fechaVentaFinal
+                ]);
+            }
+            
+            // Obtener conceptos
             $conceptos = VentaLiquidacionConcepto::porContexto()
                 ->activos()
                 ->get()
@@ -286,9 +320,7 @@ class PagoVentaController extends Controller
             
             Log::info('=== PROCESANDO PAGO ===');
             Log::info('Venta ID: ' . $ventaId);
-            Log::info('Cliente comprador ID: ' . $idIdentificadorClienteComprador);
-            Log::info('Montos: ', $request->montos);
-            Log::info('Identificadores por concepto: ', $identificadoresPorConcepto);
+            Log::info('Fecha cliente: ' . $fechaHoraCliente);
             
             // =============================================
             // 1. INSERTAR LIQUIDACIONES
@@ -303,24 +335,19 @@ class PagoVentaController extends Controller
                     continue;
                 }
                 
-                // 🔥 DETERMINAR QUÉ IDENTIFICADOR USAR
                 $idIdentificadorUsar = null;
                 
                 if ($concepto->requiere_identificador) {
                     $idIdentificadorUsar = $identificadoresPorConcepto[$conceptoId] ?? null;
-                    Log::info("Concepto '{$concepto->Concepto}' requiere identificador → ID: " . ($idIdentificadorUsar ?? 'NULL'));
-                    
                     if (!$idIdentificadorUsar) {
                         throw new \Exception("El concepto '{$concepto->Concepto}' requiere seleccionar un cliente");
                     }
                 } 
                 elseif ($concepto->usa_identificador_factura) {
                     $idIdentificadorUsar = $idIdentificadorClienteComprador;
-                    Log::info("Concepto '{$concepto->Concepto}' usa identificador de factura → ID: " . ($idIdentificadorUsar ?? 'NULL'));
                 }
                 else {
                     $idIdentificadorUsar = $this->getIdIdentificadorOperador();
-                    Log::info("Concepto '{$concepto->Concepto}' sin flags → usando operador ID: " . ($idIdentificadorUsar ?? 'NULL'));
                 }
                 
                 DB::connection('mysql_gestion_comercial_alimentos')
@@ -335,14 +362,13 @@ class PagoVentaController extends Controller
             }
 
             // =============================================
-            // 2. 🔥 GENERAR TICKET DIA (AL FINALIZAR EL PAGO)
+            // 2. GENERAR TICKET DIA
             // =============================================
-            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $venta->FechaVenta);
+            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $fechaCliente);
 
             // =============================================
             // 3. ACTUALIZAR VENTA
             // =============================================
-            
             $ultimoNumeroFactura = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -352,23 +378,23 @@ class PagoVentaController extends Controller
             $nuevoNumeroFactura = ($ultimoNumeroFactura ?? 0) + 1;
             $operadorId = session('operador_id');
 
-            // ✅ Actualizar venta con TicketDia
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->update([
                     'ActivoInactivo' => 1,
-                    'FechaUltimaActualizcion' => now(),
+                    'FechaUltimaActualizcion' => $fechaHoraCliente,  // ✅ FECHA CORRECTA
+                    'FechaVenta' => $fechaVentaFinal,                // ✅ FECHA CORREGIDA
                     'NumeroFactura' => $nuevoNumeroFactura,
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
                     'IdNIT' => $idIdentificadorClienteComprador,
-                    'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
+                    'TicketDia' => $ticketDia,
                     'Observacion' => $request->observacion ?? '',
                 ]);
 
-            // Registrar salida de inventario
-            $this->registrarSalidaInventario($ventaId);
+            // Registrar salida de inventario con fecha correcta
+            $this->registrarSalidaInventario($ventaId, $fechaCliente);
 
             DB::commit();
 
@@ -414,9 +440,12 @@ class PagoVentaController extends Controller
 
     /**
      * Registrar salida de inventario
-     * 🔥 CORREGIDO para procesar correctamente las personalizaciones con cantidades parciales
+     * 🔥 CORREGIDO: 
+     * - Acumula correctamente todos los combos antes de descontar
+     * - Usa zona horaria del cliente
+     * - Maneja correctamente personalizaciones con sustitutos
      */
-    private function registrarSalidaInventario($ventaId)
+    private function registrarSalidaInventario($ventaId, $fechaCorregida = null)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
@@ -430,9 +459,18 @@ class PagoVentaController extends Controller
             throw new \Exception('Venta no encontrada');
         }
         
-        $fechaVenta = date('Y-m-d', strtotime($venta->FechaVenta));
+        // 🔥 USAR LA FECHA CORREGIDA O LA FECHA ACTUAL DEL CLIENTE
+        if ($fechaCorregida) {
+            $fechaVenta = $fechaCorregida;
+        } else {
+            $fechaVenta = $this->getFechaCliente();
+        }
+        
+        Log::info('📅 Fecha para inventario de venta ' . $ventaId . ': ' . $fechaVenta);
+        
         $idFecha = $this->obtenerIdFecha($fechaVenta);
         
+        // Obtener almacén
         $idAlmacen = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_almacen')
             ->where('IdCliente', $clienteId)
@@ -456,7 +494,6 @@ class PagoVentaController extends Controller
             ->where('ActivoInactivo', 0)
             ->value('IdTipoOperacion');
 
-        // Si no encuentra, buscar sin distinguir mayúsculas
         if (!$idTipoOperacion) {
             $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_tipooperacion')
@@ -466,7 +503,6 @@ class PagoVentaController extends Controller
                 ->value('IdTipoOperacion');
         }
 
-        // Si aún no encuentra, buscar por LIKE
         if (!$idTipoOperacion) {
             $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_tipooperacion')
@@ -476,7 +512,6 @@ class PagoVentaController extends Controller
                 ->value('IdTipoOperacion');
         }
 
-        // Si no encuentra NADA, lanzar error
         if (!$idTipoOperacion) {
             Log::error('❌ No se encontró tipo de operación VENTAS para el cliente ' . $clienteId);
             throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
@@ -487,10 +522,14 @@ class PagoVentaController extends Controller
             'id_tipo_operacion' => $idTipoOperacion
         ]);
         
+        // Obtener detalles de la venta
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas_detalle')
             ->where('idventas', $ventaId)
             ->get();
+        
+        // ✅ 🔥 CANASTA ACUMULADORA - DECLARADA UNA SOLA VEZ, FUERA DE TODOS LOS LOOPS
+        $productosADescontar = [];
         
         foreach ($detalles as $detalle) {
             // 🔥 VERIFICAR SI TIENE PERSONALIZACIÓN
@@ -500,25 +539,29 @@ class PagoVentaController extends Controller
                 Log::info('Procesando combo con personalización', [
                     'id_combo' => $detalle->idrelacionventainventario,
                     'total_unidades' => $detalle->unidades,
-                    'personalizaciones' => $personalizaciones
+                    'cantidad_personalizaciones' => count($personalizaciones)
                 ]);
                 
-                // 🔥 OBTENER LA COMPOSICIÓN ORIGINAL DEL COMBO
+                // OBTENER LA COMPOSICIÓN ORIGINAL DEL COMBO
                 $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_detalle')
                     ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
                     ->get()
                     ->keyBy('IdProducto');
                 
-                // 🔥 ARRAY PARA ACUMULAR DESCUENTOS POR PRODUCTO
-                $productosADescontar = [];
+                // ✅ 🔥 NO VACIAR LA CANASTA - ELIMINAR ESTA LÍNEA
+                // $productosADescontar = [];  // ❌ ELIMINADA
                 
                 // Procesar cada combo individual (si hay múltiples)
                 foreach ($personalizaciones as $index => $personalizacion) {
                     // Obtener los sustitutos seleccionados
                     $sustitutos = $personalizacion['sustitutos'] ?? [];
                     
-                    // 🔥 PROCESAR CADA PRODUCTO DE LA COMPOSICIÓN
+                    Log::info("Procesando combo #" . ($index + 1), [
+                        'sustitutos' => count($sustitutos)
+                    ]);
+                    
+                    // PROCESAR CADA PRODUCTO DE LA COMPOSICIÓN
                     foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
                         $cantidadOriginal = (float) $composicion->Porcion;
                         
@@ -530,23 +573,20 @@ class PagoVentaController extends Controller
                             }
                         }
                         
-                        // 🔥 CALCULAR CUÁNTAS UNIDADES QUEDAN ORIGINALES
+                        // CALCULAR CUÁNTAS UNIDADES QUEDAN ORIGINALES
                         $quedanOriginales = $cantidadOriginal - $totalReemplazado;
                         
-                        // 🔥 DESCONTAR PRODUCTOS ORIGINALES (los que NO se reemplazaron)
+                        // ✅ ACUMULAR PRODUCTOS ORIGINALES (los que NO se reemplazaron)
                         if ($quedanOriginales > 0) {
                             if (!isset($productosADescontar[$idProductoOriginal])) {
-                                $productosADescontar[$idProductoOriginal] = [
-                                    'cantidad' => 0,
-                                    'tipo' => 'original'
-                                ];
+                                $productosADescontar[$idProductoOriginal] = 0;
                             }
-                            $productosADescontar[$idProductoOriginal]['cantidad'] += $quedanOriginales;
+                            $productosADescontar[$idProductoOriginal] += $quedanOriginales;
                             
-                            Log::info("Producto original {$idProductoOriginal}: quedan {$quedanOriginales} unidades");
+                            Log::info("Producto original {$idProductoOriginal}: acumulado {$quedanOriginales} (total: {$productosADescontar[$idProductoOriginal]})");
                         }
                         
-                        // 🔥 DESCONTAR SUSTITUTOS (los que se agregaron)
+                        // ✅ ACUMULAR SUSTITUTOS (los que se agregaron)
                         foreach ($sustitutos as $sustituto) {
                             if ($sustituto['id_producto_original'] == $idProductoOriginal) {
                                 $idSustituto = $sustituto['id_producto_sustituto'];
@@ -554,66 +594,78 @@ class PagoVentaController extends Controller
                                 
                                 if ($cantidadSustituto > 0) {
                                     if (!isset($productosADescontar[$idSustituto])) {
-                                        $productosADescontar[$idSustituto] = [
-                                            'cantidad' => 0,
-                                            'tipo' => 'sustituto'
-                                        ];
+                                        $productosADescontar[$idSustituto] = 0;
                                     }
-                                    $productosADescontar[$idSustituto]['cantidad'] += $cantidadSustituto;
+                                    $productosADescontar[$idSustituto] += $cantidadSustituto;
                                     
-                                    Log::info("Sustituto {$idSustituto}: se agregan {$cantidadSustituto} unidades");
+                                    Log::info("Sustituto {$idSustituto}: acumulado {$cantidadSustituto} (total: {$productosADescontar[$idSustituto]})");
                                 }
                             }
                         }
                     }
                 }
                 
-                // 🔥 REGISTRAR TODOS LOS DESCUENTOS ACUMULADOS
-                foreach ($productosADescontar as $idProducto => $data) {
-                    $cantidadTotal = $data['cantidad'];
-                    
-                    if ($cantidadTotal <= 0) continue;
-                    
-                    $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_productodetalle_precio_costo')
-                        ->where('IdProducto', $idProducto)
-                        ->orderBy('IdPrecioCosto', 'DESC')
-                        ->value('PrecioCosto');
-                    
-                    $costoTotal = $cantidadTotal * ($precioCosto ?? 0);
-                    
-                    DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_propiamente')
-                        ->insert([
-                            'IdTipoDeOperacion' => $idTipoOperacion,
-                            'IdDocumento' => $ventaId,
-                            'IdFecha' => $idFecha,
-                            'IdAlmacen' => $idAlmacen,
-                            'IdProducto' => $idProducto,
-                            'Glosa' => "Venta Factura No {$venta->NumeroFactura}",
-                            'D_H' => 'H',
-                            'Unidades' => $cantidadTotal,
-                            'Bolivianos' => $costoTotal,
-                            'IdCliente' => $clienteId,
-                            'IdSucursal' => $sucursalId,
-                        ]);
-                    
-                    Log::info('✅ Descontado producto', [
-                        'id_producto' => $idProducto,
-                        'unidades' => $cantidadTotal,
-                        'tipo' => $data['tipo']
-                    ]);
-                }
-                
             } else {
-                // SIN PERSONALIZACIÓN - usar la composición normal
+                // 🔥 SIN PERSONALIZACIÓN - usar la composición normal
                 $this->procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId);
             }
         }
+        
+        // ✅ 🔥 DESPUÉS DE PROCESAR TODOS LOS COMBOS, REGISTRAR TODO DE UNA VEZ
+        Log::info('📦 Total de productos a descontar:', $productosADescontar);
+        
+        foreach ($productosADescontar as $idProducto => $cantidadTotal) {
+            if ($cantidadTotal <= 0) continue;
+            
+            // Obtener el nombre del producto para el log
+            $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle')
+                ->where('IdProducto', $idProducto)
+                ->value('Descripcion');
+            
+            // Obtener precio costo
+            $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle_precio_costo')
+                ->where('IdProducto', $idProducto)
+                ->orderBy('IdPrecioCosto', 'DESC')
+                ->value('PrecioCosto');
+            
+            $costoTotal = $cantidadTotal * ($precioCosto ?? 0);
+            
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_propiamente')
+                ->insert([
+                    'IdTipoDeOperacion' => $idTipoOperacion,
+                    'IdDocumento' => $ventaId,
+                    'IdFecha' => $idFecha,
+                    'IdAlmacen' => $idAlmacen,
+                    'IdProducto' => $idProducto,
+                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}",
+                    'D_H' => 'H',
+                    'Unidades' => $cantidadTotal,
+                    'Bolivianos' => $costoTotal,
+                    'IdCliente' => $clienteId,
+                    'IdSucursal' => $sucursalId,
+                ]);
+            
+            Log::info('✅ Descontado producto del inventario', [
+                'id_producto' => $idProducto,
+                'nombre' => $nombreProducto ?? 'Desconocido',
+                'unidades' => $cantidadTotal,
+                'costo_total' => $costoTotal,
+                'fecha' => $fechaVenta
+            ]);
+        }
+        
+        Log::info('✅ Inventario actualizado para venta ' . $ventaId, [
+            'total_productos_descontados' => count($productosADescontar),
+            'fecha' => $fechaVenta
+        ]);
     }
 
     /**
      * Procesar combo sin personalización (descuenta todo)
+     * 🔥 MÉTODO AUXILIAR
      */
     private function procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId)
     {
@@ -673,6 +725,14 @@ class PagoVentaController extends Controller
                 'CierreSucursal' => 0,
                 'CierrePermanente' => 0,
             ]);
+    }
+
+    /**
+     * 🔥 OBTENER FECHA ACTUAL DEL CLIENTE
+     */
+    private function getFechaCliente()
+    {
+        return $this->timezoneService->getFechaActual();
     }
 
     /**
@@ -1025,6 +1085,7 @@ class PagoVentaController extends Controller
     /**
      * Procesar el pago para venta con facturación
      * 🔥 TAMBIÉN SE GENERA EL TICKETDIA AQUÍ
+     * 🔥 CORREGIDO: Usa zona horaria del cliente
      */
     public function store(Request $request)
     {
@@ -1035,13 +1096,17 @@ class PagoVentaController extends Controller
             'codigo_metodo_pago' => 'required|integer',
             'montos' => 'required|array',
             'monto_total' => 'required|numeric',
-            'observacion' => 'nullable|string|max:200', // 🔥 Agregar
+            'observacion' => 'nullable|string|max:200',
         ]);
         
         try {
             $clienteId = session('cliente_id');
             $sucursalId = session('cliente_sucursal_id');
             $ventaId = $request->venta_id;
+            
+            // 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
+            $fechaHoraCliente = $this->getFechaHoraCliente();
+            $fechaCliente = $this->getFechaCliente();
             
             // Obtener la venta para tener la fecha
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
@@ -1053,26 +1118,44 @@ class PagoVentaController extends Controller
                 throw new \Exception('Venta no encontrada');
             }
             
-            // 🔥 Generar TicketDia al finalizar el pago
-            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $venta->FechaVenta);
+            // 🔥 CORREGIR FECHA DE VENTA SI ES NECESARIO
+            $fechaVentaActual = $venta->FechaVenta;
+            $fechaVentaDate = date('Y-m-d', strtotime($fechaVentaActual));
+            $fechaHoy = $fechaCliente;
+            
+            $fechaVentaFinal = $fechaVentaActual;
+            if ($fechaVentaDate !== $fechaHoy) {
+                $horaOriginal = date('H:i:s', strtotime($fechaVentaActual));
+                $fechaVentaFinal = $fechaHoy . ' ' . $horaOriginal;
+                
+                Log::info('📅 Fecha de venta corregida en store()', [
+                    'venta_id' => $ventaId,
+                    'fecha_original' => $fechaVentaActual,
+                    'fecha_corregida' => $fechaVentaFinal
+                ]);
+            }
+            
+            // 🔥 Generar TicketDia con fecha correcta
+            $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $fechaCliente);
             
             $operadorId = session('operador_id');
             
-            // Actualizar venta con TicketDia
+            // ✅ Actualizar venta con fechas correctas
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->update([
                     'ActivoInactivo' => 1,
-                    'FechaUltimaActualizcion' => now(),
+                    'FechaUltimaActualizcion' => $fechaHoraCliente,  // ✅ FECHA CORRECTA
+                    'FechaVenta' => $fechaVentaFinal,                // ✅ FECHA CORREGIDA
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
-                    'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
+                    'TicketDia' => $ticketDia,
                     'Observacion' => $request->observacion ?? '',
                 ]);
             
-            // Registrar salida de inventario
-            $this->registrarSalidaInventario($ventaId);
+            // Registrar salida de inventario con fecha correcta
+            $this->registrarSalidaInventario($ventaId, $fechaCliente);
             
             // Limpiar sesión
             session()->forget('venta_actual_id');
@@ -1081,6 +1164,7 @@ class PagoVentaController extends Controller
             
         } catch (\Exception $e) {
             Log::error('Error en store: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return redirect()->back()->with('error', $e->getMessage());
         }
     }
