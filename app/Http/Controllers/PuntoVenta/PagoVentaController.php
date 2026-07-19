@@ -256,7 +256,8 @@ class PagoVentaController extends Controller
                 'montos' => 'required|array',
                 'tipo_venta' => 'required|string|in:normal,tactil',
                 'id_identificador_cliente' => 'required|exists:todos_identificador,IdIdentificador',
-                'identificadores_por_concepto' => 'nullable|array'
+                'identificadores_por_concepto' => 'nullable|array',
+                'observacion' => 'nullable|string|max:200', // 🔥 Agregar esto
             ]);
 
             DB::beginTransaction();
@@ -363,6 +364,7 @@ class PagoVentaController extends Controller
                     'IdOperadorActualiza' => $operadorId,
                     'IdNIT' => $idIdentificadorClienteComprador,
                     'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
+                    'Observacion' => $request->observacion ?? '',
                 ]);
 
             // Registrar salida de inventario
@@ -1033,6 +1035,7 @@ class PagoVentaController extends Controller
             'codigo_metodo_pago' => 'required|integer',
             'montos' => 'required|array',
             'monto_total' => 'required|numeric',
+            'observacion' => 'nullable|string|max:200', // 🔥 Agregar
         ]);
         
         try {
@@ -1065,6 +1068,7 @@ class PagoVentaController extends Controller
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
                     'TicketDia' => $ticketDia,  // ✅ ASIGNAR TICKET DIA
+                    'Observacion' => $request->observacion ?? '',
                 ]);
             
             // Registrar salida de inventario

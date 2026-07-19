@@ -553,6 +553,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::post('/detalle', [ProductoVentaController::class, 'storeDetalle'])->name('gestion.productos-venta.detalle.store');
                 Route::put('/detalle/{id}', [ProductoVentaController::class, 'updateDetalle'])->name('gestion.productos-venta.detalle.update');
                 Route::delete('/detalle/{id}', [ProductoVentaController::class, 'destroyDetalle'])->name('gestion.productos-venta.detalle.destroy');
+        
+                // ========== RUTAS DE DISPONIBILIDAD (NUEVAS) ==========
+                Route::get('/sucursales-disponibilidad', [ProductoVentaController::class, 'getSucursalesDisponibilidad'])->name('gestion.productos-venta.sucursales-disponibilidad');
+                Route::get('/{id}/disponibilidad-dias', [ProductoVentaController::class, 'getDisponibilidadDias'])->name('gestion.productos-venta.disponibilidad-dias');
+                Route::post('/disponibilidad-dias', [ProductoVentaController::class, 'guardarDisponibilidadDias'])->name('gestion.productos-venta.guardar-disponibilidad-dias');
             });
 
             // Productos Aprobación Config
@@ -808,7 +813,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
         Route::get('/pago', [PagoVentaController::class, 'createTactil'])->name('venta-tactil.pago');
         Route::get('/categoria/{id}', [MenuTactilController::class, 'verCategoria'])->name('venta-tactil.categoria');
         Route::get('/combo/{id}', [MenuTactilController::class, 'getDetallesCombo']);
-
+        // 🔥 AGREGAR ESTA LÍNEA:
+        Route::get('/producto/{id}/disponibilidad', [MenuTactilController::class, 'verificarDisponibilidad']);  
     });
 
     // ============================================================

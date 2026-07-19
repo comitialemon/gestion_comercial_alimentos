@@ -11,6 +11,7 @@ import InventarioDetalleTab from './components/InventarioDetalleTab.vue'
 import ComboOpcionTab from './components/ComboOpcionTab.vue'
 import ModalCategorias from './components/ModalCategorias.vue'
 import ModalDuplicado from './components/ModalDuplicado.vue'
+import DisponibilidadTab from './components/DisponibilidadTab.vue' // ✅ AGREGAR ESTA LÍNEA
 
 defineOptions({ layout: AppLayout })
 
@@ -552,6 +553,8 @@ const tabs = [
     { id: 1, icon: 'fa-store', label: 'Sucursal', fullLabel: 'Precio Sucursal' },
     { id: 2, icon: 'fa-chart-line', label: 'Mayorista', fullLabel: 'Precio Comisionista' },
     { id: 3, icon: 'fa-random', label: 'Combo', fullLabel: 'Opciones Combo' },
+    { id: 4, icon: 'fa-calendar-day', label: 'Días', fullLabel: 'Disponibilidad Días' }, // ✅ NUEVO TAB
+
 ]
 
 const cargarOpciones = (opciones) => {
@@ -888,6 +891,13 @@ const cargarOpciones = (opciones) => {
                             <ComboOpcionTab 
                                 :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
                                 @update="cargarOpciones"
+                            />
+                        </div>
+                        <!-- TAB DIAS DISPONIBLES  -->
+                        <div v-show="activeTab === 4">
+                            <DisponibilidadTab 
+                                :producto-id="editando ? props.producto?.IdDetalleProducto : productoId"
+                                @update="(data) => console.log('Disponibilidad actualizada:', data)"
                             />
                         </div>
                     </div>

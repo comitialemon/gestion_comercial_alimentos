@@ -80,7 +80,7 @@ const cargarOpcionesCombo = async (idCombo) => {
                     agrupadas[op.id_producto_original] = {
                         id_producto_original: op.id_producto_original,
                         nombre_original: op.nombre_original,
-                        cantidad_total: 1, // Por defecto
+                        cantidad_total: 1,
                         opciones: []
                     }
                 }
@@ -101,7 +101,7 @@ const cargarOpcionesCombo = async (idCombo) => {
     }
 }
 
-// 🔥 NUEVO: Cargar detalles completos del combo (con composición y cantidades)
+// Cargar detalles completos del combo (con composición y cantidades)
 const cargarDetallesCombo = async (idCombo) => {
     try {
         const response = await axios.get(`/venta-tactil/combo/${idCombo}`)
@@ -115,17 +115,15 @@ const cargarDetallesCombo = async (idCombo) => {
     }
 }
 
-// 🔥 NUEVO: Preparar opciones agrupadas desde el combo completo
+// Preparar opciones agrupadas desde el combo completo
 const prepararOpcionesAgrupadas = (comboCompleto) => {
     if (!comboCompleto) return []
     
     const grupos = {}
     
-    // Usar la composición para obtener las cantidades
     comboCompleto.composicion?.forEach(item => {
         const idOriginal = item.id_producto
         
-        // Buscar opciones para este producto
         const opcionesDelProducto = comboCompleto.opciones?.filter(
             op => op.id_producto_original === idOriginal
         ) || []
@@ -143,7 +141,6 @@ const prepararOpcionesAgrupadas = (comboCompleto) => {
         }
     })
     
-    // Si no hay opciones, pero hay composición, crear grupos sin opciones
     if (Object.keys(grupos).length === 0 && comboCompleto.composicion) {
         comboCompleto.composicion.forEach(item => {
             grupos[item.id_producto] = {
@@ -158,12 +155,77 @@ const prepararOpcionesAgrupadas = (comboCompleto) => {
     return Object.values(grupos)
 }
 
+// Obtener día actual en español
+const obtenerDiaActual = () => {
+    const dias = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
+    return dias[new Date().getDay()]
+}
+
+// 🔥 ABRIR MODAL CON VERIFICACIÓN DE DISPONIBILIDAD
+// 🔥 ABRIR MODAL CON VERIFICACIÓN DE DISPONIBILIDAD
 const abrirModal = async (producto) => {
     if (!producto?.id) {
         toast?.error('Error', 'Producto inválido')
         return
     }
     
+    console.log('🔍 Abriendo modal para:', producto.nombre, 'ID:', producto.id)
+    console.log('📊 disponible_hoy:', producto.disponible_hoy)
+    console.log('📊 dias_disponibles:', producto.dias_disponibles)
+    
+    // 🔥 PRIMERO: Verificar con el flag del backend (más rápido)
+    if (producto.disponible_hoy === false) {
+        const diaActual = obtenerDiaActual()
+        const diasDisponibles = producto.dias_disponibles || 'ningún día configurado'
+        
+        const mensaje = `📅 ${producto.nombre} solo está disponible los días:\n\n🔹 ${diasDisponibles}\n\n📌 Hoy es ${diaActual}`
+        
+        toast?.error(
+            `❌ ${producto.nombre} no disponible hoy`,
+            mensaje,
+            { duration: 5000 }
+        )
+        return
+    }
+    
+    // 🔥 SEGUNDO: Verificar con la API (por si el flag no está actualizado)
+    try {
+        const response = await axios.get(`/venta-tactil/producto/${producto.id}/disponibilidad`)
+        console.log('📡 Respuesta API:', response.data)
+        
+        if (response.data.success && !response.data.disponible) {
+            const diasDisponibles = response.data.dias_disponibles || 'ningún día configurado'
+            const diaActual = obtenerDiaActual()
+            const nombre = response.data.nombre || producto.nombre
+            
+            const mensaje = `📅 ${nombre} solo está disponible los días:\n\n🔹 ${diasDisponibles}\n\n📌 Hoy es ${diaActual}`
+            
+            toast?.error(
+                `❌ ${nombre} no disponible hoy`,
+                mensaje,
+                { duration: 5000 }
+            )
+            return
+        }
+    } catch (error) {
+        console.error('❌ Error en API:', error)
+        // Si hay error y el flag dice que está disponible, continuar
+        if (producto.disponible_hoy !== false) {
+            // No mostrar mensaje, solo continuar
+            console.log('✅ Continuando con el producto (fallback)')
+        } else {
+            // Si el flag dice que no está disponible, mostrar mensaje genérico
+            const diaActual = obtenerDiaActual()
+            toast?.error(
+                `❌ ${producto.nombre} no disponible hoy`,
+                `📅 ${producto.nombre} no está disponible hoy (${diaActual})`,
+                { duration: 5000 }
+            )
+            return
+        }
+    }
+    
+    // 🔥 SOLO LLEGA AQUÍ SI EL PRODUCTO ESTÁ DISPONIBLE
     productoSeleccionado.value = producto
     cantidad.value = 1
     precioUnitario.value = producto.precio_real
@@ -174,7 +236,6 @@ const abrirModal = async (producto) => {
     
     modalVisible.value = true
 }
-
 const cerrarModal = () => {
     modalVisible.value = false
     setTimeout(() => {
@@ -183,33 +244,28 @@ const cerrarModal = () => {
     }, 200)
 }
 
-// 🔥 MODIFICADO: Abrir modal de personalización de múltiples combos
+// Abrir modal de personalización de múltiples combos
 const abrirPersonalizacionCombos = async () => {
     comboActual.value = productoSeleccionado.value
     cantidadCombos.value = cantidad.value
     
-    // 🔥 Cargar los detalles completos del combo (con composición y cantidades)
     const comboCompleto = await cargarDetallesCombo(productoSeleccionado.value.id)
     
     if (comboCompleto) {
-        // Usar el combo completo con composición
         comboActual.value = {
             ...productoSeleccionado.value,
             composicion: comboCompleto.composicion,
             opciones: comboCompleto.opciones
         }
         
-        // Preparar las opciones agrupadas para el modal
         opcionesAgrupadas.value = prepararOpcionesAgrupadas(comboCompleto)
         
         console.log('📦 Combo con composición:', comboCompleto)
         console.log('📦 Opciones agrupadas:', opcionesAgrupadas.value)
     } else {
-        // Fallback: usar las opciones del combo normal
         opcionesAgrupadas.value = await cargarOpcionesCombo(productoSeleccionado.value.id)
     }
     
-    // Inicializar personalizaciones vacías para cada combo
     personalizacionesTemp.value = []
     for (let i = 0; i < cantidadCombos.value; i++) {
         personalizacionesTemp.value.push({ sustitutos: [] })
@@ -219,7 +275,7 @@ const abrirPersonalizacionCombos = async () => {
     modalPersonalizarVisible.value = true
 }
 
-// Agregar combos personalizados al carrito (después de personalizar)
+// Agregar combos personalizados al carrito
 const agregarCombosPersonalizados = async (personalizaciones) => {
     loading.value = true
     try {
@@ -244,7 +300,7 @@ const agregarCombosPersonalizados = async (personalizaciones) => {
     }
 }
 
-// 🔥 NUEVO: Cerrar modal de personalización
+// Cerrar modal de personalización
 const cerrarModalPersonalizacion = () => {
     modalPersonalizarVisible.value = false
     comboActual.value = null
@@ -252,7 +308,7 @@ const cerrarModalPersonalizacion = () => {
     personalizacionesTemp.value = []
 }
 
-// Agregar combo con opciones POR DEFECTO (sin abrir modal)
+// Agregar combo con opciones POR DEFECTO
 const agregarComboDefault = async () => {
     if (cantidad.value < 1) {
         toast?.warning('Cantidad inválida', 'La cantidad debe ser al menos 1')
@@ -356,10 +412,15 @@ onMounted(() => cargarCarrito())
                     v-for="prod in productos" 
                     :key="prod.id"
                     @click="abrirModal(prod)"
-                    class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100"
+                    class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100 relative"
+                    :class="{ 'opacity-60 grayscale cursor-not-allowed': !prod.disponible_hoy }"
                 >
+                    <!-- 🔥 Badge de No disponible -->
+                    <div v-if="!prod.disponible_hoy" class="absolute top-0 right-0 bg-red-500 text-white text-[8px] px-2 py-0.5 rounded-bl-lg font-medium z-10">
+                        No disponible
+                    </div>
+                    
                     <div class="h-20 bg-gradient-to-br from-primary-50 to-secondary-50 flex items-center justify-center overflow-hidden">
-                        <!-- 🔥 CAMBIADO: prod.imagen → prod.imagen_url -->
                         <img 
                             v-if="prod.imagen_url" 
                             :src="prod.imagen_url" 
@@ -399,7 +460,6 @@ onMounted(() => cargarCarrito())
                     <div class="bg-primary-700 px-4 py-3">
                         <div class="flex items-center gap-2">
                             <div class="w-10 h-10 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                                <!-- 🔥 CAMBIADO: productoSeleccionado?.imagen → productoSeleccionado?.imagen_url -->
                                 <img 
                                     v-if="productoSeleccionado?.imagen_url" 
                                     :src="productoSeleccionado.imagen_url" 

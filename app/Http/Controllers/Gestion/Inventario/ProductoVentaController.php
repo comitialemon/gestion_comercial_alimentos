@@ -1652,4 +1652,132 @@ class ProductoVentaController extends Controller
         $bytes /= pow(1024, $pow);
         return round($bytes, $precision) . ' ' . $units[$pow];
     }
+
+    // ==================== MÉTODOS PARA DISPONIBILIDAD POR DÍAS ====================
+    /**
+     * Obtener días de disponibilidad de un producto
+     */
+    public function getDisponibilidadDias($idProducto)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            $dias = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_disponibilidad_dias')
+                ->where('IdProducto', $idProducto)
+                ->where('Activo', 1)
+                ->get(['IdSucursal', 'DiaSemana']);
+            
+            // Agrupar por sucursal
+            $agrupado = [];
+            foreach ($dias as $dia) {
+                if (!isset($agrupado[$dia->IdSucursal])) {
+                    $agrupado[$dia->IdSucursal] = [];
+                }
+                $agrupado[$dia->IdSucursal][] = (int) $dia->DiaSemana;
+            }
+            
+            return response()->json([
+                'success' => true,
+                'dias' => $agrupado
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo disponibilidad: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener disponibilidad'
+            ], 500);
+        }
+    }
+
+    /**
+     * Guardar días de disponibilidad de un producto
+     */
+    public function guardarDisponibilidadDias(Request $request)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            $sucursalId = session('cliente_sucursal_id');
+            $operadorId = session('operador_id');
+            
+            $request->validate([
+                'IdProducto' => 'required|exists:inventario_relacion_ventainventario,IdDetalleProducto',
+                'dias_por_sucursal' => 'required|array',
+                'dias_por_sucursal.*.IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+                'dias_por_sucursal.*.dias' => 'array',
+                'dias_por_sucursal.*.dias.*' => 'integer|min:1|max:7'
+            ]);
+            
+            DB::beginTransaction();
+            
+            foreach ($request->dias_por_sucursal as $config) {
+                // Eliminar días actuales para esta combinación
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_disponibilidad_dias')
+                    ->where('IdProducto', $request->IdProducto)
+                    ->where('IdSucursal', $config['IdSucursal'])
+                    ->delete();
+                
+                // Insertar nuevos días
+                foreach ($config['dias'] as $dia) {
+                    DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('inventario_relacion_ventainventario_disponibilidad_dias')
+                        ->insert([
+                            'IdProducto' => $request->IdProducto,
+                            'IdSucursal' => $config['IdSucursal'],
+                            'DiaSemana' => $dia,
+                            'Activo' => 1,
+                            'IdOperadorInserta' => $operadorId,
+                            'FechaInserta' => now(),
+                        ]);
+                }
+            }
+            
+            DB::commit();
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Días de disponibilidad guardados correctamente'
+            ]);
+            
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error guardando disponibilidad: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Obtener sucursales para disponibilidad
+     */
+    public function getSucursalesDisponibilidad()
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdCliente', $clienteId)
+                ->where('ActivoInactivo', 0)
+                ->orderBy('Nombre')
+                ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
+            
+            return response()->json([
+                'success' => true,
+                'sucursales' => $sucursales
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener sucursales'
+            ], 500);
+        }
+    }
+
+
 }

@@ -116,15 +116,10 @@ class MenuTactilController extends Controller
             ]);
         }
 
-        // ============================================================
-        // 🔥 PARTE DE PRODUCTOS - CORREGIDO
-        // ============================================================
-
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $identificadorComisionista = session('venta_tactil_comisionista_identificador');
 
-        // 🔥 Obtener productos con SU imagen principal (IMAGEN DE PRODUCTO, NO DE CATEGORÍA)
         $productosQuery = ProductoVenta::porContexto()
             ->where('ActivoInactivo', 0)
             ->whereHas('categorias', function($q) use ($id) {
@@ -133,10 +128,9 @@ class MenuTactilController extends Controller
             ->orderBy('Detalle')
             ->get(['IdDetalleProducto as id', 'Detalle as nombre', 'PrecioVenta']);
 
-        // Calcular precio real para cada producto y obtener su imagen
         $productos = [];
         foreach ($productosQuery as $producto) {
-            // 🔥 OBTENER LA IMAGEN DEL PRODUCTO
+            // Obtener imagen...
             $imagen = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_producto_imagen')
                 ->where('IdProducto', $producto->id)
@@ -144,7 +138,6 @@ class MenuTactilController extends Controller
                 ->where('EsPrincipal', 1)
                 ->first();
 
-            // 🔥 Si no tiene imagen principal, buscar cualquier imagen activa
             if (!$imagen) {
                 $imagen = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_producto_imagen')
@@ -153,7 +146,6 @@ class MenuTactilController extends Controller
                     ->first();
             }
 
-            // 🔥 Generar URLs de las imágenes (como con las categorías)
             $imagenUrl = null;
             $imagenSrcset = null;
             $imagenSizes = null;
@@ -202,15 +194,49 @@ class MenuTactilController extends Controller
                 }
             }
 
+            // 🔥 VERIFICAR DISPONIBILIDAD
+            $diaSemana = date('N');
+            $disponibleHoy = true;
+            $diasDisponibles = 'Todos los días';
+
+            try {
+                $configuracion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_disponibilidad_dias')
+                    ->where('IdProducto', $producto->id)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('Activo', 1)
+                    ->get();
+
+                if ($configuracion->isNotEmpty()) {
+                    $disponibleHoy = $configuracion->contains('DiaSemana', $diaSemana);
+                    
+                    if (!$disponibleHoy) {
+                        $diasMap = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+                        $diasDisponibles = $configuracion->pluck('DiaSemana')
+                            ->sort()
+                            ->map(function($dia) use ($diasMap) {
+                                return $diasMap[$dia] ?? $dia;
+                            })
+                            ->implode(', ');
+                    }
+                }
+            } catch (\Exception $e) {
+                // Si hay error, asumir disponible
+                $disponibleHoy = true;
+                $diasDisponibles = 'Todos los días';
+            }
+
             $productos[] = [
                 'id' => $producto->id,
                 'nombre' => $producto->nombre,
                 'precio_real' => $precioReal,
                 'precio_normal' => (float) $producto->PrecioVenta,
                 'tipo_precio' => $tipoPrecio,
-                'imagen_url' => $imagenUrl,        // 🔥 Para compatibilidad
-                'imagen_srcset' => $imagenSrcset,  // 🔥 Para responsive
-                'imagen_sizes' => $imagenSizes,    // 🔥 Para responsive
+                'imagen_url' => $imagenUrl,
+                'imagen_srcset' => $imagenSrcset,
+                'imagen_sizes' => $imagenSizes,
+                'disponible_hoy' => $disponibleHoy, // ✅ FLAG CLAVE
+                'dias_disponibles' => $diasDisponibles, // ✅ PARA EL TOAST
             ];
         }
 
@@ -221,6 +247,7 @@ class MenuTactilController extends Controller
             'comisionista' => $this->getComisionistaNombre()
         ]);
     }
+
 
     private function getComisionistaNombre()
     {
@@ -460,6 +487,84 @@ class MenuTactilController extends Controller
                 'success' => false,
                 'message' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    /* Verificar si un producto está disponible para la venta HOY
+     */
+    public function verificarDisponibilidad($idProducto)
+    {
+        try {
+            $sucursalId = session('cliente_sucursal_id');
+            $diaSemana = date('N');
+            
+            // Obtener el nombre del producto
+            $producto = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario as r')
+                ->join('inventario_productodetalle as p', 'r.IdProducto', '=', 'p.IdProducto')
+                ->where('r.IdDetalleProducto', $idProducto)
+                ->first();
+            
+            $nombreProducto = $producto->Descripcion ?? 'Producto';
+            
+            // Buscar configuración
+            $configuracion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_disponibilidad_dias')
+                ->where('IdProducto', $idProducto)
+                ->where('IdSucursal', $sucursalId)
+                ->where('Activo', 1)
+                ->get();
+            
+            // Si no tiene configuración -> DISPONIBLE SIEMPRE
+            if ($configuracion->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'disponible' => true,
+                    'mensaje' => 'Producto disponible (sin restricciones)',
+                    'nombre' => $nombreProducto,
+                    'dias_disponibles' => 'Todos los días'
+                ]);
+            }
+            
+            // Verificar si el día actual está en la configuración
+            $disponibleHoy = $configuracion->contains('DiaSemana', $diaSemana);
+            
+            if ($disponibleHoy) {
+                return response()->json([
+                    'success' => true,
+                    'disponible' => true,
+                    'mensaje' => 'Producto disponible hoy',
+                    'nombre' => $nombreProducto,
+                    'dias_disponibles' => 'Todos los días'
+                ]);
+            }
+            
+            // No disponible - obtener los días disponibles
+            $diasMap = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+            $diasDisponibles = $configuracion->pluck('DiaSemana')
+                ->sort()
+                ->map(function($dia) use ($diasMap) {
+                    return $diasMap[$dia] ?? $dia;
+                })
+                ->implode(', ');
+            
+            return response()->json([
+                'success' => true,
+                'disponible' => false,
+                'mensaje' => "Este producto solo está disponible los días: {$diasDisponibles}",
+                'dias_disponibles' => $diasDisponibles,
+                'nombre' => $nombreProducto
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error verificando disponibilidad: ' . $e->getMessage());
+            return response()->json([
+                'success' => true,
+                'disponible' => true,
+                'mensaje' => 'Producto disponible',
+                'nombre' => 'Producto',
+                'dias_disponibles' => 'Todos los días'
+            ]);
         }
     }
 }

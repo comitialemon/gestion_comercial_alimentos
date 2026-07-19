@@ -44,6 +44,7 @@ const actualizarCantidad = async (item, delta) => {
     const nuevaCantidad = item.cantidad + delta
     
     if (nuevaCantidad < 1) {
+        // Si la cantidad llega a 0, eliminar el producto
         itemAEliminar.value = item
         modalEliminar.value = true
         return
@@ -74,6 +75,12 @@ const actualizarCantidad = async (item, delta) => {
         item.subtotal = subtotalAnterior
         toast?.error('Error', error.response?.data?.message || error.message)
     }
+}
+
+// ✅ NUEVA FUNCIÓN: Eliminar producto completo
+const eliminarProducto = (item) => {
+    itemAEliminar.value = item
+    modalEliminar.value = true
 }
 
 const confirmarEliminar = async () => {
@@ -176,7 +183,11 @@ onMounted(() => cargarCarrito())
                                 <span class="font-bold text-primary-600 text-sm">{{ item.subtotal.toFixed(2) }} Bs</span>
                             </div>
                             
-                            <button @click="actualizarCantidad(item, -1)" class="text-red-400 hover:text-red-600 w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-50">
+                            <!-- 🔥 BOTÓN ELIMINAR - Ahora elimina el producto completo -->
+                            <button 
+                                @click="eliminarProducto(item)" 
+                                class="text-red-400 hover:text-red-600 w-6 h-6 rounded-full flex items-center justify-center hover:bg-red-50"
+                            >
                                 <i class="fas fa-trash-alt text-xs"></i>
                             </button>
                         </div>

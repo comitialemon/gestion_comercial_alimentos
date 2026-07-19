@@ -47,6 +47,9 @@ const mostrandoListaIdentificador = ref({})
 const buscandoIdentificador = ref({})
 const resultadosIdentificador = ref({})
 
+// 🔥 Estado para observación
+const observacion = ref('')
+
 // 🔥 Modal de confirmación para volver
 const mostrarModalVolver = ref(false)
 
@@ -288,7 +291,8 @@ const procesarPago = async () => {
         montos: montosFiltrados,
         tipo_venta: props.tipoVenta,
         id_identificador_cliente: clienteCompradorSeleccionado.value.id,
-        identificadores_por_concepto: identificadoresPorConceptoEnvio
+        identificadores_por_concepto: identificadoresPorConceptoEnvio,
+        observacion: observacion.value.trim() // 🔥 Enviar observación
     }
     
     try {
@@ -613,6 +617,31 @@ onUnmounted(() => {
                                                 </div>
                                             </div>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 🔥 OBSERVACIÓN (opcional) -->
+                        <div class="border-t pt-3 mt-3 border-gray-200">
+                            <div class="flex items-start gap-2">
+                                <div class="flex-shrink-0 mt-0.5">
+                                    <i class="fas fa-pen text-gray-400 text-xs"></i>
+                                </div>
+                                <div class="flex-1">
+                                    <label class="block text-[10px] font-medium text-gray-600 mb-1">
+                                        Observación <span class="text-gray-400 font-normal">(opcional)</span>
+                                    </label>
+                                    <textarea 
+                                        v-model="observacion"
+                                        rows="2"
+                                        placeholder="Agregar una observación a esta venta..."
+                                        class="w-full border border-gray-200 rounded-md px-3 py-2 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-200 transition resize-none"
+                                        maxlength="200"
+                                    ></textarea>
+                                    <div class="flex justify-between text-[8px] text-gray-400 mt-0.5">
+                                        <span>Máximo 200 caracteres</span>
+                                        <span>{{ observacion.length }}/200</span>
                                     </div>
                                 </div>
                             </div>
