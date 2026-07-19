@@ -20,7 +20,7 @@ class NuevaVentaTactilController extends Controller
     protected $ventaPendienteService;
 
     public function __construct(
-        TimezoneService $timezoneService,
+        TimezoneService $timezoneService, 
         VentaPendienteService $ventaPendienteService
     ) {
         $this->timezoneService = $timezoneService;
