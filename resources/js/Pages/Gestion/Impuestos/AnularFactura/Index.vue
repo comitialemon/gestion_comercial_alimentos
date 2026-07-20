@@ -86,10 +86,9 @@ const ejecutarAnulacion = async () => {
             exito.value = true
             mensaje.value = response.data.message
             
-            // 🔥 ABRIR EL PDF DE LA FACTURA ANULADA (con sello)
-            // Usar el id_ventas devuelto por el servidor o el que ya tenemos
+            // ✅ CORREGIDO: Usar la ruta correcta para PDF anulado
             const ventaId = response.data.id_ventas || facturaParaAnular.value.IdVentas
-            const pdfUrl = `/gestion/impuestos/venta-factura/factura-pdf/${ventaId}`
+            const pdfUrl = `/gestion/impuestos/anular-factura/pdf/${ventaId}`
             window.open(pdfUrl, '_blank')
             
             setTimeout(() => {

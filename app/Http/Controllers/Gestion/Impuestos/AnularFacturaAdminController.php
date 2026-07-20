@@ -3,24 +3,32 @@
 namespace App\Http\Controllers\Gestion\Impuestos;
 
 use App\Http\Controllers\Controller;
+use App\Services\TimezoneService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AnularFacturaAdminController extends Controller
 {
+    protected $timezoneService;
+
+    public function __construct(TimezoneService $timezoneService)
+    {
+        $this->timezoneService = $timezoneService;
+    }
+
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
         
-        // 🔥 Obtener TODAS las sucursales del cliente (sin filtro inicial)
+        // 🔥 Obtener TODAS las sucursales del cliente
         $todasSucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
 
-        // 🔥 FILTRAR SUCURSALES por búsqueda
         $sucursales = $todasSucursales;
         $buscarSucursal = $request->buscar_sucursal;
         
@@ -30,7 +38,6 @@ class AnularFacturaAdminController extends Controller
             });
         }
 
-        // 🔥 Obtener operadores filtrados por sucursal seleccionada y búsqueda
         $operadores = collect();
         $buscarOperador = $request->buscar_operador;
         $sucursalId = $request->sucursal_id;
@@ -56,28 +63,24 @@ class AnularFacturaAdminController extends Controller
             $operadores = $query->orderBy('i.Nombre')->limit(50)->get();
         }
 
-        // 🔥 CONSTRUIR QUERY DE FACTURAS - SOLO NO LIQUIDADAS
         $queryFacturas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas as v')
             ->join('todos_cliente_sucursal as s', 'v.IdClienteSucursal', '=', 's.IdClienteSucursal')
             ->join('todos_operador as o', 'v.IdOperadorIngresa', '=', 'o.IdOperador')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
             ->where('v.IdCliente', $clienteId)
-            ->where('v.IdEstado', 1)              // 🔥 Activa (no anulada)
-            ->where('v.ActivoInactivo', 1)        // 🔥 Activa
-            ->where('v.LiquidadoVendedor', 0);    // 🔥 No liquidada
+            ->where('v.IdEstado', 1)
+            ->where('v.ActivoInactivo', 1)
+            ->where('v.LiquidadoVendedor', 0);
 
-        // Filtro por sucursal
         if ($sucursalId) {
             $queryFacturas->where('v.IdClienteSucursal', $sucursalId);
         }
 
-        // Filtro por operador
         if ($request->filled('operador_id')) {
             $queryFacturas->where('v.IdOperadorIngresa', $request->operador_id);
         }
 
-        // Filtro por fecha (opcional)
         if ($request->filled('fecha')) {
             $queryFacturas->whereDate('v.FechaVenta', $request->fecha);
         }
@@ -109,12 +112,16 @@ class AnularFacturaAdminController extends Controller
             ]
         ]);
     }
-
     /**
-     * Anular factura
+     * 🔥 ANULAR FACTURA CON REVERSIÓN DE INVENTARIO (ENTRADA)
+     * 🔥 CORREGIDO: Busca IDs por nombre (dinámico) en lugar de IDs fijos
      */
     public function anular(Request $request)
     {
+        Log::info('=== INICIO ANULAR FACTURA ADMIN ===');
+        Log::info('ID Venta: ' . $request->IdVentas);
+        Log::info('Operador ID: ' . session('operador_id'));
+        
         $request->validate([
             'IdVentas' => 'required|exists:impuestos_ventas,IdVentas',
         ]);
@@ -122,61 +129,176 @@ class AnularFacturaAdminController extends Controller
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
 
-        // 🔥 VERIFICAR QUE LA FACTURA SEA ANULABLE
+        // 🔥 OBTENER NOMBRE DEL OPERADOR QUE ANULA
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador as o')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('o.IdOperador', $operadorId)
+            ->first();
+
+        $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
+        Log::info('Operador que anula: ' . $nombreOperador);
+
         $factura = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->where('IdVentas', $request->IdVentas)
             ->where('IdCliente', $clienteId)
-            ->where('IdEstado', 1)           // 🔥 Activa (no anulada)
-            ->where('ActivoInactivo', 1)     // 🔥 Activa
-            ->where('LiquidadoVendedor', 0)  // 🔥 No liquidada
+            ->where('IdEstado', 1)
+            ->where('ActivoInactivo', 1)
+            ->where('LiquidadoVendedor', 0)
             ->first();
 
         if (!$factura) {
+            Log::error('❌ Factura no encontrada o no válida');
             return response()->json([
                 'success' => false,
                 'message' => 'La factura no existe, ya fue anulada o ya fue liquidada.'
             ], 422);
         }
 
+        Log::info('✅ Factura encontrada:', [
+            'IdVentas' => $factura->IdVentas,
+            'NumeroFactura' => $factura->NumeroFactura,
+            'IdEstado' => $factura->IdEstado,
+            'LiquidadoVendedor' => $factura->LiquidadoVendedor,
+        ]);
+
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 🔥 ANULAR FACTURA (cambiar estado a 2 = anulada)
+            // 🔥 1. OBTENER ID DE "Ventas" POR NOMBRE (DINÁMICO)
+            $idTipoVentas = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Detalle', 'Ventas')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+
+            Log::info('🔑 ID de Ventas (por nombre): ' . ($idTipoVentas ?? 'NO ENCONTRADO'));
+
+            if (!$idTipoVentas) {
+                throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
+            }
+
+            // 🔥 2. OBTENER MOVIMIENTOS DE INVENTARIO
+            $movimientos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_propiamente')
+                ->where('IdTipoDeOperacion', $idTipoVentas)
+                ->where('IdDocumento', $request->IdVentas)
+                ->get();
+
+            Log::info('📦 Movimientos de inventario encontrados: ' . count($movimientos));
+            
+            if ($movimientos->isEmpty()) {
+                Log::warning('⚠️ No se encontraron movimientos de inventario para esta factura');
+            }
+
+            // 🔥 3. OBTENER FECHA ACTUAL
+            $fechaActual = $this->timezoneService->getFechaActual();
+            Log::info('📅 Fecha actual: ' . $fechaActual);
+            
+            $idFecha = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_fecha')
+                ->where('Fecha', $fechaActual)
+                ->value('IdFecha');
+            
+            if (!$idFecha) {
+                $idFecha = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_fecha')
+                    ->insertGetId([
+                        'Fecha' => $fechaActual,
+                        'ActivoInactivo' => 1,
+                        'CierreSucursal' => 0,
+                        'CierrePermanente' => 0,
+                    ]);
+                Log::info('📅 Fecha creada: ' . $idFecha);
+            }
+
+            // 🔥 4. OBTENER ID DE "Anulación Venta" POR NOMBRE (DINÁMICO)
+            $idTipoAnulacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_tipooperacion')
+                ->where('IdCliente', $clienteId)
+                ->where('Detalle', 'Anulación Venta')
+                ->where('ActivoInactivo', 0)
+                ->value('IdTipoOperacion');
+
+            Log::info('🔑 ID Anulación Venta (por nombre): ' . ($idTipoAnulacion ?? 'NO ENCONTRADO'));
+
+            if (!$idTipoAnulacion) {
+                throw new \Exception('No se encontró el tipo de operación "Anulación Venta" para este cliente');
+            }
+
+            // 🔥 5. ELIMINAR REVERSIÓN ANTERIOR (si existe)
+            $eliminados = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_propiamente')
+                ->where('IdTipoDeOperacion', $idTipoAnulacion)
+                ->where('IdDocumento', $request->IdVentas)
+                ->delete();
+            
+            Log::info('🗑️ Reversiones anteriores eliminadas: ' . $eliminados);
+
+            // 🔥 6. CREAR MOVIMIENTOS DE REVERSIÓN
+            $movimientosCreados = 0;
+            foreach ($movimientos as $mov) {
+                Log::info('🔄 Creando reversión para producto ID: ' . $mov->IdProducto . ', Unidades: ' . $mov->Unidades);
+                
+                $insertado = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->insert([
+                        'IdTipoDeOperacion' => $idTipoAnulacion,
+                        'IdDocumento' => $request->IdVentas,
+                        'IdFecha' => $idFecha,
+                        'IdAlmacen' => $mov->IdAlmacen,
+                        'IdProducto' => $mov->IdProducto,
+                        'Glosa' => "ANULACIÓN Venta Factura No {$factura->NumeroFactura}; Op.{$nombreOperador}",
+                        'D_H' => 'D',
+                        'Unidades' => $mov->Unidades,
+                        'Bolivianos' => $mov->Bolivianos,
+                        'IdCliente' => $clienteId,
+                        'IdSucursal' => $factura->IdClienteSucursal,
+                    ]);
+                
+                if ($insertado) {
+                    $movimientosCreados++;
+                    Log::info('✅ Reversión creada correctamente');
+                } else {
+                    Log::error('❌ Error al crear reversión');
+                }
+            }
+
+            // 🔥 7. ANULAR FACTURA
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $request->IdVentas)
                 ->update([
                     'IdEstado' => 2,
                     'IdOperadorActualiza' => $operadorId,
-                    'FechaUltimaActualizcion' => now(),
+                    'FechaUltimaActualizcion' => $this->timezoneService->getFechaHoraActual(),
                 ]);
-
-            // 🔥 ELIMINAR MOVIMIENTOS DE INVENTARIO RELACIONADOS
-            DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_propiamente')
-                ->where('IdTipoDeOperacion', 2)  // Tipo operación = Venta
-                ->where('IdDocumento', $request->IdVentas)
-                ->delete();
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
+            Log::info('✅ ANULACIÓN ADMIN COMPLETA: ' . $movimientosCreados . ' movimientos creados');
+
             return response()->json([
                 'success' => true,
-                'message' => "La factura N° {$factura->NumeroFactura} fue anulada correctamente.",
+                'message' => "✅ Factura N° {$factura->NumeroFactura} anulada correctamente. Se crearon {$movimientosCreados} movimientos de reversión. Operador: {$nombreOperador}",
                 'numero_factura' => $factura->NumeroFactura,
                 'id_ventas' => $factura->IdVentas,
+                'movimientos_revertidos' => $movimientosCreados,
+                'operador' => $nombreOperador,
             ]);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+            Log::error('❌ Error anulando factura: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al anular la factura: ' . $e->getMessage(),
             ], 500);
         }
     }
-    
     /**
      * Generar PDF de factura anulada (con altura dinámica precisa)
      */

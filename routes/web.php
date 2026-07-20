@@ -396,6 +396,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::prefix('anular-factura')->group(function () {
                 Route::get('/', [AnularFacturaController::class, 'index'])->name('gestion.anular-factura.index');
                 Route::post('/anular', [AnularFacturaController::class, 'anular'])->name('gestion.anular-factura.anular');
+                // ✅ AGREGAR ESTA LÍNEA PARA EL PDF
+                Route::get('/pdf/{id}', [AnularFacturaController::class, 'pdf'])->name('gestion.anular-factura.pdf');
             });
 
             // Anular Factura (Admin)
@@ -403,6 +405,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/', [AnularFacturaAdminController::class, 'index'])->name('gestion.anular-factura.admin');
                 Route::get('/operadores/{sucursalId}', [AnularFacturaAdminController::class, 'getOperadoresBySucursal'])->name('gestion.anular-factura.operadores');
                 Route::get('/pdf/{id}', [AnularFacturaAdminController::class, 'pdf'])->name('gestion.anular-factura.pdf');
+                // ✅ AGREGAR ESTA LÍNEA
+                Route::post('/anular', [AnularFacturaAdminController::class, 'anular'])->name('gestion.anular-factura.admin.anular');
             });
         });
 

@@ -215,8 +215,9 @@ const ejecutarAnulacion = async () => {
     modalCargando.value = true
     
     try {
-        const response = await axios.post('/gestion/impuestos/anular-factura/anular', {
-            IdVentas: facturaParaAnular.value.IdVentas
+        const response = await axios.post('/gestion/impuestos/anular-factura/admin/anular', {
+        IdVentas: facturaParaAnular.value.IdVentas
+
         })
         
         if (response.data.success) {

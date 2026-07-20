@@ -92,11 +92,11 @@ watch(() => props.visible, (newVal) => {
 })
 
 const formatNumber = (num) => {
-    if (num === undefined || num === null) return '0.00'
+    if (num === undefined || num === null) return '0.000'
     const valor = Number(num)
-    if (isNaN(valor)) return '0.00'
-    if (valor < 0) return `- ${Math.abs(valor).toFixed(2)}`
-    return valor.toFixed(2)
+    if (isNaN(valor)) return '0.000'
+    if (valor < 0) return `- ${Math.abs(valor).toFixed(3)}`  // ← 3 DECIMALES
+    return valor.toFixed(3)  // ← 3 DECIMALES
 }
 
 const getSaldoClass = (saldo) => {

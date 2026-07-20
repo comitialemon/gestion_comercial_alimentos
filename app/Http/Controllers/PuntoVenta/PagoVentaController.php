@@ -444,6 +444,7 @@ class PagoVentaController extends Controller
      * - Acumula correctamente todos los combos antes de descontar
      * - Usa zona horaria del cliente
      * - Maneja correctamente personalizaciones con sustitutos
+     * - ✅ Agrega operador en la glosa de la venta
      */
     private function registrarSalidaInventario($ventaId, $fechaCorregida = null)
     {
@@ -458,6 +459,14 @@ class PagoVentaController extends Controller
         if (!$venta) {
             throw new \Exception('Venta no encontrada');
         }
+        
+        // 🔥 OBTENER NOMBRE DEL OPERADOR QUE CREÓ LA VENTA
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador as o')
+            ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+            ->where('o.IdOperador', $venta->IdOperadorIngresa)
+            ->first();
+        $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
         
         // 🔥 USAR LA FECHA CORREGIDA O LA FECHA ACTUAL DEL CLIENTE
         if ($fechaCorregida) {
@@ -549,9 +558,6 @@ class PagoVentaController extends Controller
                     ->get()
                     ->keyBy('IdProducto');
                 
-                // ✅ 🔥 NO VACIAR LA CANASTA - ELIMINAR ESTA LÍNEA
-                // $productosADescontar = [];  // ❌ ELIMINADA
-                
                 // Procesar cada combo individual (si hay múltiples)
                 foreach ($personalizaciones as $index => $personalizacion) {
                     // Obtener los sustitutos seleccionados
@@ -607,7 +613,8 @@ class PagoVentaController extends Controller
                 
             } else {
                 // 🔥 SIN PERSONALIZACIÓN - usar la composición normal
-                $this->procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId);
+                // 🔥 PASAR $nombreOperador como parámetro
+                $this->procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId, $nombreOperador);
             }
         }
         
@@ -632,6 +639,7 @@ class PagoVentaController extends Controller
             
             $costoTotal = $cantidadTotal * ($precioCosto ?? 0);
             
+            // 🔥 GLOSA CON OPERADOR
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
                 ->insert([
@@ -640,7 +648,7 @@ class PagoVentaController extends Controller
                     'IdFecha' => $idFecha,
                     'IdAlmacen' => $idAlmacen,
                     'IdProducto' => $idProducto,
-                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}",
+                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}; Op.{$nombreOperador}",
                     'D_H' => 'H',
                     'Unidades' => $cantidadTotal,
                     'Bolivianos' => $costoTotal,
@@ -653,21 +661,24 @@ class PagoVentaController extends Controller
                 'nombre' => $nombreProducto ?? 'Desconocido',
                 'unidades' => $cantidadTotal,
                 'costo_total' => $costoTotal,
-                'fecha' => $fechaVenta
+                'fecha' => $fechaVenta,
+                'operador' => $nombreOperador
             ]);
         }
         
         Log::info('✅ Inventario actualizado para venta ' . $ventaId, [
             'total_productos_descontados' => count($productosADescontar),
-            'fecha' => $fechaVenta
+            'fecha' => $fechaVenta,
+            'operador' => $nombreOperador
         ]);
     }
 
     /**
      * Procesar combo sin personalización (descuenta todo)
      * 🔥 MÉTODO AUXILIAR
+     * 🔥 CORREGIDO: Agrega operador en la glosa
      */
-    private function procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId)
+    private function procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId, $nombreOperador)
     {
         $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_relacion_ventainventario_detalle')
@@ -685,6 +696,7 @@ class PagoVentaController extends Controller
             
             $costoTotal = $cantidad * ($precioCosto ?? 0);
             
+            // 🔥 GLOSA CON OPERADOR
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
                 ->insert([
@@ -693,7 +705,7 @@ class PagoVentaController extends Controller
                     'IdFecha' => $idFecha,
                     'IdAlmacen' => $idAlmacen,
                     'IdProducto' => $porcion->IdProducto,
-                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}",
+                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}; Op.{$nombreOperador}",
                     'D_H' => 'H',
                     'Unidades' => $cantidad,
                     'Bolivianos' => $costoTotal,

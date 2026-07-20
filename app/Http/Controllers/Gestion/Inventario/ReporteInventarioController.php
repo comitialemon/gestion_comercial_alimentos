@@ -271,12 +271,13 @@ class ReporteInventarioController extends Controller
             'fechaFinal' => $fechaFinal,
             'soloConMovimiento' => $soloConMovimiento,
             'search' => $search,
-            'sucursalId' => $sucursalId, // ← PASAR LA SUCURSAL CORRECTA
+            'sucursalId' => $sucursalId,
         ]);
     }
 
     /**
      * API: Obtener movimientos (glosas) de un producto
+     * 🔥 CORREGIDO: 3 decimales para unidades y saldo
      */
     public function getMovimientos(Request $request)
     {
@@ -340,33 +341,37 @@ class ReporteInventarioController extends Controller
             $tipo = strtoupper(trim($mov->tipo));
             
             if ($tipo === 'D') {
-                $mov->unidades_signo = '+' . number_format($mov->Unidades, 2);
+                // 🔥 CORREGIDO: 3 DECIMALES
+                $mov->unidades_signo = '+' . number_format($mov->Unidades, 3);
                 $saldo += (float) $mov->Unidades;
                 $mov->tipo_texto = 'ENTRADA';
                 $mov->tipo_clase = 'text-emerald-600';
                 $mov->tipo = 'D';
             } elseif ($tipo === 'H') {
-                $mov->unidades_signo = '-' . number_format($mov->Unidades, 2);
+                // 🔥 CORREGIDO: 3 DECIMALES
+                $mov->unidades_signo = '-' . number_format($mov->Unidades, 3);
                 $saldo -= (float) $mov->Unidades;
                 $mov->tipo_texto = 'SALIDA';
                 $mov->tipo_clase = 'text-red-600';
                 $mov->tipo = 'H';
             } else {
-                $mov->unidades_signo = '?' . number_format($mov->Unidades, 2);
+                $mov->unidades_signo = '?' . number_format($mov->Unidades, 3);
                 $mov->tipo_texto = 'OTRO';
                 $mov->tipo_clase = 'text-gray-600';
                 $mov->tipo = $tipo;
             }
             
-            $mov->unidades_formateado = number_format($mov->Unidades, 2);
-            $mov->saldo_acumulado = number_format($saldo, 2);
+            // 🔥 CORREGIDO: 3 DECIMALES
+            $mov->unidades_formateado = number_format($mov->Unidades, 3);
+            $mov->saldo_acumulado = number_format($saldo, 3);
             $mov->saldo_acumulado_raw = $saldo;
         }
 
         return response()->json([
             'success' => true,
             'movimientos' => $movimientos,
-            'saldo_anterior' => number_format($saldoAnterior, 2),
+            // 🔥 CORREGIDO: 3 DECIMALES
+            'saldo_anterior' => number_format($saldoAnterior, 3),
             'saldo_anterior_raw' => (float) $saldoAnterior,
             'producto_id' => $request->producto_id,
             'fecha_inicial' => $request->fecha_inicial,
