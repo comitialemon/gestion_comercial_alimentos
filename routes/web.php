@@ -106,7 +106,7 @@ use App\Http\Controllers\Gestion\Impuestos\VentaEditarController;
 use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarRangoController;
 use App\Http\Controllers\Gestion\Reportes\InformeVentasController;
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionSucursalController;
-
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoListaProductosController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -756,11 +756,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/', [ArqueoCajaBolivianosController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos');
                     Route::get('/pdf', [ArqueoCajaBolivianosController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos.pdf');
                 });
+                
                 // Arqueo Caja Bolivianos por Operador
                 Route::prefix('arqueo-caja-bolivianos-ci-operador')->group(function () {
                     Route::get('/', [ArqueoCajaBolivianosCIOperadorController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador');
                     Route::get('/pdf', [ArqueoCajaBolivianosCIOperadorController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.pdf');
-                    // 🔥 NUEVA RUTA PARA OBTENER OPERADORES POR SUCURSAL
                     Route::get('/operadores', [ArqueoCajaBolivianosCIOperadorController::class, 'getOperadoresPorSucursal'])->name('gestion.reportes.control-interno.arqueo-caja-bolivianos-ci-operador.operadores');
                 });
 
@@ -768,9 +768,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::prefix('arqueo-caja-chica-ci')->group(function () {
                     Route::get('/', [ArqueoCajaChicaCIController::class, 'index'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci');
                     Route::get('/pdf', [ArqueoCajaChicaCIController::class, 'generarPdf'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.pdf');                
-                    // 🔥 NUEVA RUTA PARA OBTENER OPERADORES POR SUCURSAL
-                    Route::get('/operadores', [ArqueoCajaChicaCIController::class, 'getOperadoresPorSucursal'])
-                        ->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.operadores');
+                    Route::get('/operadores', [ArqueoCajaChicaCIController::class, 'getOperadoresPorSucursal'])->name('gestion.reportes.control-interno.arqueo-caja-chica-ci.operadores');
                 });
 
                 // Inventario Detallado
@@ -784,6 +782,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/', [InventarioFisicoReimprimeController::class, 'index'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime');
                     Route::get('/correlativos', [InventarioFisicoReimprimeController::class, 'getCorrelativos'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.correlativos');
                     Route::get('/pdf', [InventarioFisicoReimprimeController::class, 'generarPdf'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
+                });
+
+                // ═══════════════════════════════════════════════════════════════
+                // 🆕 LISTA DE PRODUCTOS PARA INVENTARIO FÍSICO
+                // ═══════════════════════════════════════════════════════════════
+                Route::prefix('inventario-fisico-lista-productos')->group(function () {
+                    Route::get('/', [InventarioFisicoListaProductosController::class, 'index'])
+                        ->name('gestion.reportes.control-interno.inventario-fisico-lista-productos');
+                    Route::get('/excel', [InventarioFisicoListaProductosController::class, 'generarExcel'])
+                        ->name('gestion.reportes.control-interno.inventario-fisico-lista-productos.excel');
                 });
             });
 
