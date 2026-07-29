@@ -107,6 +107,9 @@ use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarRangoController;
 use App\Http\Controllers\Gestion\Reportes\InformeVentasController;
 use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionSucursalController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoListaProductosController;
+use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoListaProductosSucursalController;
+use App\Http\Controllers\Gestion\Todos\ParametrosCuentaController;
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -213,6 +216,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::delete('/{id}', [FechaAuxiliarSucursalController::class, 'destroy'])->name('gestion.fecha-auxiliar-sucursal.destroy');
                 Route::get('/fecha/{id}', [FechaAuxiliarSucursalController::class, 'getFecha'])->name('gestion.fecha-auxiliar-sucursal.get-fecha');
                 Route::get('/sucursal/{id}', [FechaAuxiliarSucursalController::class, 'getSucursal'])->name('gestion.fecha-auxiliar-sucursal.get-sucursal');
+            });
+            Route::prefix('parametros-cuentas')->group(function () {
+                Route::get('/', [ParametrosCuentaController::class, 'index'])->name('gestion.todos.parametros-cuentas.index');
+                Route::post('/', [ParametrosCuentaController::class, 'store'])->name('gestion.todos.parametros-cuentas.store');
+                Route::get('/cuentas', [ParametrosCuentaController::class, 'getCuentas'])->name('gestion.todos.parametros-cuentas.cuentas');
             });
         });
 

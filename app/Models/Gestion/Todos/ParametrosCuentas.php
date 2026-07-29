@@ -45,9 +45,22 @@ class ParametrosCuentas extends Model
         'CajaChica',
     ];
 
-    // Scope para cliente
+    // Scope para cliente (ya lo tenías)
     public function scopePorCliente($query, $clienteId)
     {
         return $query->where('IdCliente', $clienteId);
+    }
+
+    // 🔥 Scope para contexto (usando sesión)
+    public function scopePorContexto($query)
+    {
+        $clienteId = session('cliente_id');
+        return $query->where('IdCliente', $clienteId);
+    }
+
+    // Relación con cliente
+    public function cliente()
+    {
+        return $this->belongsTo(Cliente::class, 'IdCliente', 'IdCliente');
     }
 }
