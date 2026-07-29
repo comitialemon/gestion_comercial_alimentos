@@ -430,18 +430,21 @@ const verificarComposicionAntesDeEnviar = async () => {
         return false
     }
     
+    // 🔥 Obtener arrays de productos y porciones
     const productosIds = detallesList.value.map(d => d.IdProducto)
+    const porciones = detallesList.value.map(d => d.Porcion)
     
     try {
         const response = await axios.post('/gestion/inventario/productos-venta/verificar-composicion', {
             productos_ids: productosIds,
+            porciones: porciones,  // 🔥 ENVIAR PORCIONES
             excluir_id: props.producto?.IdDetalleProducto || null
         })
         
-        console.log('🔍 Respuesta de verificarComposicion:', response.data) // 🔥 AGREGAR ESTO
+        console.log('🔍 Respuesta de verificarComposicion:', response.data)
         
         if (response.data.existe) {
-            console.log('📦 Producto duplicado encontrado:', response.data.producto) // 🔥 AGREGAR ESTO
+            console.log('📦 Producto duplicado encontrado:', response.data.producto)
             productoDuplicado.value = response.data.producto
             modalDuplicadoOpen.value = true
             return false
@@ -449,6 +452,7 @@ const verificarComposicionAntesDeEnviar = async () => {
         return true
     } catch (error) {
         console.error('Error verificando composición:', error)
+        // Si hay error, permitir continuar (por seguridad)
         return true
     }
 }

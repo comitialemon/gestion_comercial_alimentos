@@ -798,7 +798,7 @@ class ProductoVentaController extends Controller
         }
     }
     /**
-     * Verificar si ya existe un producto con la misma composición
+     * Verificar si ya existe un producto con la misma composición (Producto + Cantidad)
      */
     public function verificarComposicion(Request $request)
     {
@@ -808,34 +808,55 @@ class ProductoVentaController extends Controller
             $request->validate([
                 'productos_ids' => 'required|array',
                 'productos_ids.*' => 'exists:inventario_productodetalle,IdProducto',
+                'porciones' => 'required|array',  // 🔥 NUEVO: Cantidades
+                'porciones.*' => 'numeric|min:0.000001',
                 'excluir_id' => 'nullable|exists:inventario_relacion_ventainventario,IdDetalleProducto'
             ]);
             
             $productosIds = $request->productos_ids;
+            $porciones = $request->porciones;
             $excluirId = $request->excluir_id;
-            sort($productosIds);
             
+            // 🔥 Crear un array combinado: [IdProducto => Porcion]
+            $composicionActual = [];
+            foreach ($productosIds as $index => $idProducto) {
+                $composicionActual[$idProducto] = (float) $porciones[$index];
+            }
+            
+            // 🔥 Ordenar por producto para comparación
+            ksort($composicionActual);
+            
+            // 🔥 Obtener todos los productos activos del cliente (excepto el actual)
             $productosVenta = ProductoVenta::where('IdCliente', $clienteId)
                 ->where('estado_aprobacion', '!=', ProductoVenta::APROBACION_RECHAZADO)
                 ->where('IdDetalleProducto', '!=', $excluirId)
                 ->get();
             
             foreach ($productosVenta as $producto) {
+                // 🔥 Obtener detalles del producto (IdProducto + Porcion)
                 $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_detalle')
                     ->where('IdDetalleProducto', $producto->IdDetalleProducto)
-                    ->pluck('IdProducto')
-                    ->toArray();
+                    ->get(['IdProducto', 'Porcion']);
                 
-                sort($detalles);
+                // 🔥 Construir array de composición: [IdProducto => Porcion]
+                $composicionExistente = [];
+                foreach ($detalles as $detalle) {
+                    $composicionExistente[$detalle->IdProducto] = (float) $detalle->Porcion;
+                }
                 
-                if ($detalles === $productosIds) {
+                // 🔥 Ordenar para comparación
+                ksort($composicionExistente);
+                
+                // 🔥 Comparar: mismo producto Y misma cantidad
+                if ($composicionExistente === $composicionActual) {
                     return response()->json([
                         'existe' => true,
                         'producto' => [
                             'IdDetalleProducto' => $producto->IdDetalleProducto,
                             'Codigo' => $producto->Codigo,
-                            'Detalle' => $producto->Detalle
+                            'Detalle' => $producto->Detalle,
+                            'composicion' => $composicionExistente
                         ]
                     ]);
                 }
@@ -847,9 +868,11 @@ class ProductoVentaController extends Controller
             
         } catch (\Exception $e) {
             Log::error('Error verificando composición: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
             
             return response()->json([
-                'existe' => false
+                'existe' => false,
+                'error' => $e->getMessage()
             ]);
         }
     }
