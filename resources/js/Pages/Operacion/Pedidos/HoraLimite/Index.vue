@@ -141,18 +141,6 @@ const horaActivaTexto = computed(() => {
     return props.horaActiva.HoraFormateada || props.horaActiva.Hora + ':00'
 })
 
-// Estado de la hora existente
-const estadoHora = computed(() => {
-    if (!horaExistente.value) return null
-    const isActive = horaExistente.value.ActivaControlDia === 0
-    return {
-        isActive: isActive,
-        texto: isActive ? 'Activo' : 'Inactivo',
-        color: isActive ? 'green' : 'red',
-        icono: isActive ? 'fa-check-circle' : 'fa-ban'
-    }
-})
-
 onMounted(() => {})
 </script>
 
@@ -167,6 +155,9 @@ onMounted(() => {})
                     </div>
                     <h1 class="text-xl font-bold text-gray-900">Hora Límite de Pedidos</h1>
                     <p class="text-xs text-gray-500">Configure la hora hasta la cual se pueden realizar pedidos</p>
+                    <p class="text-xs text-blue-600 mt-1">
+                        <i class="fas fa-info-circle"></i> Aplica a TODAS las sucursales de la empresa
+                    </p>
                 </div>
 
                 <!-- Indicador de hora activa actual -->
@@ -186,7 +177,6 @@ onMounted(() => {})
                     </p>
                 </div>
 
-                <!-- 🔥 ESTRUCTURA CORREGIDA - UNA SOLA CADENA DE CONDICIONES -->
                 <!-- Caso 1: No existe hora - Mostrar formulario de creación -->
                 <div v-if="!existeHora" class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
@@ -293,6 +283,16 @@ onMounted(() => {})
                                 <div class="text-xs text-gray-500">Hora configurada</div>
                             </div>
                             <div class="w-px h-10 bg-gray-200"></div>
+                            <div>
+                                <span 
+                                    class="px-3 py-1 text-xs rounded-full"
+                                    :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
+                                >
+                                    <i v-if="!horaExistente.ActivaControlDia" class="fas fa-check-circle mr-1"></i>
+                                    <i v-else class="fas fa-ban mr-1"></i>
+                                    {{ horaExistente.ActivaControlDia ? 'Inactivo' : 'Activo' }}
+                                </span>
+                            </div>
                         </div>
                         <div>
                             <button 
@@ -360,10 +360,10 @@ onMounted(() => {})
                     <i class="fas fa-info-circle mr-1"></i>
                     <strong>Nota:</strong> 
                     <ul class="list-disc list-inside mt-1 space-y-0.5">
-                        <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> configurada</li>
+                        <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> configurada por cliente</li>
+                        <li>La configuración aplica a <strong>TODAS las sucursales</strong> de la empresa</li>
                         <li>Si la hora está <strong class="text-green-700">Activa</strong>, los pedidos después de esa hora no serán permitidos</li>
                         <li>Si la hora está <strong class="text-red-700">Inactiva</strong>, no hay restricción de horario</li>
-                        <li>La configuración aplica a <strong>TODAS las sucursales</strong> de la empresa</li>
                     </ul>
                 </div>
             </div>

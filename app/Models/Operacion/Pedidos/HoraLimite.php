@@ -33,19 +33,7 @@ class HoraLimite extends Model
     }
 
     /**
-     * Scope para sucursal específica o general (0 = todas)
-     */
-    public function scopePorSucursal($query, $sucursalId = null)
-    {
-        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
-        return $query->where(function($q) use ($sucursalId) {
-            $q->where('IdSucursal', $sucursalId)
-              ->orWhere('IdSucursal', 0);
-        });
-    }
-
-    /**
-     * Scope para horas activas
+     * Scope para horas activas (0 = Activo, 1 = Inactivo)
      */
     public function scopeActivos($query)
     {

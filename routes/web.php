@@ -109,7 +109,12 @@ use App\Http\Controllers\Gestion\Reportes\Operacion\InventarioTipoOperacionSucur
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoListaProductosController;
 use App\Http\Controllers\Gestion\Reportes\ControlInterno\InventarioFisicoListaProductosSucursalController;
 use App\Http\Controllers\Gestion\Todos\ParametrosCuentaController;
-
+use App\Http\Controllers\Operacion\Pedidos\PedidoExtraordinarioController;
+use App\Http\Controllers\Operacion\Pedidos\PedidoExtraordinarioSucursalController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSupervisorController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosGerenteController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSucursalMayoristaController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1047,7 +1052,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::delete('/{id}', [HoraLimiteController::class, 'destroy'])->name('operacion.pedidos.hora-limite.destroy');
             });
 
-            // Pedido
+            // Pedido NORMAL
             Route::prefix('pedido')->group(function () {
                 Route::get('/', [PedidoController::class, 'index'])->name('operacion.pedidos.pedido.index');
                 Route::post('/', [PedidoController::class, 'store'])->name('operacion.pedidos.pedido.store');
@@ -1056,6 +1061,92 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::post('/api/validar-hora-limite', [PedidoController::class, 'apiValidarHoraLimite']);
                 Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
             });
+            // ============================================================
+            // PEDIDOS EXTRAORDINARIOS
+            // ============================================================
+            Route::prefix('pedidos-extraordinarios')->group(function () {
+                Route::get('/', [PedidoExtraordinarioController::class, 'index'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.index');
+                
+                Route::post('/', [PedidoExtraordinarioController::class, 'store'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.store');
+                
+                Route::get('/{id}/editar', [PedidoExtraordinarioController::class, 'edit'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.edit');
+                
+                Route::delete('/{id}', [PedidoExtraordinarioController::class, 'destroy'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.destroy');
+                
+                // APIs de validación
+                Route::post('/api/validar-producto', [PedidoExtraordinarioController::class, 'apiValidarProducto'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.api.validar-producto');
+                
+                Route::post('/api/validar-hora-limite', [PedidoExtraordinarioController::class, 'apiValidarHoraLimite'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios.api.validar-hora-limite');
+            });
+            // ============================================================
+            // PEDIDOS EXTRAORDINARIOS POR SUCURSAL
+            // ============================================================
+            Route::prefix('pedidos-extraordinarios-sucursal')->group(function () {
+                Route::get('/', [PedidoExtraordinarioSucursalController::class, 'index'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.index');
+                
+                Route::post('/', [PedidoExtraordinarioSucursalController::class, 'store'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.store');
+                
+                Route::get('/{id}/editar', [PedidoExtraordinarioSucursalController::class, 'edit'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.edit');
+                
+                Route::delete('/{id}', [PedidoExtraordinarioSucursalController::class, 'destroy'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.destroy');
+                
+                // APIs de validación
+                Route::post('/api/validar-hora', [PedidoExtraordinarioSucursalController::class, 'apiValidarHora'])
+                    ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.api.validar-hora');
+            });
+
+            // ============================================================
+            // REPORTES DE PEDIDOS - SUPERVISOR
+            // ============================================================
+            Route::prefix('reportes')->group(function () {
+                 // ✅ INFORME SUPERVISOR
+                Route::prefix('informe-supervisor')->group(function () {
+                    Route::get('/', [InformePedidosSupervisorController::class, 'index'])
+                        ->name('operacion.pedidos.reportes.informe-supervisor.index');
+                    
+                    Route::get('/exportar', [InformePedidosSupervisorController::class, 'exportar'])
+                        ->name('operacion.pedidos.reportes.informe-supervisor.exportar');
+                    
+                    Route::get('/pdf', [InformePedidosSupervisorController::class, 'pdf'])
+                        ->name('operacion.pedidos.reportes.informe-supervisor.pdf');
+                });
+                    // ✅ INFORME GERENTE
+                Route::prefix('informe-gerente')->group(function () {
+                    Route::get('/', [InformePedidosGerenteController::class, 'index'])
+                        ->name('operacion.pedidos.reportes.informe-gerente.index');
+                    Route::get('/exportar', [InformePedidosGerenteController::class, 'exportar'])
+                        ->name('operacion.pedidos.reportes.informe-gerente.exportar');
+                    Route::get('/pdf', [InformePedidosGerenteController::class, 'pdf'])
+                        ->name('operacion.pedidos.reportes.informe-gerente.pdf');
+                });
+                // ✅ INFORME PEDIDOS (PDF/Excel con selector de fecha)
+                Route::prefix('informe-pedidos')->group(function () {
+                    Route::get('/', [InformePedidosController::class, 'index'])
+                        ->name('operacion.pedidos.reportes.informe-pedidos.index');
+                    Route::post('/exportar-pdf', [InformePedidosController::class, 'exportarPdf'])
+                        ->name('operacion.pedidos.reportes.informe-pedidos.exportar-pdf');
+                    Route::post('/exportar-excel', [InformePedidosController::class, 'exportarExcel'])
+                        ->name('operacion.pedidos.reportes.informe-pedidos.exportar-excel');
+                });
+                    // ✅ INFORME PEDIDOS - SUCURSAL MAYORISTA
+                Route::prefix('informe-sucursal-mayorista')->group(function () {
+                    Route::get('/', [InformePedidosSucursalMayoristaController::class, 'index'])
+                        ->name('operacion.pedidos.reportes.informe-sucursal-mayorista.index');
+                    Route::get('/exportar-excel', [InformePedidosSucursalMayoristaController::class, 'exportarExcel'])
+                        ->name('operacion.pedidos.reportes.informe-sucursal-mayorista.exportar-excel');
+                });
+            });
+
         });
         // ---------- REPORTES DE OPERACIÓN ----------
         Route::prefix('reportes')->group(function () {

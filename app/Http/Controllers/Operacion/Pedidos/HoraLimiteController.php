@@ -15,13 +15,11 @@ class HoraLimiteController extends Controller
     public function index()
     {
         $horas = HoraLimite::porContexto()
-            ->porSucursal()
             ->ordenado()
             ->get();
 
         // Obtener la hora activa (solo una)
         $horaActiva = HoraLimite::porContexto()
-            ->porSucursal()
             ->activos()
             ->first();
 
@@ -44,7 +42,6 @@ class HoraLimiteController extends Controller
 
         // Verificar si ya existe esa hora
         $existe = HoraLimite::porContexto()
-            ->porSucursal()
             ->where('Hora', $request->Hora)
             ->exists();
 
@@ -58,7 +55,7 @@ class HoraLimiteController extends Controller
             'Hora' => $request->Hora,
             'ActivaControlDia' => $request->ActivaControlDia ? 1 : 0,
             'IdCliente' => session('cliente_id'),
-            'IdSucursal' => 0,
+            'IdSucursal' => 0, // 0 = aplica a todas las sucursales
         ]);
 
         return redirect()->back()->with('success', 'Hora límite agregada correctamente');
@@ -82,7 +79,6 @@ class HoraLimiteController extends Controller
 
         // Verificar si ya existe otra hora con el mismo valor
         $existe = HoraLimite::porContexto()
-            ->porSucursal()
             ->where('Hora', $request->Hora)
             ->where('IdHoraLimite', '!=', $id)
             ->exists();
@@ -100,6 +96,28 @@ class HoraLimiteController extends Controller
 
         return redirect()->back()->with('success', 'Hora límite actualizada correctamente');
     }
+
+    /**
+     * Eliminar hora límite
+     */
+    public function destroy($id)
+    {
+        try {
+            $hora = HoraLimite::porContexto()->findOrFail($id);
+            $hora->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Hora límite eliminada correctamente'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al eliminar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     /**
      * Obtener horas disponibles (1-24 que no están ya configuradas)
      */
@@ -125,7 +143,6 @@ class HoraLimiteController extends Controller
     public function apiGetActivas()
     {
         $horaActiva = HoraLimite::porContexto()
-            ->porSucursal()
             ->activos()
             ->first();
 

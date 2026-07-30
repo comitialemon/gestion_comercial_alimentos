@@ -290,7 +290,7 @@ const iniciarEdicion = (index) => {
     }
 }
 
-// Eliminar con toast (sin confirm nativo)
+// Eliminar con toast
 const confirmarEliminar = (index) => {
     eliminarIndex.value = index
     toast?.warning('¿Eliminar pedido?', 'Esta acción no se puede deshacer', {
@@ -368,113 +368,114 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- VISTA MÓVIL: CARDS -->
-                <div v-if="isMobile" class="space-y-3">
-                    <div v-for="(fila, idx) in filas" :key="idx" class="bg-white rounded-xl shadow-sm p-3 pedido-card">
-                        <!-- Número de fila -->
-                        <div class="text-xs text-gray-400 mb-2">Pedido #{{ idx + 1 }}</div>
-                        
-                        <!-- Fecha Realiza -->
-                        <div class="mb-2">
-                            <label class="text-[10px] text-gray-500">Fecha Realiza</label>
-                            <div class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ formatearFechaHora(fila.FechaRealiza) }}</div>
-                        </div>
-
-                        <!-- Fecha Producción -->
-                        <div class="mb-2">
-                            <label class="text-[10px] text-gray-500">Fecha Producción</label>
-                            <div v-if="filaEditando[idx]">
-                                <input type="date" v-model="fila.FechaDelPedido" 
-                                    :min="new Date().toISOString().split('T')[0]"
-                                    @change="() => { validarProducto(idx); validarHoraLimite(idx) }"
-                                    class="w-full border rounded-lg px-2 py-1.5 text-sm">
-                                <div v-if="!horaValida[idx] && mensajeHora[idx]" class="text-[10px] text-red-500 mt-0.5">{{ mensajeHora[idx] }}</div>
+                <!-- ✅ CONTENEDOR PRINCIPAL CON OVERFLOW VISIBLE -->
+                <div class="bg-white rounded-xl shadow-sm overflow-visible">
+                    
+                    <!-- VISTA MÓVIL: CARDS -->
+                    <div v-if="isMobile" class="space-y-3 p-3 overflow-visible">
+                        <div v-for="(fila, idx) in filas" :key="idx" class="bg-white rounded-xl shadow-sm p-3 pedido-card border border-gray-100 overflow-visible">
+                            <div class="text-xs text-gray-400 mb-2">Pedido #{{ idx + 1 }}</div>
+                            
+                            <div class="mb-2">
+                                <label class="text-[10px] text-gray-500">Fecha Realiza</label>
+                                <div class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ formatearFechaHora(fila.FechaRealiza) }}</div>
                             </div>
-                            <div v-else class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ formatearFecha(fila.FechaDelPedido) }}</div>
-                        </div>
 
-                        <!-- Producto -->
-                        <div class="mb-2">
-                            <label class="text-[10px] text-gray-500">Producto</label>
-                            <div v-if="filaEditando[idx]" class="relative" :ref="(el) => setDropdownRef(el, idx)">
-                                <div class="relative">
-                                    <i class="fas fa-search absolute left-2 top-2 text-gray-400 text-xs"></i>
-                                    <input type="text" :value="busqueda[idx] || ''"
-                                        @input="(e) => onBuscar(idx, e)" @focus="() => onFocus(idx)"
-                                        placeholder="Buscar producto..."
-                                        class="w-full border rounded-lg pl-8 pr-8 py-1.5 text-sm">
-                                    <button v-if="fila.IdProducto" @click="limpiarSeleccion(idx)"
-                                        class="absolute right-2 top-1.5 text-gray-400">✕</button>
+                            <div class="mb-2">
+                                <label class="text-[10px] text-gray-500">Fecha Producción</label>
+                                <div v-if="filaEditando[idx]">
+                                    <input type="date" v-model="fila.FechaDelPedido" 
+                                        :min="new Date().toISOString().split('T')[0]"
+                                        @change="() => { validarProducto(idx); validarHoraLimite(idx) }"
+                                        class="w-full border rounded-lg px-2 py-1.5 text-sm">
+                                    <div v-if="!horaValida[idx] && mensajeHora[idx]" class="text-[10px] text-red-500 mt-0.5">{{ mensajeHora[idx] }}</div>
                                 </div>
-                                <div v-if="mostrandoLista[idx] && productosFiltrados[idx]?.length > 0"
-                                    class="absolute z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto w-full">
-                                    <div v-for="prod in productosFiltrados[idx]" :key="prod.id"
-                                        @click="seleccionarProducto(idx, prod)"
-                                        class="px-2 py-1.5 hover:bg-purple-50 cursor-pointer border-b text-sm">
-                                        <span class="font-mono text-xs text-gray-500">{{ prod.codigo }}</span>
-                                        <span class="ml-1">{{ prod.descripcion }}</span>
+                                <div v-else class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ formatearFecha(fila.FechaDelPedido) }}</div>
+                            </div>
+
+                            <!-- ✅ PRODUCTO CON DROPDOWN QUE SALE DEL CONTENEDOR -->
+                            <div class="mb-2 overflow-visible">
+                                <label class="text-[10px] text-gray-500">Producto</label>
+                                <div v-if="filaEditando[idx]" class="relative overflow-visible" :ref="(el) => setDropdownRef(el, idx)">
+                                    <div class="relative">
+                                        <i class="fas fa-search absolute left-2 top-2 text-gray-400 text-xs"></i>
+                                        <input type="text" :value="busqueda[idx] || ''"
+                                            @input="(e) => onBuscar(idx, e)" @focus="() => onFocus(idx)"
+                                            placeholder="Buscar producto..."
+                                            class="w-full border rounded-lg pl-8 pr-8 py-1.5 text-sm">
+                                        <button v-if="fila.IdProducto" @click="limpiarSeleccion(idx)"
+                                            class="absolute right-2 top-1.5 text-gray-400">✕</button>
                                     </div>
+                                    <!-- ✅ DROPDOWN CON Z-INDEX ALTO Y POSICIÓN ABSOLUTA -->
+                                    <div v-if="mostrandoLista[idx] && productosFiltrados[idx]?.length > 0"
+                                        class="absolute z-[9999] mt-1 bg-white border rounded-lg shadow-xl max-h-48 overflow-y-auto"
+                                        style="min-width: 280px; width: 100%; left: 0; right: 0;">
+                                        <div v-for="prod in productosFiltrados[idx]" :key="prod.id"
+                                            @click="seleccionarProducto(idx, prod)"
+                                            class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0">
+                                            <div class="flex flex-col">
+                                                <span class="font-mono text-xs text-gray-500">{{ prod.codigo }}</span>
+                                                <span class="text-sm text-gray-800">{{ prod.descripcion }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div v-if="!productoValido[idx] && mensajeProducto[idx]" class="text-[10px] text-red-500 mt-0.5">{{ mensajeProducto[idx] }}</div>
                                 </div>
-                                <div v-if="!productoValido[idx] && mensajeProducto[idx]" class="text-[10px] text-red-500 mt-0.5">{{ mensajeProducto[idx] }}</div>
+                                <div v-else class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ fila.producto_texto || '-' }}</div>
                             </div>
-                            <div v-else class="text-xs text-gray-700 bg-gray-50 rounded px-2 py-1">{{ fila.producto_texto || '-' }}</div>
+
+                            <div class="mb-3">
+                                <label class="text-[10px] text-gray-500">Unidades</label>
+                                <div v-if="filaEditando[idx]">
+                                    <input type="number" v-model.number="fila.Unidades" step="any" min="0.01"
+                                        class="w-28 border rounded-lg px-2 py-1.5 text-sm"
+                                        style="appearance: textfield; -moz-appearance: textfield;">
+                                </div>
+                                <div v-else class="text-sm font-bold text-gray-800">{{ fila.Unidades }}</div>
+                            </div>
+
+                            <div class="flex justify-end gap-2 pt-2 border-t">
+                                <template v-if="filaEditando[idx]">
+                                    <button @click="guardarFila(idx)" :disabled="guardando"
+                                        class="px-3 py-1 bg-emerald-600 text-white rounded-md text-xs disabled:opacity-50">
+                                        <i class="fas fa-check mr-1"></i> Guardar
+                                    </button>
+                                    <button @click="cancelarEdicion(idx)" class="px-3 py-1 bg-gray-200 rounded-md text-xs">
+                                        <i class="fas fa-times mr-1"></i> Cancelar
+                                    </button>
+                                </template>
+                                <template v-else>
+                                    <button v-if="fila.id" @click="iniciarEdicion(idx)" class="text-amber-600 hover:text-amber-700 text-sm">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button v-if="fila.id" @click="confirmarEliminar(idx)" class="text-red-500 hover:text-red-700 text-sm">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </template>
+                            </div>
                         </div>
 
-                        <!-- Unidades -->
-                        <div class="mb-3">
-                            <label class="text-[10px] text-gray-500">Unidades</label>
-                            <div v-if="filaEditando[idx]">
-                                <input type="number" v-model.number="fila.Unidades" step="any" min="0.01"
-                                    class="w-28 border rounded-lg px-2 py-1.5 text-sm"
-                                    style="appearance: textfield; -moz-appearance: textfield;">
-                            </div>
-                            <div v-else class="text-sm font-bold text-gray-800">{{ fila.Unidades }}</div>
-                        </div>
-
-                        <!-- Botones -->
-                        <div class="flex justify-end gap-2 pt-2 border-t">
-                            <template v-if="filaEditando[idx]">
-                                <button @click="guardarFila(idx)" :disabled="guardando"
-                                    class="px-3 py-1 bg-emerald-600 text-white rounded-md text-xs disabled:opacity-50">
-                                    <i class="fas fa-check mr-1"></i> Guardar
-                                </button>
-                                <button @click="cancelarEdicion(idx)" class="px-3 py-1 bg-gray-200 rounded-md text-xs">
-                                    <i class="fas fa-times mr-1"></i> Cancelar
-                                </button>
-                            </template>
-                            <template v-else>
-                                <button v-if="fila.id" @click="iniciarEdicion(idx)" class="text-amber-600 hover:text-amber-700 text-sm">
-                                    <i class="fas fa-edit"></i>
-                                </button>
-                                <button v-if="fila.id" @click="confirmarEliminar(idx)" class="text-red-500 hover:text-red-700 text-sm">
-                                    <i class="fas fa-trash-alt"></i>
-                                </button>
-                            </template>
+                        <div v-if="filas.length === 0" class="text-center text-gray-400 py-8">
+                            <i class="fas fa-clipboard-list text-2xl mb-2 block"></i>
+                            No hay pedidos registrados
                         </div>
                     </div>
 
-                    <div v-if="filas.length === 0" class="text-center text-gray-400 py-8">
-                        <i class="fas fa-clipboard-list text-2xl mb-2 block"></i>
-                        No hay pedidos registrados
-                    </div>
-                </div>
-
-                <!-- VISTA DESKTOP: TABLA -->
-                <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
+                    <!-- VISTA DESKTOP: TABLA -->
+                    <div v-else class="overflow-x-auto overflow-visible">
+                        <table class="min-w-full divide-y divide-gray-200 overflow-visible">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-12">#</th>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Fecha Realiza</th>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Fecha Producción</th>
-                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Producto</th>
+                                    <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase" style="min-width: 300px;">Producto</th>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-24">Unidades</th>
                                     <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase w-28">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(fila, idx) in filas" :key="idx" class="hover:bg-gray-50">
+                            <tbody class="bg-white divide-y divide-gray-200 overflow-visible">
+                                <tr v-for="(fila, idx) in filas" :key="idx" class="hover:bg-gray-50 overflow-visible">
                                     <td class="px-3 py-2 text-center text-sm text-gray-500">{{ idx + 1 }}</td>
                                     <td class="px-3 py-2 text-center text-xs text-gray-500">{{ formatearFechaHora(fila.FechaRealiza) }}</td>
                                     <td class="px-3 py-2 text-center">
@@ -486,8 +487,9 @@ onUnmounted(() => {
                                         </div>
                                         <div v-else class="text-sm">{{ formatearFecha(fila.FechaDelPedido) }}</div>
                                     </td>
-                                    <td class="px-3 py-2">
-                                        <div v-if="filaEditando[idx]" class="relative" :ref="(el) => setDropdownRef(el, idx)">
+                                    <!-- ✅ COLUMNA PRODUCTO CON DROPDOWN QUE SALE -->
+                                    <td class="px-3 py-2 overflow-visible">
+                                        <div v-if="filaEditando[idx]" class="relative overflow-visible" :ref="(el) => setDropdownRef(el, idx)">
                                             <div class="relative">
                                                 <i class="fas fa-search absolute left-2 top-2 text-gray-400 text-xs"></i>
                                                 <input type="text" :value="busqueda[idx] || ''" @input="(e) => onBuscar(idx, e)"
@@ -496,12 +498,17 @@ onUnmounted(() => {
                                                 <button v-if="fila.IdProducto" @click="limpiarSeleccion(idx)"
                                                     class="absolute right-2 top-1.5 text-gray-400">✕</button>
                                             </div>
+                                            <!-- ✅ DROPDOWN CON Z-INDEX ALTO Y POSICIÓN ABSOLUTA -->
                                             <div v-if="mostrandoLista[idx] && productosFiltrados[idx]?.length > 0"
-                                                class="absolute z-50 mt-1 bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto w-80">
+                                                class="absolute z-[9999] mt-1 bg-white border rounded-lg shadow-xl max-h-60 overflow-y-auto"
+                                                style="min-width: 320px; width: 100%; left: 0; right: 0;">
                                                 <div v-for="prod in productosFiltrados[idx]" :key="prod.id"
                                                     @click="seleccionarProducto(idx, prod)"
-                                                    class="px-2 py-1.5 hover:bg-purple-50 cursor-pointer border-b text-sm">
-                                                    <span class="font-mono text-xs">{{ prod.codigo }}</span> - {{ prod.descripcion }}
+                                                    class="px-3 py-2 hover:bg-purple-50 cursor-pointer border-b last:border-b-0">
+                                                    <div class="flex flex-col">
+                                                        <span class="font-mono text-xs text-gray-500">{{ prod.codigo }}</span>
+                                                        <span class="text-sm text-gray-800">{{ prod.descripcion }}</span>
+                                                    </div>
                                                 </div>
                                             </div>
                                             <div v-if="!productoValido[idx] && mensajeProducto[idx]" class="text-[10px] text-red-500">{{ mensajeProducto[idx] }}</div>
@@ -555,3 +562,79 @@ onUnmounted(() => {
         </div>
     </div>
 </template>
+
+<style scoped>
+/* ✅ ESTILOS CLAVE PARA QUE EL DROPDOWN SALGA DEL CONTENEDOR */
+.overflow-visible {
+    overflow: visible !important;
+}
+
+.relative {
+    overflow: visible !important;
+}
+
+/* ✅ Estilos mejorados para el dropdown */
+.absolute {
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Mejorar scroll del dropdown */
+.max-h-48, .max-h-60 {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+}
+
+.max-h-48::-webkit-scrollbar,
+.max-h-60::-webkit-scrollbar {
+    width: 6px;
+}
+
+.max-h-48::-webkit-scrollbar-track,
+.max-h-60::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.max-h-48::-webkit-scrollbar-thumb,
+.max-h-60::-webkit-scrollbar-thumb {
+    background-color: #d1d5db;
+    border-radius: 3px;
+}
+
+.max-h-48::-webkit-scrollbar-thumb:hover,
+.max-h-60::-webkit-scrollbar-thumb:hover {
+    background-color: #9ca3af;
+}
+
+/* Transición suave para el dropdown */
+.relative .absolute {
+    animation: dropdownFade 0.15s ease-out;
+}
+
+@keyframes dropdownFade {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ✅ Asegurar que la tabla no corte el dropdown */
+table {
+    overflow: visible !important;
+}
+
+tbody {
+    overflow: visible !important;
+}
+
+tr {
+    overflow: visible !important;
+}
+
+td {
+    overflow: visible !important;
+}
+</style>

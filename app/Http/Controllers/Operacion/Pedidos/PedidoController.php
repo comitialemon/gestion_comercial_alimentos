@@ -89,6 +89,7 @@ class PedidoController extends Controller
                 
                 $diaColumna = $mapaDias[$diaSemana];
 
+                // ✅ VALIDACIÓN: Producto debe estar en cronograma
                 $cronograma = Cronograma::porContexto()
                     ->where($diaColumna, $pedidoData['IdProducto'])
                     ->exists();
@@ -97,11 +98,12 @@ class PedidoController extends Controller
                     throw new \Exception("Producto no programado para {$diaColumna}");
                 }
 
+                // ✅ VALIDACIÓN: Hora límite (SOLO por cliente)
                 $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
                 
                 if ($fechaPedido == $fechaManana) {
                     $horaLimite = HoraLimite::porContexto()
-                        ->activos()
+                        ->activos()  // ✅ SIN FILTRO POR SUCURSAL
                         ->first();
                     
                     $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
@@ -111,10 +113,12 @@ class PedidoController extends Controller
                     }
                 }
 
+                // ✅ VALIDACIÓN: Unidades > 0
                 if ($pedidoData['Unidades'] <= 0) {
                     throw new \Exception("Las unidades deben ser mayor a cero!");
                 }
 
+                // Guardar o actualizar
                 if (isset($pedidoData['id']) && $pedidoData['id'] > 0) {
                     $pedido = Pedido::porContexto()
                         ->porOperador()
@@ -125,11 +129,11 @@ class PedidoController extends Controller
                             'FechaDelPedido' => $fechaPedido,
                             'IdProducto' => $pedidoData['IdProducto'],
                             'Unidades' => $pedidoData['Unidades'],
-                            'UnidadesAutoriza' => $pedidoData['Unidades'],
+                            'UnidadesAutoriza' => $pedidoData['Unidades'], // ✅ Se actualiza automáticamente
                         ]);
                     }
                 } else {
-                    // 🔥 CREAR NUEVO - CON TODOS LOS CAMPOS
+                    // ✅ CREAR NUEVO - CON TODOS LOS CAMPOS OBLIGATORIOS
                     Pedido::create([
                         'IdTipoPedido' => $idTipoOrdinario,
                         'ProduceDistribuye' => 0,
@@ -141,6 +145,7 @@ class PedidoController extends Controller
                         'IdCliente' => $clienteId,
                         'IdSucursal' => $sucursalId,
                         'idOperador' => $operadorId,
+                        'IdOperadorPedidoExtraordinario' => 0, // ✅ CAMPO OBLIGATORIO
                         'UnidadesAutoriza' => $pedidoData['Unidades'],
                         'IdOperadorAutoriza' => 0,
                         'IdDistribucion' => 0,
@@ -148,7 +153,6 @@ class PedidoController extends Controller
                         'DistribuidoSiNo' => 0,
                         'IdOperadorRecibe' => 0,
                         'UnidadesRecibidas' => 0,
-                        'IdOperadorPedidoExtraordinario' => 0,
                     ]);
                 }
             }
@@ -192,6 +196,9 @@ class PedidoController extends Controller
         }
     }
 
+    /**
+     * API: Validar si producto está en cronograma
+     */
     public function apiValidarProducto(Request $request)
     {
         $request->validate([
@@ -220,6 +227,9 @@ class PedidoController extends Controller
         ]);
     }
 
+    /**
+     * API: Validar hora límite
+     */
     public function apiValidarHoraLimite(Request $request)
     {
         $request->validate([
@@ -236,6 +246,7 @@ class PedidoController extends Controller
             ]);
         }
 
+        // ✅ SIN FILTRO POR SUCURSAL
         $horaLimite = HoraLimite::porContexto()
             ->activos()
             ->first();
@@ -260,6 +271,9 @@ class PedidoController extends Controller
         ]);
     }
 
+    /**
+     * API: Obtener fecha y hora del servidor
+     */
     public function apiGetFechaHora()
     {
         return response()->json([
