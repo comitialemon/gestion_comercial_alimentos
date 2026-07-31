@@ -22,7 +22,6 @@ class ProductoDetalleController extends Controller
     {
         $clienteId = session('cliente_id');
         
-        // 🔥 Usando JOIN para obtener los datos directamente
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_productodetalle as p')
             ->leftJoin('inventario_productogrupoanalisis as g', 'p.IdGrupoAnalisis', '=', 'g.IdGrupoAnalisis')
@@ -39,10 +38,15 @@ class ProductoDetalleController extends Controller
                 'p.IdLineaProducto',
                 'p.IdEstadoProducto',
                 'p.IdUnidadMedida',
+                'p.OrdenInformes',
                 'g.Grupo as grupo_nombre',
+                'g.IdGrupoAnalisis as grupo_id',
                 'l.Linea as linea_nombre',
+                'l.IdLinea as linea_id',
                 'e.Estado as estado_nombre',
-                'u.UnidadMedida as unidad_nombre'
+                'e.IdEstado as estado_id',
+                'u.UnidadMedida as unidad_nombre',
+                'u.IdUnidadMedida as unidad_id'
             );
         
         // Filtros
@@ -62,14 +66,16 @@ class ProductoDetalleController extends Controller
             $query->where('p.IdLineaProducto', $request->linea);
         }
         
+        if ($request->filled('estadoProducto') && $request->estadoProducto !== '') {
+            $query->where('p.IdEstadoProducto', $request->estadoProducto);
+        }
+        
         if ($request->filled('grupo')) {
             $query->where('p.IdGrupoAnalisis', $request->grupo);
         }
         
-        // 🔥 Obtener datos con paginación
         $productosData = $query->orderBy('p.Codigo')->paginate(20);
         
-        // 🔥 Convertir a formato estándar para el frontend
         $productos = new \stdClass();
         $productos->data = [];
         
@@ -79,22 +85,30 @@ class ProductoDetalleController extends Controller
                 'Codigo' => $item->Codigo,
                 'Descripcion' => $item->Descripcion,
                 'ActivoInactivo' => $item->ActivoInactivo,
+                'IdGrupoAnalisis' => $item->IdGrupoAnalisis,
+                'IdLineaProducto' => $item->IdLineaProducto,
+                'IdEstadoProducto' => $item->IdEstadoProducto,
+                'IdUnidadMedida' => $item->IdUnidadMedida,
+                'OrdenInformes' => $item->OrdenInformes ?? 0,
                 'grupoAnalisis' => (object) [
+                    'IdGrupoAnalisis' => $item->IdGrupoAnalisis,
                     'Grupo' => $item->grupo_nombre ?? '-'
                 ],
                 'linea' => (object) [
+                    'IdLinea' => $item->IdLineaProducto,
                     'Linea' => $item->linea_nombre ?? '-'
                 ],
                 'estado' => (object) [
+                    'IdEstado' => $item->IdEstadoProducto,
                     'Estado' => $item->estado_nombre ?? '-'
                 ],
                 'unidadMedida' => (object) [
+                    'IdUnidadMedida' => $item->IdUnidadMedida,
                     'UnidadMedida' => $item->unidad_nombre ?? '-'
                 ]
             ];
         }
         
-        // 🔥 Mantener la paginación
         $productos->links = $productosData->links();
         $productos->currentPage = $productosData->currentPage();
         $productos->lastPage = $productosData->lastPage();
@@ -104,7 +118,6 @@ class ProductoDetalleController extends Controller
         $productos->perPage = $productosData->perPage();
         $productos->path = $productosData->path();
         
-        // Estadísticas
         $totalActivos = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->count();
@@ -113,7 +126,6 @@ class ProductoDetalleController extends Controller
             ->where('ActivoInactivo', 1)
             ->count();
         
-        // Catálogos para SELECT
         $grupos = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
             ->orderBy('IdGrupoAnalisis')
             ->get(['IdGrupoAnalisis as id', 'Grupo as nombre']);
@@ -129,7 +141,6 @@ class ProductoDetalleController extends Controller
         $unidades = UnidadMedida::orderBy('IdUnidadMedida')
             ->get(['IdUnidadMedida as id', 'UnidadMedida as nombre']);
         
-        // 🔥 Buscar el ID de la unidad "Unidad"
         $unidadId = null;
         $unidad = $unidades->firstWhere('nombre', 'Unidad');
         if ($unidad) {
@@ -150,6 +161,7 @@ class ProductoDetalleController extends Controller
                 'estado' => $request->estado,
                 'linea' => $request->linea,
                 'grupo' => $request->grupo,
+                'estadoProducto' => $request->estadoProducto,
             ],
         ]);
     }
@@ -268,6 +280,32 @@ class ProductoDetalleController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Error al actualizar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Show the form for editing the specified product.
+     */
+    public function edit($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            
+            $producto = ProductoDetalle::where('IdCliente', $clienteId)
+                ->with(['grupoAnalisis', 'linea', 'estado', 'unidadMedida'])
+                ->findOrFail($id);
+            
+            return response()->json([
+                'success' => true,
+                'producto' => $producto
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error obteniendo producto para editar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener el producto'
             ], 500);
         }
     }

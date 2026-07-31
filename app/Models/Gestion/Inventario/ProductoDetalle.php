@@ -3,6 +3,7 @@
 namespace App\Models\Gestion\Inventario;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Gestion\Operacion\FichaTecnica;
 
 class ProductoDetalle extends Model
 {
@@ -75,6 +76,56 @@ class ProductoDetalle extends Model
     public function unidadMedida()
     {
         return $this->belongsTo(UnidadMedida::class, 'IdUnidadMedida', 'IdUnidadMedida');
+    }
+
+    // ==================== RELACIONES CON FICHA TÉCNICA ====================
+
+    /**
+     * Relación con la ficha técnica activa del producto
+     */
+    public function fichaTecnica()
+    {
+        return $this->hasOne(
+            \App\Models\Gestion\Operacion\FichaTecnica::class, 
+            'IdProductoTerminado', 
+            'IdProducto'
+        )->where('ActivoInactivo', 1);
+    }
+
+    /**
+     * Relación con todas las fichas técnicas (incluyendo inactivas)
+     */
+    public function fichasTecnicas()
+    {
+        return $this->hasMany(
+            \App\Models\Gestion\Operacion\FichaTecnica::class, 
+            'IdProductoTerminado', 
+            'IdProducto'
+        );
+    }
+
+    /**
+     * Verificar si el producto tiene ficha técnica activa
+     */
+    public function tieneFichaTecnica()
+    {
+        return $this->fichaTecnica()->exists();
+    }
+
+    /**
+     * Verificar si el producto es un insumo (Estado = Insumos)
+     */
+    public function esInsumo()
+    {
+        return $this->estado && $this->estado->Estado === 'Insumos';
+    }
+
+    /**
+     * Verificar si el producto es terminado (Estado = Terminado)
+     */
+    public function esTerminado()
+    {
+        return $this->estado && $this->estado->Estado === 'Terminado';
     }
 
     // ==================== ATRIBUTOS ====================

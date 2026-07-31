@@ -115,6 +115,7 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSupervisorCont
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosGerenteController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSucursalMayoristaController;
+use App\Http\Controllers\Operacion\FichaTecnicaController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -460,17 +461,23 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // 🔥 AGREGAR ESTAS RUTAS:
             Route::prefix('productos-detalle')->group(function () {
+                // ============================================================
+                // 🔥 RUTAS ESTÁTICAS (SIN PARÁMETROS) - DEBEN IR PRIMERO
+                // ============================================================
                 Route::get('/', [ProductoDetalleController::class, 'index'])->name('gestion.inventario.productos-detalle.index');
                 Route::post('/', [ProductoDetalleController::class, 'store'])->name('gestion.inventario.productos-detalle.store');
+                
+                Route::get('/api/productos', [ProductoDetalleController::class, 'getProductos'])->name('gestion.inventario.productos-detalle.api');
+                Route::get('/validar-codigo', [ProductoDetalleController::class, 'validarCodigo'])->name('gestion.inventario.productos-detalle.validar-codigo');
+                Route::get('/validar-descripcion', [ProductoDetalleController::class, 'validarDescripcion'])->name('gestion.inventario.productos-detalle.validar-descripcion');
+                
+                // ============================================================
+                // 🔥 RUTAS CON PARÁMETROS {id} - DEBEN IR AL FINAL
+                // ============================================================
                 Route::get('/{id}/edit', [ProductoDetalleController::class, 'edit'])->name('gestion.inventario.productos-detalle.edit');
                 Route::put('/{id}', [ProductoDetalleController::class, 'update'])->name('gestion.inventario.productos-detalle.update');
                 Route::delete('/{id}', [ProductoDetalleController::class, 'destroy'])->name('gestion.inventario.productos-detalle.destroy');
                 Route::post('/{id}/toggle', [ProductoDetalleController::class, 'toggleEstado'])->name('gestion.inventario.productos-detalle.toggle');
-                Route::get('/api/productos', [ProductoDetalleController::class, 'getProductos'])->name('gestion.inventario.productos-detalle.api');
-                
-                // 🔥 RUTAS DE VALIDACIÓN AJAX (onBlur/onChange) - IGUAL QUE SCRIPTCASE
-                Route::get('/validar-codigo', [ProductoDetalleController::class, 'validarCodigo'])->name('gestion.inventario.productos-detalle.validar-codigo');
-                Route::get('/validar-descripcion', [ProductoDetalleController::class, 'validarDescripcion'])->name('gestion.inventario.productos-detalle.validar-descripcion');           
             });
 
             // Reporte de Inventario
@@ -536,6 +543,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::put('/{id}/estado', [InventarioFisicoMantenimientoController::class, 'updateEstado'])->name('gestion.inventario-fisico-mantenimiento.estado');
             });
 
+            // Fichas Técnicas - DENTRO DEL GRUPO inventario
+            Route::prefix('ficha-tecnica')->group(function () {
+                Route::get('/producto/{id}', [FichaTecnicaController::class, 'getFichaByProducto']);
+                Route::get('/insumos', [FichaTecnicaController::class, 'getInsumos']);
+                Route::post('/guardar', [FichaTecnicaController::class, 'guardar']);
+                Route::get('/estado-insumos', [FichaTecnicaController::class, 'getEstadoInsumos']); // 🔥 NUEVA RUTA
+                Route::delete('/{id}', [FichaTecnicaController::class, 'destroy']);
+                Route::get('/verificar/{idProducto}', [FichaTecnicaController::class, 'verificar']);
+            });
+
             // En tu archivo de rutas, dentro del grupo de productos-venta
             Route::prefix('productos-venta')->group(function () {
                 // ========== RUTAS ESTÁTICAS (SIN PARÁMETROS) ==========
@@ -587,7 +604,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::post('/votar/{id}', [ProductoVentaController::class, 'votarAprobacion'])->name('gestion.productos-aprobacion.votar');
                 Route::get('/ver/{id}', [ProductoVentaController::class, 'verAprobacion'])->name('gestion.productos-aprobacion.ver');
             });
+                // 🔥 AGREGAR ESTA RUTA
+             Route::get('/producto-estado/insumos', [ProductoEstadoController::class, 'getInsumosId'])->name('gestion.producto-estado.insumos');
         });
+
+
 
         // ============================================================
         // 3.13.1 REPROCESA INVENTARIO
@@ -922,7 +943,17 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
         // Almacenes por Sucursal
         Route::get('/almacenes-por-sucursal/{sucursalId}', [InventarioFisicoController::class, 'getAlmacenes'])->name('api.almacenes.por-sucursal');
     });
+    // Unidades de medida - FUERA DEL GRUPO inventario (en /api)
+    Route::get('/api/unidades-medida', function () {
+        $unidades = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_unidadmedida')
+            ->orderBy('UnidadMedida')
+            ->get(['IdUnidadMedida', 'UnidadMedida']);
+        
+        return response()->json($unidades);
+    })->name('api.unidades-medida');
 
+    
     // ============================================================
     // 7. PREFIJO: FACTURACIÓN
     // ============================================================

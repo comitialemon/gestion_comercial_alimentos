@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { ref, onMounted, watch, computed } from 'vue'
 import ModalProducto from './ModalProducto.vue'
+import ModalFichaTecnica from './ModalFichaTecnica.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -20,25 +21,29 @@ const props = defineProps({
 
 // ==================== ESTADO ====================
 const search = ref(props.filtros?.search || '')
-const estado = ref(props.filtros?.estado || '')
+const estadoActivo = ref(props.filtros?.estado || '')
 const linea = ref(props.filtros?.linea || '')
-const grupo = ref(props.filtros?.grupo || '')
+const estadoProducto = ref(props.filtros?.estadoProducto || '')
 const isMobile = ref(false)
 const filtrosAbiertos = ref(false)
 const escribiendo = ref(false)
 
-// ==================== MODAL ====================
+// ==================== MODALES ====================
 const modalOpen = ref(false)
 const editando = ref(false)
 const productoSeleccionado = ref(null)
+
+// 🔥 MODAL FICHA TÉCNICA
+const modalFichaOpen = ref(false)
+const productoParaFicha = ref(null)
 
 // ==================== COMPUTED ====================
 const filtrosActivos = computed(() => {
     let count = 0
     if (search.value && search.value.trim() !== '') count++
-    if (estado.value && estado.value !== '') count++
+    if (estadoActivo.value && estadoActivo.value !== '') count++
     if (linea.value && linea.value !== '') count++
-    if (grupo.value && grupo.value !== '') count++
+    if (estadoProducto.value && estadoProducto.value !== '') count++
     return count
 })
 
@@ -46,9 +51,9 @@ const filtrosActivos = computed(() => {
 const aplicarFiltros = (cerrarFiltros = true) => {
     const params = {}
     if (search.value && search.value.trim() !== '') params.search = search.value
-    if (estado.value !== '' && estado.value !== null) params.estado = estado.value
+    if (estadoActivo.value !== '' && estadoActivo.value !== null) params.estado = estadoActivo.value
     if (linea.value && linea.value !== '') params.linea = linea.value
-    if (grupo.value && grupo.value !== '') params.grupo = grupo.value
+    if (estadoProducto.value && estadoProducto.value !== '') params.estadoProducto = estadoProducto.value
 
     router.get('/gestion/inventario/productos-detalle', params, {
         preserveState: true,
@@ -70,9 +75,9 @@ const buscarConDebounce = () => {
 
 const limpiarFiltros = () => {
     search.value = ''
-    estado.value = ''
+    estadoActivo.value = ''
     linea.value = ''
-    grupo.value = ''
+    estadoProducto.value = ''
     filtrosAbiertos.value = false
     escribiendo.value = false
     
@@ -82,17 +87,44 @@ const limpiarFiltros = () => {
     })
 }
 
-// ==================== MODAL ====================
+// ==================== MODALES ====================
 const abrirModalNuevo = () => {
     productoSeleccionado.value = null
     editando.value = false
     modalOpen.value = true
 }
 
-const abrirModalEditar = (producto) => {
-    productoSeleccionado.value = producto
+const abrirModalEditar = async (producto) => {
+    console.log('📦 Producto COMPLETO:', producto)
+    console.log('📊 IdGrupoAnalisis:', producto.IdGrupoAnalisis)
+    console.log('📊 IdLineaProducto:', producto.IdLineaProducto)
+    console.log('📊 grupoAnalisis:', producto.grupoAnalisis)
+    console.log('📊 linea:', producto.linea)
+    
+    // 🔥 AHORA LOS DATOS VIENEN COMPLETOS DESDE EL CONTROLADOR
+    productoSeleccionado.value = {
+        IdProducto: producto.IdProducto,
+        Codigo: producto.Codigo,
+        Descripcion: producto.Descripcion,
+        ActivoInactivo: producto.ActivoInactivo,
+        IdGrupoAnalisis: producto.IdGrupoAnalisis || null,
+        IdLineaProducto: producto.IdLineaProducto || null,
+        IdEstadoProducto: producto.IdEstadoProducto || null,
+        IdUnidadMedida: producto.IdUnidadMedida || null,
+        OrdenInformes: producto.OrdenInformes || 0,
+        estado: producto.estado || { Estado: '' },
+        grupoAnalisis: producto.grupoAnalisis || { Grupo: '' },
+        linea: producto.linea || { Linea: '' },
+        unidadMedida: producto.unidadMedida || { UnidadMedida: '' },
+    }
     editando.value = true
     modalOpen.value = true
+}
+
+// 🔥 ABRIR MODAL FICHA TÉCNICA
+const abrirModalFicha = (producto) => {
+    productoParaFicha.value = producto
+    modalFichaOpen.value = true
 }
 
 const recargarDatos = () => {
@@ -216,23 +248,37 @@ onMounted(() => {
                                 </div>
                             </div>
 
-                            <!-- Estado -->
+                            <!-- Estado (Activo/Inactivo) -->
                             <div class="mb-3">
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Estado</label>
                                 <div class="grid grid-cols-2 gap-0.5">
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="" v-model="estado" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
                                         <span class="text-[11px] text-gray-700">Todos</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="0" v-model="estado" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="0" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
                                         <span class="text-[11px] text-gray-700">Activos ({{ totalActivos }})</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="1" v-model="estado" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="1" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
                                         <span class="text-[11px] text-gray-700">Inactivos ({{ totalInactivos }})</span>
                                     </label>
                                 </div>
+                            </div>
+
+                            <!-- 🔥 NUEVO: Estado del Producto (Terminado, Insumos, etc.) -->
+                            <div class="mb-3">
+                                <label class="block text-[10px] font-medium text-gray-700 mb-1">Tipo de Producto</label>
+                                <select v-model="estadoProducto" @change="aplicarFiltros(true)"
+                                        class="w-full border rounded-md px-2 py-1.5 text-[11px] focus:ring-2 focus:outline-none"
+                                        :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
+                                    <option value="">Todos</option>
+                                    <option v-for="item in estados" :key="item.id" :value="item.id">
+                                        {{ item.nombre }}
+                                    </option>
+                                </select>
+                                <p class="text-[8px] text-gray-400 mt-0.5">Filtra por Tipo de Producto (Terminado, Insumos, etc.)</p>
                             </div>
 
                             <!-- Línea -->
@@ -243,19 +289,6 @@ onMounted(() => {
                                         :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
                                     <option value="">Todas</option>
                                     <option v-for="item in lineas" :key="item.id" :value="item.id">
-                                        {{ item.nombre }}
-                                    </option>
-                                </select>
-                            </div>
-
-                            <!-- Grupo -->
-                            <div class="mb-3">
-                                <label class="block text-[10px] font-medium text-gray-700 mb-1">Grupo</label>
-                                <select v-model="grupo" @change="aplicarFiltros(true)"
-                                        class="w-full border rounded-md px-2 py-1.5 text-[11px] focus:ring-2 focus:outline-none"
-                                        :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
-                                    <option value="">Todos</option>
-                                    <option v-for="item in grupos" :key="item.id" :value="item.id">
                                         {{ item.nombre }}
                                     </option>
                                 </select>
@@ -288,29 +321,29 @@ onMounted(() => {
                                     :style="{ color: `var(--color-primary-700)` }">
                                     <i class="fas fa-search text-[8px]"></i> {{ search }}
                                 </span>
-                                <span v-if="estado !== ''" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
+                                <span v-if="estadoActivo !== ''" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
                                     :style="{ color: `var(--color-primary-700)` }">
-                                    <i class="fas fa-circle text-[6px]" :class="estado == '0' ? 'text-green-500' : 'text-red-500'"></i>
-                                    {{ estado == '0' ? 'Activos' : 'Inactivos' }}
+                                    <i class="fas fa-circle text-[6px]" :class="estadoActivo == '0' ? 'text-green-500' : 'text-red-500'"></i>
+                                    {{ estadoActivo == '0' ? 'Activos' : 'Inactivos' }}
+                                </span>
+                                <span v-if="estadoProducto" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
+                                    :style="{ color: `var(--color-primary-700)` }">
+                                    <i class="fas fa-tag text-[8px]"></i> 
+                                    {{ estados.find(e => e.id === estadoProducto)?.nombre || 'Tipo' }}
                                 </span>
                                 <span v-if="linea" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
                                     :style="{ color: `var(--color-primary-700)` }">
                                     <i class="fas fa-tag text-[8px]"></i> Línea seleccionada
                                 </span>
-                                <span v-if="grupo" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
-                                    :style="{ color: `var(--color-primary-700)` }">
-                                    <i class="fas fa-layer-group text-[8px]"></i> Grupo seleccionado
-                                </span>
                             </div>
 
-                            <!-- 🔥 TABLA DESKTOP - CON TODAS LAS COLUMNAS -->
+                            <!-- 🔥 TABLA DESKTOP -->
                             <div class="hidden lg:block overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-primary-50" :style="{ backgroundColor: `var(--color-primary-50)` }">
                                         <tr>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Grupo</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Línea</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Estado</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Línea</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Unidad</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Descripción</th>
@@ -321,13 +354,10 @@ onMounted(() => {
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         <tr v-for="producto in productos.data" :key="producto.IdProducto" class="hover:bg-gray-50 transition">
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
-                                                {{ producto.grupoAnalisis?.Grupo || '-' }}
+                                                {{ producto.estado?.Estado || '-' }}
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
                                                 {{ producto.linea?.Linea || '-' }}
-                                            </td>
-                                            <td class="px-3 py-2 text-[11px] text-gray-500">
-                                                {{ producto.estado?.Estado || '-' }}
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
                                                 {{ producto.unidadMedida?.UnidadMedida || '-' }}
@@ -344,12 +374,25 @@ onMounted(() => {
                                                 </span>
                                             </td>
                                             <td class="px-3 py-2 text-right">
-                                                <button @click="abrirModalEditar(producto)" 
-                                                        class="transition" 
-                                                        :style="{ color: `var(--color-primary-600)` }"
-                                                        title="Editar">
-                                                    <i class="fas fa-edit text-[11px]"></i>
-                                                </button>
+                                                <div class="flex items-center justify-end gap-1">
+                                                    <!-- Botón Editar -->
+                                                    <button @click="abrirModalEditar(producto)" 
+                                                            class="transition p-1 rounded hover:bg-primary-50" 
+                                                            :style="{ color: `var(--color-primary-600)` }"
+                                                            title="Editar">
+                                                        <i class="fas fa-edit text-[11px]"></i>
+                                                    </button>
+                                                    
+                                                    <!-- 🔥 Botón Ficha Técnica -->
+                                                    <button 
+                                                        v-if="producto.estado?.Estado === 'Terminado'"
+                                                        @click="abrirModalFicha(producto)" 
+                                                        class="transition p-1 rounded hover:bg-amber-50" 
+                                                        style="color: #D97706"
+                                                        title="Ficha Técnica">
+                                                        <i class="fas fa-clipboard-list text-[11px]"></i>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                         <tr v-if="!productos.data || productos.data.length === 0">
@@ -369,7 +412,7 @@ onMounted(() => {
                                         <tr>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Descripción</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Grupo</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Estado</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Activo</th>
                                             <th class="px-3 py-2 text-right text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Acciones</th>
                                         </tr>
@@ -378,19 +421,29 @@ onMounted(() => {
                                         <tr v-for="producto in productos.data" :key="producto.IdProducto" class="hover:bg-gray-50 transition">
                                             <td class="px-3 py-2 text-[11px] text-gray-600 font-mono">{{ producto.Codigo }}</td>
                                             <td class="px-3 py-2 text-[11px] text-gray-800">{{ producto.Descripcion }}</td>
-                                            <td class="px-3 py-2 text-[11px] text-gray-500">{{ producto.grupoAnalisis?.Grupo || '-' }}</td>
+                                            <td class="px-3 py-2 text-[11px] text-gray-500">{{ producto.estado?.Estado || '-' }}</td>
                                             <td class="px-3 py-2 text-center">
                                                 <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
                                                     {{ estadoTexto(producto.ActivoInactivo) }}
                                                 </span>
                                             </td>
                                             <td class="px-3 py-2 text-right">
-                                                <button @click="abrirModalEditar(producto)" 
-                                                        class="transition" 
-                                                        :style="{ color: `var(--color-primary-600)` }"
-                                                        title="Editar">
-                                                    <i class="fas fa-edit text-[11px]"></i>
-                                                </button>
+                                                <div class="flex items-center justify-end gap-1">
+                                                    <button @click="abrirModalEditar(producto)" 
+                                                            class="transition p-1 rounded hover:bg-primary-50" 
+                                                            :style="{ color: `var(--color-primary-600)` }"
+                                                            title="Editar">
+                                                        <i class="fas fa-edit text-[11px]"></i>
+                                                    </button>
+                                                    <button 
+                                                        v-if="producto.estado?.Estado === 'Terminado'"
+                                                        @click="abrirModalFicha(producto)" 
+                                                        class="transition p-1 rounded hover:bg-amber-50" 
+                                                        style="color: #D97706"
+                                                        title="Ficha Técnica">
+                                                        <i class="fas fa-clipboard-list text-[11px]"></i>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                         <tr v-if="!productos.data || productos.data.length === 0">
@@ -415,24 +468,39 @@ onMounted(() => {
                                                 {{ producto.Codigo }}
                                             </div>
                                             <div class="flex flex-wrap items-center gap-1.5 text-[10px] text-gray-500">
-                                                <span>{{ producto.grupoAnalisis?.Grupo || '-' }}</span>
+                                                <span>{{ producto.estado?.Estado || '-' }}</span>
                                                 <span>|</span>
                                                 <span>{{ producto.linea?.Linea || '-' }}</span>
                                                 <span>|</span>
                                                 <span>{{ producto.unidadMedida?.UnidadMedida || '-' }}</span>
                                             </div>
-                                            <div class="mt-1">
+                                            <div class="mt-1 flex items-center gap-1.5">
                                                 <span class="px-1.5 py-0.5 text-[8px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
                                                     {{ estadoTexto(producto.ActivoInactivo) }}
                                                 </span>
+                                                <span v-if="producto.estado?.Estado === 'Terminado'" 
+                                                      class="px-1.5 py-0.5 text-[8px] rounded-full bg-amber-100 text-amber-700">
+                                                    <i class="fas fa-clipboard-list mr-0.5"></i>
+                                                    Ficha
+                                                </span>
                                             </div>
                                         </div>
-                                        <button @click="abrirModalEditar(producto)" 
+                                        <div class="flex items-center gap-1 flex-shrink-0">
+                                            <button @click="abrirModalEditar(producto)" 
+                                                    class="p-1.5 rounded-lg transition flex-shrink-0"
+                                                    :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-600)` }"
+                                                    title="Editar">
+                                                <i class="fas fa-edit text-sm"></i>
+                                            </button>
+                                            <button 
+                                                v-if="producto.estado?.Estado === 'Terminado'"
+                                                @click="abrirModalFicha(producto)" 
                                                 class="p-1.5 rounded-lg transition flex-shrink-0"
-                                                :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-600)` }"
-                                                title="Editar">
-                                            <i class="fas fa-edit text-sm"></i>
-                                        </button>
+                                                style="background-color: #FEF3C7; color: #D97706"
+                                                title="Ficha Técnica">
+                                                <i class="fas fa-clipboard-list text-sm"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-if="!productos.data || productos.data.length === 0" class="p-8 text-center text-gray-400 text-sm">
@@ -469,7 +537,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- MODAL -->
+        <!-- MODAL PRODUCTO -->
         <ModalProducto
             v-model="modalOpen"
             :producto="productoSeleccionado"
@@ -479,6 +547,18 @@ onMounted(() => {
             :unidades="unidades"
             :unidad-id="unidadId"
             :editando="editando"
+            @saved="recargarDatos"
+        />
+
+        <!-- 🔥 MODAL FICHA TÉCNICA -->
+        <!-- En Index.vue -->
+        <ModalFichaTecnica
+            v-model="modalFichaOpen"
+            :producto="productoParaFicha"
+            :grupos="grupos"
+            :lineas="lineas"
+            :unidades="unidades"
+            :unidad-id="unidadId"
             @saved="recargarDatos"
         />
     </div>

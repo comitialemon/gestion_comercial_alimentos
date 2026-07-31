@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -41,7 +41,7 @@ const form = ref({
     IdGrupoAnalisis: null,
     IdLineaProducto: null,
     IdEstadoProducto: null,
-    IdUnidadMedida: props.unidadId,
+    IdUnidadMedida: null,
     Codigo: '',
     Descripcion: '',
     OrdenInformes: 0,
@@ -52,7 +52,6 @@ const loading = ref(false)
 const errors = ref({})
 const errorMensaje = ref('')
 
-// 🔥 Estado para mensajes de validación en tiempo real
 const validacionCodigo = ref({ valido: true, mensaje: '' })
 const validacionDescripcion = ref({ valido: true, mensaje: '' })
 
@@ -71,7 +70,7 @@ const resetForm = () => {
         IdGrupoAnalisis: null,
         IdLineaProducto: null,
         IdEstadoProducto: null,
-        IdUnidadMedida: props.unidadId,
+        IdUnidadMedida: props.unidadId || null,
         Codigo: '',
         Descripcion: '',
         OrdenInformes: 0,
@@ -88,34 +87,49 @@ const cerrarModal = () => {
     resetForm()
 }
 
-// Cargar datos al editar
-watch(() => props.producto, (newVal) => {
-    if (newVal && props.editando) {
+// 🔥 Cargar datos al editar
+const cargarDatosEdicion = () => {
+    if (props.producto && props.editando) {
+        console.log('📦 Cargando producto para edición:', props.producto)
+        
         form.value = {
-            IdGrupoAnalisis: newVal.IdGrupoAnalisis || null,
-            IdLineaProducto: newVal.IdLineaProducto || null,
-            IdEstadoProducto: newVal.IdEstadoProducto || null,
-            IdUnidadMedida: newVal.IdUnidadMedida || props.unidadId,
-            Codigo: newVal.Codigo || '',
-            Descripcion: newVal.Descripcion || '',
-            OrdenInformes: newVal.OrdenInformes || 0,
-            ActivoInactivo: newVal.ActivoInactivo ?? 0,
+            IdGrupoAnalisis: props.producto.IdGrupoAnalisis || null,
+            IdLineaProducto: props.producto.IdLineaProducto || null,
+            IdEstadoProducto: props.producto.IdEstadoProducto || null,
+            IdUnidadMedida: props.producto.IdUnidadMedida || props.unidadId || null,
+            Codigo: props.producto.Codigo || '',
+            Descripcion: props.producto.Descripcion || '',
+            OrdenInformes: props.producto.OrdenInformes || 0,
+            ActivoInactivo: props.producto.ActivoInactivo ?? 0,
+        }
+        
+        console.log('📋 Formulario cargado:', form.value)
+    }
+}
+
+// ==================== WATCHES ====================
+watch(() => props.modelValue, (newVal) => {
+    if (newVal) {
+        if (props.editando && props.producto) {
+            cargarDatosEdicion()
+        } else {
+            resetForm()
+            if (props.unidadId) {
+                form.value.IdUnidadMedida = props.unidadId
+            }
         }
         validacionCodigo.value = { valido: true, mensaje: '' }
         validacionDescripcion.value = { valido: true, mensaje: '' }
     }
 }, { immediate: true })
 
-// Cuando se abre el modal y no está editando, setear unidad por defecto
-watch(() => props.modelValue, (newVal) => {
-    if (newVal && !props.editando && props.unidadId) {
-        form.value.IdUnidadMedida = props.unidadId
-        validacionCodigo.value = { valido: true, mensaje: '' }
-        validacionDescripcion.value = { valido: true, mensaje: '' }
+watch(() => props.producto, (newVal) => {
+    if (newVal && props.editando && props.modelValue) {
+        cargarDatosEdicion()
     }
-})
+}, { deep: true })
 
-// 🔥 VALIDACIÓN EN TIEMPO REAL - CÓDIGO
+// ==================== VALIDACIONES ====================
 const validarCodigo = async () => {
     if (!form.value.Codigo || form.value.Codigo.trim() === '') {
         validacionCodigo.value = { valido: false, mensaje: 'El código es obligatorio' }
@@ -147,7 +161,6 @@ const validarCodigo = async () => {
     }
 }
 
-// 🔥 VALIDACIÓN EN TIEMPO REAL - DESCRIPCIÓN
 const validarDescripcion = async () => {
     if (!form.value.Descripcion || form.value.Descripcion.trim() === '') {
         validacionDescripcion.value = { valido: false, mensaje: 'La descripción es obligatoria' }
@@ -179,17 +192,15 @@ const validarDescripcion = async () => {
     }
 }
 
-// Guardar
+// ==================== GUARDAR ====================
 const guardar = async () => {
     loading.value = true
     errors.value = {}
     errorMensaje.value = ''
     
-    // 🔥 Validar código y descripción antes de guardar
     await validarCodigo()
     await validarDescripcion()
     
-    // Validaciones
     if (!form.value.IdGrupoAnalisis) {
         errors.value.IdGrupoAnalisis = ['El grupo es obligatorio']
     }
@@ -209,7 +220,6 @@ const guardar = async () => {
         errors.value.Descripcion = ['La descripción es obligatoria']
     }
     
-    // 🔥 Si hay errores de validación de duplicados, no guardar
     if (!validacionCodigo.value.valido) {
         errors.value.Codigo = ['¡El código ya existe!']
     }
@@ -269,9 +279,9 @@ const guardar = async () => {
             <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 
                 <!-- HEADER -->
-                <div class="flex justify-between items-center p-4 border-b bg-gray-50">
+                <div class="flex justify-between items-center p-4 border-b bg-gray-50 rounded-t-xl">
                     <h2 class="text-base font-bold text-gray-800">{{ tituloModal }}</h2>
-                    <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600">
+                    <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600 transition">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -286,73 +296,93 @@ const guardar = async () => {
                     
                     <!-- FILA 1: Grupo Analisis + Linea Producto -->
                     <div class="grid grid-cols-2 gap-3">
-                        <!-- Grupo Analisis -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Grupo de Análisis <span class="text-red-500">*</span>
                             </label>
                             <select v-model="form.IdGrupoAnalisis" 
-                                    class="w-full border rounded-lg px-2 py-1.5 text-sm"
-                                    :class="{ 'border-red-500': errors.IdGrupoAnalisis }">
+                                    class="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
+                                    :class="{ 'border-red-500': errors.IdGrupoAnalisis }"
+                                    style="border-color: #d1d5db;">
                                 <option :value="null">Seleccionar</option>
                                 <option v-for="item in grupos" :key="item.id" :value="item.id">
                                     {{ item.nombre }}
                                 </option>
                             </select>
-                            <p v-if="errors.IdGrupoAnalisis" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdGrupoAnalisis[0] }}</p>
+                            <p v-if="errors.IdGrupoAnalisis" class="text-[10px] text-red-500 mt-0.5">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ errors.IdGrupoAnalisis[0] }}
+                            </p>
+                            <p v-if="form.IdGrupoAnalisis" class="text-[10px] text-green-600 mt-0.5">
+                                <i class="fas fa-check-circle mr-1"></i>
+                                Grupo seleccionado: {{ grupos.find(g => g.id === form.IdGrupoAnalisis)?.nombre || 'ID: ' + form.IdGrupoAnalisis }}
+                            </p>
                         </div>
 
-                        <!-- Linea Producto -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Línea <span class="text-red-500">*</span>
                             </label>
                             <select v-model="form.IdLineaProducto" 
-                                    class="w-full border rounded-lg px-2 py-1.5 text-sm"
-                                    :class="{ 'border-red-500': errors.IdLineaProducto }">
+                                    class="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
+                                    :class="{ 'border-red-500': errors.IdLineaProducto }"
+                                    style="border-color: #d1d5db;">
                                 <option :value="null">Seleccionar</option>
                                 <option v-for="item in lineas" :key="item.id" :value="item.id">
                                     {{ item.nombre }}
                                 </option>
                             </select>
-                            <p v-if="errors.IdLineaProducto" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdLineaProducto[0] }}</p>
+                            <p v-if="errors.IdLineaProducto" class="text-[10px] text-red-500 mt-0.5">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ errors.IdLineaProducto[0] }}
+                            </p>
+                            <p v-if="form.IdLineaProducto" class="text-[10px] text-green-600 mt-0.5">
+                                <i class="fas fa-check-circle mr-1"></i>
+                                Línea seleccionada: {{ lineas.find(l => l.id === form.IdLineaProducto)?.nombre || 'ID: ' + form.IdLineaProducto }}
+                            </p>
                         </div>
                     </div>
 
                     <!-- FILA 2: Estado Producto + Unidad Medida -->
                     <div class="grid grid-cols-2 gap-3">
-                        <!-- Estado Producto -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Estado <span class="text-red-500">*</span>
                             </label>
                             <select v-model="form.IdEstadoProducto" 
-                                    class="w-full border rounded-lg px-2 py-1.5 text-sm"
-                                    :class="{ 'border-red-500': errors.IdEstadoProducto }">
+                                    class="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
+                                    :class="{ 'border-red-500': errors.IdEstadoProducto }"
+                                    style="border-color: #d1d5db;">
                                 <option :value="null">Seleccionar</option>
                                 <option v-for="item in estados" :key="item.id" :value="item.id">
                                     {{ item.nombre }}
                                 </option>
                             </select>
-                            <p v-if="errors.IdEstadoProducto" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdEstadoProducto[0] }}</p>
+                            <p v-if="errors.IdEstadoProducto" class="text-[10px] text-red-500 mt-0.5">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ errors.IdEstadoProducto[0] }}
+                            </p>
                         </div>
 
-                        <!-- Unidad Medida -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">
                                 Unidad <span class="text-red-500">*</span>
                             </label>
                             <select v-model="form.IdUnidadMedida" 
-                                    class="w-full border rounded-lg px-2 py-1.5 text-sm"
-                                    :class="{ 'border-red-500': errors.IdUnidadMedida }">
+                                    class="w-full border rounded-lg px-2 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
+                                    :class="{ 'border-red-500': errors.IdUnidadMedida }"
+                                    style="border-color: #d1d5db;">
                                 <option :value="null">Seleccionar</option>
                                 <option v-for="item in unidades" :key="item.id" :value="item.id">
                                     {{ item.nombre }}
                                 </option>
                             </select>
-                            <p v-if="errors.IdUnidadMedida" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdUnidadMedida[0] }}</p>
+                            <p v-if="errors.IdUnidadMedida" class="text-[10px] text-red-500 mt-0.5">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ errors.IdUnidadMedida[0] }}
+                            </p>
                             <p v-if="unidadId && form.IdUnidadMedida === unidadId" class="text-[10px] text-green-600 mt-0.5">
-                                <i class="fas fa-check-circle"></i> Unidad predefinida
+                                <i class="fas fa-check-circle mr-1"></i> Unidad predefinida
                             </p>
                         </div>
                     </div>
@@ -366,13 +396,13 @@ const guardar = async () => {
                                @blur="validarCodigo"
                                @change="validarCodigo"
                                @input="validarCodigo"
-                               class="w-full border rounded-lg px-3 py-1.5 text-sm uppercase"
+                               class="w-full border rounded-lg px-3 py-1.5 text-sm uppercase focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
                                :class="{ 
                                    'border-red-500': errors.Codigo || !validacionCodigo.valido && validacionCodigo.mensaje,
                                    'border-green-500': validacionCodigo.valido && form.Codigo && form.Codigo.length > 0
                                }"
-                               placeholder="CÓDIGO" />
-                        <!-- 🔥 Mensaje de validación en tiempo real -->
+                               placeholder="CÓDIGO" 
+                               style="border-color: #d1d5db;" />
                         <p v-if="validacionCodigo.mensaje && !validacionCodigo.valido" class="text-[10px] text-red-500 mt-0.5">
                             <i class="fas fa-exclamation-circle mr-1"></i>
                             {{ validacionCodigo.mensaje }}
@@ -395,13 +425,13 @@ const guardar = async () => {
                                @blur="validarDescripcion"
                                @change="validarDescripcion"
                                @input="validarDescripcion"
-                               class="w-full border rounded-lg px-3 py-1.5 text-sm"
+                               class="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
                                :class="{ 
                                    'border-red-500': errors.Descripcion || !validacionDescripcion.valido && validacionDescripcion.mensaje,
                                    'border-green-500': validacionDescripcion.valido && form.Descripcion && form.Descripcion.length > 0
                                }"
-                               placeholder="DESCRIPCIÓN" />
-                        <!-- 🔥 Mensaje de validación en tiempo real -->
+                               placeholder="DESCRIPCIÓN" 
+                               style="border-color: #d1d5db;" />
                         <p v-if="validacionDescripcion.mensaje && !validacionDescripcion.valido" class="text-[10px] text-red-500 mt-0.5">
                             <i class="fas fa-exclamation-circle mr-1"></i>
                             {{ validacionDescripcion.mensaje }}
@@ -419,12 +449,13 @@ const guardar = async () => {
                     <div>
                         <label class="block text-xs font-medium text-gray-700 mb-1">Orden en Informes</label>
                         <input type="number" v-model.number="form.OrdenInformes" 
-                               class="w-full border rounded-lg px-3 py-1.5 text-sm"
-                               placeholder="0" min="0" />
+                               class="w-full border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition"
+                               placeholder="0" min="0"
+                               style="border-color: #d1d5db;" />
                     </div>
 
                     <!-- FILA 6: Estado Activo/Inactivo -->
-                    <div class="border-t pt-3">
+                    <div class="border-t pt-3" style="border-color: #e5e7eb;">
                         <div class="flex items-center justify-between">
                             <div>
                                 <label class="block text-xs font-medium text-gray-700">Estado</label>
@@ -457,13 +488,13 @@ const guardar = async () => {
                 </div>
 
                 <!-- FOOTER -->
-                <div class="flex justify-end gap-2 p-3 border-t bg-gray-50">
+                <div class="flex justify-end gap-2 p-3 border-t bg-gray-50 rounded-b-xl" style="border-color: #e5e7eb;">
                     <button @click="cerrarModal" 
-                            class="px-4 py-1.5 border rounded-lg text-gray-700 text-sm hover:bg-gray-100">
+                            class="px-4 py-1.5 border rounded-lg text-gray-700 text-sm hover:bg-gray-100 transition">
                         Cancelar
                     </button>
                     <button @click="guardar" :disabled="loading" 
-                            class="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2">
+                            class="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2 transition">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
                         <i v-else class="fas fa-save"></i>
                         {{ textoBoton }}
@@ -473,3 +504,15 @@ const guardar = async () => {
         </div>
     </Teleport>
 </template>
+
+<style scoped>
+input:focus, select:focus {
+    --tw-ring-offset-width: 0px;
+    --tw-ring-offset-color: #fff;
+    --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
+    --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
+    box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+}
+</style>
