@@ -1,6 +1,8 @@
+<!-- resources/js/Pages/Gestion/Inventario/components/ModalMovimientos.vue -->
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import ModalShowMovimiento from './ModalShowMovimiento.vue'
 
 const props = defineProps({
     visible: {
@@ -41,6 +43,15 @@ const movimientos = ref([])
 const cargandoMovimientos = ref(false)
 const saldoAnteriorModalRaw = ref(0)
 const errorMessage = ref('')
+
+// ==================== MODAL SHOW ====================
+const modalShowVisible = ref(false)
+const movimientoIdSeleccionado = ref(null)
+
+const verDetalle = (movimientoId) => {
+    movimientoIdSeleccionado.value = movimientoId
+    modalShowVisible.value = true
+}
 
 const cerrar = () => {
     emit('update:visible', false)
@@ -95,8 +106,8 @@ const formatNumber = (num) => {
     if (num === undefined || num === null) return '0.000'
     const valor = Number(num)
     if (isNaN(valor)) return '0.000'
-    if (valor < 0) return `- ${Math.abs(valor).toFixed(3)}`  // ← 3 DECIMALES
-    return valor.toFixed(3)  // ← 3 DECIMALES
+    if (valor < 0) return `- ${Math.abs(valor).toFixed(3)}`
+    return valor.toFixed(3)
 }
 
 const getSaldoClass = (saldo) => {
@@ -119,7 +130,7 @@ onUnmounted(() => {
     <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4" @click.self="cerrar">
         <div class="bg-white rounded-xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl flex flex-col">
             
-            <!-- Header - Usando variables CSS dinámicas -->
+            <!-- Header -->
             <div 
                 class="p-3 sm:p-4 flex-shrink-0 text-white"
                 :style="{ backgroundColor: 'var(--color-primary, #61131a)' }"
@@ -167,7 +178,7 @@ onUnmounted(() => {
                 
                 <div v-else>
                     <!-- Resumen de saldo inicial -->
-                    <div class="mb-4 p-3 bg-gray-100 rounded-lg flex justify-between items-center">
+                    <div class="mb-4 p-3 bg-gray-100 rounded-lg flex flex-wrap justify-between items-center gap-2">
                         <span class="text-xs sm:text-sm text-gray-600">Saldo inicial al <strong>{{ fechaInicial }}</strong>:</span>
                         <span class="text-base sm:text-lg font-bold" :class="saldoAnteriorModalRaw < 0 ? 'text-red-600' : 'text-gray-800'">
                             {{ formatNumber(saldoAnteriorModalRaw) }}
@@ -198,6 +209,14 @@ onUnmounted(() => {
                                     </p>
                                 </div>
                             </div>
+                            <div class="flex justify-end mt-2 pt-1 border-t border-gray-200">
+                                <button 
+                                    @click="verDetalle(mov.id)"
+                                    class="px-3 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition flex items-center gap-1"
+                                >
+                                    <i class="fas fa-eye text-[10px]"></i> Ver detalles
+                                </button>
+                            </div>
                             <div v-if="mov.almacen || mov.tipo_operacion" class="flex flex-wrap gap-3 mt-2 pt-1 text-[10px] text-gray-400">
                                 <span v-if="mov.almacen"><i class="fas fa-warehouse mr-1"></i>{{ mov.almacen }}</span>
                                 <span v-if="mov.tipo_operacion"><i class="fas fa-tag mr-1"></i>{{ mov.tipo_operacion }}</span>
@@ -215,6 +234,7 @@ onUnmounted(() => {
                                     <th class="px-2 py-2 text-left text-xs font-medium text-gray-700 uppercase">Glosa</th>
                                     <th class="px-2 py-2 text-right text-xs font-medium text-gray-700 uppercase">Unid.</th>
                                     <th class="px-2 py-2 text-right text-xs font-medium text-gray-700 uppercase">Saldo</th>
+                                    <th class="px-2 py-2 text-center text-xs font-medium text-gray-700 uppercase w-16">Acción</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 bg-white">
@@ -236,6 +256,15 @@ onUnmounted(() => {
                                     <td class="px-2 py-2 text-right text-xs font-medium" :class="getSaldoClass(mov.saldo_acumulado_raw)">
                                         {{ formatNumber(mov.saldo_acumulado_raw) }}
                                     </td>
+                                    <td class="px-2 py-2 text-center">
+                                        <button 
+                                            @click="verDetalle(mov.id)"
+                                            class="p-1 rounded-md hover:bg-blue-100 transition text-blue-600"
+                                            title="Ver detalles"
+                                        >
+                                            <i class="fas fa-eye text-xs"></i>
+                                        </button>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -251,6 +280,7 @@ onUnmounted(() => {
                                     <th class="px-3 py-2 text-left text-sm font-medium text-gray-700 uppercase">Glosa</th>
                                     <th class="px-3 py-2 text-right text-sm font-medium text-gray-700 uppercase w-24">Unidades</th>
                                     <th class="px-3 py-2 text-right text-sm font-medium text-gray-700 uppercase w-24">Saldo</th>
+                                    <th class="px-3 py-2 text-center text-sm font-medium text-gray-700 uppercase w-16">Acción</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 bg-white">
@@ -280,6 +310,15 @@ onUnmounted(() => {
                                     <td class="px-3 py-2 text-right text-sm font-medium" :class="getSaldoClass(mov.saldo_acumulado_raw)">
                                         {{ formatNumber(mov.saldo_acumulado_raw) }}
                                     </td>
+                                    <td class="px-3 py-2 text-center">
+                                        <button 
+                                            @click="verDetalle(mov.id)"
+                                            class="p-1.5 rounded-md hover:bg-blue-100 transition text-blue-600"
+                                            title="Ver detalles del movimiento"
+                                        >
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
@@ -288,7 +327,7 @@ onUnmounted(() => {
             </div>
             
             <!-- Footer -->
-            <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0">
+            <div class="border-t p-3 bg-gray-50 flex justify-end flex-shrink-0 rounded-b-xl">
                 <button 
                     @click="cerrar" 
                     class="px-3 py-1.5 sm:px-4 sm:py-2 text-white rounded-lg text-sm hover:opacity-90 transition flex items-center gap-2"
@@ -300,37 +339,35 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
+
+    <!-- 🔥 MODAL SHOW (detalle del movimiento) -->
+    <ModalShowMovimiento
+        v-model:visible="modalShowVisible"
+        :movimiento-id="movimientoIdSeleccionado"
+        @close="modalShowVisible = false"
+    />
 </template>
 
 <style scoped>
-/* 🔥 Clases auxiliares que usan variables CSS */
 .bg-primary {
     background-color: var(--color-primary, #61131a) !important;
 }
-
 .text-primary {
     color: var(--color-primary, #61131a) !important;
 }
-
 .border-primary {
     border-color: var(--color-primary, #61131a) !important;
 }
-
-/* 🔥 Hover usando variables CSS */
 .hover\:bg-primary-700:hover {
     background-color: var(--color-primary-700, #4a0f14) !important;
 }
-
 .hover\:bg-primary-800:hover {
     background-color: var(--color-primary-800, #3d0a0f) !important;
 }
-
-/* 🔥 Focus usando variables CSS */
 .focus\:ring-primary-500:focus {
     --tw-ring-color: var(--color-primary-500, #61131a) !important;
 }
 
-/* Asegurar que los textos sean legibles en PC */
 @media (min-width: 1024px) {
     .text-sm {
         font-size: 14px !important;

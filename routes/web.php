@@ -479,11 +479,13 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::delete('/{id}', [ProductoDetalleController::class, 'destroy'])->name('gestion.inventario.productos-detalle.destroy');
                 Route::post('/{id}/toggle', [ProductoDetalleController::class, 'toggleEstado'])->name('gestion.inventario.productos-detalle.toggle');
             });
-
             // Reporte de Inventario
             Route::prefix('reporte-inventario')->group(function () {
                 Route::get('/', [ReporteInventarioController::class, 'index'])->name('gestion.inventario.reporte-inventario.index');
                 Route::get('/sucursal-actual', [ReporteInventarioController::class, 'porSucursal'])->name('gestion.inventario.reporte-inventario.sucursal-actual');
+                
+                // 🔥 IMPORTANTE: Agregar esta ruta para ver detalle de movimiento
+                Route::get('/movimiento/{id}', [ReporteInventarioController::class, 'showMovimiento'])->name('gestion.inventario.reporte-inventario.movimiento.show');
             });
 
             // Ajustes de Inventario

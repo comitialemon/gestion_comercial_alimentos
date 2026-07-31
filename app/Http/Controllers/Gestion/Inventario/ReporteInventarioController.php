@@ -378,4 +378,106 @@ class ReporteInventarioController extends Controller
             'fecha_final' => $request->fecha_final,
         ]);
     }
+    /**
+     * 🔥 SHOW - Mostrar detalle de un movimiento específico
+     */
+    public function showMovimiento($id)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        try {
+            // 1. OBTENER EL MOVIMIENTO
+            $movimiento = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_propiamente as ip')
+                ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
+                ->join('inventario_tipooperacion as tio', 'ip.IdTipoDeOperacion', '=', 'tio.IdTipoOperacion')
+                ->join('inventario_productodetalle as p', 'ip.IdProducto', '=', 'p.IdProducto')
+                ->leftJoin('inventario_almacen as ia', 'ip.IdAlmacen', '=', 'ia.IdAlmacen')
+                ->where('ip.IdInventarioPropiamente', $id)
+                ->where('ip.IdCliente', $clienteId)
+                ->where('ip.IdSucursal', $sucursalId)
+                ->select(
+                    'ip.*',
+                    'tf.Fecha as fecha_movimiento',
+                    'tio.Detalle as tipo_operacion',
+                    'p.Descripcion as producto_nombre',
+                    'p.Codigo as producto_codigo',
+                    'ia.Almacen as almacen_nombre'
+                )
+                ->first();
+
+            if (!$movimiento) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Movimiento no encontrado'
+                ], 404);
+            }
+
+            // 2. VARIABLES PARA DATOS ADICIONALES
+            $venta = null;
+            $detalles_venta = null;
+            $pagos = null;
+
+            // 3. DETECTAR SI ES VENTA (solo para eso necesitamos información extra)
+            $tipo = strtolower(trim($movimiento->tipo_operacion));
+            $esVenta = (strpos($tipo, 'venta') !== false || strpos($tipo, 'recibo') !== false);
+
+            if ($esVenta) {
+                $venta = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas as v')
+                    ->leftJoin('todos_identificador as i', 'v.IdNIT', '=', 'i.IdIdentificador')
+                    ->leftJoin('todos_operador as o', 'v.IdOperadorIngresa', '=', 'o.IdOperador')
+                    ->leftJoin('todos_identificador as oi', 'o.IdIdentificador', '=', 'oi.IdIdentificador')
+                    ->where('v.IdVentas', $movimiento->IdDocumento)
+                    ->where('v.IdCliente', $clienteId)
+                    ->select(
+                        'v.NumeroFactura',
+                        'v.FechaVenta',
+                        'v.ImporteVenta',
+                        'v.IdEstado',
+                        'v.Observacion',
+                        'v.TicketDia',
+                        'i.CI_NIT as nit_cliente',
+                        'i.Nombre as nombre_cliente',
+                        'oi.Nombre as nombre_operador'
+                    )
+                    ->first();
+
+                if ($venta) {
+                    $detalles_venta = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('impuestos_ventas_detalle as d')
+                        ->join('inventario_relacion_ventainventario as p', 'd.idrelacionventainventario', '=', 'p.IdDetalleProducto')
+                        ->where('d.idventas', $movimiento->IdDocumento)
+                        ->select('p.Detalle as nombre', 'd.unidades', 'd.preciounidades', 'd.totalbolivianos')
+                        ->get();
+
+                    $pagos = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('impuestos_ventas_liquidacion as l')
+                        ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
+                        ->where('l.IdVentas', $movimiento->IdDocumento)
+                        ->select('c.Concepto', 'l.Bolivianos')
+                        ->get();
+                }
+            }
+
+            // 4. SIEMPRE DEVOLVER LA INFORMACIÓN DEL MOVIMIENTO
+            return response()->json([
+                'success' => true,
+                'movimiento' => $movimiento,
+                'es_venta' => $esVenta,
+                // Datos de venta (si es venta)
+                'venta' => $venta,
+                'detalles_venta' => $detalles_venta,
+                'pagos' => $pagos,
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error en showMovimiento: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al cargar el movimiento: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
