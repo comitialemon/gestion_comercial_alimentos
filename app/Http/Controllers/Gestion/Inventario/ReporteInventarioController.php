@@ -381,23 +381,27 @@ class ReporteInventarioController extends Controller
     /**
      * 🔥 SHOW - Mostrar detalle de un movimiento específico
      */
-    public function showMovimiento($id)
+    public function showMovimiento(Request $request, $id)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
+        $sucursalId = $request->sucursal_id;
 
         try {
             // 1. OBTENER EL MOVIMIENTO
-            $movimiento = DB::connection('mysql_gestion_comercial_alimentos')
+            $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente as ip')
                 ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
                 ->join('inventario_tipooperacion as tio', 'ip.IdTipoDeOperacion', '=', 'tio.IdTipoOperacion')
                 ->join('inventario_productodetalle as p', 'ip.IdProducto', '=', 'p.IdProducto')
                 ->leftJoin('inventario_almacen as ia', 'ip.IdAlmacen', '=', 'ia.IdAlmacen')
                 ->where('ip.IdInventarioPropiamente', $id)
-                ->where('ip.IdCliente', $clienteId)
-                ->where('ip.IdSucursal', $sucursalId)
-                ->select(
+                ->where('ip.IdCliente', $clienteId);
+
+            if ($sucursalId) {
+                $query->where('ip.IdSucursal', $sucursalId);
+            }
+
+            $movimiento = $query->select(
                     'ip.*',
                     'tf.Fecha as fecha_movimiento',
                     'tio.Detalle as tipo_operacion',
@@ -414,12 +418,13 @@ class ReporteInventarioController extends Controller
                 ], 404);
             }
 
-            // 2. VARIABLES PARA DATOS ADICIONALES
+            // 2. VARIABLES PARA DATOS ADICIONALES (INICIALIZARLAS SIEMPRE)
             $venta = null;
             $detalles_venta = null;
             $pagos = null;
+            $esVenta = false;  // 🔥 INICIALIZAR SIEMPRE
 
-            // 3. DETECTAR SI ES VENTA (solo para eso necesitamos información extra)
+            // 3. DETECTAR SI ES VENTA
             $tipo = strtolower(trim($movimiento->tipo_operacion));
             $esVenta = (strpos($tipo, 'venta') !== false || strpos($tipo, 'recibo') !== false);
 
@@ -461,12 +466,11 @@ class ReporteInventarioController extends Controller
                 }
             }
 
-            // 4. SIEMPRE DEVOLVER LA INFORMACIÓN DEL MOVIMIENTO
+            // 4. DEVOLVER LA INFORMACIÓN
             return response()->json([
                 'success' => true,
                 'movimiento' => $movimiento,
-                'es_venta' => $esVenta,
-                // Datos de venta (si es venta)
+                'es_venta' => $esVenta,  // ✅ AHORA SIEMPRE EXISTE
                 'venta' => $venta,
                 'detalles_venta' => $detalles_venta,
                 'pagos' => $pagos,

@@ -1,4 +1,5 @@
-<!-- resources/js/Pages/Gestion/Inventario/components/ModalShowMovimiento.vue -->
+<!-- resources/js/Pages/Gestion/Inventario/ReporteInventario/components/ModalShowMovimiento.vue -->
+
 <script setup>
 import { ref, watch, computed } from 'vue'
 import axios from 'axios'
@@ -8,8 +9,8 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
-    movimientoId: {
-        type: Number,
+    movimiento: {
+        type: Object,
         default: null
     }
 })
@@ -28,13 +29,18 @@ const cerrar = () => {
 }
 
 const cargar = async () => {
-    if (!props.movimientoId) return
+    if (!props.movimiento) return
     
     cargando.value = true
     error.value = ''
     
     try {
-        const response = await axios.get(`/gestion/inventario/reporte-inventario/movimiento/${props.movimientoId}`)
+        // 🔥 Enviar el ID y la sucursal del movimiento
+        const response = await axios.get(`/gestion/inventario/reporte-inventario/movimiento/${props.movimiento.id}`, {
+            params: {
+                sucursal_id: props.movimiento.IdSucursal
+            }
+        })
         
         if (response.data.success) {
             data.value = response.data
@@ -49,8 +55,9 @@ const cargar = async () => {
     }
 }
 
+// Cargar cuando se abre el modal
 watch(() => props.visible, (newVal) => {
-    if (newVal && props.movimientoId) {
+    if (newVal && props.movimiento) {
         cargar()
     }
 })
@@ -90,70 +97,6 @@ const estadoTexto = (estado) => {
 
 const imprimir = () => {
     window.print()
-}
-
-// 🔥 ICONOS Y COLORES SEGÚN EL TIPO DE MOVIMIENTO
-const getIconoPorTipo = (tipo) => {
-    if (!tipo) return 'fa-box'
-    const lower = tipo.toLowerCase()
-    if (lower.includes('sobrante') || lower.includes('sobrante cocida')) return 'fa-arrow-up'
-    if (lower.includes('faltante')) return 'fa-arrow-down'
-    if (lower.includes('dañada')) return 'fa-times-circle'
-    if (lower.includes('reventado')) return 'fa-fire'
-    if (lower.includes('traspaso')) return 'fa-exchange-alt'
-    if (lower.includes('produccion') || lower.includes('producido') || lower.includes('elaboracion')) return 'fa-industry'
-    if (lower.includes('compra')) return 'fa-shopping-cart'
-    if (lower.includes('ajuste')) return 'fa-tools'
-    if (lower.includes('inventario fisico')) return 'fa-clipboard-list'
-    if (lower.includes('mala creacion')) return 'fa-exclamation-triangle'
-    if (lower.includes('degustacion')) return 'fa-utensils'
-    if (lower.includes('pruebas')) return 'fa-flask'
-    if (lower.includes('fecha de vencimiento')) return 'fa-calendar-times'
-    if (lower.includes('por cruce')) return 'fa-random'
-    if (lower.includes('anulacion')) return 'fa-ban'
-    return 'fa-box'
-}
-
-const getColorPorTipo = (tipo) => {
-    if (!tipo) return 'text-gray-600'
-    const lower = tipo.toLowerCase()
-    if (lower.includes('sobrante') || lower.includes('sobrante cocida')) return 'text-emerald-600'
-    if (lower.includes('faltante')) return 'text-red-600'
-    if (lower.includes('dañada')) return 'text-red-600'
-    if (lower.includes('reventado')) return 'text-orange-600'
-    if (lower.includes('traspaso')) return 'text-purple-600'
-    if (lower.includes('produccion') || lower.includes('producido') || lower.includes('elaboracion')) return 'text-blue-600'
-    if (lower.includes('compra')) return 'text-green-600'
-    if (lower.includes('ajuste')) return 'text-amber-600'
-    if (lower.includes('inventario fisico')) return 'text-indigo-600'
-    if (lower.includes('mala creacion')) return 'text-red-500'
-    if (lower.includes('degustacion')) return 'text-yellow-600'
-    if (lower.includes('pruebas')) return 'text-cyan-600'
-    if (lower.includes('fecha de vencimiento')) return 'text-gray-500'
-    if (lower.includes('por cruce')) return 'text-pink-600'
-    if (lower.includes('anulacion')) return 'text-red-400'
-    return 'text-gray-600'
-}
-
-const getBgColorPorTipo = (tipo) => {
-    if (!tipo) return 'bg-gray-50/40 border-gray-200'
-    const lower = tipo.toLowerCase()
-    if (lower.includes('sobrante') || lower.includes('sobrante cocida')) return 'bg-emerald-50/40 border-emerald-200'
-    if (lower.includes('faltante')) return 'bg-red-50/40 border-red-200'
-    if (lower.includes('dañada')) return 'bg-red-50/40 border-red-200'
-    if (lower.includes('reventado')) return 'bg-orange-50/40 border-orange-200'
-    if (lower.includes('traspaso')) return 'bg-purple-50/40 border-purple-200'
-    if (lower.includes('produccion') || lower.includes('producido') || lower.includes('elaboracion')) return 'bg-blue-50/40 border-blue-200'
-    if (lower.includes('compra')) return 'bg-green-50/40 border-green-200'
-    if (lower.includes('ajuste')) return 'bg-amber-50/40 border-amber-200'
-    if (lower.includes('inventario fisico')) return 'bg-indigo-50/40 border-indigo-200'
-    if (lower.includes('mala creacion')) return 'bg-red-50/40 border-red-200'
-    if (lower.includes('degustacion')) return 'bg-yellow-50/40 border-yellow-200'
-    if (lower.includes('pruebas')) return 'bg-cyan-50/40 border-cyan-200'
-    if (lower.includes('fecha de vencimiento')) return 'bg-gray-50/40 border-gray-200'
-    if (lower.includes('por cruce')) return 'bg-pink-50/40 border-pink-200'
-    if (lower.includes('anulacion')) return 'bg-gray-50/40 border-red-200'
-    return 'bg-gray-50/40 border-gray-200'
 }
 </script>
 
@@ -221,7 +164,7 @@ const getBgColorPorTipo = (tipo) => {
                 
                 <div v-else-if="data?.movimiento" class="space-y-4">
                     
-                    <!-- 📄 VENTA (solo si es venta) -->
+                    <!-- 📄 VENTA -->
                     <div v-if="esVenta && data.venta" class="space-y-4">
                         <div class="bg-primary-50/40 border border-primary-100 rounded-lg p-3 text-xs text-gray-700">
                             <div class="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 border-b border-primary-100/60 pb-2.5">
@@ -304,16 +247,9 @@ const getBgColorPorTipo = (tipo) => {
 
                     <!-- 📄 TODOS LOS DEMÁS TIPOS DE MOVIMIENTOS -->
                     <div v-else class="space-y-4">
-                        
-                        <!-- Tarjeta con información del movimiento -->
-                        <div class="rounded-lg p-3 text-xs text-gray-700 border" 
-                             :class="getBgColorPorTipo(data.movimiento.tipo_operacion)">
-                            
-                            <div class="flex items-center gap-2 mb-2 pb-2 border-b" 
-                                 :class="getBgColorPorTipo(data.movimiento.tipo_operacion)">
-                                <i class="fas text-base" 
-                                   :class="[getIconoPorTipo(data.movimiento.tipo_operacion), getColorPorTipo(data.movimiento.tipo_operacion)]">
-                                </i>
+                        <div class="rounded-lg p-3 text-xs text-gray-700 border bg-gray-50/40 border-gray-200">
+                            <div class="flex items-center gap-2 mb-2 pb-2 border-b border-gray-200/50">
+                                <i class="fas fa-box text-gray-600 text-base"></i>
                                 <span class="font-bold text-gray-800 text-sm">
                                     {{ data.movimiento.tipo_operacion }}
                                 </span>
@@ -332,6 +268,11 @@ const getBgColorPorTipo = (tipo) => {
                                 <div>
                                     <span class="text-[10px] text-gray-400 font-semibold uppercase block">Almacén</span>
                                     <span class="font-medium text-gray-700">{{ data.movimiento.almacen_nombre || '-' }}</span>
+                                </div>
+                                
+                                <div>
+                                    <span class="text-[10px] text-gray-400 font-semibold uppercase block">ID Documento</span>
+                                    <span class="font-mono font-medium text-gray-700">#{{ data.movimiento.IdDocumento }}</span>
                                 </div>
                                 
                                 <div>
@@ -374,3 +315,15 @@ const getBgColorPorTipo = (tipo) => {
         </div>
     </div>
 </template>
+
+<style scoped>
+.bg-primary-600 {
+    background-color: var(--color-primary-600, #059669);
+}
+.text-primary-600 {
+    color: var(--color-primary-600, #059669);
+}
+.hover\:bg-primary-700:hover {
+    background-color: var(--color-primary-700, #047857);
+}
+</style>

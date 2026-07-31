@@ -1,4 +1,5 @@
-<!-- resources/js/Pages/Gestion/Inventario/components/ModalMovimientos.vue -->
+<!-- resources/js/Pages/Gestion/Inventario/ReporteInventario/components/ModalMovimientos.vue -->
+
 <script setup>
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
@@ -46,10 +47,10 @@ const errorMessage = ref('')
 
 // ==================== MODAL SHOW ====================
 const modalShowVisible = ref(false)
-const movimientoIdSeleccionado = ref(null)
+const movimientoSeleccionado = ref(null)
 
-const verDetalle = (movimientoId) => {
-    movimientoIdSeleccionado.value = movimientoId
+const verDetalle = (movimiento) => {
+    movimientoSeleccionado.value = movimiento
     modalShowVisible.value = true
 }
 
@@ -211,7 +212,7 @@ onUnmounted(() => {
                             </div>
                             <div class="flex justify-end mt-2 pt-1 border-t border-gray-200">
                                 <button 
-                                    @click="verDetalle(mov.id)"
+                                    @click="verDetalle(mov)"
                                     class="px-3 py-1 text-xs rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition flex items-center gap-1"
                                 >
                                     <i class="fas fa-eye text-[10px]"></i> Ver detalles
@@ -258,7 +259,7 @@ onUnmounted(() => {
                                     </td>
                                     <td class="px-2 py-2 text-center">
                                         <button 
-                                            @click="verDetalle(mov.id)"
+                                            @click="verDetalle(mov)"
                                             class="p-1 rounded-md hover:bg-blue-100 transition text-blue-600"
                                             title="Ver detalles"
                                         >
@@ -312,7 +313,7 @@ onUnmounted(() => {
                                     </td>
                                     <td class="px-3 py-2 text-center">
                                         <button 
-                                            @click="verDetalle(mov.id)"
+                                            @click="verDetalle(mov)"
                                             class="p-1.5 rounded-md hover:bg-blue-100 transition text-blue-600"
                                             title="Ver detalles del movimiento"
                                         >
@@ -343,7 +344,7 @@ onUnmounted(() => {
     <!-- 🔥 MODAL SHOW (detalle del movimiento) -->
     <ModalShowMovimiento
         v-model:visible="modalShowVisible"
-        :movimiento-id="movimientoIdSeleccionado"
+        :movimiento="movimientoSeleccionado"
         @close="modalShowVisible = false"
     />
 </template>
