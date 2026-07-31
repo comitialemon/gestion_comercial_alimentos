@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, computed, inject, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import axios from 'axios'
 import ModalConfirmacionReprocesar from './components/ModalConfirmacionReprocesar.vue'
 import ModalResultadoReprocesar from './components/ModalResultadoReprocesar.vue'
@@ -37,6 +37,11 @@ const mostrarFacturaInicial = ref(false)
 const mostrarFacturaFinal = ref(false)
 const facturasDisponibles = ref(props.facturas || [])
 
+// Refs para los contenedores de los dropdowns
+const sucursalContainer = ref(null)
+const facturaInicialContainer = ref(null)
+const facturaFinalContainer = ref(null)
+
 // Modales
 const mostrarModalConfirmacion = ref(false)
 const mostrarModalResultado = ref(false)
@@ -55,10 +60,8 @@ const sucursalesDisponibles = computed(() => {
     )
 })
 
-// ⚡ FILTRO EN TIEMPO REAL PARA FACTURA INICIAL
 const facturasInicialesFiltradas = computed(() => {
     if (!facturasDisponibles.value) return []
-    // Si el usuario ya seleccionó una y sale el texto "N° X", o si está vacío, mostrar todas
     if (!facturaInicialBusqueda.value || facturaInicialBusqueda.value.startsWith('N°')) {
         return facturasDisponibles.value
     }
@@ -68,7 +71,6 @@ const facturasInicialesFiltradas = computed(() => {
     )
 })
 
-// ⚡ FILTRO EN TIEMPO REAL PARA FACTURA FINAL
 const facturasFinalesFiltradas = computed(() => {
     if (!facturasDisponibles.value) return []
     if (!facturaFinalBusqueda.value || facturaFinalBusqueda.value.startsWith('N°')) {
@@ -183,7 +185,9 @@ const ejecutarProcesar = async () => {
         resultadoMensaje.value = response.data.message
         resultadoDetalles.value = {
             total: response.data.total || 0,
+            total_movimientos: response.data.total_movimientos || 0,
             facturas: response.data.facturas || [],
+            productos: response.data.productos || [],
             errores: response.data.errores || []
         }
         resultadoExito.value ? toast?.success('✅', response.data.message) : toast?.error('❌', response.data.message)
@@ -203,13 +207,24 @@ const volver = () => {
     router.get('/gestion/ventas-editar')
 }
 
+// Cerrar dropdowns al hacer click fuera
 const handleClickOutside = (event) => {
-    if (!document.querySelector('.sucursal-autocomplete')?.contains(event.target)) mostrarSucursales.value = false
-    if (!document.querySelector('.autocomplete-inicial')?.contains(event.target)) mostrarFacturaInicial.value = false
-    if (!document.querySelector('.autocomplete-final')?.contains(event.target)) mostrarFacturaFinal.value = false
+    if (sucursalContainer.value && !sucursalContainer.value.contains(event.target)) {
+        mostrarSucursales.value = false
+    }
+    if (facturaInicialContainer.value && !facturaInicialContainer.value.contains(event.target)) {
+        mostrarFacturaInicial.value = false
+    }
+    if (facturaFinalContainer.value && !facturaFinalContainer.value.contains(event.target)) {
+        mostrarFacturaFinal.value = false
+    }
 }
 
-watch(sucursalId, (newVal) => newVal && cargarFacturas(newVal))
+watch(sucursalId, (newVal) => {
+    if (newVal) {
+        cargarFacturas(newVal)
+    }
+})
 
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
@@ -219,7 +234,10 @@ onMounted(() => {
         if (suc) sucursalBusqueda.value = suc.nombre
     }
 })
-onUnmounted(() => document.removeEventListener('click', handleClickOutside))
+
+onUnmounted(() => {
+    document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
@@ -240,7 +258,8 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                 
                 <div class="p-6 space-y-6">
                     
-                    <div class="sucursal-autocomplete relative">
+                    <!-- 🔥 SUCURSAL -->
+                    <div ref="sucursalContainer" class="relative">
                         <label class="block text-xs font-semibold text-slate-600 mb-1">📍 Sucursal</label>
                         <div class="relative">
                             <input 
@@ -251,14 +270,23 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                 placeholder="Buscar sucursal..."
                                 autocomplete="off"
                             />
-                            <button v-if="sucursalBusqueda" @click="limpiarSucursal" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                            <button 
+                                v-if="sucursalBusqueda" 
+                                @click="limpiarSucursal" 
+                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                            >
                                 <i class="fas fa-times text-xs"></i>
                             </button>
                         </div>
                         
-                        <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[300px] overflow-y-auto text-sm w-[inherit] max-w-[864px]">
+                        <!-- 🔥 DROPDOWN SUCURSAL - POSICIONADO RELATIVO -->
+                        <div 
+                            v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
+                            class="absolute z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[300px] overflow-y-auto text-sm w-full"
+                        >
                             <div 
-                                v-for="sucursal in sucursalesDisponibles" :key="sucursal.id"
+                                v-for="sucursal in sucursalesDisponibles" 
+                                :key="sucursal.id"
                                 @click="seleccionarSucursal(sucursal)"
                                 class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                 :class="sucursalId == sucursal.id ? 'bg-blue-50 text-blue-700' : ''"
@@ -269,8 +297,11 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="autocomplete-inicial relative">
+                    <!-- 🔥 FACTURAS -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        
+                        <!-- Factura Inicial -->
+                        <div ref="facturaInicialContainer" class="relative">
                             <label class="block text-xs font-semibold text-slate-600 mb-1">📄 Desde Factura</label>
                             <div class="relative">
                                 <input 
@@ -282,24 +313,43 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                     :disabled="!sucursalId || loading"
                                     autocomplete="off"
                                 />
-                                <button v-if="facturaInicialBusqueda" @click="facturaInicialId = ''; facturaInicialBusqueda = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <button 
+                                    v-if="facturaInicialBusqueda" 
+                                    @click="facturaInicialId = ''; facturaInicialBusqueda = ''" 
+                                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                             </div>
                             
-                            <div v-if="mostrarFacturaInicial && facturasInicialesFiltradas.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[350px] overflow-y-auto text-sm w-[inherit] max-w-[420px]">
+                            <!-- 🔥 DROPDOWN FACTURA INICIAL - POSICIONADO RELATIVO -->
+                            <div 
+                                v-if="mostrarFacturaInicial && facturasInicialesFiltradas.length > 0" 
+                                class="absolute z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[300px] overflow-y-auto text-sm w-full"
+                            >
                                 <div 
-                                    v-for="factura in facturasInicialesFiltradas" :key="factura.id"
+                                    v-for="factura in facturasInicialesFiltradas" 
+                                    :key="factura.id"
                                     @click="seleccionarFacturaInicial(factura)"
                                     class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                     :class="facturaInicialId == factura.id ? 'bg-blue-50 text-blue-700' : ''"
                                 >
                                     <span class="font-medium">N° {{ factura.numero }}</span>
+                                    <span class="text-xs text-gray-400">ID: {{ factura.id }}</span>
                                 </div>
+                            </div>
+                            
+                            <!-- Mensaje cuando no hay facturas -->
+                            <div 
+                                v-if="mostrarFacturaInicial && facturasInicialesFiltradas.length === 0 && sucursalId" 
+                                class="absolute z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl p-4 text-sm text-gray-500 w-full text-center"
+                            >
+                                No hay facturas disponibles
                             </div>
                         </div>
 
-                        <div class="autocomplete-final relative">
+                        <!-- Factura Final -->
+                        <div ref="facturaFinalContainer" class="relative">
                             <label class="block text-xs font-semibold text-slate-600 mb-1">📄 Hasta Factura</label>
                             <div class="relative">
                                 <input 
@@ -311,30 +361,50 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                                     :disabled="!sucursalId || loading"
                                     autocomplete="off"
                                 />
-                                <button v-if="facturaFinalBusqueda" @click="facturaFinalId = ''; facturaFinalBusqueda = ''" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <button 
+                                    v-if="facturaFinalBusqueda" 
+                                    @click="facturaFinalId = ''; facturaFinalBusqueda = ''" 
+                                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
                                     <i class="fas fa-times text-xs"></i>
                                 </button>
                             </div>
                             
-                            <div v-if="mostrarFacturaFinal && facturasFinalesFiltradas.length > 0" class="fixed z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[350px] overflow-y-auto text-sm w-[inherit] max-w-[420px]">
+                            <!-- 🔥 DROPDOWN FACTURA FINAL - POSICIONADO RELATIVO -->
+                            <div 
+                                v-if="mostrarFacturaFinal && facturasFinalesFiltradas.length > 0" 
+                                class="absolute z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl max-h-[300px] overflow-y-auto text-sm w-full"
+                            >
                                 <div 
-                                    v-for="factura in facturasFinalesFiltradas" :key="factura.id"
+                                    v-for="factura in facturasFinalesFiltradas" 
+                                    :key="factura.id"
                                     @click="seleccionarFacturaFinal(factura)"
                                     class="px-4 py-2.5 cursor-pointer hover:bg-slate-50 flex justify-between items-center border-b border-slate-100 last:border-0"
                                     :class="facturaFinalId == factura.id ? 'bg-blue-50 text-blue-700' : ''"
                                 >
                                     <span class="font-medium">N° {{ factura.numero }}</span>
+                                    <span class="text-xs text-gray-400">ID: {{ factura.id }}</span>
                                 </div>
+                            </div>
+                            
+                            <!-- Mensaje cuando no hay facturas -->
+                            <div 
+                                v-if="mostrarFacturaFinal && facturasFinalesFiltradas.length === 0 && sucursalId" 
+                                class="absolute z-50 mt-1 bg-white border border-slate-200 rounded-md shadow-xl p-4 text-sm text-gray-500 w-full text-center"
+                            >
+                                No hay facturas disponibles
                             </div>
                         </div>
                     </div>
 
+                    <!-- Alerta de rango inválido -->
                     <div v-if="facturaInicialId && facturaFinalId && !rangoValido" class="p-2 bg-red-50 border border-red-100 rounded-md text-red-600 text-xs flex items-center gap-2">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <span>El rango de facturas es inconsistente.</span>
+                        <span>El rango de facturas es inconsistente. La factura inicial debe ser menor o igual a la final.</span>
                     </div>
                 </div>
 
+                <!-- Footer -->
                 <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-right rounded-b-lg">
                     <button
                         type="button"
@@ -349,6 +419,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                 </div>
             </div>
 
+            <!-- Modales -->
             <ModalConfirmacionReprocesar
                 :visible="mostrarModalConfirmacion"
                 titulo="⚠️ Confirmar Reproceso"
@@ -368,6 +439,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
                 @close="mostrarModalResultado = false"
             />
 
+            <!-- Loading overlay -->
             <div v-if="loading || procesando" class="fixed inset-0 bg-slate-900/30 backdrop-blur-[1px] flex items-center justify-center z-50">
                 <div class="bg-white border border-slate-200 rounded-lg p-3 flex items-center gap-2 shadow-md text-xs font-medium text-slate-700">
                     <i class="fas fa-spinner fa-spin text-blue-600"></i>
@@ -380,10 +452,29 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside))
 </template>
 
 <style scoped>
-:deep(*) {
-    overflow: visible !important;
+/* ✅ ELIMINADO el :deep(*) que rompía todo */
+
+/* Scrollbar personalizado para los dropdowns */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
 }
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 10px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
 .overflow-y-auto {
-    overflow-y: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db #f1f1f1;
 }
 </style>

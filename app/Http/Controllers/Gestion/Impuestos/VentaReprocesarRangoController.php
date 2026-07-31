@@ -122,6 +122,7 @@ class VentaReprocesarRangoController extends Controller
             }
             
             \Log::info('=== REPROCESANDO RANGO DE FACTURAS ===');
+            \Log::info('Cliente ID: ' . $clienteId);
             \Log::info('Sucursal ID: ' . $sucursalId);
             \Log::info('Factura inicial ID: ' . $facturaInicialId);
             \Log::info('Factura final ID: ' . $facturaFinalId);
@@ -149,7 +150,7 @@ class VentaReprocesarRangoController extends Controller
             $todosLosProductos = [];
             $totalMovimientos = 0;
             
-            // 🔥 OBTENER ID DEL TIPO DE OPERACIÓN "VENTAS"
+            // 🔥 OBTENER ID DEL TIPO DE OPERACIÓN "VENTAS" FILTRANDO POR CLIENTE
             $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_tipooperacion')
                 ->where('IdCliente', $clienteId)
@@ -167,10 +168,10 @@ class VentaReprocesarRangoController extends Controller
             }
 
             if (!$idTipoOperacion) {
-                throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
+                throw new \Exception('No se encontró el tipo de operación "Ventas" para el cliente ' . $clienteId);
             }
             
-            // 🔥 OBTENER ID DEL TIPO DE OPERACIÓN "ANULACIÓN VENTA"
+            // 🔥 OBTENER ID DEL TIPO DE OPERACIÓN "ANULACIÓN VENTA" FILTRANDO POR CLIENTE
             $idTipoAnulacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_tipooperacion')
                 ->where('IdCliente', $clienteId)
@@ -179,8 +180,19 @@ class VentaReprocesarRangoController extends Controller
                 ->value('IdTipoOperacion');
 
             if (!$idTipoAnulacion) {
-                \Log::warning('⚠️ No se encontró el tipo "Anulación Venta". Las facturas anuladas no tendrán reversión.');
+                $idTipoAnulacion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_tipooperacion')
+                    ->where('IdCliente', $clienteId)
+                    ->where(DB::raw('UPPER(Detalle)'), 'ANULACIÓN VENTA')
+                    ->where('ActivoInactivo', 0)
+                    ->value('IdTipoOperacion');
             }
+
+            if (!$idTipoAnulacion) {
+                \Log::warning('⚠️ No se encontró el tipo "Anulación Venta" para el cliente ' . $clienteId . '. Las facturas anuladas no tendrán reversión.');
+            }
+            
+            \Log::info('📌 ID Ventas: ' . $idTipoOperacion . ' | ID Anulación: ' . ($idTipoAnulacion ?? 'N/A'));
             
             foreach ($facturas as $factura) {
                 try {
@@ -211,12 +223,20 @@ class VentaReprocesarRangoController extends Controller
                         $nombreOperadorAnulador = $operadorAnulador ? $operadorAnulador->Nombre : 'Desconocido';
                     }
                     
-                    // 🔥 ELIMINAR TODOS los movimientos anteriores de esta factura (Ventas y Anulación)
-                    DB::connection('mysql_gestion_comercial_alimentos')
+                    // 🔥 ELIMINAR SOLO los movimientos que vamos a recrear (VENTAS y ANULACIONES)
+                    $tiposAEliminar = [$idTipoOperacion];
+                    if ($idTipoAnulacion) {
+                        $tiposAEliminar[] = $idTipoAnulacion;
+                    }
+                    
+                    $eliminados = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('inventario_propiamente')
                         ->where('IdDocumento', $idVentas)
-                        ->whereIn('IdTipoDeOperacion', [$idTipoOperacion, $idTipoAnulacion])
+                        ->where('IdCliente', $clienteId)
+                        ->whereIn('IdTipoDeOperacion', $tiposAEliminar)
                         ->delete();
+                    
+                    \Log::info('🗑️ Eliminados ' . $eliminados . ' movimientos de factura ' . $numeroFactura . ' (IDs: ' . implode(', ', $tiposAEliminar) . ')');
                     
                     // 🔥 OBTENER FECHA
                     $fechaVentaOriginal = date('Y-m-d', strtotime($factura->FechaVenta));
@@ -363,7 +383,7 @@ class VentaReprocesarRangoController extends Controller
                         }
                     }
                     
-                    // 🔥 AHORA CREAR LOS MOVIMIENTOS PARA ESTA FACTURA
+                    // 🔥 CREAR LOS MOVIMIENTOS PARA ESTA FACTURA
                     foreach ($productosFactura as $idProducto => $cantidadTotal) {
                         if ($cantidadTotal <= 0) continue;
                         
@@ -487,6 +507,7 @@ class VentaReprocesarRangoController extends Controller
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             \Log::error('❌ Error reprocesando rango: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
             
             return response()->json([
                 'success' => false,
