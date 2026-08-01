@@ -55,7 +55,7 @@ const prevenirFlechas = (event) => {
     }
 }
 
-// 🔥 FUNCIÓN PARA RESETEAR EL FORMULARIO
+// FUNCIÓN PARA RESETEAR EL FORMULARIO
 const resetFormulario = () => {
     form.value = {
         IdIngreso: null,
@@ -150,10 +150,10 @@ const submitForm = async () => {
             
             toast?.success('Éxito', props.editando ? 'Ingreso actualizado correctamente' : 'Ingreso guardado correctamente')
             
-            // 🔥 LIMPIAR FORMULARIO
+            // LIMPIAR FORMULARIO
             resetFormulario()
             
-            // 🔥 SI ES EDICIÓN, REDIRIGIR A CREATE (para nuevo ingreso)
+            // SI ES EDICIÓN, REDIRIGIR A CREATE (para nuevo ingreso)
             if (props.editando) {
                 window.location.href = '/gestion/ingresos/create'
             }
@@ -258,20 +258,22 @@ onMounted(() => {
                         <!-- Cuentas en grid de 2 columnas -->
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo depositado en: *</label>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo depositado en: (DEBE) *</label>
                                 <select v-model="form.IdCuentaDebe" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdCuentaDebe }">
                                     <option value="">Seleccione</option>
                                     <option v-for="c in cuentasDebe" :key="c.id" :value="c.id">{{ c.nombre }}</option>
                                 </select>
                                 <p v-if="errors.IdCuentaDebe" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdCuentaDebe }}</p>
+                                <p class="text-[9px] text-gray-400 mt-0.5">Cuentas de efectivo/caja (111.xxx)</p>
                             </div>
                             <div>
-                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo entregado como: *</label>
+                                <label class="block text-[11px] font-medium text-gray-700 mb-0.5">Efectivo entregado como: (HABER) *</label>
                                 <select v-model="form.IdCuentaHaber" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{ 'border-red-500': errors.IdCuentaHaber }">
                                     <option value="">Seleccione</option>
                                     <option v-for="c in cuentasHaber" :key="c.id" :value="c.id">{{ c.nombre }}</option>
                                 </select>
                                 <p v-if="errors.IdCuentaHaber" class="text-[10px] text-red-500 mt-0.5">{{ errors.IdCuentaHaber }}</p>
+                                <p class="text-[9px] text-gray-400 mt-0.5">Cuentas de ingreso (4.xxx)</p>
                             </div>
                         </div>
 

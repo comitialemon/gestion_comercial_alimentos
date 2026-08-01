@@ -89,26 +89,48 @@ class IngresoController extends Controller
         $identificadores = Identificador::orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
 
-        // 🔥 IGUAL QUE SCRIPTCASE: Cuenta "CajaSucursal" para DEBE
+        // 🔥 CUENTAS PARA DEBE - Cuentas de EFECTIVO/CAJA con Dinamica = 'D'
         $cuentasDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_cuenta as c')
             ->join('conta_cuenta_sucursales as cs', 'c.IdCuenta', '=', 'cs.IdCuenta')
+            ->where('cs.IdCliente', $clienteId)
             ->where('cs.IdSucursal', $sucursalId)
             ->where('cs.DinamicaCuenta', 'D')
-            ->where('cs.Cuenta', 'CajaSucursal')
+            ->where(function($query) {
+                $query->where('c.Cuenta', 'LIKE', '111.%')
+                      ->orWhere('c.Cuenta', 'LIKE', 'Caja%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%CAJA%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%EFECTIVO%');
+            })
             ->select('c.IdCuenta as id', DB::raw("CONCAT(c.Cuenta, ' - ', c.Descripcion) as nombre"))
             ->orderBy('c.Cuenta')
             ->get();
 
-        // 🔥 IGUAL QUE SCRIPTCASE: Cuentas con Dinamica 'H' para HABER
+        // 🔥 CUENTAS PARA HABER - Cuentas de INGRESO con Dinamica = 'H'
         $cuentasHaber = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_cuenta as c')
             ->join('conta_cuenta_sucursales as cs', 'c.IdCuenta', '=', 'cs.IdCuenta')
+            ->where('cs.IdCliente', $clienteId)
             ->where('cs.IdSucursal', $sucursalId)
             ->where('cs.DinamicaCuenta', 'H')
+            ->where(function($query) {
+                $query->where('c.Cuenta', 'LIKE', '4.%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%INGRESO%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%VENTA%');
+            })
             ->select('c.IdCuenta as id', DB::raw("CONCAT(c.Cuenta, ' - ', c.Descripcion) as nombre"))
             ->orderBy('c.Cuenta')
             ->get();
+
+        // 🔥 DEBUG - Para verificar qué cuentas se están seleccionando
+        Log::info('=== CUENTAS DEBE (Efectivo) ===', [
+            'count' => $cuentasDebe->count(),
+            'cuentas' => $cuentasDebe->pluck('nombre')->toArray()
+        ]);
+        Log::info('=== CUENTAS HABER (Ingresos) ===', [
+            'count' => $cuentasHaber->count(),
+            'cuentas' => $cuentasHaber->pluck('nombre')->toArray()
+        ]);
 
         return Inertia::render('Gestion/Contabilidad/Ingresos/Create', [
             'ingreso' => $ingresoData,
@@ -129,29 +151,42 @@ class IngresoController extends Controller
             ->where('ActivoInactivo', 0)
             ->findOrFail($id);
 
+        $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
         $fechas = $this->getFechasDisponibles();
         $identificadores = Identificador::orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
 
-        // 🔥 IGUAL QUE SCRIPTCASE
+        // 🔥 CUENTAS PARA DEBE - Cuentas de EFECTIVO/CAJA con Dinamica = 'D'
         $cuentasDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_cuenta as c')
             ->join('conta_cuenta_sucursales as cs', 'c.IdCuenta', '=', 'cs.IdCuenta')
+            ->where('cs.IdCliente', $clienteId)
             ->where('cs.IdSucursal', $sucursalId)
             ->where('cs.DinamicaCuenta', 'D')
-            ->where('cs.Cuenta', 'CajaSucursal')
+            ->where(function($query) {
+                $query->where('c.Cuenta', 'LIKE', '111.%')
+                      ->orWhere('c.Cuenta', 'LIKE', 'Caja%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%CAJA%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%EFECTIVO%');
+            })
             ->select('c.IdCuenta as id', DB::raw("CONCAT(c.Cuenta, ' - ', c.Descripcion) as nombre"))
             ->orderBy('c.Cuenta')
             ->get();
 
-        // 🔥 IGUAL QUE SCRIPTCASE
+        // 🔥 CUENTAS PARA HABER - Cuentas de INGRESO con Dinamica = 'H'
         $cuentasHaber = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_cuenta as c')
             ->join('conta_cuenta_sucursales as cs', 'c.IdCuenta', '=', 'cs.IdCuenta')
+            ->where('cs.IdCliente', $clienteId)
             ->where('cs.IdSucursal', $sucursalId)
             ->where('cs.DinamicaCuenta', 'H')
+            ->where(function($query) {
+                $query->where('c.Cuenta', 'LIKE', '4.%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%INGRESO%')
+                      ->orWhere('c.Descripcion', 'LIKE', '%VENTA%');
+            })
             ->select('c.IdCuenta as id', DB::raw("CONCAT(c.Cuenta, ' - ', c.Descripcion) as nombre"))
             ->orderBy('c.Cuenta')
             ->get();
@@ -187,13 +222,13 @@ class IngresoController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 🔥 IDENTIFICADOR DEL OPERADOR (igual que Scriptcase)
+            // IDENTIFICADOR DEL OPERADOR
             $identificadorOperador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->where('IdOperador', $operadorId)
                 ->value('IdIdentificador');
 
-            // 🔥 UFV ACTUAL (igual que Scriptcase)
+            // UFV ACTUAL
             $ufvActual = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_factorcambio')
                 ->where('IdFecha', $request->IdFecha)
@@ -211,7 +246,7 @@ class IngresoController extends Controller
             $numeroIngreso = $ingreso->NumeroIngreso;
             $idDiario = $ingreso->IdDiario;
 
-            // 🔥 ACTUALIZAR FECHA EN DIARIO (igual que Scriptcase)
+            // ACTUALIZAR FECHA EN DIARIO
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
                 ->where('IdDiario', $idDiario)
@@ -221,14 +256,14 @@ class IngresoController extends Controller
                     'FechaEdita' => now(),
                 ]);
 
-            // 🔥 ELIMINAR ASIENTOS ANTIGUOS (igual que Scriptcase)
+            // ELIMINAR ASIENTOS ANTIGUOS
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario_propiamente')
                 ->where('IdDiario', $idDiario)
                 ->delete();
 
-            // 🔥 INSERTAR NUEVOS ASIENTOS (igual que Scriptcase)
-            // Asiento DEBE - Cuenta CajaSucursal
+            // INSERTAR NUEVOS ASIENTOS
+            // Asiento DEBE - Cuenta de Efectivo/Caja
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario_propiamente')
                 ->insert([
@@ -244,7 +279,7 @@ class IngresoController extends Controller
                     'Deducible' => 'D',
                 ]);
 
-            // Asiento HABER - Contracuenta de Ingreso
+            // Asiento HABER - Cuenta de Ingreso
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario_propiamente')
                 ->insert([
@@ -260,7 +295,7 @@ class IngresoController extends Controller
                     'Deducible' => 'D',
                 ]);
 
-            // 🔥 ACTUALIZAR INGRESO COMO ACTIVO (ActivoInactivo = 1)
+            // ACTUALIZAR INGRESO COMO ACTIVO
             $ingreso->update([
                 'IdFecha' => $request->IdFecha,
                 'IdCuentaDebe' => $request->IdCuentaDebe,
@@ -268,7 +303,7 @@ class IngresoController extends Controller
                 'IdIdentificador' => $request->IdIdentificador,
                 'Glosa' => $request->Glosa,
                 'TotalBolivianos' => $request->TotalBolivianos,
-                'ActivoInactivo' => 1,  // ✅ ACTIVO
+                'ActivoInactivo' => 1,
                 'IdOperador' => $operadorId,
             ]);
 
@@ -291,7 +326,7 @@ class IngresoController extends Controller
     }
 
     /**
-     * GUARDAR NUEVO INGRESO (igual que Scriptcase)
+     * GUARDAR NUEVO INGRESO
      */
     public function store(Request $request)
     {
@@ -311,13 +346,13 @@ class IngresoController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
-            // 🔥 IDENTIFICADOR DEL OPERADOR (igual que Scriptcase)
+            // IDENTIFICADOR DEL OPERADOR
             $identificadorOperador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->where('IdOperador', $operadorId)
                 ->value('IdIdentificador');
 
-            // 🔥 UFV ACTUAL (igual que Scriptcase)
+            // UFV ACTUAL
             $ufvActual = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_factorcambio')
                 ->where('IdFecha', $request->IdFecha)
@@ -327,7 +362,7 @@ class IngresoController extends Controller
             $totalMontoBolivianos = $request->TotalBolivianos;
             $totalMontoUFV = round($totalMontoBolivianos / $ufvActual, 2);
 
-            // 🔥 VERIFICAR SI ES EDICIÓN (IdIngreso existe)
+            // VERIFICAR SI ES EDICIÓN (IdIngreso existe)
             if ($request->has('IdIngreso') && $request->IdIngreso) {
                 // ==================== EDITAR INGRESO EXISTENTE ====================
                 $ingreso = Ingreso::porContexto()
@@ -347,14 +382,14 @@ class IngresoController extends Controller
                         'FechaEdita' => now(),
                     ]);
 
-                // 🔥 ELIMINAR asientos antiguos
+                // ELIMINAR asientos antiguos
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->where('IdDiario', $idDiario)
                     ->delete();
 
-                // 🔥 INSERTAR NUEVOS ASIENTOS
-                // Asiento DEBE - Cuenta CajaSucursal
+                // INSERTAR NUEVOS ASIENTOS
+                // Asiento DEBE - Cuenta de Efectivo/Caja
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
@@ -370,7 +405,7 @@ class IngresoController extends Controller
                         'Deducible' => 'D',
                     ]);
 
-                // Asiento HABER - Contracuenta de Ingreso
+                // Asiento HABER - Cuenta de Ingreso
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
@@ -394,13 +429,13 @@ class IngresoController extends Controller
                     'IdIdentificador' => $request->IdIdentificador,
                     'Glosa' => $request->Glosa,
                     'TotalBolivianos' => $request->TotalBolivianos,
-                    'ActivoInactivo' => 1,  // ✅ ACTIVO
+                    'ActivoInactivo' => 1,
                 ]);
 
             } else {
                 // ==================== NUEVO INGRESO ====================
                 
-                // 🔥 VERIFICAR SI YA EXISTE UN BORRADOR PARA ESTE OPERADOR
+                // VERIFICAR SI YA EXISTE UN BORRADOR PARA ESTE OPERADOR
                 $borradorExistente = Ingreso::porContexto()
                     ->where('ActivoInactivo', 0)
                     ->where('IdOperador', $operadorId)
@@ -415,7 +450,7 @@ class IngresoController extends Controller
                     ], 409);
                 }
 
-                // 🔥 GENERAR NÚMERO DE INGRESO (igual que Scriptcase)
+                // GENERAR NÚMERO DE INGRESO
                 $maxNumero = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_comprobante_ingreso')
                     ->where('IdCliente', $clienteId)
@@ -423,7 +458,7 @@ class IngresoController extends Controller
                     ->max('NumeroIngreso');
                 $numeroIngreso = ($maxNumero ?? 0) + 1;
 
-                // 🔥 GENERAR NÚMERO DE DIARIO (igual que Scriptcase)
+                // GENERAR NÚMERO DE DIARIO
                 $maxNumeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->where('IdCliente', $clienteId)
@@ -431,7 +466,7 @@ class IngresoController extends Controller
                     ->max('NumeroDiario');
                 $numeroDiario = ($maxNumeroDiario ?? 0) + 1;
 
-                // 🔥 INSERTAR DIARIO (igual que Scriptcase)
+                // INSERTAR DIARIO
                 $idDiario = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario')
                     ->insertGetId([
@@ -447,8 +482,8 @@ class IngresoController extends Controller
                         'FechaEdita' => now(),
                     ]);
 
-                // 🔥 INSERTAR ASIENTOS (igual que Scriptcase)
-                // Asiento DEBE - Cuenta CajaSucursal
+                // INSERTAR ASIENTOS
+                // Asiento DEBE - Cuenta de Efectivo/Caja
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
@@ -464,7 +499,7 @@ class IngresoController extends Controller
                         'Deducible' => 'D',
                     ]);
 
-                // Asiento HABER - Contracuenta de Ingreso
+                // Asiento HABER - Cuenta de Ingreso
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
                     ->insert([
@@ -480,7 +515,7 @@ class IngresoController extends Controller
                         'Deducible' => 'D',
                     ]);
 
-                // 🔥 INSERTAR INGRESO COMO ACTIVO (ActivoInactivo = 1)
+                // INSERTAR INGRESO COMO ACTIVO
                 $ingreso = Ingreso::create([
                     'IdDiario' => $idDiario,
                     'NumeroIngreso' => $numeroIngreso,
@@ -490,7 +525,7 @@ class IngresoController extends Controller
                     'IdIdentificador' => $request->IdIdentificador,
                     'Glosa' => $request->Glosa,
                     'TotalBolivianos' => $request->TotalBolivianos,
-                    'ActivoInactivo' => 1,  // ✅ ACTIVO (NO BORRADOR)
+                    'ActivoInactivo' => 1,
                     'IdCliente' => $clienteId,
                     'IdSucursal' => $sucursalId,
                     'IdOperador' => $operadorId,
@@ -736,22 +771,20 @@ class IngresoController extends Controller
         return $fechas->merge($fechasAux)->unique('id');
     }
 
-/**
-     * Vista para gestión de estados (Activar/Inactivar ingresos) - CON SUCURSALES
+    /**
+     * Vista para gestión de estados (Activar/Inactivar ingresos)
      */
     public function gestionEstado(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        \Log::info('=== GESTION ESTADO INGRESOS ===');
-        \Log::info('Cliente ID: ' . $clienteId);
-        \Log::info('Sucursal actual: ' . $sucursalId);
-        \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
+        Log::info('=== GESTION ESTADO INGRESOS ===');
+        Log::info('Cliente ID: ' . $clienteId);
+        Log::info('Sucursal actual: ' . $sucursalId);
+        Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
         
-        // =============================================
         // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
-        // =============================================
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
@@ -759,21 +792,18 @@ class IngresoController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // =============================================
-        // CONSULTA PRINCIPAL - SIN usar scope porContexto()
-        // =============================================
+        // CONSULTA PRINCIPAL
         $query = Ingreso::where('IdCliente', $clienteId)
             ->with(['identificador']);
         
-        // 🔥 FILTRO POR SUCURSAL
+        // FILTRO POR SUCURSAL
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
             $query->where('IdSucursal', $request->sucursal_id);
         } else {
-            // Por defecto, mostrar la sucursal logueada
             $query->where('IdSucursal', $sucursalId);
         }
         
-        // 🔥 FILTRO POR ESTADO
+        // FILTRO POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->where('ActivoInactivo', 1);
@@ -782,7 +812,7 @@ class IngresoController extends Controller
             }
         }
         
-        // 🔥 BUSCADOR por número de ingreso
+        // BUSCADOR
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
             $query->where('NumeroIngreso', 'LIKE', "%{$buscar}%");
@@ -806,7 +836,6 @@ class IngresoController extends Controller
             
             $ingreso->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
             
-            // 🔥 Agregar nombre de sucursal
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $ingreso->IdSucursal)
@@ -834,7 +863,6 @@ class IngresoController extends Controller
     public function cambiarEstado($id)
     {
         try {
-            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
             $ingreso = Ingreso::where('IdCliente', session('cliente_id'))
                 ->where('IdIngreso', $id)
                 ->firstOrFail();
