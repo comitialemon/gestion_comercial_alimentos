@@ -49,16 +49,24 @@ const totalMontos = computed(() => {
     return metodosPago.value.reduce((sum, pago) => sum + (Number(pago.Bolivianos) || 0), 0)
 })
 
+// 🔥 CALCULAR DIFERENCIA EXACTA
 const diferencia = computed(() => {
     return totalVenta.value - totalMontos.value
 })
 
-const hayDiferencia = computed(() => {
-    return Math.abs(diferencia.value) > 0.01
+// 🔥 VERIFICAR SI SON IGUALES (con margen de 0.01 por redondeo)
+const montosIguales = computed(() => {
+    return Math.abs(diferencia.value) <= 0.01
 })
 
+// 🔥 VERIFICAR SI HAY MONTO CERO
+const tieneMontosCero = computed(() => {
+    return metodosPago.value.some(pago => Number(pago.Bolivianos) === 0)
+})
+
+// 🔥 PUEDE GUARDAR SOLO SI SON IGUALES Y NO HAY CEROS
 const puedeGuardar = computed(() => {
-    return !hayDiferencia.value && totalMontos.value > 0
+    return montosIguales.value && totalMontos.value > 0 && !tieneMontosCero.value
 })
 
 // ==================== MÉTODOS ====================
@@ -86,40 +94,51 @@ const cargarMetodosPago = async () => {
     }
 }
 
+// 🔥 VALIDACIÓN ESTRICTA
 const validarMontos = () => {
     const total = totalMontos.value
-    const diff = Math.abs(total - totalVenta.value)
+    const diff = total - totalVenta.value
     
-    if (diff > 0.01) {
-        if (total > totalVenta.value) {
-            errorMontos.value = `⚠️ El total de los montos (${formatearNumero(total)} Bs) supera el total de la factura (${formatearNumero(totalVenta.value)} Bs) por ${formatearNumero(diff)} Bs.`
+    if (Math.abs(diff) > 0.01) {
+        if (diff > 0) {
+            errorMontos.value = `❌ EL TOTAL EXCEDE: ${formatearNumero(total)} Bs > ${formatearNumero(totalVenta.value)} Bs (exceso de ${formatearNumero(diff)} Bs)`
         } else {
-            errorMontos.value = `⚠️ El total de los montos (${formatearNumero(total)} Bs) es menor al total de la factura (${formatearNumero(totalVenta.value)} Bs) por ${formatearNumero(diff)} Bs.`
+            errorMontos.value = `❌ EL TOTAL ES MENOR: ${formatearNumero(total)} Bs < ${formatearNumero(totalVenta.value)} Bs (faltan ${formatearNumero(Math.abs(diff))} Bs)`
         }
     } else {
-        errorMontos.value = ''
+        errorMontos.value = total === totalVenta.value 
+            ? '✅ Total correcto' 
+            : `⚠️ Diferencia de ${formatearNumero(Math.abs(diff))} Bs (redondeo)`
     }
 }
 
+// 🔥 VALIDAR MONTO CON LÍMITE ESTRICTO
 const validarMonto = (pago, index) => {
+    // No permitir negativos
     if (pago.Bolivianos < 0) {
         pago.Bolivianos = 0
+        mostrarToast('⚠️ No se permiten montos negativos', 'warning')
+        validarMontos()
+        return
     }
-    
+
+    // Calcular cuánto pueden sumar los demás
     const otrosMontos = metodosPago.value.reduce((sum, p, i) => {
         if (i !== index) return sum + (Number(p.Bolivianos) || 0)
         return sum
     }, 0)
     
+    // El máximo que puede tener este campo es el total de la factura menos los demás
     const maximoPermitido = totalVenta.value - otrosMontos
     
-    if (pago.Bolivianos > maximoPermitido && maximoPermitido > 0) {
+    // Si excede el máximo, ajustar
+    if (pago.Bolivianos > maximoPermitido && maximoPermitido >= 0) {
         const valorOriginal = pago.Bolivianos
         pago.Bolivianos = Math.round(maximoPermitido * 100) / 100
         
         if (Math.abs(valorOriginal - pago.Bolivianos) > 0.01) {
             mostrarToast(
-                `⚠️ El monto ingresado (${formatearNumero(valorOriginal)} Bs) supera el total disponible. Se ajustó a ${formatearNumero(pago.Bolivianos)} Bs.`,
+                `⚠️ El monto excede el total disponible. Se ajustó a ${formatearNumero(pago.Bolivianos)} Bs.`,
                 'warning'
             )
         }
@@ -129,13 +148,24 @@ const validarMonto = (pago, index) => {
 }
 
 const guardarCambios = async () => {
-    if (hayDiferencia.value) {
-        mostrarToast('❌ El total de los montos no coincide con el total de la factura. Ajuste los valores antes de guardar.', 'error')
+    // 🔥 VALIDACIÓN ESTRICTA ANTES DE GUARDAR
+    if (!montosIguales.value) {
+        const diff = totalMontos.value - totalVenta.value
+        const mensaje = diff > 0 
+            ? `El total EXCEDE en ${formatearNumero(diff)} Bs` 
+            : `El total es MENOR en ${formatearNumero(Math.abs(diff))} Bs`
+        
+        mostrarToast(`❌ No se puede guardar. ${mensaje}. Los montos deben ser EXACTAMENTE IGUALES.`, 'error')
         return
     }
     
     if (totalMontos.value === 0) {
         mostrarToast('❌ Debe asignar al menos un método de pago con monto mayor a 0.', 'error')
+        return
+    }
+    
+    if (tieneMontosCero.value) {
+        mostrarToast('❌ Todos los métodos de pago deben tener monto mayor a 0.', 'error')
         return
     }
     
@@ -176,13 +206,28 @@ const formatearNumero = (value) => {
     return Number(value).toFixed(2)
 }
 
-// 🔥 Agregar método de pago
+// Agregar método de pago
 const agregarMetodo = () => {
     metodosPago.value.push({ 
         IdVentasLiquidacion: 0,
         IdCuenta: conceptos.value[0]?.IdCuenta || '', 
         Bolivianos: 0 
     })
+}
+
+// 🔥 ELIMINAR MÉTODO DE PAGO
+const eliminarMetodo = (index) => {
+    const pago = metodosPago.value[index]
+    
+    if (pago.IdVentasLiquidacion > 0) {
+        const concepto = conceptos.value.find(c => c.IdCuenta === pago.IdCuenta)
+        if (!confirm(`¿Eliminar "${concepto?.Concepto || 'método'}"?`)) {
+            return
+        }
+    }
+    
+    metodosPago.value.splice(index, 1)
+    validarMontos()
 }
 </script>
 
@@ -222,19 +267,26 @@ const agregarMetodo = () => {
                                 </div>
                                 <div class="col-span-2">
                                     <span class="font-medium text-gray-600">Total Pagado:</span>
-                                    <span class="ml-2 font-semibold" :class="totalMontos === totalVenta ? 'text-green-600' : 'text-red-600'">
+                                    <span class="ml-2 font-semibold" :class="montosIguales ? 'text-green-600' : 'text-red-600'">
                                         {{ formatearNumero(totalMontos) }} Bs
                                     </span>
-                                    <span v-if="hayDiferencia" class="ml-2 text-xs text-red-500">
-                                        ({{ diferencia > 0 ? 'Excedente' : 'Faltante' }}: {{ formatearNumero(Math.abs(diferencia)) }} Bs)
+                                    <span v-if="!montosIguales" class="ml-2 text-xs text-red-500 font-bold">
+                                        ({{ diferencia > 0 ? 'EXCEDE' : 'FALTA' }}: {{ formatearNumero(Math.abs(diferencia)) }} Bs)
+                                    </span>
+                                    <span v-else class="ml-2 text-xs text-green-500">
+                                        ✅ CORRECTO
                                     </span>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Error de montos -->
-                        <div v-if="errorMontos" class="mb-3 p-2 bg-red-50 rounded-lg border border-red-200">
-                            <p class="text-xs text-red-600">{{ errorMontos }}</p>
+                        <!-- Error de montos - Más visible -->
+                        <div v-if="errorMontos" class="mb-3 p-3 rounded-lg border-2"
+                             :class="errorMontos.includes('✅') ? 'bg-green-50 border-green-300' : (errorMontos.includes('⚠️') ? 'bg-yellow-50 border-yellow-300' : 'bg-red-50 border-red-300')">
+                            <p class="text-sm font-medium" 
+                               :class="errorMontos.includes('✅') ? 'text-green-700' : (errorMontos.includes('⚠️') ? 'text-yellow-700' : 'text-red-700')">
+                                {{ errorMontos }}
+                            </p>
                         </div>
 
                         <!-- Tabla de métodos de pago -->
@@ -248,7 +300,8 @@ const agregarMetodo = () => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="(pago, index) in metodosPago" :key="pago.IdVentasLiquidacion || index">
+                                    <tr v-for="(pago, index) in metodosPago" :key="pago.IdVentasLiquidacion || index"
+                                        :class="Number(pago.Bolivianos) === 0 ? 'bg-red-50' : ''">
                                         <td class="px-4 py-2">
                                             <select v-model="pago.IdCuenta" class="w-full border rounded-md px-2 py-1.5 text-sm">
                                                 <option v-for="concepto in conceptos" :key="concepto.IdCuenta" :value="concepto.IdCuenta">
@@ -264,11 +317,12 @@ const agregarMetodo = () => {
                                                 min="0"
                                                 @input="validarMonto(pago, index)"
                                                 class="w-32 ml-auto text-right border rounded-md px-2 py-1.5 text-sm no-spinner"
+                                                :class="Number(pago.Bolivianos) === 0 ? 'border-red-300 bg-red-50' : ''"
                                             >
                                         </td>
                                         <td class="px-4 py-2 text-center">
                                             <button 
-                                                @click="metodosPago.splice(index, 1)"
+                                                @click="eliminarMetodo(index)"
                                                 class="text-red-500 hover:text-red-700 transition"
                                                 title="Eliminar"
                                             >
@@ -278,10 +332,12 @@ const agregarMetodo = () => {
                                     </tr>
                                 </tbody>
                                 <tfoot class="bg-gray-50">
-                                    <tr class="border-t border-gray-200">
+                                    <tr class="border-t-2 border-gray-200">
                                         <td class="px-4 py-2 text-sm font-bold text-gray-700">TOTAL</td>
-                                        <td class="px-4 py-2 text-sm font-bold text-right" :class="totalMontos === totalVenta ? 'text-green-600' : 'text-red-600'">
+                                        <td class="px-4 py-2 text-sm font-bold text-right" :class="montosIguales ? 'text-green-600' : 'text-red-600'">
                                             {{ formatearNumero(totalMontos) }} Bs
+                                            <span v-if="montosIguales" class="text-xs ml-1">✅</span>
+                                            <span v-else class="text-xs ml-1">❌</span>
                                         </td>
                                         <td></td>
                                     </tr>
@@ -314,7 +370,8 @@ const agregarMetodo = () => {
                     <button 
                         @click="guardarCambios" 
                         :disabled="guardando || !puedeGuardar"
-                        class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-sm hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-2"
+                        class="px-4 py-1.5 rounded-md text-sm transition flex items-center gap-2"
+                        :class="puedeGuardar ? 'bg-primary-600 text-white hover:bg-primary-700' : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                     >
                         <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
                         <i v-else class="fas fa-save"></i>
@@ -354,4 +411,4 @@ input[type="number"]::-webkit-inner-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
-</style> 
+</style>

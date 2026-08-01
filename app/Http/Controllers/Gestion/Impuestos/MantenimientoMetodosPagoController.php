@@ -75,36 +75,39 @@ class MantenimientoMetodosPagoController extends Controller
 
     public function updateMetodosPago(Request $request, $idVenta)
     {
-        // 🔥 QUITAR validación de IdVentasLiquidacion (puede ser 0 para nuevos)
         $request->validate([
             'pagos' => 'required|array|min:1',
             'pagos.*.IdCuenta' => 'required|exists:conta_cuenta,IdCuenta',
             'pagos.*.Bolivianos' => 'required|numeric|min:0',
         ]);
 
-        // 🔥 CALCULAR TOTAL DE LOS MONTOS
         $totalPagado = collect($request->pagos)->sum('Bolivianos');
         $totalVenta = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->where('IdVentas', $idVenta)
             ->value('ImporteVenta');
 
-        Log::info('=== UPDATE METODOS PAGO ===');
-        Log::info('Venta ID: ' . $idVenta);
+        Log::info('=== VALIDACIÓN DE MONTOS ===');
         Log::info('Total pagado: ' . $totalPagado);
         Log::info('Total venta: ' . $totalVenta);
+        Log::info('Diferencia: ' . ($totalPagado - $totalVenta));
 
-        // 🔥 VALIDAR QUE NO SUPERE EL TOTAL
-        if ($totalPagado > $totalVenta) {
+        // 🔥 VALIDACIÓN ESTRICTA: DEBE SER EXACTAMENTE IGUAL
+        if (abs($totalPagado - $totalVenta) > 0.01) { // Margen de 0.01 por problemas de redondeo
+            $diferencia = $totalPagado - $totalVenta;
+            $mensaje = $diferencia > 0 
+                ? "El total pagado ({$totalPagado} Bs) EXCEDE al total de la factura ({$totalVenta} Bs) en {$diferencia} Bs"
+                : "El total pagado ({$totalPagado} Bs) es MENOR al total de la factura ({$totalVenta} Bs) en " . abs($diferencia) . " Bs";
+            
             return response()->json([
                 'success' => false,
-                'message' => "El total pagado ({$totalPagado}) supera el total de la factura ({$totalVenta})",
+                'message' => $mensaje . '. Los montos deben ser EXACTAMENTE IGUALES.',
                 'total_pagado' => $totalPagado,
                 'total_venta' => $totalVenta,
+                'diferencia' => $diferencia,
             ], 422);
         }
 
-        // 🔥 VALIDAR QUE NO SEAN TODOS CERO
         if ($totalPagado == 0) {
             return response()->json([
                 'success' => false,
@@ -115,37 +118,36 @@ class MantenimientoMetodosPagoController extends Controller
         try {
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-            $pagosActualizados = [];
+            // Obtener IDs de los métodos de pago que vienen en la solicitud
+            $idsEnSolicitud = collect($request->pagos)
+                ->filter(function($pago) {
+                    return !empty($pago['IdVentasLiquidacion']) && $pago['IdVentasLiquidacion'] > 0;
+                })
+                ->pluck('IdVentasLiquidacion')
+                ->toArray();
 
+            // Eliminar los métodos de pago que NO están en la solicitud
+            DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas_liquidacion')
+                ->where('IdVentas', $idVenta)
+                ->whereNotIn('IdVentasLiquidacion', $idsEnSolicitud)
+                ->delete();
+
+            // Procesar los métodos de pago (insertar o actualizar)
             foreach ($request->pagos as $pago) {
-                Log::info('Procesando pago:', $pago);
-                
-                // 🔥 SI ES NUEVO (IdVentasLiquidacion == 0) → INSERT
                 if (empty($pago['IdVentasLiquidacion']) || $pago['IdVentasLiquidacion'] == 0) {
-                    Log::info('🔹 NUEVO método de pago - INSERT');
-                    
-                    $newId = DB::connection('mysql_gestion_comercial_alimentos')
+                    // NUEVO
+                    DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('impuestos_ventas_liquidacion')
-                        ->insertGetId([
+                        ->insert([
                             'IdVentas' => $idVenta,
                             'IdDiario' => 0,
                             'IdIdentificador' => 0,
                             'IdCuenta' => $pago['IdCuenta'],
                             'Bolivianos' => $pago['Bolivianos'],
-                            // ❌ ELIMINAR 'EfectivoRecibido' porque no existe en tu tabla
                         ]);
-                    
-                    Log::info('✅ Nuevo método creado con ID: ' . $newId);
-                    
-                    $pagosActualizados[] = [
-                        'IdVentasLiquidacion' => $newId,
-                        'IdCuenta' => $pago['IdCuenta'],
-                        'Bolivianos' => $pago['Bolivianos'],
-                    ];
                 } else {
-                    // 🔥 SI EXISTE (IdVentasLiquidacion > 0) → UPDATE
-                    Log::info('🔹 Método EXISTENTE - UPDATE ID: ' . $pago['IdVentasLiquidacion']);
-                    
+                    // ACTUALIZAR
                     DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('impuestos_ventas_liquidacion')
                         ->where('IdVentasLiquidacion', $pago['IdVentasLiquidacion'])
@@ -153,12 +155,6 @@ class MantenimientoMetodosPagoController extends Controller
                             'IdCuenta' => $pago['IdCuenta'],
                             'Bolivianos' => $pago['Bolivianos'],
                         ]);
-                    
-                    $pagosActualizados[] = [
-                        'IdVentasLiquidacion' => $pago['IdVentasLiquidacion'],
-                        'IdCuenta' => $pago['IdCuenta'],
-                        'Bolivianos' => $pago['Bolivianos'],
-                    ];
                 }
             }
 
@@ -171,14 +167,12 @@ class MantenimientoMetodosPagoController extends Controller
                 'message' => 'Métodos de pago actualizados correctamente',
                 'total_pagado' => $totalPagado,
                 'total_venta' => $totalVenta,
-                'pagos' => $pagosActualizados,
             ]);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             
             Log::error('❌ Error al actualizar métodos de pago: ' . $e->getMessage());
-            Log::error('Trace: ' . $e->getTraceAsString());
             
             return response()->json([
                 'success' => false,
