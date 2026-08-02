@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { ref, computed, onMounted, inject } from 'vue'
 import axios from 'axios'
+import ModalConfirmacion from './components/ModalConfirmacion.vue' // 🔥 RUTA CORRECTA
 
 defineOptions({ layout: AppLayout })
 
@@ -17,12 +18,23 @@ const loading = ref(false)
 const busquedaSucursal = ref('')
 const nuevaSucursalId = ref('')
 const nuevaCuentaId = ref('')
-const nuevaCuentaNombre = ref('')
+const nuevaCuentaNombre = ref('') // SELECT - Se selecciona de un dropdown
 const nuevaDinamica = ref('')
 const busquedaCuentaLocal = ref('')
 const busquedaSucursalNueva = ref('')
 const agregando = ref(false)
 const editandoId = ref(null)
+
+// ESTADO PARA EL MODAL DE CONFIRMACIÓN
+const modalConfirmVisible = ref(false)
+const elementoAEliminar = ref(null)
+const confirmandoEliminacion = ref(false)
+
+// COMPUTADO PARA EL MENSAJE DEL MODAL
+const mensajeEliminar = computed(() => {
+    if (!elementoAEliminar.value) return '¿Estás seguro de que deseas eliminar este elemento?'
+    return `¿Estás seguro de que deseas desasignar la cuenta "${elementoAEliminar.value.Cuenta || ''}" de esta sucursal?`
+})
 
 // Estado para controlar sucursales expandidas/contraídas
 const sucursalesExpandidas = ref({})
@@ -110,7 +122,7 @@ const sucursalesFiltradasGrid = computed(() => {
     )
 })
 
-// Obtener el texto de la cuenta relacionada (de la tabla conta_cuenta)
+// Obtener el texto de la cuenta relacionada
 const getCuentaRelacionada = (asignacion) => {
     if (asignacion.cuenta?.Cuenta) {
         return `${asignacion.cuenta.Cuenta} - ${asignacion.cuenta.Descripcion || ''}`
@@ -125,7 +137,7 @@ const buscarNombreSucursal = (id) => {
     return `${sucursal.nombre} ${sucursal.NumeroSucursal ? `(N° ${sucursal.NumeroSucursal})` : ''}`
 }
 
-// Buscar nombre de cuenta por ID (para el formulario)
+// Buscar nombre de cuenta por ID
 const buscarNombreCuenta = (id) => {
     const cuenta = props.cuentas?.find(c => c.id === id)
     if (!cuenta) return ''
@@ -144,7 +156,7 @@ const limpiarSucursalNueva = () => {
     busquedaSucursalNueva.value = ''
 }
 
-// Seleccionar cuenta (guarda IdCuenta)
+// Seleccionar cuenta
 const seleccionarCuenta = (cuenta) => {
     nuevaCuentaId.value = cuenta.id
     busquedaCuentaLocal.value = `${cuenta.Cuenta} - ${cuenta.Descripcion}`
@@ -154,11 +166,6 @@ const seleccionarCuenta = (cuenta) => {
 const limpiarCuenta = () => {
     nuevaCuentaId.value = ''
     busquedaCuentaLocal.value = ''
-}
-
-// Limpiar nombre de cuenta manualmente
-const limpiarNombreCuenta = () => {
-    nuevaCuentaNombre.value = ''
 }
 
 // Cerrar dropdowns
@@ -178,7 +185,7 @@ const cerrarDropdownCuenta = () => {
     }, 200)
 }
 
-// 🔥 AGREGAR ASIGNACIÓN - RUTA CORREGIDA
+// AGREGAR ASIGNACIÓN
 const agregarAsignacion = async () => {
     if (!nuevaSucursalId.value) {
         toast?.error('Error', 'Seleccione una sucursal')
@@ -189,7 +196,7 @@ const agregarAsignacion = async () => {
         return
     }
     if (!nuevaCuentaNombre.value.trim()) {
-        toast?.error('Error', 'Ingrese el nombre de la cuenta')
+        toast?.error('Error', 'Seleccione el tipo de cuenta')
         return
     }
     if (!nuevaDinamica.value) {
@@ -199,7 +206,6 @@ const agregarAsignacion = async () => {
     
     agregando.value = true
     try {
-        // ✅ RUTA CORREGIDA
         const response = await axios.post('/gestion/contabilidad/conta-cuenta-sucursal', {
             IdCuenta: nuevaCuentaId.value,
             Cuenta: nuevaCuentaNombre.value,
@@ -218,7 +224,7 @@ const agregarAsignacion = async () => {
     }
 }
 
-// 🔥 EDITAR DINÁMICA - RUTA CORREGIDA
+// EDITAR DINÁMICA
 const editarDinamica = (asignacion) => {
     editandoId.value = asignacion.IdCuentaSucursales
 }
@@ -230,7 +236,6 @@ const guardarDinamica = async (asignacion) => {
     }
     
     try {
-        // ✅ RUTA CORREGIDA
         const response = await axios.put(`/gestion/contabilidad/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`, {
             DinamicaCuenta: asignacion.DinamicaCuenta.toUpperCase(),
         })
@@ -244,21 +249,39 @@ const guardarDinamica = async (asignacion) => {
     }
 }
 
-// 🔥 ELIMINAR ASIGNACIÓN - RUTA CORREGIDA
-const eliminarAsignacion = async (asignacion) => {
-    const cuentaTexto = `${asignacion.Cuenta || '-'}`
-    if (!confirm(`¿Eliminar la cuenta "${cuentaTexto}" de esta sucursal?`)) return
+// ELIMINAR ASIGNACIÓN - CON MODAL
+const mostrarModalEliminar = (asignacion) => {
+    elementoAEliminar.value = asignacion
+    modalConfirmVisible.value = true
+}
+
+// CONFIRMAR ELIMINACIÓN
+const confirmarEliminacion = async () => {
+    if (!elementoAEliminar.value) return
     
+    confirmandoEliminacion.value = true
     try {
-        // ✅ RUTA CORREGIDA
-        const response = await axios.delete(`/gestion/contabilidad/conta-cuenta-sucursal/${asignacion.IdCuentaSucursales}`)
+        const response = await axios.delete(`/gestion/contabilidad/conta-cuenta-sucursal/${elementoAEliminar.value.IdCuentaSucursales}`)
         if (response.data.success) {
+            modalConfirmVisible.value = false
             toast?.success('Éxito', 'Cuenta desasignada correctamente')
-            window.location.reload()
+            setTimeout(() => {
+                window.location.reload()
+            }, 500)
         }
     } catch (error) {
+        modalConfirmVisible.value = false
         toast?.error('Error', error.response?.data?.message || 'Error al eliminar')
+    } finally {
+        confirmandoEliminacion.value = false
+        elementoAEliminar.value = null
     }
+}
+
+// CANCELAR ELIMINACIÓN
+const cancelarEliminacion = () => {
+    modalConfirmVisible.value = false
+    elementoAEliminar.value = null
 }
 </script>
 
@@ -344,18 +367,17 @@ const eliminarAsignacion = async (asignacion) => {
                             </div>
                         </div>
 
-                        <!-- Nombre de Cuenta (campo Cuenta de la tabla - escrito manualmente) -->
+                        <!-- SELECT - Nombre de Cuenta -->
                         <div>
                             <label class="block text-xs font-medium text-gray-700 mb-1">Nombre de Cuenta *</label>
-                            <input 
-                                type="text" 
-                                v-model="nuevaCuentaNombre" 
-                                placeholder="Ej: Ingreso, Caja Banco, etc." 
-                                class="w-full border rounded-md px-2 py-1.5 text-sm"
-                                :class="{'border-primary-500 bg-primary-50': nuevaCuentaNombre}"
-                            >
-                            <div v-if="nuevaCuentaNombre" class="mt-1 text-xs text-gray-400">
-                                <i class="fas fa-pencil-alt"></i> Escríbelo como prefieras (sin mayúsculas obligatorias)
+                            <select v-model="nuevaCuentaNombre" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-primary-500 bg-primary-50': nuevaCuentaNombre}">
+                                <option value="">Seleccione un tipo de cuenta</option>
+                                <option value="Ingreso">Ingreso</option>
+                                <option value="Egreso">Egreso</option>
+                                <option value="CuentaSucursal">CuentaSucursal</option>
+                            </select>
+                            <div v-if="nuevaCuentaNombre" class="mt-1 text-xs text-green-600">
+                                <i class="fas fa-check-circle"></i> Tipo seleccionado: {{ nuevaCuentaNombre }}
                             </div>
                         </div>
 
@@ -462,7 +484,8 @@ const eliminarAsignacion = async (asignacion) => {
                                             </div>
                                         </td>
                                         <td class="px-3 py-2 text-center">
-                                            <button @click.stop="eliminarAsignacion(asignacion)" class="text-red-400 hover:text-red-600 transition" title="Desasignar cuenta">
+                                            <!-- BOTÓN QUE ABRE EL MODAL -->
+                                            <button @click.stop="mostrarModalEliminar(asignacion)" class="text-red-400 hover:text-red-600 transition" title="Desasignar cuenta">
                                                 <i class="fas fa-trash-alt text-xs"></i>
                                             </button>
                                         </td>
@@ -493,4 +516,18 @@ const eliminarAsignacion = async (asignacion) => {
             </div>
         </div>
     </div>
+
+    <!-- 🔥 MODAL DE CONFIRMACIÓN - Usando tu componente -->
+    <ModalConfirmacion
+        v-model="modalConfirmVisible"
+        titulo="¿Desasignar cuenta?"
+        :mensaje="mensajeEliminar"
+        @confirm="confirmarEliminacion"
+        @cancel="cancelarEliminacion"
+    >
+        <div class="text-xs text-gray-500 bg-yellow-50 p-2 rounded border border-yellow-200">
+            <i class="fas fa-info-circle text-yellow-600"></i>
+            Esta acción no elimina la cuenta contable, solo la desasigna de esta sucursal.
+        </div>
+    </ModalConfirmacion>
 </template>
