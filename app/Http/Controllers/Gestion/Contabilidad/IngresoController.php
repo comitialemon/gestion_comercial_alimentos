@@ -514,8 +514,13 @@ class IngresoController extends Controller
      */
     public function pdf($id)
     {
-        $ingreso = Ingreso::porContexto()
-            ->with(['identificador', 'fecha', 'cuentaDebe', 'cuentaHaber'])
+        // 🔥 CAMBIAR: Buscar SOLO por ID, sin filtrar por sucursal
+        $ingreso = Ingreso::with([
+                'identificador', 
+                'fecha', 
+                'cuentaDebe', 
+                'cuentaHaber'
+            ])
             ->findOrFail($id);
 
         $empresa = DB::connection('mysql_gestion_comercial_alimentos')
@@ -523,9 +528,10 @@ class IngresoController extends Controller
             ->where('IdCliente', session('cliente_id'))
             ->first();
 
+        // 🔥 CAMBIAR: Obtener la sucursal del ingreso, NO de la sesión
         $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
-            ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+            ->where('IdClienteSucursal', $ingreso->IdSucursal)  // ← Usar ID del ingreso
             ->first();
 
         $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')

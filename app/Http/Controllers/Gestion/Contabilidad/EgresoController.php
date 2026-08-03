@@ -640,8 +640,13 @@ class EgresoController extends Controller
      */
     public function pdf($id)
     {
-        $egreso = Egreso::porContexto()
-            ->with(['identificador', 'fecha', 'cuentaDebe', 'cuentaHaber'])
+        // 🔥 CAMBIAR: Buscar SOLO por ID, sin filtrar por sucursal
+        $egreso = Egreso::with([
+                'identificador', 
+                'fecha', 
+                'cuentaDebe', 
+                'cuentaHaber'
+            ])
             ->findOrFail($id);
 
         $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
@@ -654,9 +659,10 @@ class EgresoController extends Controller
             ->where('IdCliente', session('cliente_id'))
             ->first();
 
+        // 🔥 CAMBIAR: Obtener la sucursal del egreso, NO de la sesión
         $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
-            ->where('IdClienteSucursal', session('cliente_sucursal_id'))
+            ->where('IdClienteSucursal', $egreso->IdSucursal)  // ← Usar ID del egreso
             ->first();
 
         $fechaData = DB::connection('mysql_gestion_comercial_alimentos')

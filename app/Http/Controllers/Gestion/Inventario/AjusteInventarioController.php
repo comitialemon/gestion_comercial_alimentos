@@ -362,8 +362,15 @@ class AjusteInventarioController extends Controller
      */
     public function pdf($id)
     {
-        $ajuste = AjusteInventario::porContexto()
-            ->with(['detalles.producto', 'fecha', 'tipoOperacion', 'almacen', 'realizadoPor', 'autorizadoPor'])
+        // 🔥 CAMBIAR: Buscar SOLO por ID, sin filtrar por sucursal
+        $ajuste = AjusteInventario::with([
+                'detalles.producto', 
+                'fecha', 
+                'tipoOperacion', 
+                'almacen', 
+                'realizadoPor', 
+                'autorizadoPor'
+            ])
             ->findOrFail($id);
 
         $pdf = new \TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
@@ -396,7 +403,7 @@ class AjusteInventarioController extends Controller
         $pdf->SetXY(5, $y + 1);
         $pdf->Cell(200, 3, '(Expresado en Unidades)', 0, 1, 'C');
 
-        // Fecha (CORREGIDO)
+        // Fecha
         $fechaFormateada = '';
         if ($ajuste->fecha && $ajuste->fecha->Fecha) {
             $fechaObj = $ajuste->fecha->Fecha;

@@ -611,7 +611,7 @@ class CompraController extends Controller
     public function pdf($id)
     {
         // Cargar la compra con sus detalles y la relación producto
-        $compra = Compra::porContexto()
+        $compra = Compra::where('IdCliente', session('cliente_id'))
             ->with([
                 'almacen', 
                 'proveedor', 
