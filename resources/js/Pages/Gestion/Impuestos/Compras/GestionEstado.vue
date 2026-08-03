@@ -20,8 +20,8 @@ const props = defineProps({
 // ESTADO DE FILTROS
 // =============================================
 
-// 🔥 Sucursal - Autocomplete
-const sucursalId = ref(props.sucursalSeleccionada || props.sucursalActual || '')
+// 🔥 Inicializar vacío - SIN auto-selección
+const sucursalId = ref(props.sucursalSeleccionada || '')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
 
@@ -160,6 +160,7 @@ const limpiarSucursal = () => {
     sucursalId.value = ''
     sucursalBusqueda.value = ''
     mostrarSucursales.value = false
+    // 🔥 Al limpiar, recargar sin sucursal para mostrar el mensaje
     aplicarFiltros()
 }
 
@@ -233,7 +234,7 @@ const mostrarToast = (mensaje, tipo = 'success') => {
 // =============================================
 const toggleSwitch = (compra) => {
     if (compra.ActivoInactivo === 0) {
-        mostrarToast('Esta compra está en estado BORRADOR. Solo se activa al editarla y guardarla.', 'info')
+        mostrarToast('Esta compra ya está en estado ACTIVO (Borrador). Puede editarla.', 'info')
         return
     }
     
@@ -305,12 +306,13 @@ const formatearFecha = (fecha) => {
     return new Date(fecha).toLocaleDateString('es-BO')
 }
 
+// 1 = INACTIVO (Contabilizado), 0 = ACTIVO (Borrador)
 const getEstadoColor = (activo) => {
-    return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+    return activo === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
 }
 
 const getEstadoTexto = (activo) => {
-    return activo === 1 ? 'Contabilizada' : 'Borrador'
+    return activo === 1 ? 'Inactivo' : 'Activo'
 }
 
 const puedeDesactivar = (compra) => {
@@ -328,11 +330,14 @@ onMounted(() => {
     window.addEventListener('resize', handleResize)
     document.addEventListener('click', handleClickOutside)
     
+    // 🔥 Si hay sucursal seleccionada desde props, mostrarla
     if (sucursalId.value) {
         const sucursal = props.sucursales?.find(s => s.id == sucursalId.value)
         if (sucursal) {
             sucursalBusqueda.value = sucursal.nombre
         }
+        // Si hay sucursal seleccionada, cargar datos
+        aplicarFiltros()
     }
     
     setTimeout(() => {
@@ -358,14 +363,10 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Compras</h1>
-                            <p class="text-[10px] text-gray-500">Desactivar comprobantes de compra (pasar a Borrador)</p>
+                            <p class="text-[10px] text-gray-500">Cambiar estado de comprobantes de compra</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/compras" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
-                            <i class="fas fa-list text-[10px]"></i>
-                            <span>Listado</span>
-                        </Link>
                         <Link href="/gestion/compras/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nueva Compra</span>
@@ -387,7 +388,7 @@ onUnmounted(() => {
                                     @focus="mostrarSucursales = true"
                                     @input="mostrarSucursales = true"
                                     class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-36 sm:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                    placeholder="Todas..."
+                                    placeholder="Seleccione Sucursal..."
                                     autocomplete="off"
                                 />
                                 <button 
@@ -423,8 +424,8 @@ onUnmounted(() => {
                             <span v-if="sucursalId && sucursalNombre" class="text-[10px] text-primary-600 font-medium ml-1">
                                 <i class="fas fa-check-circle"></i> {{ sucursalNombre }}
                             </span>
-                            <span v-else-if="!sucursalId" class="text-[10px] text-gray-400 ml-1">
-                                <i class="fas fa-store"></i> Todas
+                            <span v-else class="text-[10px] text-gray-400 ml-1">
+                                <i class="fas fa-store"></i> Ninguna
                             </span>
                         </div>
                         
@@ -433,8 +434,8 @@ onUnmounted(() => {
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
                             <select v-model="estadoFiltro" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
-                                <option value="activos">Contabilizadas</option>
-                                <option value="inactivos">Borradores</option>
+                                <option value="activos">Activos (Borrador)</option>
+                                <option value="inactivos">Inactivos (Contabilizado)</option>
                             </select>
                         </div>
                         
@@ -469,18 +470,33 @@ onUnmounted(() => {
                     
                     <div v-if="buscador" class="mt-2 text-[10px] text-gray-500">
                         <span class="font-semibold">{{ buscador }}</span>
-                        <span class="ml-2">({{ compras.total || 0 }} resultados)</span>
+                        <span class="ml-2">({{ compras?.total || 0 }} resultados)</span>
                     </div>
                     
                     <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
-                        <i class="fas fa-info-circle"></i> Solo se pueden desactivar compras contabilizadas (pasar a Borrador)
+                        <i class="fas fa-info-circle"></i> 
+                        <span class="text-green-600">● Activo</span> = Borrador (editable) | 
+                        <span class="text-red-600">● Inactivo</span> = Contabilizado (no editable)
                     </div>
                 </div>
 
                 <!-- ============================================= -->
-                <!-- GRID AGRUPADA POR SUCURSAL -->
+                <!-- CONTENIDO PRINCIPAL -->
                 <!-- ============================================= -->
-                <div v-if="sucursalesConCompras.length > 0">
+
+                <!-- 🔥 MENSAJE: SIN SUCURSAL SELECCIONADA -->
+                <div v-if="!sucursalId" class="bg-white rounded-xl shadow-sm p-8 sm:p-12 text-center">
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-store text-primary-400 text-3xl sm:text-4xl"></i>
+                    </div>
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-700">Seleccione una Sucursal</h3>
+                    <p class="text-xs sm:text-sm text-gray-400 mt-2 max-w-sm mx-auto">
+                        Use el campo de búsqueda de sucursales para visualizar las compras de una sucursal específica.
+                    </p>
+                </div>
+
+                <!-- 🔥 GRID AGRUPADA POR SUCURSAL (solo si hay sucursal seleccionada) -->
+                <div v-else-if="sucursalesConCompras.length > 0">
                     <div v-for="grupo in sucursalesConCompras" :key="grupo.id" class="mb-3">
                         
                         <!-- Encabezado de Sucursal -->
@@ -544,17 +560,19 @@ onUnmounted(() => {
                                                 </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <div v-if="puedeDesactivar(compra)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
-                                                        <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out bg-primary-600">
-                                                            <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out translate-x-[18px]">
+                                                        <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out" 
+                                                             :class="compra.ActivoInactivo === 1 ? 'bg-red-500' : 'bg-green-500'">
+                                                            <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
+                                                                 :class="compra.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
                                                             </div>
                                                         </div>
-                                                        <span class="ml-2 text-[10px]" :class="cambiando[compra.IdCompras] ? 'text-gray-400' : 'text-green-600'">
+                                                        <span class="ml-2 text-[10px]" :class="cambiando[compra.IdCompras] ? 'text-gray-400' : (compra.ActivoInactivo === 1 ? 'text-red-600' : 'text-green-600')">
                                                             <i v-if="cambiando[compra.IdCompras]" class="fas fa-spinner fa-spin"></i>
-                                                            <span v-else>Activo</span>
+                                                            <span v-else>{{ compra.ActivoInactivo === 1 ? 'Inactivo' : 'Activo' }}</span>
                                                         </span>
                                                     </div>
                                                     <span v-else class="text-[10px] text-gray-400">
-                                                        <i class="fas fa-lock mr-1"></i> Borrador
+                                                        <i class="fas fa-lock mr-1"></i> Activo
                                                     </span>
                                                 </td>
                                                 <td class="px-3 py-2 text-right">
@@ -593,8 +611,10 @@ onUnmounted(() => {
                                                     <i class="fas fa-file-pdf text-lg"></i>
                                                 </a>
                                                 <div v-if="puedeDesactivar(compra)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(compra)">
-                                                    <div class="w-8 h-4 rounded-full transition-colors duration-200 ease-in-out bg-primary-600">
-                                                        <div class="absolute w-3.5 h-3.5 bg-white rounded-full top-[1px] transition-transform duration-200 ease-in-out translate-x-[16px]">
+                                                    <div class="w-8 h-4 rounded-full transition-colors duration-200 ease-in-out"
+                                                         :class="compra.ActivoInactivo === 1 ? 'bg-red-500' : 'bg-green-500'">
+                                                        <div class="absolute w-3.5 h-3.5 bg-white rounded-full top-[1px] transition-transform duration-200 ease-in-out"
+                                                             :class="compra.ActivoInactivo === 1 ? 'translate-x-[16px]' : 'translate-x-[2px]'">
                                                         </div>
                                                     </div>
                                                 </div>
@@ -606,26 +626,27 @@ onUnmounted(() => {
                             </div>
                         </transition>
                     </div>
+                    
+                    <!-- Paginación -->
+                    <div v-if="props.compras?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
+                        <p class="text-[10px] sm:text-xs text-gray-500">
+                            Mostrando {{ props.compras.from || 0 }} - {{ props.compras.to || 0 }} de {{ props.compras.total || 0 }}
+                        </p>
+                        <div class="flex gap-1 flex-wrap justify-center">
+                            <Link v-for="link in props.compras.links" :key="link.label" :href="link.url || '#'" class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" :class="{ 'bg-primary-600 text-white': link.active, 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Mensaje sin datos -->
+                <!-- 🔥 MENSAJE: SIN DATOS EN LA SUCURSAL SELECCIONADA -->
                 <div v-else class="bg-white rounded-xl shadow-sm p-6 sm:p-8 text-center text-gray-500">
                     <i class="fas fa-box-open text-3xl sm:text-4xl block mb-2 text-gray-300"></i>
                     <p class="text-sm sm:text-base">
                         <span v-if="buscador">No hay compras que coincidan con "{{ buscador }}"</span>
-                        <span v-else>No hay comprobantes de compra</span>
+                        <span v-else>No hay comprobantes de compra en esta sucursal</span>
                     </p>
                 </div>
 
-                <!-- Paginación -->
-                <div v-if="props.compras?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
-                    <p class="text-[10px] sm:text-xs text-gray-500">
-                        Mostrando {{ props.compras.from || 0 }} - {{ props.compras.to || 0 }} de {{ props.compras.total || 0 }}
-                    </p>
-                    <div class="flex gap-1 flex-wrap justify-center">
-                        <Link v-for="link in props.compras.links" :key="link.label" :href="link.url || '#'" class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" :class="{ 'bg-primary-600 text-white': link.active, 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
-                    </div>
-                </div>
             </div>
         </div>
 
@@ -635,30 +656,30 @@ onUnmounted(() => {
                 <div class="p-4 border-b bg-amber-50">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-amber-100">
-                            <i class="fas fa-ban text-amber-600 text-xl"></i>
+                            <i class="fas fa-sync-alt text-amber-600 text-xl"></i>
                         </div>
                         <div class="flex-1">
-                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Desactivar Compra</h3>
+                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Cambiar Estado</h3>
                             <p class="text-[10px] sm:text-xs text-gray-500">Compra N° {{ modalData.numero }}</p>
                         </div>
                     </div>
                 </div>
                 <div class="p-4 sm:p-5">
                     <p class="text-xs sm:text-sm text-gray-700 text-center">
-                        ¿Estás seguro de <span class="font-bold text-red-600">DESACTIVAR</span> esta compra?
+                        ¿Estás seguro de cambiar esta compra a <span class="font-bold text-green-600">ACTIVO</span>?
                     </p>
                     <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
-                        Al desactivarla, la compra volverá a estado BORRADOR y podrá editarse.
+                        Al activarla, la compra pasará a estado <span class="font-bold text-green-600">BORRADOR</span> y podrá editarse.
                     </p>
                 </div>
                 <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
                     <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">
                         Cancelar
                     </button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-amber-600 hover:bg-amber-700">
+                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-green-600 hover:bg-green-700">
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-ban"></i>
-                        Desactivar
+                        <i v-else class="fas fa-check"></i>
+                        Activar
                     </button>
                 </div>
             </div>
