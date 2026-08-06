@@ -1,9 +1,11 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, onUnmounted, computed, inject } from 'vue'
 
 defineOptions({ layout: AppLayout })
+
+const toast = inject('toast')
 
 const props = defineProps({
     liquidaciones: Object,
@@ -22,7 +24,7 @@ const props = defineProps({
 const loading = ref(false)
 const mostrarResumen = ref(true)
 
-// Estado para autocomplete de Sucursal
+// 🔥 Inicializar vacío - SIN auto-selección
 const sucursalId = ref(props.sucursalSeleccionada || '')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
@@ -95,6 +97,9 @@ const seleccionarSucursal = (sucursal) => {
     sucursalId.value = sucursal.id
     sucursalBusqueda.value = sucursal.nombre
     mostrarSucursales.value = false
+    // Limpiar operador al cambiar de sucursal
+    operadorId.value = ''
+    operadorBusqueda.value = ''
     aplicarFiltros()
 }
 
@@ -176,11 +181,7 @@ const abrirPdfDiario = (idDiario) => {
     if (idDiario && idDiario > 0) {
         window.open(`/gestion/contabilidad/imprimir-diario/pdf/${idDiario}`, '_blank')
     } else {
-        const toast = document.createElement('div')
-        toast.className = 'fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-sm text-sm text-white bg-yellow-500 flex items-center gap-2'
-        toast.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Esta liquidación no tiene un diario asociado'
-        document.body.appendChild(toast)
-        setTimeout(() => toast.remove(), 2000)
+        toast?.warning('Sin diario', 'Esta liquidación no tiene un diario asociado')
     }
 }
 
@@ -195,6 +196,22 @@ const getDiferenciaIcono = (valor) => {
 // ==================== LIFECYCLE ====================
 onMounted(() => {
     document.addEventListener('click', handleClickOutside)
+    
+    // 🔥 Si hay sucursal seleccionada desde props, cargar nombre en el input
+    if (sucursalId.value && props.sucursales) {
+        const sucursal = props.sucursales.find(s => s.id === Number(sucursalId.value))
+        if (sucursal) {
+            sucursalBusqueda.value = sucursal.nombre
+        }
+    }
+    
+    // 🔥 Si hay operador seleccionado desde props, cargar nombre en el input
+    if (operadorId.value && props.operadores) {
+        const operador = props.operadores.find(o => o.id === Number(operadorId.value))
+        if (operador) {
+            operadorBusqueda.value = operador.nombre
+        }
+    }
 })
 
 onUnmounted(() => {
@@ -240,7 +257,7 @@ onUnmounted(() => {
                                         @input="mostrarSucursales = true"
                                         class="w-full border rounded-lg px-3 py-2 text-sm pr-8 focus:ring-2 focus:outline-none"
                                         :style="{ borderColor: `var(--color-primary-300)` }"
-                                        placeholder="Buscar sucursal..."
+                                        placeholder="Seleccione Sucursal..."
                                         autocomplete="off"
                                         :disabled="loading"
                                     />
@@ -258,7 +275,7 @@ onUnmounted(() => {
                                         <div 
                                             v-for="suc in sucursalesDisponibles" 
                                             :key="suc.id"
-                                            @click="seleccionarSucursal(suc)"
+                                            @mousedown="seleccionarSucursal(suc)"
                                             class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                             :class="sucursalId === suc.id ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                             :style="sucursalId === suc.id ? { backgroundColor: `var(--color-primary-50)` } : {}"
@@ -268,6 +285,13 @@ onUnmounted(() => {
                                         </div>
                                     </div>
                                 </div>
+                                <!-- 🔥 Badge de sucursal seleccionada -->
+                                <span v-if="sucursalId && sucursalNombre" class="text-xs text-primary-600 font-medium mt-1 inline-block">
+                                    <i class="fas fa-check-circle"></i> {{ sucursalNombre }}
+                                </span>
+                                <span v-else class="text-xs text-gray-400 mt-1 inline-block">
+                                    <i class="fas fa-store"></i> Ninguna
+                                </span>
                             </div>
 
                             <!-- 🔥 AUTOCOMPLETE OPERADOR -->
@@ -302,7 +326,7 @@ onUnmounted(() => {
                                         <div 
                                             v-for="op in operadoresDisponibles" 
                                             :key="op.id"
-                                            @click="seleccionarOperador(op)"
+                                            @mousedown="seleccionarOperador(op)"
                                             class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                             :class="operadorId === op.id ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                             :style="operadorId === op.id ? { backgroundColor: `var(--color-primary-50)` } : {}"
@@ -324,15 +348,23 @@ onUnmounted(() => {
                                         Primero seleccione una sucursal
                                     </div>
                                 </div>
+                                <!-- 🔥 Badge de operador seleccionado -->
+                                <span v-if="operadorId && operadorNombre" class="text-xs text-blue-600 font-medium mt-1 inline-block">
+                                    <i class="fas fa-check-circle"></i> {{ operadorNombre }}
+                                </span>
                             </div>
                         </div>
                     </div>
                     
                     <!-- 🔥 ESTADÍSTICAS RÁPIDAS - SOLO NÚMEROS -->
                     <div class="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-gray-100 text-xs">
-                        <span class="bg-primary-50 text-primary-700 px-2 py-1 rounded-full flex items-center gap-1">
+                        <span v-if="sucursalId && sucursalNombre" class="bg-primary-50 text-primary-700 px-2 py-1 rounded-full flex items-center gap-1">
                             <i class="fas fa-store text-[10px]"></i>
-                            {{ sucursalNombre || 'Sin sucursal' }}
+                            {{ sucursalNombre }}
+                        </span>
+                        <span v-else class="bg-gray-50 text-gray-400 px-2 py-1 rounded-full flex items-center gap-1">
+                            <i class="fas fa-store text-[10px]"></i>
+                            Sin sucursal
                         </span>
                         <span v-if="hayFiltroOperador" class="bg-blue-50 text-blue-700 px-2 py-1 rounded-full flex items-center gap-1">
                             <i class="fas fa-user text-[10px]"></i>
@@ -349,140 +381,152 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ========================================== -->
-                <!-- RESUMEN POR OPERADOR                       -->
-                <!-- ========================================== -->
-                <div v-if="resumenOperadores?.length > 0" class="bg-white rounded-xl shadow-sm p-3 sm:p-4 mb-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                            <i class="fas fa-users text-purple-500"></i>
-                            <span class="hidden xs:inline">Resumen por Operador</span>
-                            <span class="xs:hidden">Resumen</span>
-                            <span v-if="hayFiltroOperador" class="text-xs text-blue-600 font-normal">
-                                (Filtrado: {{ operadorNombre }})
-                            </span>
-                        </h3>
-                        <button @click="mostrarResumen = !mostrarResumen" class="text-xs text-purple-600 hover:text-purple-800">
-                            <i :class="mostrarResumen ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
-                            <span class="hidden sm:inline ml-1">{{ mostrarResumen ? 'Ocultar' : 'Mostrar' }}</span>
-                        </button>
+                <!-- 🔥 MENSAJE: SIN SUCURSAL SELECCIONADA -->
+                <div v-if="!sucursalId" class="bg-white rounded-xl shadow-sm p-8 sm:p-12 text-center">
+                    <div class="w-16 h-16 sm:w-20 sm:h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-store text-primary-400 text-3xl sm:text-4xl"></i>
                     </div>
-                    
-                    <div v-if="mostrarResumen" class="overflow-x-auto">
-                        <table class="min-w-full text-xs">
-                            <thead>
-                                <tr class="bg-gray-50">
-                                    <th class="px-3 py-1.5 text-left text-gray-500">Operador</th>
-                                    <th class="px-3 py-1.5 text-center text-gray-500">Liquidaciones</th>
-                                    <th class="px-3 py-1.5 text-right text-gray-500">Total Ventas</th>
-                                    <th class="px-3 py-1.5 text-right text-gray-500">Diferencia</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="op in resumenOperadores" :key="op.nombre_operador" class="border-t border-gray-100 hover:bg-gray-50">
-                                    <td class="px-3 py-1.5 font-medium text-gray-700">{{ op.nombre_operador }}</td>
-                                    <td class="px-3 py-1.5 text-center font-bold text-purple-600">{{ op.total_liquidaciones }}</td>
-                                    <td class="px-3 py-1.5 text-right font-semibold text-primary-600">
-                                        {{ formatearNumero(op.total_ventas) }}
-                                    </td>
-                                    <td class="px-3 py-1.5 text-right" :class="getDiferenciaColor(op.total_diferencia)">
-                                        {{ formatearNumero(op.total_diferencia) }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-700">Seleccione una Sucursal</h3>
+                    <p class="text-xs sm:text-sm text-gray-400 mt-2 max-w-sm mx-auto">
+                        Use el campo de búsqueda de sucursales para visualizar las liquidaciones de una sucursal específica.
+                    </p>
                 </div>
 
                 <!-- ========================================== -->
-                <!-- LISTADO DE LIQUIDACIONES                   -->
+                <!-- CONTENIDO PRINCIPAL (solo si hay sucursal) -->
                 <!-- ========================================== -->
-                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-purple-50">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">#</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Operador</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Fecha</th>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">N° Diario</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Total Ventas</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Diferencia</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="liquidacion in liquidaciones.data" :key="liquidacion.iDLiquidacionVendedor" class="hover:bg-gray-50 transition-colors">
-                                    <td class="px-3 py-2 text-xs">
-                                        <span class="font-mono font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                                            {{ liquidacion.correlativo_sucursal }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-xs">
-                                        <span class="font-medium text-gray-700">{{ liquidacion.nombre_operador || 'N/A' }}</span>
-                                    </td>
-                                    <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
-                                        {{ liquidacion.fecha_formateada }}
-                                    </td>
-                                    <td class="px-3 py-2 text-xs">
-                                        <span 
-                                            @click="abrirPdfDiario(liquidacion.IdDiario)"
-                                            class="font-mono text-blue-600 cursor-pointer hover:text-blue-800 hover:underline inline-flex items-center gap-1"
-                                            :class="{ 'opacity-50 cursor-not-allowed': !liquidacion.IdDiario || liquidacion.IdDiario === 0 }"
-                                        >
-                                            <i class="fas fa-book-open text-[10px]"></i>
-                                            {{ liquidacion.numero_diario || '-' }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600 whitespace-nowrap">
-                                        {{ formatearNumero(liquidacion.vEntasConfirma) }}
-                                    </td>
-                                    <td class="px-3 py-2 text-xs text-right">
-                                        <span class="inline-flex items-center gap-1" :class="getDiferenciaColor(liquidacion.dIfVendedorConfirma)">
-                                            <i :class="getDiferenciaIcono(liquidacion.dIfVendedorConfirma)" class="text-[10px]"></i>
-                                            {{ formatearNumero(liquidacion.dIfVendedorConfirma) }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-right">
-                                        <button 
-                                            @click="reimprimirPDF(liquidacion.iDLiquidacionVendedor)" 
-                                            class="text-purple-600 hover:text-purple-800 transition-colors p-1 hover:bg-purple-50 rounded"
-                                            title="Reimprimir"
-                                        >
-                                            <i class="fas fa-print text-sm"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr v-if="liquidaciones.data?.length === 0">
-                                    <td colspan="7" class="px-4 py-8 text-center text-gray-400 text-sm">
-                                        <i class="fas fa-file-invoice text-2xl mb-2 block"></i>
-                                        No hay liquidaciones en esta sucursal
-                                        <span v-if="hayFiltroOperador"> para el operador seleccionado</span>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                <div v-else>
+                    <!-- RESUMEN POR OPERADOR -->
+                    <div v-if="resumenOperadores?.length > 0" class="bg-white rounded-xl shadow-sm p-3 sm:p-4 mb-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                                <i class="fas fa-users text-purple-500"></i>
+                                <span class="hidden xs:inline">Resumen por Operador</span>
+                                <span class="xs:hidden">Resumen</span>
+                                <span v-if="hayFiltroOperador" class="text-xs text-blue-600 font-normal">
+                                    (Filtrado: {{ operadorNombre }})
+                                </span>
+                            </h3>
+                            <button @click="mostrarResumen = !mostrarResumen" class="text-xs text-purple-600 hover:text-purple-800">
+                                <i :class="mostrarResumen ? 'fas fa-chevron-up' : 'fas fa-chevron-down'"></i>
+                                <span class="hidden sm:inline ml-1">{{ mostrarResumen ? 'Ocultar' : 'Mostrar' }}</span>
+                            </button>
+                        </div>
+                        
+                        <div v-if="mostrarResumen" class="overflow-x-auto">
+                            <table class="min-w-full text-xs">
+                                <thead>
+                                    <tr class="bg-gray-50">
+                                        <th class="px-3 py-1.5 text-left text-gray-500">Operador</th>
+                                        <th class="px-3 py-1.5 text-center text-gray-500">Liquidaciones</th>
+                                        <th class="px-3 py-1.5 text-right text-gray-500">Total Ventas</th>
+                                        <th class="px-3 py-1.5 text-right text-gray-500">Diferencia</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="op in resumenOperadores" :key="op.nombre_operador" class="border-t border-gray-100 hover:bg-gray-50">
+                                        <td class="px-3 py-1.5 font-medium text-gray-700">{{ op.nombre_operador }}</td>
+                                        <td class="px-3 py-1.5 text-center font-bold text-purple-600">{{ op.total_liquidaciones }}</td>
+                                        <td class="px-3 py-1.5 text-right font-semibold text-primary-600">
+                                            {{ formatearNumero(op.total_ventas) }}
+                                        </td>
+                                        <td class="px-3 py-1.5 text-right" :class="getDiferenciaColor(op.total_diferencia)">
+                                            {{ formatearNumero(op.total_diferencia) }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
-                    <!-- Paginación -->
-                    <div v-if="liquidaciones.links && liquidaciones.links.length > 1" class="px-3 py-2 border-t border-gray-200 bg-gray-50">
-                        <div class="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
-                            <div class="text-gray-500">
-                                Mostrando {{ liquidaciones.from || 0 }} - {{ liquidaciones.to || 0 }} de {{ liquidaciones.total || 0 }}
-                            </div>
-                            <div class="flex gap-0.5 flex-wrap justify-center">
-                                <Link 
-                                    v-for="link in liquidaciones.links" 
-                                    :key="link.label" 
-                                    :href="link.url || '#'" 
-                                    class="px-2 py-0.5 rounded border text-xs min-w-[28px] text-center"
-                                    :class="{ 
-                                        'bg-purple-600 text-white border-purple-600': link.active, 
-                                        'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
-                                        'opacity-50 cursor-not-allowed': !link.url 
-                                    }" 
-                                    v-html="link.label" 
-                                />
+                    <!-- LISTADO DE LIQUIDACIONES -->
+                    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-purple-50">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">#</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Operador</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">Fecha</th>
+                                        <th class="px-3 py-2 text-left text-xs font-medium text-purple-700 uppercase">N° Diario</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Total Ventas</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Diferencia</th>
+                                        <th class="px-3 py-2 text-right text-xs font-medium text-purple-700 uppercase">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="liquidacion in liquidaciones.data" :key="liquidacion.iDLiquidacionVendedor" class="hover:bg-gray-50 transition-colors">
+                                        <td class="px-3 py-2 text-xs">
+                                            <span class="font-mono font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
+                                                {{ liquidacion.correlativo_sucursal }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2 text-xs">
+                                            <span class="font-medium text-gray-700">{{ liquidacion.nombre_operador || 'N/A' }}</span>
+                                        </td>
+                                        <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">
+                                            {{ liquidacion.fecha_formateada }}
+                                        </td>
+                                        <td class="px-3 py-2 text-xs">
+                                            <span 
+                                                @click="abrirPdfDiario(liquidacion.IdDiario)"
+                                                class="font-mono text-blue-600 cursor-pointer hover:text-blue-800 hover:underline inline-flex items-center gap-1"
+                                                :class="{ 'opacity-50 cursor-not-allowed': !liquidacion.IdDiario || liquidacion.IdDiario === 0 }"
+                                            >
+                                                <i class="fas fa-book-open text-[10px]"></i>
+                                                {{ liquidacion.numero_diario || '-' }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600 whitespace-nowrap">
+                                            {{ formatearNumero(liquidacion.vEntasConfirma) }}
+                                        </td>
+                                        <td class="px-3 py-2 text-xs text-right">
+                                            <span class="inline-flex items-center gap-1" :class="getDiferenciaColor(liquidacion.dIfVendedorConfirma)">
+                                                <i :class="getDiferenciaIcono(liquidacion.dIfVendedorConfirma)" class="text-[10px]"></i>
+                                                {{ formatearNumero(liquidacion.dIfVendedorConfirma) }}
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-2 text-right">
+                                            <button 
+                                                @click="reimprimirPDF(liquidacion.iDLiquidacionVendedor)" 
+                                                class="text-purple-600 hover:text-purple-800 transition-colors p-1 hover:bg-purple-50 rounded"
+                                                title="Reimprimir"
+                                            >
+                                                <i class="fas fa-print text-sm"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="liquidaciones.data?.length === 0">
+                                        <td colspan="7" class="px-4 py-8 text-center text-gray-400 text-sm">
+                                            <i class="fas fa-file-invoice text-2xl mb-2 block"></i>
+                                            No hay liquidaciones en esta sucursal
+                                            <span v-if="hayFiltroOperador"> para el operador seleccionado</span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Paginación - 🔥 AHORA PRESERVA LOS FILTROS -->
+                        <div v-if="liquidaciones.links && liquidaciones.links.length > 1" class="px-3 py-2 border-t border-gray-200 bg-gray-50">
+                            <div class="flex flex-col sm:flex-row justify-between items-center gap-2 text-xs">
+                                <div class="text-gray-500">
+                                    Mostrando {{ liquidaciones.from || 0 }} - {{ liquidaciones.to || 0 }} de {{ liquidaciones.total || 0 }}
+                                </div>
+                                <div class="flex gap-0.5 flex-wrap justify-center">
+                                    <Link 
+                                        v-for="link in liquidaciones.links" 
+                                        :key="link.label" 
+                                        :href="link.url || '#'" 
+                                        class="px-2 py-0.5 rounded border text-xs min-w-[28px] text-center"
+                                        :class="{ 
+                                            'bg-purple-600 text-white border-purple-600': link.active, 
+                                            'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
+                                            'opacity-50 cursor-not-allowed': !link.url 
+                                        }" 
+                                        v-html="link.label" 
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -410,7 +410,7 @@ watch(() => props.ventas?.data, () => {
                                 @focus="mostrarSucursales = true"
                                 @input="mostrarSucursales = true"
                                 class="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm pr-6 sm:pr-7 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                placeholder="Todas..."
+                                placeholder="Seleccion Sucursal"
                                 autocomplete="off"
                             />
                             <button 
@@ -459,7 +459,7 @@ watch(() => props.ventas?.data, () => {
                                 @focus="mostrarVendedores = true"
                                 @input="mostrarVendedores = true"
                                 class="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm pr-6 sm:pr-7 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                placeholder="Todos..."
+                                placeholder="Seleccione Vendedor"
                                 autocomplete="off"
                             />
                             <button 
@@ -514,7 +514,7 @@ watch(() => props.ventas?.data, () => {
                                 @focus="mostrarComisionistas = true"
                                 @input="mostrarComisionistas = true"
                                 class="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm pr-6 sm:pr-7 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                placeholder="Todos..."
+                                placeholder="Seleccione Comisionista"
                                 autocomplete="off"
                             />
                             <button 

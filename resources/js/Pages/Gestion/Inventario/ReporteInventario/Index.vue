@@ -26,7 +26,7 @@ const handleResize = () => {
     isTablet.value = width >= 640 && width < 1024
 }
 
-// Estado del formulario
+// 🔥 Estado del formulario - SIN selección automática
 const sucursalId = ref(props.sucursalSeleccionada && props.sucursalSeleccionada > 0 ? props.sucursalSeleccionada : '')
 const mostrarListaSucursales = ref(false)
 const fechaInicial = ref(props.fechaInicial || new Date().toISOString().slice(0, 10))
@@ -39,10 +39,10 @@ const sucursalSearch = ref('')
 const modalVisible = ref(false)
 const productoSeleccionado = ref(null)
 
-// Cargar el nombre de la sucursal por defecto
+// Cargar el nombre de la sucursal si hay una seleccionada
 const cargarSucursalNombre = () => {
     if (sucursalId.value && props.sucursales) {
-        const sucursalEncontrada = props.sucursales.find(s => s.id === sucursalId.value)
+        const sucursalEncontrada = props.sucursales.find(s => s.id === Number(sucursalId.value))
         if (sucursalEncontrada) {
             sucursalSearch.value = sucursalEncontrada.nombre
         }
@@ -85,7 +85,7 @@ const limpiarFiltros = () => {
     soloConMovimiento.value = false
     search.value = ''
     mostrarListaSucursales.value = false
-    aplicarFiltros()
+    router.get('/gestion/inventario/reporte-inventario', {}, { preserveState: true, replace: true })
 }
 
 // Seleccionar sucursal
@@ -101,6 +101,7 @@ const limpiarSucursal = () => {
     sucursalId.value = ''
     sucursalSearch.value = ''
     mostrarListaSucursales.value = false
+    router.get('/gestion/inventario/reporte-inventario', {}, { preserveState: true, replace: true })
 }
 
 // Ver movimientos de un producto
@@ -128,8 +129,8 @@ const formatNumber = (num) => {
     if (num === undefined || num === null) return '0.000'
     const valor = Number(num)
     if (isNaN(valor)) return '0.000'
-    if (valor < 0) return `- ${Math.abs(valor).toFixed(3)}`  // ← 3 DECIMALES
-    return valor.toFixed(3)  // ← 3 DECIMALES
+    if (valor < 0) return `- ${Math.abs(valor).toFixed(3)}`
+    return valor.toFixed(3)
 }
 
 // Clase para el color del saldo
@@ -192,7 +193,7 @@ onUnmounted(() => {
                                     v-model="sucursalSearch"
                                     @focus="mostrarListaSucursales = true"
                                     @input="mostrarListaSucursales = true"
-                                    placeholder="Buscar sucursal..."
+                                    placeholder="Seleccione Sucursal..."
                                     class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm lg:text-[15px] focus:ring-primary-500 focus:border-primary-500 pr-8"
                                     autocomplete="off"
                                 />
@@ -205,13 +206,21 @@ onUnmounted(() => {
                                 </button>
                             </div>
                             
+                            <!-- Badge de sucursal seleccionada -->
+                            <span v-if="sucursalId && sucursalSearch" class="text-xs text-primary-600 font-medium mt-1 inline-block">
+                                <i class="fas fa-check-circle"></i> {{ sucursalSearch }}
+                            </span>
+                            <span v-else class="text-xs text-gray-400 mt-1 inline-block">
+                                <i class="fas fa-store"></i> Ninguna
+                            </span>
+                            
                             <!-- Lista desplegable -->
                             <div v-if="mostrarListaSucursales && sucursalesFiltradas.length > 0" 
                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-52 overflow-y-auto">
                                 <div 
                                     v-for="suc in sucursalesFiltradas" 
                                     :key="suc.id"
-                                    @click="seleccionarSucursal(suc)"
+                                    @mousedown="seleccionarSucursal(suc)"
                                     class="px-3 py-2.5 hover:bg-primary-50 cursor-pointer transition-colors border-b border-gray-100 last:border-b-0"
                                     :class="{ 'bg-primary-50 text-primary-700': sucursalId === suc.id }"
                                 >
@@ -255,7 +264,8 @@ onUnmounted(() => {
                         </label>
                         <div class="flex gap-3 w-full sm:w-auto">
                             <button @click="aplicarFiltros" 
-                                class="flex-1 sm:flex-initial px-4 py-2 bg-primary-600 text-white rounded-lg text-sm lg:text-[15px] font-medium hover:bg-primary-700 transition flex items-center justify-center gap-2">
+                                :disabled="!haySucursalSeleccionada"
+                                class="flex-1 sm:flex-initial px-4 py-2 bg-primary-600 text-white rounded-lg text-sm lg:text-[15px] font-medium hover:bg-primary-700 transition flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
                                 <i class="fas fa-search text-sm"></i>
                                 <span>Buscar</span>
                             </button>
@@ -277,6 +287,7 @@ onUnmounted(() => {
 
                 <!-- Tabla de inventario -->
                 <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <!-- ... resto del template igual ... -->
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
                         <!-- VISTA MÓVIL (tarjetas) -->
                         <div v-if="isMobile" class="p-3 space-y-3">
@@ -429,7 +440,6 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-/* Asegurar que los textos sean legibles en PC */
 @media (min-width: 1024px) {
     input, select, button, .text-sm {
         font-size: 15px !important;

@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed, onMounted, onUnmounted, inject } from 'vue'  // 🔥 AGREGAR onUnmounted
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { router } from '@inertiajs/vue3'
 
 defineOptions({ layout: AppLayout })
@@ -34,8 +34,8 @@ const props = defineProps({
 const loading = ref(false)
 const errors = ref({})
 
-// 🔥 Sucursal - Autocomplete
-const sucursalId = ref(props.sucursalActual || '')
+// 🔥 Inicializar vacío - SIN auto-selección
+const sucursalId = ref('')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
 
@@ -68,6 +68,11 @@ const sucursalNombre = computed(() => {
     if (!sucursalId.value) return ''
     const s = props.sucursales?.find(s => s.id == sucursalId.value)
     return s?.nombre || ''
+})
+
+// Verificar si hay sucursal seleccionada
+const haySucursalSeleccionada = computed(() => {
+    return sucursalId.value && sucursalId.value !== '' && Number(sucursalId.value) > 0
 })
 
 const fechasInicialDisponibles = computed(() => {
@@ -200,13 +205,9 @@ const volver = () => {
 
 // ==================== LIFECYCLE ====================
 onMounted(() => {
-    // Cargar nombre de sucursal actual
-    if (sucursalId.value) {
-        const s = props.sucursales?.find(s => s.id == sucursalId.value)
-        if (s) sucursalBusqueda.value = s.nombre
-    }
+    // 🔥 Ya no se carga la sucursal automáticamente
     
-    // Cargar fecha default
+    // Cargar fecha default si existe
     if (props.fechaDefault) {
         const f = props.fechas?.find(f => f.IdFecha === props.fechaDefault)
         if (f) {
@@ -266,7 +267,7 @@ onUnmounted(() => {
                 <div class="bg-white rounded-xl shadow-sm p-4 sm:p-6">
                     <div class="space-y-4">
                         
-                        <!-- 🔥 Sucursal - Autocomplete -->
+                        <!-- 🔥 Sucursal - Autocomplete (SIN auto-selección) -->
                         <div class="sucursal-autocomplete">
                             <label class="block text-sm font-medium text-gray-700 mb-1">
                                 <i class="fas fa-store mr-1" :style="{ color: `var(--color-primary-600)` }"></i>
@@ -283,7 +284,7 @@ onUnmounted(() => {
                                         borderColor: errors.sucursal_id ? '#ef4444' : `var(--color-primary-300)`,
                                         '--tw-ring-color': `var(--color-primary-500)`
                                     }"
-                                    placeholder="Buscar sucursal..."
+                                    placeholder="Seleccione Sucursal..."
                                     autocomplete="off"
                                 />
                                 <button 
@@ -300,16 +301,24 @@ onUnmounted(() => {
                                     <div 
                                         v-for="suc in sucursalesDisponibles" 
                                         :key="suc.id"
-                                        @click="seleccionarSucursal(suc)"
+                                        @mousedown="seleccionarSucursal(suc)"
                                         class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                         :class="sucursalId === suc.id ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                         :style="sucursalId === suc.id ? { backgroundColor: `var(--color-primary-50)` } : {}"
                                     >
                                         <span class="text-sm">{{ suc.nombre }}</span>
                                         <span v-if="suc.numero" class="text-xs text-gray-400">N° {{ suc.numero }}</span>
+                                        <i v-if="sucursalId === suc.id" class="fas fa-check-circle text-xs" :style="{ color: `var(--color-primary-600)` }"></i>
                                     </div>
                                 </div>
                             </div>
+                            <!-- 🔥 Badge de sucursal seleccionada -->
+                            <span v-if="sucursalId && sucursalNombre" class="text-xs text-primary-600 font-medium mt-1 inline-block">
+                                <i class="fas fa-check-circle"></i> {{ sucursalNombre }}
+                            </span>
+                            <span v-else class="text-xs text-gray-400 mt-1 inline-block">
+                                <i class="fas fa-store"></i> Ninguna
+                            </span>
                             <p v-if="errors.sucursal_id" class="mt-1 text-xs text-red-500">{{ errors.sucursal_id }}</p>
                         </div>
 
@@ -347,7 +356,7 @@ onUnmounted(() => {
                                     <div 
                                         v-for="est in estadosDisponibles" 
                                         :key="est.IdEstado"
-                                        @click="seleccionarEstado(est)"
+                                        @mousedown="seleccionarEstado(est)"
                                         class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                         :class="estadoProductoId === est.IdEstado ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                         :style="estadoProductoId === est.IdEstado ? { backgroundColor: `var(--color-primary-50)` } : {}"
@@ -394,7 +403,7 @@ onUnmounted(() => {
                                     <div 
                                         v-for="f in fechasInicialDisponibles" 
                                         :key="f.IdFecha"
-                                        @click="seleccionarFechaInicial(f)"
+                                        @mousedown="seleccionarFechaInicial(f)"
                                         class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                         :class="fechaInicialId === f.IdFecha ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                         :style="fechaInicialId === f.IdFecha ? { backgroundColor: `var(--color-primary-50)` } : {}"
@@ -441,7 +450,7 @@ onUnmounted(() => {
                                     <div 
                                         v-for="f in fechasFinalDisponibles" 
                                         :key="f.IdFecha"
-                                        @click="seleccionarFechaFinal(f)"
+                                        @mousedown="seleccionarFechaFinal(f)"
                                         class="px-3 py-2 cursor-pointer border-b last:border-b-0 transition flex justify-between items-center"
                                         :class="fechaFinalId === f.IdFecha ? 'bg-primary-50' : 'hover:bg-gray-50'"
                                         :style="fechaFinalId === f.IdFecha ? { backgroundColor: `var(--color-primary-50)` } : {}"
@@ -456,7 +465,7 @@ onUnmounted(() => {
 
                         <!-- Indicadores de selección -->
                         <div class="flex flex-wrap gap-2 text-xs">
-                            <div v-if="sucursalId" class="flex items-center gap-1 px-2 py-1 rounded-full" :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-700)` }">
+                            <div v-if="sucursalId && sucursalNombre" class="flex items-center gap-1 px-2 py-1 rounded-full" :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-700)` }">
                                 <i class="fas fa-check-circle text-[10px]"></i>
                                 {{ sucursalNombre }}
                             </div>

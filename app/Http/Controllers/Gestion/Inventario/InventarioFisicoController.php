@@ -54,13 +54,12 @@ class InventarioFisicoController extends Controller
     }
 
     /**
-     * Entrada principal - Busca borrador pendiente o crea uno nuevo
-     * IGUAL A SCRIPTCASE: Siempre redirige a edit si existe borrador
+     * Entrada principal - NO crea borrador automáticamente
+     * IGUAL QUE Compras: solo muestra el formulario vacío
      */
     public function create()
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
         if (!$clienteId || !$operadorId) {
@@ -68,36 +67,39 @@ class InventarioFisicoController extends Controller
                 ->with('error', 'Debe seleccionar una empresa primero');
         }
 
-        // 🔥 BUSCAR CUALQUIER DOCUMENTO EDITABLE (ActivoInactivo = 0)
-        // Incluye tanto borradores nuevos (NumeroCorrelativo = 0) 
-        // como documentos desactivados para edición (NumeroCorrelativo > 0)
+        // Buscar borrador existente
         $borrador = InventarioFisico::where('IdCliente', $clienteId)
             ->where('IdOperador', $operadorId)
-            ->where('ActivoInactivo', 0)  // ← SOLO documentos editables
+            ->where('ActivoInactivo', 0)
             ->first();
 
-        // 🔥 SI EXISTE DOCUMENTO EDITABLE → REDIRIGIR A EDIT
         if ($borrador) {
             return redirect()->route('gestion.inventario-fisico.edit', $borrador->IdFisico)
                 ->with('info', 'Continúe con el inventario físico en progreso');
         }
 
-        // 🔥 SI NO EXISTE → CREAR NUEVO BORRADOR
-        $nuevoBorrador = InventarioFisico::create([
-            'NumeroCorrelativo' => 0,
-            'IdFecha' => 0,
-            'IdAlmacen' => 0,
-            'IdRealizadoPor' => 0,
-            'IdEncargadoSucursal' => 0,
-            'Observacion' => '',
-            'ActivoInactivo' => 0,
-            'IdCliente' => $clienteId,
-            'IdSucursal' => $sucursalId ?? 0,
-            'IdOperador' => $operadorId,
-        ]);
+        // 🔥 USAR EL NUEVO MÉTODO
+        $fechas = $this->getFechasDisponibles();
 
-        return redirect()->route('gestion.inventario-fisico.edit', $nuevoBorrador->IdFisico)
-            ->with('success', 'Nuevo inventario físico creado. Complete los datos y guarde.');
+        $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre']);
+
+        $identificadores = Identificador::orderBy('CI_NIT')
+            ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
+            ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
+
+        return Inertia::render('Gestion/Inventario/InventarioFisico/Create', [
+            'inventarioFisico' => null,
+            'detalles' => [],
+            'fechas' => $fechas,
+            'sucursales' => $sucursales,
+            'almacenes' => [],
+            'identificadores' => $identificadores,
+            'esBorrador' => false,
+            'esContabilizado' => false,
+            'esDesactivado' => false,
+        ]);
     }
 
     /**
@@ -107,26 +109,15 @@ class InventarioFisicoController extends Controller
     {
         $clienteId = session('cliente_id');
 
-        // 🔥 BUSCAR POR ID Y CLIENTE (sin filtrar por NumeroCorrelativo)
         $inventarioFisico = InventarioFisico::where('IdCliente', $clienteId)
             ->where('IdFisico', $id)
             ->with(['fecha', 'sucursal', 'almacen', 'realizadoPor', 'encargadoSucursal'])
             ->firstOrFail();
         
-        // 🔥 DETERMINAR EL ESTADO REAL
         $esBorrador = $inventarioFisico->NumeroCorrelativo == 0;
         $esContabilizado = $inventarioFisico->NumeroCorrelativo > 0 && $inventarioFisico->ActivoInactivo == 1;
         $esDesactivado = $inventarioFisico->NumeroCorrelativo > 0 && $inventarioFisico->ActivoInactivo == 0;
 
-        // 🔥 LOG PARA DEPURACIÓN
-        \Log::info('=== EDIT INVENTARIO FISICO ===', [
-            'IdFisico' => $id,
-            'NumeroCorrelativo' => $inventarioFisico->NumeroCorrelativo,
-            'ActivoInactivo' => $inventarioFisico->ActivoInactivo,
-            'Estado' => $esDesactivado ? 'DESACTIVADO (editable)' : ($esContabilizado ? 'CONTABILIZADO' : 'BORRADOR')
-        ]);
-
-        // 🔥 CARGAR DETALLES
         $detalles = InventarioFisicoDetalle::where('IdFisico', $id)
             ->with('producto')
             ->orderBy('IdFisicoPropiamente')
@@ -143,10 +134,8 @@ class InventarioFisicoController extends Controller
                 ];
             });
 
-        // 🔥 CARGAR SELECTS
-        $fechas = Fecha::where('IdFecha', '>', 0)
-            ->orderBy('Fecha', 'desc')
-            ->get(['IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d-%m-%Y') as fecha_display")]);
+        // 🔥 USAR EL NUEVO MÉTODO
+        $fechas = $this->getFechasDisponibles();
 
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->orderBy('Nombre')
@@ -156,7 +145,6 @@ class InventarioFisicoController extends Controller
             ->get(['IdIdentificador as id', 'CI_NIT', 'Nombre'])
             ->map(fn($i) => ['id' => $i->id, 'texto' => "{$i->CI_NIT} - {$i->Nombre}"]);
 
-        // 🔥 CARGAR ALMACENES
         $almacenes = [];
         if ($inventarioFisico->IdSucursal && $inventarioFisico->IdSucursal != 0) {
             $almacenes = Almacen::where('IdCliente', $clienteId)
@@ -174,12 +162,13 @@ class InventarioFisicoController extends Controller
             'identificadores' => $identificadores,
             'esBorrador' => $esBorrador,
             'esContabilizado' => $esContabilizado,
-            'esDesactivado' => $esDesactivado,  // ← NUEVO FLAG
+            'esDesactivado' => $esDesactivado,
         ]);
     }
 
     /**
      * Guardar cabecera (CREA o ACTUALIZA) - NUEVO MÉTODO UNIFICADO
+     * IGUAL QUE Compras: si no existe ID, se crea el borrador aquí
      */
     public function storeCabecera(Request $request)
     {
@@ -237,6 +226,7 @@ class InventarioFisicoController extends Controller
                     ], 400);
                 }
 
+                // 🔥 CREAR NUEVO BORRADOR (SOLO AQUÍ, NO EN EL CREATE)
                 $borrador = InventarioFisico::create([
                     'NumeroCorrelativo' => 0,
                     'IdFecha' => $request->IdFecha,
@@ -338,6 +328,7 @@ class InventarioFisicoController extends Controller
         try {
             $inventarioFisico = InventarioFisico::findOrFail($id);
             
+            // Si ya tiene correlativo (contabilizado), no sincronizar
             if ($inventarioFisico->NumeroCorrelativo != 0) {
                 return;
             }
@@ -506,7 +497,7 @@ class InventarioFisicoController extends Controller
     }
 
     /**
-     * CONTABILIZAR (IGUAL A SCRIPTCASE)
+     * CONTABILIZAR
      */
     public function contabilizar($id)
     {
@@ -983,5 +974,50 @@ class InventarioFisicoController extends Controller
                 'message' => 'Error al desactivar: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Obtener fechas disponibles (abiertas) para el cliente y sucursal
+     * Ordenadas de la más reciente a la más antigua
+     */
+    private function getFechasDisponibles()
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        // Fechas principales abiertas
+        $fechas = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_fecha')
+            ->where('ActivoInactivo', 0)
+            ->where('CierreSucursal', 0)
+            ->where('CierrePermanente', 0)
+            ->select('IdFecha as id', DB::raw("DATE_FORMAT(Fecha, '%d/%m/%Y') as fecha_display"), 'Fecha as fecha_raw')
+            ->orderBy('Fecha', 'desc')
+            ->get();
+
+        // Fechas auxiliares de la sucursal (abiertas)
+        $fechasAux = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_fecha_auxiliar_sucursal')
+            ->join('todos_fecha', 'todos_fecha_auxiliar_sucursal.IdFecha', '=', 'todos_fecha.IdFecha')
+            ->where('todos_fecha_auxiliar_sucursal.IdCliente', $clienteId)
+            ->where('todos_fecha_auxiliar_sucursal.IdSucursal', $sucursalId)
+            ->where('todos_fecha.ActivoInactivo', 0)
+            ->where('todos_fecha.CierreSucursal', 0)
+            ->where('todos_fecha.CierrePermanente', 0)
+            ->select('todos_fecha.IdFecha as id', DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha_display"), 'todos_fecha.Fecha as fecha_raw')
+            ->orderBy('todos_fecha.Fecha', 'desc')
+            ->get();
+
+        // Unir y eliminar duplicados, luego ordenar por fecha descendente
+        $todasFechas = $fechas->merge($fechasAux)->unique('id');
+        
+        // Ordenar por fecha descendente (más reciente primero)
+        $todasFechas = $todasFechas->sortByDesc(function($item) {
+            return $item->fecha_raw;
+        })->values();
+
+        \Log::info('Fechas disponibles para combo:', $todasFechas->toArray());
+        
+        return $todasFechas;
     }
 }

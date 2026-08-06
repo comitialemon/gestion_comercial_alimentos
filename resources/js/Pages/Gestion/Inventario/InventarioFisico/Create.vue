@@ -17,7 +17,7 @@ const props = defineProps({
     editando: Boolean,
     esBorrador: Boolean,
     esContabilizado: Boolean,
-    esDesactivado: Boolean,  // ← NUEVO
+    esDesactivado: Boolean,
 })
 
 const isMobile = ref(false)
@@ -38,7 +38,6 @@ const form = ref({
     Observacion: props.inventarioFisico?.Observacion || '',
 })
 
-// ==================== CONSTANTES DE RUTAS ====================
 const API_BASE = '/gestion/inventario/inventario-fisico'
 
 // ==================== AUTOCOMPLETE SUCURSAL ====================
@@ -63,8 +62,9 @@ const seleccionarSucursal = (sucursal) => {
     cargarAlmacenes(sucursal.id)
 }
 
-const ocultarSucursales = () => {
-    setTimeout(() => { mostrarSucursales.value = false }, 200)
+// 🔥 CORREGIDO: Usar mousedown en lugar de click
+const manejarClickSucursal = (sucursal) => {
+    seleccionarSucursal(sucursal)
 }
 
 // ==================== ALMACENES ====================
@@ -113,8 +113,9 @@ const seleccionarRealizadoPor = (item) => {
     errors.value.IdRealizadoPor = null
 }
 
-const ocultarRealizadoPor = () => {
-    setTimeout(() => { mostrarRealizadoPor.value = false }, 200)
+// 🔥 CORREGIDO: Usar mousedown en lugar de click
+const manejarClickRealizadoPor = (item) => {
+    seleccionarRealizadoPor(item)
 }
 
 // ==================== AUTOCOMPLETE ENCARGADO SUCURSAL ====================
@@ -136,8 +137,9 @@ const seleccionarEncargado = (item) => {
     errors.value.IdEncargadoSucursal = null
 }
 
-const ocultarEncargado = () => {
-    setTimeout(() => { mostrarEncargado.value = false }, 200)
+// 🔥 CORREGIDO: Usar mousedown en lugar de click
+const manejarClickEncargado = (item) => {
+    seleccionarEncargado(item)
 }
 
 // ==================== ESTADO ====================
@@ -236,7 +238,6 @@ const guardarCabecera = async () => {
     
     guardandoCabecera.value = true
     try {
-        // 🔥 SIEMPRE POST a /cabecera (el Controller maneja si es creación o actualización)
         const response = await axios.post(`${API_BASE}/cabecera`, form.value)
         
         if (response.data.success) {
@@ -255,7 +256,6 @@ const guardarCabecera = async () => {
     }
 }
 
-// 🔥 REPROCESAR (antes Sincronizar)
 const reprocesarProductos = async () => {
     if (!form.value.IdFisico) return
     reprocesando.value = true
@@ -307,11 +307,9 @@ const cancelarConfirmacion = () => {
 
 // ==================== INICIALIZAR ====================
 const inicializar = () => {
-    // 🔥 SIEMPRE activar cabeceraGuardada si existe inventarioFisico con IdFisico
     if (props.inventarioFisico && props.inventarioFisico.IdFisico) {
         cabeceraGuardada.value = true
         
-        // Cargar datos del formulario (solo si tienen valor válido)
         if (props.inventarioFisico.IdFecha && props.inventarioFisico.IdFecha != 0) {
             form.value.IdFecha = props.inventarioFisico.IdFecha
         }
@@ -333,7 +331,6 @@ const inicializar = () => {
         }
     }
     
-    // 🔥 Cargar nombres en autocompletar
     if (form.value.IdSucursal && props.sucursales) {
         const sucursal = props.sucursales.find(s => s.id === form.value.IdSucursal)
         if (sucursal) {
@@ -351,7 +348,6 @@ const inicializar = () => {
         if (encargado) busquedaEncargado.value = encargado.texto
     }
     
-    // 🔥 Cargar detalles si existen
     if (props.detalles && props.detalles.length > 0) {
         detallesGrid.value = props.detalles
         cabeceraGuardada.value = true
@@ -422,7 +418,6 @@ onUnmounted(() => {
                     </div>
                     
                     <div class="flex gap-1.5 sm:gap-2 w-full sm:w-auto">
-                        <!-- 🔥 BOTÓN GUARDAR (deshabilitado si está contabilizado) -->
                         <button 
                             @click="guardarCabecera"
                             :disabled="guardandoCabecera || props.esContabilizado"
@@ -434,7 +429,6 @@ onUnmounted(() => {
                             <span class="xs:hidden">{{ guardandoCabecera ? '...' : 'Guardar' }}</span>
                         </button>
                         
-                        <!-- 🔥 BOTÓN CONTABILIZAR (solo si hay productos y no está contabilizado) -->
                         <button 
                             v-if="cabeceraGuardada && detallesGrid.length > 0 && !props.esContabilizado"
                             @click="contabilizar"
@@ -447,7 +441,6 @@ onUnmounted(() => {
                             <span class="xs:hidden">{{ contabilizando ? '...' : 'Contab.' }}</span>
                         </button>
                         
-                        <!-- 🔥 INDICADOR DE CONTABILIZADO -->
                         <span v-if="props.esContabilizado" class="bg-green-100 text-green-800 px-3 py-1.5 rounded text-xs font-semibold flex items-center gap-1">
                             <i class="fas fa-check-circle"></i>
                             Contabilizado N° {{ props.inventarioFisico?.NumeroCorrelativo }}
@@ -476,6 +469,7 @@ onUnmounted(() => {
                     <h2 class="text-[11px] sm:text-sm font-semibold text-gray-700 mb-2 sm:mb-3">Datos del Inventario Físico</h2>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 text-[10px] sm:text-xs">
+                        <!-- Fecha -->
                         <div>
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Fecha *</label>
                             <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" :class="{'border-red-500': errors.IdFecha}" :disabled="props.esContabilizado">
@@ -485,6 +479,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdFecha" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdFecha }}</p>
                         </div>
 
+                        <!-- Sucursal - 🔥 CORREGIDO -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Sucursal *</label>
                             <input 
@@ -492,7 +487,6 @@ onUnmounted(() => {
                                 v-model="busquedaSucursal"
                                 @input="filtrarSucursales"
                                 @focus="mostrarSucursales = true"
-                                @blur="ocultarSucursales"
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdSucursal}"
@@ -502,7 +496,7 @@ onUnmounted(() => {
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
                                 <div v-for="suc in sucursalesFiltradas" 
                                      :key="suc.id"
-                                     @click="seleccionarSucursal(suc)"
+                                     @mousedown="manejarClickSucursal(suc)"
                                      class="p-1.5 sm:p-2 hover:bg-gray-100 cursor-pointer text-[10px] sm:text-xs border-b last:border-b-0">
                                     {{ suc.nombre }}
                                 </div>
@@ -510,6 +504,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdSucursal" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdSucursal }}</p>
                         </div>
 
+                        <!-- Almacén -->
                         <div>
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Almacén *</label>
                             <select 
@@ -526,6 +521,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdAlmacen" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdAlmacen }}</p>
                         </div>
 
+                        <!-- Realizado Por - 🔥 CORREGIDO -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Realizado Por *</label>
                             <input 
@@ -533,7 +529,6 @@ onUnmounted(() => {
                                 v-model="busquedaRealizadoPor"
                                 @input="filtrarRealizadoPor"
                                 @focus="mostrarRealizadoPor = true"
-                                @blur="ocultarRealizadoPor"
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdRealizadoPor}"
@@ -543,7 +538,7 @@ onUnmounted(() => {
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
                                 <div v-for="item in realizadosPorFiltrados" 
                                      :key="item.id"
-                                     @click="seleccionarRealizadoPor(item)"
+                                     @mousedown="manejarClickRealizadoPor(item)"
                                      class="p-1.5 sm:p-2 hover:bg-gray-100 cursor-pointer text-[10px] sm:text-xs border-b">
                                     {{ item.texto }}
                                 </div>
@@ -551,6 +546,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdRealizadoPor" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdRealizadoPor }}</p>
                         </div>
 
+                        <!-- Encargado Sucursal - 🔥 CORREGIDO -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Encargado Sucursal *</label>
                             <input 
@@ -558,7 +554,6 @@ onUnmounted(() => {
                                 v-model="busquedaEncargado"
                                 @input="filtrarEncargado"
                                 @focus="mostrarEncargado = true"
-                                @blur="ocultarEncargado"
                                 placeholder="Buscar..."
                                 class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs"
                                 :class="{'border-red-500': errors.IdEncargadoSucursal}"
@@ -568,7 +563,7 @@ onUnmounted(() => {
                                  class="absolute z-50 mt-1 w-full border rounded-md max-h-36 sm:max-h-48 overflow-y-auto bg-white shadow-lg">
                                 <div v-for="item in encargadosFiltrados" 
                                      :key="item.id"
-                                     @click="seleccionarEncargado(item)"
+                                     @mousedown="manejarClickEncargado(item)"
                                      class="p-1.5 sm:p-2 hover:bg-gray-100 cursor-pointer text-[10px] sm:text-xs border-b">
                                     {{ item.texto }}
                                 </div>
@@ -576,6 +571,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdEncargadoSucursal" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdEncargadoSucursal }}</p>
                         </div>
 
+                        <!-- Observación -->
                         <div class="sm:col-span-2 lg:col-span-4">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Observación</label>
                             <textarea v-model="form.Observacion" rows="1.5 sm:rows-2" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" placeholder="Notas..." :disabled="props.esContabilizado"></textarea>
@@ -673,7 +669,6 @@ onUnmounted(() => {
                              class="product-card bg-white border rounded-lg p-2.5 sm:p-3 hover:shadow-md transition-shadow">
                             
                             <div class="flex flex-col gap-2">
-                                <!-- Cabecera de la tarjeta -->
                                 <div class="flex justify-between items-start">
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-1.5">
@@ -682,7 +677,6 @@ onUnmounted(() => {
                                         <p class="text-[10px] sm:text-xs font-medium text-gray-800 truncate mt-0.5">{{ item.Descripcion }}</p>
                                     </div>
                                     
-                                    <!-- Botón de edición -->
                                     <div class="flex-shrink-0 ml-2">
                                         <button v-if="editandoUnidades !== idx && !props.esContabilizado" 
                                                 @click="iniciarEdicionUnidades(item, idx)" 
@@ -693,7 +687,6 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                                 
-                                <!-- Datos en fila -->
                                 <div class="grid grid-cols-3 gap-1.5 sm:gap-2">
                                     <div class="bg-gray-50 rounded-lg p-1.5 sm:p-2 text-center border">
                                         <span class="text-[7px] sm:text-[8px] text-gray-500 block">Saldo</span>
@@ -724,7 +717,6 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                                 
-                                <!-- Botones de acción cuando está editando -->
                                 <div v-if="editandoUnidades === idx && !props.esContabilizado" class="flex gap-2 mt-1">
                                     <button @click="guardarEdicionUnidades(item, idx)" 
                                             class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded-lg text-[10px] sm:text-xs font-medium transition flex items-center justify-center gap-1.5">
@@ -743,7 +735,6 @@ onUnmounted(() => {
                             No hay productos. Presione "Reprocesar"
                         </div>
                         
-                        <!-- Resumen móvil -->
                         <div v-if="productosFiltrados.length > 0" class="bg-gray-50 rounded-lg p-2.5 sm:p-3 border">
                             <div class="flex justify-between text-[9px] sm:text-[10px]">
                                 <span class="text-gray-500">Total productos:</span>

@@ -12,6 +12,7 @@ class ReporteInventarioController extends Controller
 {
     /**
      * Mostrar reporte de inventario por rango de fechas (CON selector de sucursal)
+     * 🔥 SIN selección automática de sucursal
      */
     public function index(Request $request)
     {
@@ -20,15 +21,9 @@ class ReporteInventarioController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
 
-        // VALOR POR DEFECTO: usar la sucursal de la sesión (contexto)
-        $sucursalDefault = session('cliente_sucursal_id');
-        
-        // Verificar que la sucursal por defecto existe en las sucursales del usuario
-        $sucursalExiste = $sucursales->contains('id', $sucursalDefault);
-        
-        // Si la sucursal de sesión es válida, usarla; si no, null
-        $sucursalId = $request->sucursal_id ?? ($sucursalExiste ? $sucursalDefault : null);
-        
+        // 🔥 NO SELECCIONAR NADA POR DEFECTO
+        $sucursalId = $request->sucursal_id;  // Solo si viene en la URL
+
         $fechaInicial = $request->fecha_inicial ?? date('Y-m-01');
         $fechaFinal = $request->fecha_final ?? date('Y-m-d');
         $soloConMovimiento = $request->boolean('solo_con_movimiento', false);
@@ -36,7 +31,7 @@ class ReporteInventarioController extends Controller
 
         $productos = collect();
 
-        // Solo consultar si hay una sucursal válida
+        // Solo consultar si hay una sucursal seleccionada
         if ($sucursalId && $sucursalId > 0) {
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle as p')
@@ -125,6 +120,7 @@ class ReporteInventarioController extends Controller
                 ['path' => \Illuminate\Pagination\Paginator::resolveCurrentPath()]
             );
             
+            // 🔥 PRESERVAR PARÁMETROS EN LA PAGINACIÓN
             $productos->appends([
                 'sucursal_id' => $sucursalId,
                 'fecha_inicial' => $fechaInicial,
@@ -139,7 +135,7 @@ class ReporteInventarioController extends Controller
             'sucursales' => $sucursales,
             'fechaInicial' => $fechaInicial,
             'fechaFinal' => $fechaFinal,
-            'sucursalSeleccionada' => $sucursalId,
+            'sucursalSeleccionada' => $sucursalId,  // Puede ser null
             'soloConMovimiento' => $soloConMovimiento,
             'search' => $search,
         ]);
@@ -154,7 +150,6 @@ class ReporteInventarioController extends Controller
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        // Obtener nombre de la sucursal actual
         $sucursalActual = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('IdClienteSucursal', $sucursalId)
             ->first();
@@ -277,7 +272,6 @@ class ReporteInventarioController extends Controller
 
     /**
      * API: Obtener movimientos (glosas) de un producto
-     * 🔥 CORREGIDO: 3 decimales para unidades y saldo
      */
     public function getMovimientos(Request $request)
     {
@@ -288,10 +282,6 @@ class ReporteInventarioController extends Controller
             'fecha_final' => 'required|date',
         ]);
 
-        \Log::info('=== getMovimientos llamado ===');
-        \Log::info('Parametros:', $request->all());
-
-        // Obtener movimientos
         $movimientos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -316,9 +306,6 @@ class ReporteInventarioController extends Controller
             )
             ->get();
 
-        \Log::info('Movimientos encontrados: ' . $movimientos->count());
-
-        // Calcular saldo anterior (antes de la fecha inicial)
         $saldoAnterior = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -341,14 +328,12 @@ class ReporteInventarioController extends Controller
             $tipo = strtoupper(trim($mov->tipo));
             
             if ($tipo === 'D') {
-                // 🔥 CORREGIDO: 3 DECIMALES
                 $mov->unidades_signo = '+' . number_format($mov->Unidades, 3);
                 $saldo += (float) $mov->Unidades;
                 $mov->tipo_texto = 'ENTRADA';
                 $mov->tipo_clase = 'text-emerald-600';
                 $mov->tipo = 'D';
             } elseif ($tipo === 'H') {
-                // 🔥 CORREGIDO: 3 DECIMALES
                 $mov->unidades_signo = '-' . number_format($mov->Unidades, 3);
                 $saldo -= (float) $mov->Unidades;
                 $mov->tipo_texto = 'SALIDA';
@@ -361,7 +346,6 @@ class ReporteInventarioController extends Controller
                 $mov->tipo = $tipo;
             }
             
-            // 🔥 CORREGIDO: 3 DECIMALES
             $mov->unidades_formateado = number_format($mov->Unidades, 3);
             $mov->saldo_acumulado = number_format($saldo, 3);
             $mov->saldo_acumulado_raw = $saldo;
@@ -370,7 +354,6 @@ class ReporteInventarioController extends Controller
         return response()->json([
             'success' => true,
             'movimientos' => $movimientos,
-            // 🔥 CORREGIDO: 3 DECIMALES
             'saldo_anterior' => number_format($saldoAnterior, 3),
             'saldo_anterior_raw' => (float) $saldoAnterior,
             'producto_id' => $request->producto_id,
@@ -378,8 +361,9 @@ class ReporteInventarioController extends Controller
             'fecha_final' => $request->fecha_final,
         ]);
     }
+
     /**
-     * 🔥 SHOW - Mostrar detalle de un movimiento específico
+     * SHOW - Mostrar detalle de un movimiento específico
      */
     public function showMovimiento(Request $request, $id)
     {
@@ -387,7 +371,6 @@ class ReporteInventarioController extends Controller
         $sucursalId = $request->sucursal_id;
 
         try {
-            // 1. OBTENER EL MOVIMIENTO
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente as ip')
                 ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -418,13 +401,11 @@ class ReporteInventarioController extends Controller
                 ], 404);
             }
 
-            // 2. VARIABLES PARA DATOS ADICIONALES (INICIALIZARLAS SIEMPRE)
             $venta = null;
             $detalles_venta = null;
             $pagos = null;
-            $esVenta = false;  // 🔥 INICIALIZAR SIEMPRE
+            $esVenta = false;
 
-            // 3. DETECTAR SI ES VENTA
             $tipo = strtolower(trim($movimiento->tipo_operacion));
             $esVenta = (strpos($tipo, 'venta') !== false || strpos($tipo, 'recibo') !== false);
 
@@ -466,11 +447,10 @@ class ReporteInventarioController extends Controller
                 }
             }
 
-            // 4. DEVOLVER LA INFORMACIÓN
             return response()->json([
                 'success' => true,
                 'movimiento' => $movimiento,
-                'es_venta' => $esVenta,  // ✅ AHORA SIEMPRE EXISTE
+                'es_venta' => $esVenta,
                 'venta' => $venta,
                 'detalles_venta' => $detalles_venta,
                 'pagos' => $pagos,
