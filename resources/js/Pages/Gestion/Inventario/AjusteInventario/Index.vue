@@ -56,9 +56,10 @@ watch(estadoFiltro, () => {
     aplicarFiltros()
 })
 
+// ✅ CORREGIDO: Usar fecha_mostrar del controller
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO')
+    return fecha // Ya viene formateada desde el controller como d/m/Y
 }
 
 const getConceptoColor = (concepto) => {
@@ -150,7 +151,8 @@ const getEstadoColor = (activo) => {
                         <div class="space-y-2 text-xs">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Fecha:</span>
-                                <span class="font-medium">{{ formatearFecha(ajuste.FechaIngreso) || '-' }}</span>
+                                <!-- ✅ FECHA CORREGIDA -->
+                                <span class="font-medium">{{ ajuste.fecha_mostrar || '-' }}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Concepto:</span>
@@ -202,7 +204,8 @@ const getEstadoColor = (activo) => {
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="ajuste in ajustes.data" :key="ajuste.IdAjustesPrincipal" class="hover:bg-gray-50">
                                     <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ ajuste.NumeroCorrelativo }}</td>
-                                    <td class="px-3 py-2 text-xs text-gray-500">{{ formatearFecha(ajuste.FechaIngreso) }}</td>
+                                    <!-- ✅ FECHA CORREGIDA -->
+                                    <td class="px-3 py-2 text-xs text-gray-500">{{ ajuste.fecha_mostrar || '-' }}</td>
                                     <td class="px-3 py-2 text-xs">
                                         <span class="font-bold" :class="getConceptoColor(ajuste.ConceptoOperacion)">
                                             {{ ajuste.ConceptoOperacion || '-' }}

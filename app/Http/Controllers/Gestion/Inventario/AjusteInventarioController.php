@@ -23,9 +23,21 @@ class AjusteInventarioController extends Controller
     {
         $ajustes = AjusteInventario::porContexto()
             ->where('ActivoInactivo', 1)
-            ->with(['tipoOperacion', 'almacen'])
+            ->with(['tipoOperacion', 'almacen', 'fecha']) // ✅ Agregar 'fecha'
             ->orderBy('IdAjustesPrincipal', 'desc')
             ->paginate(20);
+
+        // ✅ Transformar para agregar fecha formateada
+        $ajustes->getCollection()->transform(function ($ajuste) {
+            $fechaMostrar = '';
+            if ($ajuste->fecha && $ajuste->fecha->Fecha) {
+                $fechaMostrar = date('d/m/Y', strtotime($ajuste->fecha->Fecha));
+            } else {
+                $fechaMostrar = $ajuste->FechaIngreso ? date('d/m/Y', strtotime($ajuste->FechaIngreso)) : '';
+            }
+            $ajuste->fecha_mostrar = $fechaMostrar;
+            return $ajuste;
+        });
 
         return Inertia::render('Gestion/Inventario/AjusteInventario/Index', [
             'ajustes' => $ajustes,
@@ -45,9 +57,6 @@ class AjusteInventarioController extends Controller
         $ajuste = AjusteInventario::porContexto()
             ->pendientePorOperador()
             ->first();
-
-        // ✅ NO CREAR AJUSTE AUTOMÁTICAMENTE
-        // Si no existe, $ajuste será null
         
         // Cargar detalles si existe ajuste
         $detalles = [];
@@ -78,7 +87,7 @@ class AjusteInventarioController extends Controller
             ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
 
         return Inertia::render('Gestion/Inventario/AjusteInventario/Create', [
-            'ajuste' => $ajuste,  // Puede ser null
+            'ajuste' => $ajuste,
             'detalles' => $detalles,
             'fechas' => $fechas,
             'tiposOperacion' => $tiposOperacion,
@@ -177,7 +186,25 @@ class AjusteInventarioController extends Controller
             return redirect()->back()->with('error', 'El ajuste ya fue contabilizado');
         }
 
-        // ... validaciones ...
+        // Validaciones
+        if ($ajuste->IdFecha == 0) {
+            return redirect()->back()->with('error', 'Seleccione una fecha');
+        }
+        if ($ajuste->IdTipoOperacion == 0) {
+            return redirect()->back()->with('error', 'Seleccione el tipo de operación');
+        }
+        if ($ajuste->IdAlmacen == 0) {
+            return redirect()->back()->with('error', 'Seleccione un almacén');
+        }
+        if ($ajuste->IdRealizadoPor == 0) {
+            return redirect()->back()->with('error', 'Seleccione quién realizó el ajuste');
+        }
+        if ($ajuste->IdAutorizadoPor == 0) {
+            return redirect()->back()->with('error', 'Seleccione quién autorizó el ajuste');
+        }
+        if ($ajuste->detalles->count() == 0) {
+            return redirect()->back()->with('error', 'Agregue al menos un producto');
+        }
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
@@ -197,15 +224,15 @@ class AjusteInventarioController extends Controller
             $dH = $ajuste->ConceptoOperacion == 'Ingreso' ? 'D' : 'H';
             $idDiario = $ajuste->IdDiario;
 
-            // 🔥 ========== ELIMINAR MOVIMIENTOS DE INVENTARIO ANTIGUOS ==========
+            // ========== ELIMINAR MOVIMIENTOS DE INVENTARIO ANTIGUOS ==========
             $eliminadosInv = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
-                ->where('IdDocumento', $ajuste->IdAjustesPrincipal)  // ← IdAjustesPrincipal
+                ->where('IdDocumento', $ajuste->IdAjustesPrincipal)
                 ->delete();
             
             Log::info("Movimientos eliminados de inventario_propiamente: {$eliminadosInv}");
 
-            // 🔥 ========== ELIMINAR ASIENTOS CONTABLES ANTIGUOS (si existe diario) ==========
+            // ========== ELIMINAR ASIENTOS CONTABLES ANTIGUOS (si existe diario) ==========
             if ($idDiario && $idDiario > 0) {
                 $eliminadosAsientos = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('conta_diario_propiamente')
@@ -251,7 +278,7 @@ class AjusteInventarioController extends Controller
                     ]);
             }
 
-            // 🔥 ========== INSERTAR NUEVOS MOVIMIENTOS DE INVENTARIO ==========
+            // ========== INSERTAR NUEVOS MOVIMIENTOS DE INVENTARIO ==========
             foreach ($ajuste->detalles as $detalle) {
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
@@ -331,6 +358,7 @@ class AjusteInventarioController extends Controller
             return redirect()->back()->with('error', 'Error al contabilizar: ' . $e->getMessage());
         }
     }
+
     /**
      * Calcular total de un ajuste
      */
@@ -352,6 +380,15 @@ class AjusteInventarioController extends Controller
             ->with(['detalles.producto', 'fecha', 'tipoOperacion', 'almacen', 'realizadoPor', 'autorizadoPor'])
             ->findOrFail($id);
 
+        // ✅ Agregar fecha formateada
+        $fechaMostrar = '';
+        if ($ajuste->fecha && $ajuste->fecha->Fecha) {
+            $fechaMostrar = date('d/m/Y', strtotime($ajuste->fecha->Fecha));
+        } else {
+            $fechaMostrar = $ajuste->FechaIngreso ? date('d/m/Y', strtotime($ajuste->FechaIngreso)) : '';
+        }
+        $ajuste->fecha_mostrar = $fechaMostrar;
+
         return Inertia::render('Gestion/Inventario/AjusteInventario/Show', [
             'ajuste' => $ajuste,
         ]);
@@ -362,7 +399,6 @@ class AjusteInventarioController extends Controller
      */
     public function pdf($id)
     {
-        // 🔥 CAMBIAR: Buscar SOLO por ID, sin filtrar por sucursal
         $ajuste = AjusteInventario::with([
                 'detalles.producto', 
                 'fecha', 
@@ -403,15 +439,12 @@ class AjusteInventarioController extends Controller
         $pdf->SetXY(5, $y + 1);
         $pdf->Cell(200, 3, '(Expresado en Unidades)', 0, 1, 'C');
 
-        // Fecha
+        // ✅ Fecha correcta
         $fechaFormateada = '';
         if ($ajuste->fecha && $ajuste->fecha->Fecha) {
-            $fechaObj = $ajuste->fecha->Fecha;
-            if ($fechaObj instanceof \DateTime) {
-                $fechaFormateada = $fechaObj->format('d-m-Y');
-            } else {
-                $fechaFormateada = date('d-m-Y', strtotime($fechaObj));
-            }
+            $fechaFormateada = date('d/m/Y', strtotime($ajuste->fecha->Fecha));
+        } else {
+            $fechaFormateada = date('d/m/Y', strtotime($ajuste->FechaIngreso));
         }
         $y = $pdf->GetY();
         $pdf->SetFont('courier', 'B', 10);
@@ -539,6 +572,7 @@ class AjusteInventarioController extends Controller
 
         return $fechas->merge($fechasAux)->unique('id');
     }
+
     /**
      * Crear un nuevo ajuste (primera vez que se guarda cabecera)
      */
@@ -573,7 +607,7 @@ class AjusteInventarioController extends Controller
         ]);
     }
 
-/**
+    /**
      * Vista para gestión de estados (Activar/Inactivar ajustes) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
@@ -586,9 +620,7 @@ class AjusteInventarioController extends Controller
         \Log::info('Sucursal actual: ' . $sucursalId);
         \Log::info('Sucursal seleccionada en filtro: ' . $request->sucursal_id);
         
-        // =============================================
         // OBTENER TODAS LAS SUCURSALES DEL CLIENTE
-        // =============================================
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
@@ -596,21 +628,18 @@ class AjusteInventarioController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // =============================================
-        // CONSULTA PRINCIPAL - SIN usar scope porContexto()
-        // =============================================
+        // CONSULTA PRINCIPAL
         $query = AjusteInventario::where('IdCliente', $clienteId)
-            ->with(['tipoOperacion', 'almacen']);
+            ->with(['tipoOperacion', 'almacen', 'fecha']); // ✅ Agregar 'fecha'
         
-        // 🔥 FILTRO POR SUCURSAL
+        // FILTRO POR SUCURSAL
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
             $query->where('IdSucursal', $request->sucursal_id);
         } else {
-            // Por defecto, mostrar la sucursal logueada
             $query->where('IdSucursal', $sucursalId);
         }
         
-        // 🔥 FILTRO POR ESTADO
+        // FILTRO POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->where('ActivoInactivo', 1);
@@ -619,7 +648,7 @@ class AjusteInventarioController extends Controller
             }
         }
         
-        // 🔥 BUSCADOR por número de ajuste
+        // BUSCADOR
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
             $query->where('NumeroCorrelativo', 'LIKE', "%{$buscar}%");
@@ -629,15 +658,16 @@ class AjusteInventarioController extends Controller
         
         // Enriquecer datos
         $ajustes->getCollection()->transform(function ($ajuste) {
-            // Fecha formateada
-            $fechaData = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_fecha')
-                ->where('IdFecha', $ajuste->IdFecha)
-                ->first();
+            // ✅ Fecha formateada
+            $fechaMostrar = '';
+            if ($ajuste->fecha && $ajuste->fecha->Fecha) {
+                $fechaMostrar = date('d/m/Y', strtotime($ajuste->fecha->Fecha));
+            } else {
+                $fechaMostrar = $ajuste->FechaIngreso ? date('d/m/Y', strtotime($ajuste->FechaIngreso)) : '';
+            }
+            $ajuste->fecha_formateada = $fechaMostrar;
             
-            $ajuste->fecha_formateada = $fechaData ? date('d/m/Y', strtotime($fechaData->Fecha)) : '-';
-            
-            // 🔥 Agregar nombre de sucursal
+            // Agregar nombre de sucursal
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $ajuste->IdSucursal)
@@ -665,7 +695,6 @@ class AjusteInventarioController extends Controller
     public function cambiarEstado($id)
     {
         try {
-            // 🔥 Buscar SOLO por ID y Cliente (sin scope porContexto)
             $ajuste = AjusteInventario::where('IdCliente', session('cliente_id'))
                 ->where('IdAjustesPrincipal', $id)
                 ->firstOrFail();
@@ -739,6 +768,7 @@ class AjusteInventarioController extends Controller
             'productos' => $productos,
         ]);
     }
+
     /**
      * Actualizar detalle del ajuste
      */

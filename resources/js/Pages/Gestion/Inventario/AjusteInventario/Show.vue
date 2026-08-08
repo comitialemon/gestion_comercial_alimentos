@@ -23,9 +23,10 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
 
+// ✅ CORREGIDO: Usar fecha_mostrar del controller
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO')
+    return fecha // Ya viene formateada desde el controller como d/m/Y
 }
 
 const generarPDF = () => {
@@ -71,7 +72,8 @@ const volver = () => {
                         </div>
                         <div>
                             <p class="text-gray-500">Fecha</p>
-                            <p class="font-semibold text-gray-800">{{ formatearFecha(ajuste.FechaIngreso) }}</p>
+                            <!-- ✅ FECHA CORREGIDA -->
+                            <p class="font-semibold text-gray-800">{{ ajuste.fecha_mostrar || '-' }}</p>
                         </div>
                         <div>
                             <p class="text-gray-500">Concepto</p>
