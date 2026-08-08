@@ -40,9 +40,10 @@ const abrirPdfDiario = (compra) => {
     }
 }
 
+// ✅ CORREGIDO: Usar fecha_mostrar del controller
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO')
+    return fecha // Ya viene formateada desde el controller como d/m/Y
 }
 
 // APLICAR FILTROS
@@ -170,7 +171,8 @@ const getEstadoTexto = (activo) => {
                         <div class="space-y-2 text-xs">
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Fecha:</span>
-                                <span class="font-medium">{{ formatearFecha(compra.FechaIngreso) }}</span>
+                                <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
+                                <span class="font-medium">{{ compra.fecha_mostrar || '-' }}</span>
                             </div>
                             <div class="flex justify-between">
                                 <span class="text-gray-500">N° Documento:</span>
@@ -233,7 +235,8 @@ const getEstadoTexto = (activo) => {
                                             {{ compra.diario?.NumeroDiario || compra.IdDiario || '-' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 py-2 text-xs text-gray-500">{{ formatearFecha(compra.FechaIngreso) }}</td>
+                                    <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
+                                    <td class="px-3 py-2 text-xs text-gray-500">{{ compra.fecha_mostrar || '-' }}</td>
                                     <td class="px-3 py-2 text-xs text-gray-700">{{ compra.NumeroFactura }}</td>
                                     <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="compra.proveedor?.Nombre">
                                         {{ compra.proveedor?.Nombre || '-' }}

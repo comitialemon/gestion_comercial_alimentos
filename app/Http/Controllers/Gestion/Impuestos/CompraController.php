@@ -23,7 +23,7 @@ class CompraController extends Controller
     public function index(Request $request)
     {
         $query = Compra::porContexto()
-            ->with(['almacen', 'proveedor', 'diario']);
+            ->with(['almacen', 'proveedor', 'diario', 'fecha']); // ✅ Agregar 'fecha'
 
         // Filtrar por estado
         if ($request->filled('estado')) {
@@ -41,6 +41,16 @@ class CompraController extends Controller
         }
 
         $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
+
+        // ✅ Transformar para agregar la fecha formateada
+        $compras->getCollection()->transform(function ($compra) {
+            $fechaMostrar = $compra->FechaIngreso ? date('d/m/Y', strtotime($compra->FechaIngreso)) : '';
+            if ($compra->fecha) {
+                $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
+            }
+            $compra->fecha_mostrar = $fechaMostrar;
+            return $compra;
+        });
 
         return Inertia::render('Gestion/Impuestos/Compras/Index', [
             'compras' => $compras,
@@ -598,10 +608,20 @@ class CompraController extends Controller
                 'detalles.producto', 
                 'almacen', 
                 'proveedor', 
-                'fecha',
-                'diario'  // ← Agregar la relación con el diario
+                'fecha',  // ✅ Asegurar que carga la relación fecha
+                'diario'
             ])
             ->findOrFail($id);
+
+        // 🔥 Agregar la fecha formateada para mostrar en la vista
+        $fechaMostrar = $compra->FechaIngreso ? date('d/m/Y', strtotime($compra->FechaIngreso)) : '';
+        if ($compra->fecha) {
+            $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
+        }
+        
+        // También agregar el IdFecha para referencia
+        $compra->fecha_seleccionada = $fechaMostrar;
+        $compra->fecha_id = $compra->IdFecha;
 
         return Inertia::render('Gestion/Impuestos/Compras/Show', [
             'compra' => $compra,
@@ -610,12 +630,12 @@ class CompraController extends Controller
     /*pdf CON LIBRERIA TCPDF*/
     public function pdf($id)
     {
-        // Cargar la compra con sus detalles y la relación producto
+        // Cargar la compra con todas las relaciones necesarias
         $compra = Compra::where('IdCliente', session('cliente_id'))
             ->with([
                 'almacen', 
                 'proveedor', 
-                'fecha',
+                'fecha',  // ✅ Cargar la relación fecha
                 'detalles.producto'
             ])
             ->findOrFail($id);
@@ -652,11 +672,10 @@ class CompraController extends Controller
         $pdf->SetFont('courier', 'B', 16);
         $pdf->Cell(18, 3, 'No ' . $compra->NumeroCorrelativo, 0, 1, 'L');
 
-        // Número de diario (CORREGIDO)
+        // Número de diario
         $y = $pdf->GetY();
         $pdf->SetXY(179, $y + 1);
         $pdf->SetFont('courier', '', 8);
-        // Obtener el número de diario desde la tabla conta_diario
         $numeroDiario = $compra->IdDiario ?? '-';
         if ($compra->IdDiario && $compra->IdDiario > 0) {
             $numDiario = DB::connection('mysql_gestion_comercial_alimentos')
@@ -680,7 +699,7 @@ class CompraController extends Controller
         $pdf->SetXY(5, $y + 7);
         $pdf->Cell(200, 3, '(Expresado en Unidades)', 0, 1, 'C');
 
-        // Datos de cabecera
+        // 🔥 DATOS DE CABECERA CON LA FECHA CORRECTA
         $y = $pdf->GetY();
         $pdf->SetFont('courier', 'B', 10);
         
@@ -698,8 +717,16 @@ class CompraController extends Controller
         $pdf->SetXY(15, $y + 2);
         $pdf->Cell(200, 3, 'Almacen   : ' . ($compra->almacen->Almacen ?? ''), 0, 1, 'L');
         
+        // ✅ FECHA CORRECTA: Usar la fecha asociada al IdFecha
+        $fechaMostrar = '';
+        if ($compra->fecha) {
+            $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
+        } else {
+            // Fallback: si no hay fecha asociada, usar FechaIngreso
+            $fechaMostrar = date('d/m/Y', strtotime($compra->FechaIngreso));
+        }
         $pdf->SetXY(155, $y + 2);
-        $pdf->Cell(200, 3, 'Fecha   : ' . date('d/m/Y', strtotime($compra->FechaIngreso)), 0, 1, 'L');
+        $pdf->Cell(200, 3, 'Fecha   : ' . $fechaMostrar, 0, 1, 'L');
 
         // Observación
         $y = $pdf->GetY();
@@ -714,7 +741,7 @@ class CompraController extends Controller
         
         $y = $pdf->GetY();
 
-        // Tabla
+        // Tabla de productos
         $y = $y + 4;
         $pdf->Line(15, $y, 200, $y);
         
@@ -828,7 +855,6 @@ class CompraController extends Controller
         
         return $todasFechas;
     }
-
     /**
      * Vista para gestión de estados (Activar/Inactivar compras) - CON SUCURSALES
      */
@@ -856,7 +882,7 @@ class CompraController extends Controller
         // CONSULTA PRINCIPAL - SIN usar scope porContexto()
         // =============================================
         $query = Compra::where('IdCliente', $clienteId)
-            ->with(['proveedor']);
+            ->with(['proveedor', 'fecha']); // ✅ Agregar 'fecha' a la relación
         
         // 🔥 FILTRO POR SUCURSAL
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
@@ -894,6 +920,19 @@ class CompraController extends Controller
             $compra->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
             $compra->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
             
+            // ✅ FECHA CORRECTA: Usar la fecha asociada al IdFecha
+            $fechaMostrar = '';
+            if ($compra->fecha) {
+                $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
+            } else {
+                // Fallback: si no hay fecha asociada, usar FechaIngreso
+                $fechaMostrar = $compra->FechaIngreso ? date('d/m/Y', strtotime($compra->FechaIngreso)) : '';
+            }
+            $compra->fecha_mostrar = $fechaMostrar;
+            
+            // ✅ También agregar el IdFecha para referencia
+            $compra->fecha_id = $compra->IdFecha;
+            
             return $compra;
         });
         
@@ -906,7 +945,6 @@ class CompraController extends Controller
             'sucursalSeleccionada' => $request->sucursal_id,
         ]);
     }
-
     /**
      * Cambiar estado (SOLO DESACTIVAR - Activo → Borrador)
      */

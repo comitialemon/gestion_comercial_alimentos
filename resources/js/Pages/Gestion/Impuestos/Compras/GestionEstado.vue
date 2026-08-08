@@ -301,9 +301,10 @@ const formatearMonto = (monto) => {
     return Number(monto).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
+// ✅ CORREGIDO: Usar fecha_mostrar del controller
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
-    return new Date(fecha).toLocaleDateString('es-BO')
+    return fecha // Ya viene formateada desde el controller como d/m/Y
 }
 
 // 1 = INACTIVO (Contabilizado), 0 = ACTIVO (Borrador)
@@ -548,7 +549,8 @@ onUnmounted(() => {
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             <tr v-for="compra in grupo.compras" :key="compra.IdCompras" class="hover:bg-gray-50">
                                                 <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ compra.NumeroCorrelativo }}</td>
-                                                <td class="px-3 py-2 text-xs text-gray-500">{{ formatearFecha(compra.FechaIngreso) }}</td>
+                                                <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
+                                                <td class="px-3 py-2 text-xs text-gray-500">{{ compra.fecha_mostrar || '-' }}</td>
                                                 <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="compra.proveedor?.Nombre">
                                                     {{ compra.proveedor?.Nombre || '-' }}
                                                 </td>
@@ -593,8 +595,9 @@ onUnmounted(() => {
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <span class="font-bold text-primary-700 text-sm">N° {{ compra.NumeroCorrelativo }}</span>
                                                 </div>
+                                                <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
                                                 <div class="text-xs text-gray-500 mt-0.5">
-                                                    {{ formatearFecha(compra.FechaIngreso) }}
+                                                    {{ compra.fecha_mostrar || '-' }}
                                                 </div>
                                                 <div class="text-xs text-gray-600 mt-1">
                                                     <span class="text-gray-400">Proveedor:</span> {{ compra.proveedor?.Nombre || '-' }}
