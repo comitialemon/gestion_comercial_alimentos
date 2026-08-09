@@ -78,7 +78,7 @@ class InventarioFisicoController extends Controller
                 ->with('info', 'Continúe con el inventario físico en progreso');
         }
 
-        // 🔥 OBTENER FECHAS DISPONIBLES (SIN FORZAR NINGUNA)
+        // 🔥 OBTENER FECHAS DISPONIBLES PARA LA SUCURSAL DE SESIÓN
         $fechas = $this->getFechasDisponibles();
 
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
@@ -134,8 +134,11 @@ class InventarioFisicoController extends Controller
                 ];
             });
 
-        // 🔥 PASAR EL IDFECHA DEL INVENTARIO PARA FORZAR SU INCLUSIÓN
-        $fechas = $this->getFechasDisponibles($inventarioFisico->IdFecha);
+        // 🔥 PASAR EL IDFECHA Y LA SUCURSAL DEL INVENTARIO
+        $fechas = $this->getFechasDisponibles(
+            $inventarioFisico->IdFecha, 
+            $inventarioFisico->IdSucursal
+        );
 
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->orderBy('Nombre')
@@ -153,20 +156,12 @@ class InventarioFisicoController extends Controller
                 ->get(['IdAlmacen as id', 'Almacen as nombre']);
         }
 
-        // 🔥 LOG PARA DEPURAR
         \Log::info('📅 EDIT - Inventario Físico:', [
             'IdFisico' => $inventarioFisico->IdFisico,
             'IdFecha' => $inventarioFisico->IdFecha,
-            'fecha_relacion' => $inventarioFisico->fecha,
+            'IdSucursal' => $inventarioFisico->IdSucursal,
             'fecha_raw' => $inventarioFisico->fecha?->Fecha,
-            'total_fechas_disponibles' => $fechas->count(),
-            'fechas' => $fechas->map(function($f) {
-                return [
-                    'id' => $f->id,
-                    'fecha_display' => $f->fecha_display,
-                    'fecha_raw' => $f->fecha_raw
-                ];
-            })->toArray()
+            'total_fechas' => $fechas->count(),
         ]);
 
         return Inertia::render('Gestion/Inventario/InventarioFisico/Create', [
@@ -995,14 +990,16 @@ class InventarioFisicoController extends Controller
     /**
      * Obtener fechas disponibles (abiertas) para el cliente y sucursal
      * Ordenadas de la más reciente a la más antigua
-     * 🔥 AHORA CON PARÁMETRO PARA FORZAR UNA FECHA ESPECÍFICA
+     * 🔥 AHORA CON PARÁMETROS PARA FORZAR UNA FECHA Y SUCURSAL ESPECÍFICA
      */
-    private function getFechasDisponibles($idFechaForzar = null)
+    private function getFechasDisponibles($idFechaForzar = null, $idSucursalForzar = null)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
         
-        // 1️⃣ FECHAS PRINCIPALES ABIERTAS
+        // 🔥 Si se pasa una sucursal específica, usarla; si no, usar la de sesión
+        $sucursalId = $idSucursalForzar ?? session('cliente_sucursal_id');
+        
+        // 1️⃣ FECHAS PRINCIPALES ABIERTAS (todas las sucursales)
         $fechas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha')
             ->where('ActivoInactivo', 0)
@@ -1012,7 +1009,7 @@ class InventarioFisicoController extends Controller
             ->orderBy('Fecha', 'desc')
             ->get();
 
-        // 2️⃣ FECHAS AUXILIARES DE LA SUCURSAL
+        // 2️⃣ FECHAS AUXILIARES DE LA SUCURSAL (específica)
         $fechasAux = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha_auxiliar_sucursal')
             ->join('todos_fecha', 'todos_fecha_auxiliar_sucursal.IdFecha', '=', 'todos_fecha.IdFecha')
