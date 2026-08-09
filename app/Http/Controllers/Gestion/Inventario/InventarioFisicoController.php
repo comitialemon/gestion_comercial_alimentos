@@ -78,7 +78,7 @@ class InventarioFisicoController extends Controller
                 ->with('info', 'Continúe con el inventario físico en progreso');
         }
 
-        // 🔥 USAR EL NUEVO MÉTODO
+        // 🔥 OBTENER FECHAS DISPONIBLES (SIN FORZAR NINGUNA)
         $fechas = $this->getFechasDisponibles();
 
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
@@ -134,8 +134,8 @@ class InventarioFisicoController extends Controller
                 ];
             });
 
-        // 🔥 USAR EL NUEVO MÉTODO
-        $fechas = $this->getFechasDisponibles();
+        // 🔥 PASAR EL IDFECHA DEL INVENTARIO PARA FORZAR SU INCLUSIÓN
+        $fechas = $this->getFechasDisponibles($inventarioFisico->IdFecha);
 
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->orderBy('Nombre')
@@ -152,6 +152,22 @@ class InventarioFisicoController extends Controller
                 ->orderBy('Almacen')
                 ->get(['IdAlmacen as id', 'Almacen as nombre']);
         }
+
+        // 🔥 LOG PARA DEPURAR
+        \Log::info('📅 EDIT - Inventario Físico:', [
+            'IdFisico' => $inventarioFisico->IdFisico,
+            'IdFecha' => $inventarioFisico->IdFecha,
+            'fecha_relacion' => $inventarioFisico->fecha,
+            'fecha_raw' => $inventarioFisico->fecha?->Fecha,
+            'total_fechas_disponibles' => $fechas->count(),
+            'fechas' => $fechas->map(function($f) {
+                return [
+                    'id' => $f->id,
+                    'fecha_display' => $f->fecha_display,
+                    'fecha_raw' => $f->fecha_raw
+                ];
+            })->toArray()
+        ]);
 
         return Inertia::render('Gestion/Inventario/InventarioFisico/Create', [
             'inventarioFisico' => $inventarioFisico,
@@ -979,13 +995,14 @@ class InventarioFisicoController extends Controller
     /**
      * Obtener fechas disponibles (abiertas) para el cliente y sucursal
      * Ordenadas de la más reciente a la más antigua
+     * 🔥 AHORA CON PARÁMETRO PARA FORZAR UNA FECHA ESPECÍFICA
      */
-    private function getFechasDisponibles()
+    private function getFechasDisponibles($idFechaForzar = null)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        // Fechas principales abiertas
+        // 1️⃣ FECHAS PRINCIPALES ABIERTAS
         $fechas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha')
             ->where('ActivoInactivo', 0)
@@ -995,28 +1012,64 @@ class InventarioFisicoController extends Controller
             ->orderBy('Fecha', 'desc')
             ->get();
 
-        // Fechas auxiliares de la sucursal (abiertas)
+        // 2️⃣ FECHAS AUXILIARES DE LA SUCURSAL
         $fechasAux = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_fecha_auxiliar_sucursal')
             ->join('todos_fecha', 'todos_fecha_auxiliar_sucursal.IdFecha', '=', 'todos_fecha.IdFecha')
             ->where('todos_fecha_auxiliar_sucursal.IdCliente', $clienteId)
             ->where('todos_fecha_auxiliar_sucursal.IdSucursal', $sucursalId)
-            ->where('todos_fecha.ActivoInactivo', 0)
-            ->where('todos_fecha.CierreSucursal', 0)
-            ->where('todos_fecha.CierrePermanente', 0)
-            ->select('todos_fecha.IdFecha as id', DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha_display"), 'todos_fecha.Fecha as fecha_raw')
+            ->select(
+                'todos_fecha.IdFecha as id', 
+                DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha_display"), 
+                'todos_fecha.Fecha as fecha_raw'
+            )
             ->orderBy('todos_fecha.Fecha', 'desc')
             ->get();
 
-        // Unir y eliminar duplicados, luego ordenar por fecha descendente
+        // Unir y eliminar duplicados
         $todasFechas = $fechas->merge($fechasAux)->unique('id');
         
-        // Ordenar por fecha descendente (más reciente primero)
+        // 🔥 3️⃣ SI HAY UNA FECHA ESPECÍFICA QUE FORZAR
+        if ($idFechaForzar && $idFechaForzar != 0) {
+            $existe = $todasFechas->contains('id', $idFechaForzar);
+            
+            if (!$existe) {
+                $fechaForzada = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_fecha')
+                    ->where('IdFecha', $idFechaForzar)
+                    ->select(
+                        'IdFecha as id', 
+                        DB::raw("DATE_FORMAT(Fecha, '%d/%m/%Y') as fecha_display"), 
+                        'Fecha as fecha_raw'
+                    )
+                    ->first();
+                
+                if ($fechaForzada) {
+                    $todasFechas->push((object) $fechaForzada);
+                    \Log::info('✅ Fecha forzada agregada:', [
+                        'id' => $idFechaForzar,
+                        'fecha_display' => $fechaForzada->fecha_display
+                    ]);
+                }
+            }
+        }
+        
+        // Ordenar por fecha descendente
         $todasFechas = $todasFechas->sortByDesc(function($item) {
             return $item->fecha_raw;
         })->values();
 
-        \Log::info('Fechas disponibles para combo:', $todasFechas->toArray());
+        \Log::info('📅 Fechas disponibles para combo:', [
+            'sucursal_id' => $sucursalId,
+            'total' => $todasFechas->count(),
+            'fechas' => $todasFechas->map(function($f) {
+                return [
+                    'id' => $f->id,
+                    'fecha_display' => $f->fecha_display,
+                    'fecha_raw' => $f->fecha_raw
+                ];
+            })->toArray()
+        ]);
         
         return $todasFechas;
     }

@@ -28,6 +28,7 @@ const handleResize = () => {
     isTablet.value = window.innerWidth >= 640 && window.innerWidth < 1024
 }
 
+// ==================== FORMULARIO ====================
 const form = ref({
     IdFisico: props.inventarioFisico?.IdFisico || null,
     IdFecha: props.inventarioFisico?.IdFecha || '',
@@ -37,6 +38,9 @@ const form = ref({
     IdEncargadoSucursal: props.inventarioFisico?.IdEncargadoSucursal || '',
     Observacion: props.inventarioFisico?.Observacion || '',
 })
+
+// 🔥 FECHAS DISPONIBLES
+const fechasDisponibles = ref([])
 
 const API_BASE = '/gestion/inventario/inventario-fisico'
 
@@ -62,7 +66,6 @@ const seleccionarSucursal = (sucursal) => {
     cargarAlmacenes(sucursal.id)
 }
 
-// 🔥 CORREGIDO: Usar mousedown en lugar de click
 const manejarClickSucursal = (sucursal) => {
     seleccionarSucursal(sucursal)
 }
@@ -113,7 +116,6 @@ const seleccionarRealizadoPor = (item) => {
     errors.value.IdRealizadoPor = null
 }
 
-// 🔥 CORREGIDO: Usar mousedown en lugar de click
 const manejarClickRealizadoPor = (item) => {
     seleccionarRealizadoPor(item)
 }
@@ -137,7 +139,6 @@ const seleccionarEncargado = (item) => {
     errors.value.IdEncargadoSucursal = null
 }
 
-// 🔥 CORREGIDO: Usar mousedown en lugar de click
 const manejarClickEncargado = (item) => {
     seleccionarEncargado(item)
 }
@@ -150,6 +151,7 @@ const contabilizando = ref(false)
 const errors = ref({})
 const mostrarConfirmacion = ref(false)
 const cabeceraGuardada = ref(false)
+const datosCargados = ref(false)
 
 // ==================== BUSCADOR DE PRODUCTOS ====================
 const busquedaProducto = ref('')
@@ -307,30 +309,79 @@ const cancelarConfirmacion = () => {
 
 // ==================== INICIALIZAR ====================
 const inicializar = () => {
+    // Inicializar fechas disponibles con las que vienen del props
+    fechasDisponibles.value = props.fechas ? [...props.fechas] : []
+    
+    console.log('📅 Fechas disponibles:', fechasDisponibles.value)
+    console.log('📅 Inventario:', props.inventarioFisico)
+    
+    // 🔥 SI EXISTE INVENTARIO FÍSICO (edición o visualización)
     if (props.inventarioFisico && props.inventarioFisico.IdFisico) {
         cabeceraGuardada.value = true
         
+        // ✅ FECHA - Asignar correctamente
         if (props.inventarioFisico.IdFecha && props.inventarioFisico.IdFecha != 0) {
-            form.value.IdFecha = props.inventarioFisico.IdFecha
+            const idFecha = Number(props.inventarioFisico.IdFecha)
+            
+            // Verificar si la fecha existe en la lista
+            const fechaExiste = fechasDisponibles.value.some(f => Number(f.id) === idFecha)
+            
+            console.log('🔍 Verificando fecha:', { idFecha, fechaExiste })
+            
+            if (fechaExiste) {
+                form.value.IdFecha = idFecha
+                console.log('✅ Fecha encontrada y seleccionada:', idFecha)
+            } else {
+                // Si no existe, buscar la fecha en la lista por su display
+                if (props.inventarioFisico.fecha && props.inventarioFisico.fecha.Fecha) {
+                    const fechaStr = props.inventarioFisico.fecha.Fecha
+                    const partes = fechaStr.split('-')
+                    const fechaDisplay = `${partes[2]}/${partes[1]}/${partes[0]}`
+                    
+                    console.log('📅 Buscando fecha por display:', fechaDisplay)
+                    
+                    const fechaEncontrada = fechasDisponibles.value.find(f => f.fecha_display === fechaDisplay)
+                    
+                    if (fechaEncontrada) {
+                        form.value.IdFecha = Number(fechaEncontrada.id)
+                        console.log('✅ Fecha encontrada por display:', form.value.IdFecha, fechaEncontrada.fecha_display)
+                    } else {
+                        // Si no se encuentra, usar la primera fecha disponible
+                        form.value.IdFecha = Number(fechasDisponibles.value[0]?.id || '')
+                        console.log('⚠️ Usando primera fecha disponible:', form.value.IdFecha)
+                    }
+                }
+            }
         }
+        
+        // ✅ SUCURSAL
         if (props.inventarioFisico.IdSucursal && props.inventarioFisico.IdSucursal != 0) {
             form.value.IdSucursal = props.inventarioFisico.IdSucursal
             cargarAlmacenes(props.inventarioFisico.IdSucursal)
         }
+        
+        // ✅ ALMACÉN
         if (props.inventarioFisico.IdAlmacen && props.inventarioFisico.IdAlmacen != 0) {
             form.value.IdAlmacen = props.inventarioFisico.IdAlmacen
         }
+        
+        // ✅ REALIZADO POR
         if (props.inventarioFisico.IdRealizadoPor && props.inventarioFisico.IdRealizadoPor != 0) {
             form.value.IdRealizadoPor = props.inventarioFisico.IdRealizadoPor
         }
+        
+        // ✅ ENCARGADO SUCURSAL
         if (props.inventarioFisico.IdEncargadoSucursal && props.inventarioFisico.IdEncargadoSucursal != 0) {
             form.value.IdEncargadoSucursal = props.inventarioFisico.IdEncargadoSucursal
         }
+        
+        // ✅ OBSERVACIÓN
         if (props.inventarioFisico.Observacion) {
             form.value.Observacion = props.inventarioFisico.Observacion
         }
     }
     
+    // ✅ SUCURSAL - Autocomplete
     if (form.value.IdSucursal && props.sucursales) {
         const sucursal = props.sucursales.find(s => s.id === form.value.IdSucursal)
         if (sucursal) {
@@ -338,20 +389,34 @@ const inicializar = () => {
         }
     }
     
+    // ✅ REALIZADO POR - Autocomplete
     if (form.value.IdRealizadoPor && props.identificadores) {
         const realizado = props.identificadores.find(i => i.id === form.value.IdRealizadoPor)
-        if (realizado) busquedaRealizadoPor.value = realizado.texto
+        if (realizado) {
+            busquedaRealizadoPor.value = realizado.texto
+        }
     }
     
+    // ✅ ENCARGADO SUCURSAL - Autocomplete
     if (form.value.IdEncargadoSucursal && props.identificadores) {
         const encargado = props.identificadores.find(i => i.id === form.value.IdEncargadoSucursal)
-        if (encargado) busquedaEncargado.value = encargado.texto
+        if (encargado) {
+            busquedaEncargado.value = encargado.texto
+        }
     }
     
+    // ✅ DETALLES
     if (props.detalles && props.detalles.length > 0) {
         detallesGrid.value = props.detalles
         cabeceraGuardada.value = true
     }
+    
+    datosCargados.value = true
+    
+    console.log('📅 Estado final:', {
+        IdFecha: form.value.IdFecha,
+        fechas: fechasDisponibles.value.map(f => ({ id: f.id, display: f.fecha_display }))
+    })
 }
 
 onMounted(() => {
@@ -412,8 +477,21 @@ onUnmounted(() => {
                             <i class="fas fa-clipboard-list text-primary-600 text-[11px] sm:text-sm"></i>
                         </div>
                         <div class="min-w-0">
-                            <h1 class="text-sm sm:text-base lg:text-lg font-bold text-gray-800 truncate">Inventario Físico</h1>
-                            <p class="text-[8px] sm:text-[10px] text-gray-500 truncate">Registro de conteo físico de productos</p>
+                            <h1 class="text-sm sm:text-base lg:text-lg font-bold text-gray-800 truncate">
+                                Inventario Físico
+                                <span v-if="props.inventarioFisico && props.inventarioFisico.NumeroCorrelativo" 
+                                      class="text-xs font-mono bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full ml-2">
+                                    N° {{ props.inventarioFisico.NumeroCorrelativo }}
+                                </span>
+                                <span v-else class="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full ml-2">
+                                    N° 0
+                                </span>
+                            </h1>
+                            <p class="text-[8px] sm:text-[10px] text-gray-500 truncate">
+                                <span v-if="props.esContabilizado">✅ Contabilizado</span>
+                                <span v-else-if="props.esBorrador">✏️ Borrador en progreso</span>
+                                <span v-else>📝 Nuevo registro</span>
+                            </p>
                         </div>
                     </div>
                     
@@ -472,14 +550,21 @@ onUnmounted(() => {
                         <!-- Fecha -->
                         <div>
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Fecha *</label>
-                            <select v-model="form.IdFecha" class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" :class="{'border-red-500': errors.IdFecha}" :disabled="props.esContabilizado">
+                            <select 
+                                v-model="form.IdFecha" 
+                                class="w-full border rounded-md px-2 py-1.5 text-[10px] sm:text-xs" 
+                                :class="{'border-red-500': errors.IdFecha}" 
+                                :disabled="props.esContabilizado"
+                            >
                                 <option value="">Seleccione</option>
-                                <option v-for="f in fechas" :key="f.id" :value="f.id">{{ f.fecha_display }}</option>
+                                <option v-for="f in fechasDisponibles" :key="f.id" :value="Number(f.id)">
+                                    {{ f.fecha_display }}
+                                </option>
                             </select>
                             <p v-if="errors.IdFecha" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdFecha }}</p>
                         </div>
 
-                        <!-- Sucursal - 🔥 CORREGIDO -->
+                        <!-- Sucursal -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Sucursal *</label>
                             <input 
@@ -521,7 +606,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdAlmacen" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdAlmacen }}</p>
                         </div>
 
-                        <!-- Realizado Por - 🔥 CORREGIDO -->
+                        <!-- Realizado Por -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Realizado Por *</label>
                             <input 
@@ -546,7 +631,7 @@ onUnmounted(() => {
                             <p v-if="errors.IdRealizadoPor" class="text-red-500 text-[8px] sm:text-[10px] mt-0.5">{{ errors.IdRealizadoPor }}</p>
                         </div>
 
-                        <!-- Encargado Sucursal - 🔥 CORREGIDO -->
+                        <!-- Encargado Sucursal -->
                         <div class="relative">
                             <label class="block text-gray-600 mb-0.5 text-[9px] sm:text-[10px]">Encargado Sucursal *</label>
                             <input 

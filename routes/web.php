@@ -944,6 +944,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
         // Almacenes por Sucursal
         Route::get('/almacenes-por-sucursal/{sucursalId}', [InventarioFisicoController::class, 'getAlmacenes'])->name('api.almacenes.por-sucursal');
+        
+        // 🔥 NUEVA RUTA: Obtener fecha específica por ID
+        Route::get('/fecha/{id}', [InventarioFisicoController::class, 'getFecha'])->name('api.fecha');
     });
     // Unidades de medida - FUERA DEL GRUPO inventario (en /api)
     Route::get('/api/unidades-medida', function () {
