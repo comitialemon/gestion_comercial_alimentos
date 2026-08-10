@@ -882,13 +882,12 @@ class CompraController extends Controller
         // CONSULTA PRINCIPAL - SIN usar scope porContexto()
         // =============================================
         $query = Compra::where('IdCliente', $clienteId)
-            ->with(['proveedor', 'fecha']); // ✅ Agregar 'fecha' a la relación
+            ->with(['proveedor', 'fecha']);
         
         // 🔥 FILTRO POR SUCURSAL
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
             $query->where('IdSucursal', $request->sucursal_id);
         } else {
-            // Por defecto, mostrar la sucursal logueada
             $query->where('IdSucursal', $sucursalId);
         }
         
@@ -909,9 +908,11 @@ class CompraController extends Controller
         
         $compras = $query->orderBy('IdCompras', 'desc')->paginate(20);
         
+        // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
+        $compras->appends($request->all());
+        
         // Enriquecer datos
         $compras->getCollection()->transform(function ($compra) {
-            // 🔥 Agregar nombre de sucursal
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $compra->IdSucursal)
@@ -920,17 +921,13 @@ class CompraController extends Controller
             $compra->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
             $compra->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
             
-            // ✅ FECHA CORRECTA: Usar la fecha asociada al IdFecha
             $fechaMostrar = '';
             if ($compra->fecha) {
                 $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
             } else {
-                // Fallback: si no hay fecha asociada, usar FechaIngreso
                 $fechaMostrar = $compra->FechaIngreso ? date('d/m/Y', strtotime($compra->FechaIngreso)) : '';
             }
             $compra->fecha_mostrar = $fechaMostrar;
-            
-            // ✅ También agregar el IdFecha para referencia
             $compra->fecha_id = $compra->IdFecha;
             
             return $compra;

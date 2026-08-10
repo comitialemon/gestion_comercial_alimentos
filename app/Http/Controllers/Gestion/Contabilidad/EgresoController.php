@@ -499,7 +499,7 @@ class EgresoController extends Controller
         }
     }
 
-/**
+    /**
      * Vista para gestión de estados (Activar/Inactivar egresos) - CON SUCURSALES
      */
     public function gestionEstado(Request $request)
@@ -559,6 +559,9 @@ class EgresoController extends Controller
         }
         
         $egresos = $query->orderBy('IdEgreso', 'desc')->paginate(20);
+        
+        // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
+        $egresos->appends($request->all());
         
         \Log::info('Egresos encontrados: ' . $egresos->count());
         

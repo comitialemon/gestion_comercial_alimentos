@@ -29,6 +29,38 @@ const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
 
 // =============================================
+// 🔥 NUEVA FUNCIÓN: Construir URL con filtros para paginación
+// =============================================
+const construirUrlConFiltros = (url) => {
+    if (!url) return '#'
+    
+    try {
+        // Crear objeto URL
+        const urlObj = new URL(url, window.location.origin)
+        const params = new URLSearchParams(urlObj.search)
+        
+        // Mantener los filtros actuales
+        if (sucursalId.value) {
+            params.set('sucursal_id', sucursalId.value)
+        }
+        
+        if (estadoFiltro.value) {
+            params.set('estado', estadoFiltro.value)
+        }
+        
+        if (buscador.value) {
+            params.set('buscar', buscador.value)
+        }
+        
+        urlObj.search = params.toString()
+        return urlObj.toString()
+    } catch (error) {
+        console.error('Error construyendo URL:', error)
+        return url
+    }
+}
+
+// =============================================
 // COMPUTADOS - Autocomplete
 // =============================================
 
@@ -362,10 +394,6 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/egresos" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
-                            <i class="fas fa-list text-[10px]"></i>
-                            <span>Listado</span>
-                        </Link>
                         <Link href="/gestion/egresos/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Egreso</span>
@@ -434,7 +462,7 @@ onUnmounted(() => {
                         <!-- Estado -->
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select v-model="estadoFiltro" class="border border-gray-300 rounded-md px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
+                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-md px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
                                 <option value="activos">Activos (Borrador)</option>
                                 <option value="inactivos">Inactivos (Contabilizado)</option>
@@ -641,13 +669,25 @@ onUnmounted(() => {
                         </transition>
                     </div>
                     
-                    <!-- Paginación -->
+                    <!-- 🔥 PAGINACIÓN CON FILTROS CORREGIDA -->
                     <div v-if="props.egresos?.data?.length" class="bg-white rounded-lg shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <p class="text-[10px] sm:text-xs text-gray-500">
                             Mostrando {{ props.egresos.from || 0 }} - {{ props.egresos.to || 0 }} de {{ props.egresos.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
-                            <Link v-for="link in props.egresos.links" :key="link.label" :href="link.url || '#'" class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" :class="{ 'bg-primary-600 text-white': link.active, 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                            <Link 
+                                v-for="link in props.egresos.links" 
+                                :key="link.label" 
+                                :href="construirUrlConFiltros(link.url)"
+                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
+                                :class="{ 
+                                    'bg-primary-600 text-white': link.active, 
+                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 
+                                    'opacity-50 cursor-not-allowed': !link.url 
+                                }" 
+                                v-html="link.label"
+                                preserve-state
+                            />
                         </div>
                     </div>
                 </div>

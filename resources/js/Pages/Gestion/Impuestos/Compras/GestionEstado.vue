@@ -20,7 +20,7 @@ const props = defineProps({
 // ESTADO DE FILTROS
 // =============================================
 
-// 🔥 Inicializar vacío - SIN auto-selección
+// 🔥 Inicializar desde props para mantener filtros
 const sucursalId = ref(props.sucursalSeleccionada || '')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
@@ -160,7 +160,6 @@ const limpiarSucursal = () => {
     sucursalId.value = ''
     sucursalBusqueda.value = ''
     mostrarSucursales.value = false
-    // 🔥 Al limpiar, recargar sin sucursal para mostrar el mensaje
     aplicarFiltros()
 }
 
@@ -186,7 +185,39 @@ const handleClickOutside = (event) => {
 }
 
 // =============================================
-// ESTADO
+// 🔥 NUEVA FUNCIÓN: Construir URL con filtros para paginación
+// =============================================
+const construirUrlConFiltros = (url) => {
+    if (!url) return '#'
+    
+    try {
+        // Crear objeto URL
+        const urlObj = new URL(url, window.location.origin)
+        const params = new URLSearchParams(urlObj.search)
+        
+        // Mantener los filtros actuales
+        if (sucursalId.value) {
+            params.set('sucursal_id', sucursalId.value)
+        }
+        
+        if (estadoFiltro.value) {
+            params.set('estado', estadoFiltro.value)
+        }
+        
+        if (buscador.value) {
+            params.set('buscar', buscador.value)
+        }
+        
+        urlObj.search = params.toString()
+        return urlObj.toString()
+    } catch (error) {
+        console.error('Error construyendo URL:', error)
+        return url
+    }
+}
+
+// =============================================
+// ESTADO PARA SWITCH
 // =============================================
 const cambiando = ref({})
 const loading = ref(false)
@@ -301,13 +332,11 @@ const formatearMonto = (monto) => {
     return Number(monto).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
 }
 
-// ✅ CORREGIDO: Usar fecha_mostrar del controller
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
-    return fecha // Ya viene formateada desde el controller como d/m/Y
+    return fecha
 }
 
-// 1 = INACTIVO (Contabilizado), 0 = ACTIVO (Borrador)
 const getEstadoColor = (activo) => {
     return activo === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
 }
@@ -337,8 +366,6 @@ onMounted(() => {
         if (sucursal) {
             sucursalBusqueda.value = sucursal.nombre
         }
-        // Si hay sucursal seleccionada, cargar datos
-        aplicarFiltros()
     }
     
     setTimeout(() => {
@@ -433,7 +460,7 @@ onUnmounted(() => {
                         <!-- Estado -->
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select v-model="estadoFiltro" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
+                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
                                 <option value="activos">Activos (Borrador)</option>
                                 <option value="inactivos">Inactivos (Contabilizado)</option>
@@ -549,7 +576,6 @@ onUnmounted(() => {
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             <tr v-for="compra in grupo.compras" :key="compra.IdCompras" class="hover:bg-gray-50">
                                                 <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ compra.NumeroCorrelativo }}</td>
-                                                <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
                                                 <td class="px-3 py-2 text-xs text-gray-500">{{ compra.fecha_mostrar || '-' }}</td>
                                                 <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="compra.proveedor?.Nombre">
                                                     {{ compra.proveedor?.Nombre || '-' }}
@@ -595,7 +621,6 @@ onUnmounted(() => {
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <span class="font-bold text-primary-700 text-sm">N° {{ compra.NumeroCorrelativo }}</span>
                                                 </div>
-                                                <!-- ✅ FECHA CORREGIDA: Usar fecha_mostrar del controller -->
                                                 <div class="text-xs text-gray-500 mt-0.5">
                                                     {{ compra.fecha_mostrar || '-' }}
                                                 </div>
@@ -630,13 +655,25 @@ onUnmounted(() => {
                         </transition>
                     </div>
                     
-                    <!-- Paginación -->
+                    <!-- 🔥 PAGINACIÓN CON FILTROS CORREGIDA -->
                     <div v-if="props.compras?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <p class="text-[10px] sm:text-xs text-gray-500">
                             Mostrando {{ props.compras.from || 0 }} - {{ props.compras.to || 0 }} de {{ props.compras.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
-                            <Link v-for="link in props.compras.links" :key="link.label" :href="link.url || '#'" class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" :class="{ 'bg-primary-600 text-white': link.active, 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 'opacity-50 cursor-not-allowed': !link.url }" v-html="link.label" />
+                            <Link 
+                                v-for="link in props.compras.links" 
+                                :key="link.label" 
+                                :href="construirUrlConFiltros(link.url)"
+                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
+                                :class="{ 
+                                    'bg-primary-600 text-white': link.active, 
+                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 
+                                    'opacity-50 cursor-not-allowed': !link.url 
+                                }" 
+                                v-html="link.label"
+                                preserve-state
+                            />
                         </div>
                     </div>
                 </div>

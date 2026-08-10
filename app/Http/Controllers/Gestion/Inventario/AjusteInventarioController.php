@@ -630,7 +630,7 @@ class AjusteInventarioController extends Controller
         
         // CONSULTA PRINCIPAL
         $query = AjusteInventario::where('IdCliente', $clienteId)
-            ->with(['tipoOperacion', 'almacen', 'fecha']); // ✅ Agregar 'fecha'
+            ->with(['tipoOperacion', 'almacen', 'fecha']);
         
         // FILTRO POR SUCURSAL
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
@@ -655,6 +655,9 @@ class AjusteInventarioController extends Controller
         }
         
         $ajustes = $query->orderBy('IdAjustesPrincipal', 'desc')->paginate(20);
+        
+        // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
+        $ajustes->appends($request->all());
         
         // Enriquecer datos
         $ajustes->getCollection()->transform(function ($ajuste) {

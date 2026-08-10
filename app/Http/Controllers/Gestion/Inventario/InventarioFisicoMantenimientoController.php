@@ -72,6 +72,9 @@ class InventarioFisicoMantenimientoController extends Controller
         
         $inventarios = $query->orderBy('IdFisico', 'desc')->paginate(20);
         
+        // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
+        $inventarios->appends($request->all());
+        
         Log::info('Inventarios encontrados: ' . $inventarios->count());
         
         // Enriquecer datos

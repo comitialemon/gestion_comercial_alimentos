@@ -757,6 +757,9 @@ class IngresoController extends Controller
         
         $ingresos = $query->orderBy('IdIngreso', 'desc')->paginate(20);
         
+        // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
+        $ingresos->appends($request->all());
+        
         $ingresos->getCollection()->transform(function ($ingreso) {
             $numeroDiario = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('conta_diario')
