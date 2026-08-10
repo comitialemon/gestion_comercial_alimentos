@@ -5,9 +5,10 @@ import { ref, watch, computed } from 'vue'
 
 const props = defineProps({
     visible: Boolean,
-    combo: Object,
-    opciones: Array,
+    producto: Object,
+    opciones: { type: Array, default: () => [] },
     cantidad: { type: Number, default: 1 },
+    tipoProducto: { type: String, default: 'normal' },
     personalizacionesIniciales: { type: Array, default: () => [] }
 })
 
@@ -16,14 +17,35 @@ const emit = defineEmits(['update:visible', 'confirm', 'close'])
 const pestañaActiva = ref(0)
 const personalizaciones = ref([])
 
+// 🔥 Etiquetas dinámicas según el tipo de producto
+const etiquetaTipo = computed(() => {
+    if (props.tipoProducto === 'pack') return 'pack'
+    if (props.tipoProducto === 'combo') return 'combo'
+    if (props.tipoProducto === 'con_opciones') return 'producto'
+    return 'producto'
+})
+
+const etiquetaTitulo = computed(() => {
+    if (props.tipoProducto === 'pack') return 'Personalizar pack'
+    if (props.tipoProducto === 'combo') return 'Personalizar combo'
+    if (props.tipoProducto === 'con_opciones') return 'Personalizar producto'
+    return 'Personalizar producto'
+})
+
+const etiquetaConfigurar = computed(() => {
+    if (props.tipoProducto === 'pack') return 'Configura tu pack'
+    if (props.tipoProducto === 'combo') return 'Configura tu combo'
+    return 'Configura tu producto'
+})
+
 // Utilidades
 const getTotalUnidades = (id) => {
-    if (props.combo?.composicion) {
-        const p = props.combo.composicion.find(p => p.id_producto === id)
+    if (props.producto?.composicion) {
+        const p = props.producto.composicion.find(p => p.id_producto === id)
         if (p?.porcion) return p.porcion
     }
     const g = props.opciones?.find(g => g.id_producto_original === id)
-    return g?.cantidad_total || props.combo?.cantidad || 1
+    return g?.cantidad_total || props.producto?.cantidad || 1
 }
 
 const getTotalReemplazado = (idx, id) => {
@@ -87,7 +109,7 @@ const removerSustituto = (idx, idOriginal, idSustituto) => {
 }
 
 const estaCompleto = (idx) => {
-    if (!props.opciones) return true
+    if (!props.opciones || props.opciones.length === 0) return true
     for (const grupo of props.opciones) {
         if (!grupo.opciones?.length) continue
         const reemplazado = getTotalReemplazado(idx, grupo.id_producto_original)
@@ -150,7 +172,9 @@ const siguiente = () => {
 const confirmar = () => {
     for (let i = 0; i < personalizaciones.value.length; i++) {
         if (!estaCompleto(i)) {
-            alert(`Combo #${i + 1}: Excede el total disponible`)
+            const etiqueta = props.tipoProducto === 'pack' ? 'Pack' : 
+                           props.tipoProducto === 'combo' ? 'Combo' : 'Producto'
+            alert(`${etiqueta} #${i + 1}: Excede el total disponible`)
             pestañaActiva.value = i
             return
         }
@@ -177,16 +201,16 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
         <div v-if="visible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-3" @click.self="cerrar">
             <div class="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
                 
-                <!-- Header -->
+                <!-- 🔥 Header DINÁMICO -->
                 <div class="bg-primary-700 px-4 py-2.5 flex justify-between items-center">
                     <div class="flex items-center gap-2">
                         <div class="w-7 h-7 bg-white rounded-lg flex items-center justify-center overflow-hidden">
-                            <img v-if="combo?.imagen" :src="combo.imagen" class="w-full h-full object-cover">
+                            <img v-if="producto?.imagen" :src="producto.imagen" class="w-full h-full object-cover">
                             <i v-else class="fas fa-box-open text-primary-600 text-xs"></i>
                         </div>
                         <div>
-                            <h3 class="text-white font-bold text-sm">Personalizar combo</h3>
-                            <p class="text-white/70 text-[10px]">{{ combo?.nombre }}</p>
+                            <h3 class="text-white font-bold text-sm">{{ etiquetaTitulo }}</h3>
+                            <p class="text-white/70 text-[10px]">{{ producto?.nombre }}</p>
                         </div>
                     </div>
                     <button @click="cerrar" class="text-white/80 hover:text-white transition text-sm">
@@ -217,15 +241,21 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
 
                 <!-- Contenido -->
                 <div class="flex-1 overflow-y-auto p-3 space-y-3">
-                    <div v-if="!personalizaciones.length" class="text-center text-gray-400 py-6 text-sm">
+                    <!-- 🔥 Mensaje cuando no hay opciones -->
+                    <div v-if="!opciones || opciones.length === 0" class="text-center text-gray-400 py-6 text-sm">
+                        <i class="fas fa-info-circle text-xl mb-1 block"></i>
+                        <p>No hay opciones de cambio disponibles</p>
+                    </div>
+                    
+                    <div v-else-if="!personalizaciones.length" class="text-center text-gray-400 py-6 text-sm">
                         <i class="fas fa-spinner fa-spin text-xl mb-1 block"></i>
                         Cargando...
                     </div>
                     
                     <div v-else>
-                        <!-- Número de combo -->
+                        <!-- 🔥 Número de producto DINÁMICO -->
                         <div v-if="mostrarPestanas" class="text-center text-[10px] text-gray-500 -mt-1">
-                            Combo {{ pestañaActiva + 1 }} de {{ personalizaciones.length }}
+                            {{ etiquetaTipo === 'pack' ? 'Pack' : etiquetaTipo === 'combo' ? 'Combo' : 'Producto' }} {{ pestañaActiva + 1 }} de {{ personalizaciones.length }}
                         </div>
                         
                         <!-- Opciones -->
@@ -284,10 +314,10 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                             </div>
                         </div>
                         
-                        <!-- Estado -->
+                        <!-- 🔥 Estado DINÁMICO -->
                         <div class="text-center text-xs font-medium py-1.5 rounded-lg"
                              :class="estaCompleto(pestañaActiva) ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'">
-                            {{ estaCompleto(pestañaActiva) ? '✅ Listo' : 'ℹ️ Configura tu combo' }}
+                            {{ estaCompleto(pestañaActiva) ? '✅ Listo' : 'ℹ️ ' + etiquetaConfigurar }}
                         </div>
                     </div>
                 </div>
@@ -297,11 +327,11 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                     <div class="flex justify-between items-center mb-2">
                         <div>
                             <p class="text-[10px] text-gray-500">Precio</p>
-                            <p class="text-sm font-bold text-primary-700">{{ Number(combo?.precio_real || 0).toFixed(2) }} Bs</p>
+                            <p class="text-sm font-bold text-primary-700">{{ Number(producto?.precio_real || 0).toFixed(2) }} Bs</p>
                         </div>
                         <div class="text-right">
                             <p class="text-[10px] text-gray-400">Total</p>
-                            <p class="text-sm font-bold text-gray-800">{{ (Number(combo?.precio_real || 0) * personalizaciones.length).toFixed(2) }} Bs</p>
+                            <p class="text-sm font-bold text-gray-800">{{ (Number(producto?.precio_real || 0) * personalizaciones.length).toFixed(2) }} Bs</p>
                         </div>
                     </div>
                     

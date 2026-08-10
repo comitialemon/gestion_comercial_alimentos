@@ -25,9 +25,10 @@ const productoSeleccionado = ref(null)
 const cantidad = ref(1)
 const precioUnitario = ref(0)
 const tipoPrecio = ref('')
-const esComboConOpciones = ref(false)
+const tieneOpcionesCambio = ref(false)
+const tipoProductoActual = ref('normal')
 
-// Modal de personalización de combos (múltiples)
+// Modal de personalización
 const modalPersonalizarVisible = ref(false)
 const comboActual = ref(null)
 const cantidadCombos = ref(1)
@@ -37,6 +38,14 @@ const opcionesAgrupadas = ref([])
 const totalModal = computed(() => (cantidad.value * precioUnitario.value).toFixed(2))
 const totalCarrito = computed(() => carrito.value.reduce((sum, item) => sum + (item.precio * item.cantidad), 0).toFixed(2))
 const totalItems = computed(() => carrito.value.reduce((sum, item) => sum + item.cantidad, 0))
+
+// 🔥 Etiqueta dinámica para el botón de personalizar
+const etiquetaPersonalizar = computed(() => {
+    if (tipoProductoActual.value === 'pack') return 'Personalizar pack'
+    if (tipoProductoActual.value === 'combo') return 'Personalizar combo'
+    if (tipoProductoActual.value === 'con_opciones') return 'Personalizar producto'
+    return 'Personalizar'
+})
 
 // Cargar carrito
 const cargarCarrito = async () => {
@@ -58,41 +67,62 @@ const cargarCarrito = async () => {
     }
 }
 
-// Verificar si el producto tiene opciones de cambio
-const verificarOpcionesCombo = async (producto) => {
+// 🔥 VERIFICAR OPCIONES (UNIVERSAL)
+const verificarOpcionesProducto = async (producto) => {
     try {
-        const response = await axios.get(`/combo-opciones/${producto.id}`)
-        return response.data.success && response.data.opciones && response.data.opciones.length > 0
+        // Usar el endpoint correcto
+        const response = await axios.get(`/venta-tactil/combo/${producto.id}`)
+        console.log('📡 Respuesta de opciones:', response.data)
+        
+        if (response.data.success) {
+            const data = response.data.producto || response.data
+            const tieneOpciones = data.tiene_opciones || (data.opciones && data.opciones.length > 0)
+            
+            if (tieneOpciones) {
+                tipoProductoActual.value = data.tipo || 'normal'
+                producto.tipo_producto = data.tipo || 'normal'
+                producto.opciones_data = data.opciones || []
+                producto.composicion_data = data.composicion || []
+            }
+            
+            return tieneOpciones
+        }
+        return false
     } catch (error) {
-        console.error('Error verificando opciones:', error)
+        console.error('❌ Error verificando opciones:', error)
         return false
     }
 }
 
-// Cargar las opciones del combo
-const cargarOpcionesCombo = async (idCombo) => {
+// 🔥 Cargar opciones del producto
+const cargarOpcionesProducto = async (idProducto) => {
     try {
-        const response = await axios.get(`/combo-opciones/${idCombo}`)
-        if (response.data.success && response.data.opciones) {
-            const agrupadas = {}
-            response.data.opciones.forEach(op => {
-                if (!agrupadas[op.id_producto_original]) {
-                    agrupadas[op.id_producto_original] = {
-                        id_producto_original: op.id_producto_original,
-                        nombre_original: op.nombre_original,
-                        cantidad_total: 1,
-                        opciones: []
+        const response = await axios.get(`/venta-tactil/combo/${idProducto}`)
+        if (response.data.success) {
+            const data = response.data.producto || response.data
+            const opciones = data.opciones || []
+            
+            if (opciones.length > 0) {
+                const agrupadas = {}
+                opciones.forEach(op => {
+                    if (!agrupadas[op.id_producto_original]) {
+                        agrupadas[op.id_producto_original] = {
+                            id_producto_original: op.id_producto_original,
+                            nombre_original: op.nombre_original,
+                            cantidad_total: 1,
+                            opciones: []
+                        }
                     }
-                }
-                agrupadas[op.id_producto_original].opciones.push({
-                    id_sustituto: op.id_producto_sustituto,
-                    nombre: op.nombre_sustituto,
-                    codigo: op.codigo_sustituto,
-                    cantidad_maxima: op.cantidad_maxima || 1,
-                    es_default: op.es_default === 1
+                    agrupadas[op.id_producto_original].opciones.push({
+                        id_sustituto: op.id_producto_sustituto,
+                        nombre: op.nombre_sustituto,
+                        codigo: op.codigo_sustituto || '',
+                        cantidad_maxima: op.cantidad_maxima || 1,
+                        es_default: op.es_default === 1
+                    })
                 })
-            })
-            return Object.values(agrupadas)
+                return Object.values(agrupadas)
+            }
         }
         return []
     } catch (error) {
@@ -101,30 +131,35 @@ const cargarOpcionesCombo = async (idCombo) => {
     }
 }
 
-// Cargar detalles completos del combo (con composición y cantidades)
-const cargarDetallesCombo = async (idCombo) => {
+// 🔥 Cargar detalles completos del producto
+const cargarDetallesProducto = async (idProducto) => {
     try {
-        const response = await axios.get(`/venta-tactil/combo/${idCombo}`)
+        const response = await axios.get(`/venta-tactil/combo/${idProducto}`)
         if (response.data.success) {
-            return response.data.combo
+            const data = response.data.producto || response.data
+            return {
+                composicion: data.composicion || [],
+                opciones: data.opciones || [],
+                tipo: data.tipo || 'normal'
+            }
         }
         return null
     } catch (error) {
-        console.error('Error cargando detalles del combo:', error)
+        console.error('Error cargando detalles:', error)
         return null
     }
 }
 
-// Preparar opciones agrupadas desde el combo completo
-const prepararOpcionesAgrupadas = (comboCompleto) => {
-    if (!comboCompleto) return []
+// 🔥 Preparar opciones agrupadas (con composición)
+const prepararOpcionesAgrupadas = (productoCompleto) => {
+    if (!productoCompleto) return []
     
     const grupos = {}
     
-    comboCompleto.composicion?.forEach(item => {
+    productoCompleto.composicion?.forEach(item => {
         const idOriginal = item.id_producto
         
-        const opcionesDelProducto = comboCompleto.opciones?.filter(
+        const opcionesDelProducto = productoCompleto.opciones?.filter(
             op => op.id_producto_original === idOriginal
         ) || []
         
@@ -141,14 +176,22 @@ const prepararOpcionesAgrupadas = (comboCompleto) => {
         }
     })
     
-    if (Object.keys(grupos).length === 0 && comboCompleto.composicion) {
-        comboCompleto.composicion.forEach(item => {
-            grupos[item.id_producto] = {
-                id_producto_original: item.id_producto,
-                nombre_original: item.nombre,
-                cantidad_total: item.porcion || 1,
-                opciones: []
+    if (Object.keys(grupos).length === 0 && productoCompleto.opciones?.length) {
+        productoCompleto.opciones.forEach(op => {
+            if (!grupos[op.id_producto_original]) {
+                grupos[op.id_producto_original] = {
+                    id_producto_original: op.id_producto_original,
+                    nombre_original: op.nombre_original || 'Producto',
+                    cantidad_total: 1,
+                    opciones: []
+                }
             }
+            grupos[op.id_producto_original].opciones.push({
+                id_sustituto: op.id_producto_sustituto,
+                nombre: op.nombre_sustituto,
+                codigo: op.codigo_sustituto || '',
+                cantidad_maxima: op.cantidad_maxima || 1
+            })
         })
     }
     
@@ -161,8 +204,7 @@ const obtenerDiaActual = () => {
     return dias[new Date().getDay()]
 }
 
-// 🔥 ABRIR MODAL CON VERIFICACIÓN DE DISPONIBILIDAD
-// 🔥 ABRIR MODAL CON VERIFICACIÓN DE DISPONIBILIDAD
+// 🔥 ABRIR MODAL
 const abrirModal = async (producto) => {
     if (!producto?.id) {
         toast?.error('Error', 'Producto inválido')
@@ -170,100 +212,105 @@ const abrirModal = async (producto) => {
     }
     
     console.log('🔍 Abriendo modal para:', producto.nombre, 'ID:', producto.id)
-    console.log('📊 disponible_hoy:', producto.disponible_hoy)
-    console.log('📊 dias_disponibles:', producto.dias_disponibles)
+    console.log('📊 tiene_opciones:', producto.tiene_opciones)
+    console.log('📊 tipo_producto:', producto.tipo_producto)
     
-    // 🔥 PRIMERO: Verificar con el flag del backend (más rápido)
+    // Verificar disponibilidad
     if (producto.disponible_hoy === false) {
         const diaActual = obtenerDiaActual()
         const diasDisponibles = producto.dias_disponibles || 'ningún día configurado'
-        
-        const mensaje = `📅 ${producto.nombre} solo está disponible los días:\n\n🔹 ${diasDisponibles}\n\n📌 Hoy es ${diaActual}`
-        
         toast?.error(
             `❌ ${producto.nombre} no disponible hoy`,
-            mensaje,
+            `📅 Solo disponible: ${diasDisponibles}\n📌 Hoy es ${diaActual}`,
             { duration: 5000 }
         )
         return
     }
     
-    // 🔥 SEGUNDO: Verificar con la API (por si el flag no está actualizado)
-    try {
-        const response = await axios.get(`/venta-tactil/producto/${producto.id}/disponibilidad`)
-        console.log('📡 Respuesta API:', response.data)
-        
-        if (response.data.success && !response.data.disponible) {
-            const diasDisponibles = response.data.dias_disponibles || 'ningún día configurado'
-            const diaActual = obtenerDiaActual()
-            const nombre = response.data.nombre || producto.nombre
-            
-            const mensaje = `📅 ${nombre} solo está disponible los días:\n\n🔹 ${diasDisponibles}\n\n📌 Hoy es ${diaActual}`
-            
-            toast?.error(
-                `❌ ${nombre} no disponible hoy`,
-                mensaje,
-                { duration: 5000 }
-            )
-            return
-        }
-    } catch (error) {
-        console.error('❌ Error en API:', error)
-        // Si hay error y el flag dice que está disponible, continuar
-        if (producto.disponible_hoy !== false) {
-            // No mostrar mensaje, solo continuar
-            console.log('✅ Continuando con el producto (fallback)')
-        } else {
-            // Si el flag dice que no está disponible, mostrar mensaje genérico
-            const diaActual = obtenerDiaActual()
-            toast?.error(
-                `❌ ${producto.nombre} no disponible hoy`,
-                `📅 ${producto.nombre} no está disponible hoy (${diaActual})`,
-                { duration: 5000 }
-            )
-            return
-        }
-    }
-    
-    // 🔥 SOLO LLEGA AQUÍ SI EL PRODUCTO ESTÁ DISPONIBLE
     productoSeleccionado.value = producto
     cantidad.value = 1
     precioUnitario.value = producto.precio_real
     tipoPrecio.value = producto.tipo_precio || 'default'
     
-    const tieneOpciones = await verificarOpcionesCombo(producto)
-    esComboConOpciones.value = tieneOpciones
+    // 🔥 USAR LOS DATOS DEL BACKEND (más rápido)
+    if (producto.tiene_opciones !== undefined) {
+        tieneOpcionesCambio.value = producto.tiene_opciones
+        tipoProductoActual.value = producto.tipo_producto || 'normal'
+        
+        if (producto.tiene_opciones) {
+            producto.opciones_data = producto.opciones_data || []
+            producto.composicion_data = producto.composicion_data || []
+        }
+    } else {
+        const tieneOpciones = await verificarOpcionesProducto(producto)
+        tieneOpcionesCambio.value = tieneOpciones
+    }
+    
+    console.log('✅ Resultado:', {
+        tieneOpcionesCambio: tieneOpcionesCambio.value,
+        tipoProductoActual: tipoProductoActual.value
+    })
     
     modalVisible.value = true
 }
+
 const cerrarModal = () => {
     modalVisible.value = false
     setTimeout(() => {
         productoSeleccionado.value = null
-        esComboConOpciones.value = false
+        tieneOpcionesCambio.value = false
+        tipoProductoActual.value = 'normal'
     }, 200)
 }
 
-// Abrir modal de personalización de múltiples combos
-const abrirPersonalizacionCombos = async () => {
+// 🔥 ABRIR PERSONALIZACIÓN (UNIVERSAL)
+const abrirPersonalizacionProducto = async () => {
     comboActual.value = productoSeleccionado.value
     cantidadCombos.value = cantidad.value
     
-    const comboCompleto = await cargarDetallesCombo(productoSeleccionado.value.id)
+    let productoCompleto = null
     
-    if (comboCompleto) {
+    if (productoSeleccionado.value.composicion_data && productoSeleccionado.value.composicion_data.length > 0) {
+        productoCompleto = {
+            id: productoSeleccionado.value.id,
+            nombre: productoSeleccionado.value.nombre,
+            composicion: productoSeleccionado.value.composicion_data,
+            opciones: productoSeleccionado.value.opciones_data || [],
+            tipo: productoSeleccionado.value.tipo_producto || 'normal'
+        }
+    } else {
+        try {
+            const response = await axios.get(`/venta-tactil/combo/${productoSeleccionado.value.id}`)
+            if (response.data.success) {
+                const data = response.data.producto || response.data
+                productoCompleto = {
+                    id: productoSeleccionado.value.id,
+                    nombre: productoSeleccionado.value.nombre,
+                    composicion: data.composicion || [],
+                    opciones: data.opciones || [],
+                    tipo: data.tipo || 'normal'
+                }
+            }
+        } catch (error) {
+            console.error('Error cargando detalles:', error)
+        }
+    }
+    
+    if (productoCompleto) {
         comboActual.value = {
             ...productoSeleccionado.value,
-            composicion: comboCompleto.composicion,
-            opciones: comboCompleto.opciones
+            composicion: productoCompleto.composicion || [],
+            opciones: productoCompleto.opciones || [],
+            tipo_producto: productoCompleto.tipo || 'normal',
+            precio_real: productoSeleccionado.value.precio_real || 0
         }
         
-        opcionesAgrupadas.value = prepararOpcionesAgrupadas(comboCompleto)
+        opcionesAgrupadas.value = prepararOpcionesAgrupadas(productoCompleto)
         
-        console.log('📦 Combo con composición:', comboCompleto)
-        console.log('📦 Opciones agrupadas:', opcionesAgrupadas.value)
+        console.log('📦 comboActual:', comboActual.value)
+        console.log('📦 opcionesAgrupadas:', opcionesAgrupadas.value)
     } else {
-        opcionesAgrupadas.value = await cargarOpcionesCombo(productoSeleccionado.value.id)
+        opcionesAgrupadas.value = await cargarOpcionesProducto(productoSeleccionado.value.id)
     }
     
     personalizacionesTemp.value = []
@@ -275,41 +322,8 @@ const abrirPersonalizacionCombos = async () => {
     modalPersonalizarVisible.value = true
 }
 
-// Agregar combos personalizados al carrito
-const agregarCombosPersonalizados = async (personalizaciones) => {
-    loading.value = true
-    try {
-        const response = await axios.post('/api/venta-tactil/agregar-combo', {
-            id_combo: comboActual.value.id,
-            personalizaciones: personalizaciones,
-            cantidad_total: personalizaciones.length,
-            precio_unitario: precioUnitario.value
-        })
-        if (response.data.success) {
-            await cargarCarrito()
-            toast?.success('¡Combos agregados!', `${comboActual.value.nombre} x ${personalizaciones.length}`)
-            cerrarModalPersonalizacion()
-        } else {
-            toast?.error('Error', response.data.message || 'Error al agregar')
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al agregar')
-    } finally {
-        loading.value = false
-    }
-}
-
-// Cerrar modal de personalización
-const cerrarModalPersonalizacion = () => {
-    modalPersonalizarVisible.value = false
-    comboActual.value = null
-    opcionesAgrupadas.value = []
-    personalizacionesTemp.value = []
-}
-
-// Agregar combo con opciones POR DEFECTO
-const agregarComboDefault = async () => {
+// Agregar producto con opciones POR DEFECTO
+const agregarProductoDefault = async () => {
     if (cantidad.value < 1) {
         toast?.warning('Cantidad inválida', 'La cantidad debe ser al menos 1')
         return
@@ -326,12 +340,43 @@ const agregarComboDefault = async () => {
             id_combo: productoSeleccionado.value.id,
             personalizaciones: personalizacionesDefault,
             cantidad_total: cantidad.value,
-            precio_unitario: precioUnitario.value
+            precio_unitario: precioUnitario.value,
+            tipo_producto: tipoProductoActual.value
         })
         if (response.data.success) {
             await cargarCarrito()
-            toast?.success('¡Combo agregado!', `${productoSeleccionado.value.nombre} x ${cantidad.value}`)
+            const etiqueta = tipoProductoActual.value === 'pack' ? 'Pack' : 
+                           tipoProductoActual.value === 'combo' ? 'Combo' : 'Producto'
+            toast?.success(`¡${etiqueta} agregado!`, `${productoSeleccionado.value.nombre} x ${cantidad.value}`)
             cerrarModal()
+        } else {
+            toast?.error('Error', response.data.message || 'Error al agregar')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al agregar')
+    } finally {
+        loading.value = false
+    }
+}
+
+// Agregar productos personalizados al carrito
+const agregarProductosPersonalizados = async (personalizaciones) => {
+    loading.value = true
+    try {
+        const response = await axios.post('/api/venta-tactil/agregar-combo', {
+            id_combo: comboActual.value.id,
+            personalizaciones: personalizaciones,
+            cantidad_total: personalizaciones.length,
+            precio_unitario: precioUnitario.value,
+            tipo_producto: comboActual.value.tipo_producto || 'normal'
+        })
+        if (response.data.success) {
+            await cargarCarrito()
+            const etiqueta = comboActual.value.tipo_producto === 'pack' ? 'Pack' : 
+                           comboActual.value.tipo_producto === 'combo' ? 'Combo' : 'Producto'
+            toast?.success(`¡${etiqueta}s agregados!`, `${comboActual.value.nombre} x ${personalizaciones.length}`)
+            cerrarModalPersonalizacion()
         } else {
             toast?.error('Error', response.data.message || 'Error al agregar')
         }
@@ -370,6 +415,13 @@ const agregarProductoSimpleAlCarrito = async () => {
     } finally {
         loading.value = false
     }
+}
+
+const cerrarModalPersonalizacion = () => {
+    modalPersonalizarVisible.value = false
+    comboActual.value = null
+    opcionesAgrupadas.value = []
+    personalizacionesTemp.value = []
 }
 
 const incrementarCantidad = () => cantidad.value++
@@ -415,7 +467,7 @@ onMounted(() => cargarCarrito())
                     class="bg-white rounded-lg shadow-sm hover:shadow-md transition cursor-pointer overflow-hidden border border-gray-100 relative"
                     :class="{ 'opacity-60 grayscale cursor-not-allowed': !prod.disponible_hoy }"
                 >
-                    <!-- 🔥 Badge de No disponible -->
+                    <!-- Badge de No disponible -->
                     <div v-if="!prod.disponible_hoy" class="absolute top-0 right-0 bg-red-500 text-white text-[8px] px-2 py-0.5 rounded-bl-lg font-medium z-10">
                         No disponible
                     </div>
@@ -505,21 +557,21 @@ onMounted(() => cargarCarrito())
                         
                         <!-- Botones acción -->
                         <div class="flex flex-col gap-2">
-                            <!-- Botón para combos: Personalizar -->
+                            <!-- 🔥 Botón Personalizar (UNIVERSAL) -->
                             <button 
-                                v-if="esComboConOpciones"
-                                @click="abrirPersonalizacionCombos" 
+                                v-if="tieneOpcionesCambio"
+                                @click="abrirPersonalizacionProducto" 
                                 :disabled="loading" 
                                 class="w-full py-2 rounded-lg bg-amber-100 text-amber-700 text-sm font-medium hover:bg-amber-200 transition flex items-center justify-center gap-2"
                             >
                                 <i class="fas fa-exchange-alt text-xs"></i>
-                                Personalizar combos
+                                {{ etiquetaPersonalizar }}
                             </button>
                             
-                            <!-- Botón AGREGAR (para todos los casos) -->
+                            <!-- Botón AGREGAR para productos con opciones -->
                             <button 
-                                v-if="!esComboConOpciones"
-                                @click="agregarProductoSimpleAlCarrito" 
+                                v-if="tieneOpcionesCambio"
+                                @click="agregarProductoDefault" 
                                 :disabled="loading" 
                                 class="w-full py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1"
                             >
@@ -528,9 +580,10 @@ onMounted(() => cargarCarrito())
                                 {{ loading ? '' : `Agregar al carrito (${cantidad})` }}
                             </button>
                             
+                            <!-- Botón AGREGAR para productos sin opciones -->
                             <button 
-                                v-else
-                                @click="agregarComboDefault" 
+                                v-if="!tieneOpcionesCambio"
+                                @click="agregarProductoSimpleAlCarrito" 
                                 :disabled="loading" 
                                 class="w-full py-2 rounded-lg bg-primary-600 hover:bg-primary-700 text-white text-sm font-medium flex items-center justify-center gap-1"
                             >
@@ -547,13 +600,14 @@ onMounted(() => cargarCarrito())
                 </div>
             </div>
 
-            <!-- Modal de Personalización de Múltiples Combos -->
+            <!-- 🔥 Modal de Personalización Universal -->
             <ModalCambioProducto
                 v-model:visible="modalPersonalizarVisible"
-                :combo="comboActual"
+                :producto="comboActual"
                 :opciones="opcionesAgrupadas"
                 :cantidad="cantidadCombos"
-                @confirm="agregarCombosPersonalizados"
+                :tipo-producto="comboActual?.tipo_producto || 'normal'"
+                @confirm="agregarProductosPersonalizados"
                 @close="cerrarModalPersonalizacion"
             />
 

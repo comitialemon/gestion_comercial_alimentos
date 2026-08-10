@@ -221,9 +221,30 @@ class MenuTactilController extends Controller
                     }
                 }
             } catch (\Exception $e) {
-                // Si hay error, asumir disponible
                 $disponibleHoy = true;
                 $diasDisponibles = 'Todos los días';
+            }
+
+            // 🔥🔥🔥 NUEVO: VERIFICAR OPCIONES DE CAMBIO (UNIVERSAL) 🔥🔥🔥
+            $tieneOpciones = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_combo_opcion')
+                ->where('id_producto_combo', $producto->id)
+                ->where('activo', 1)
+                ->exists();
+            
+            $tieneComposicion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProducto', $producto->id)
+                ->exists();
+
+            // Determinar tipo de producto
+            $tipoProducto = 'normal';
+            if ($tieneComposicion && $tieneOpciones) {
+                $tipoProducto = 'combo';
+            } elseif ($tieneComposicion && !$tieneOpciones) {
+                $tipoProducto = 'pack';
+            } elseif (!$tieneComposicion && $tieneOpciones) {
+                $tipoProducto = 'con_opciones';
             }
 
             $productos[] = [
@@ -235,8 +256,12 @@ class MenuTactilController extends Controller
                 'imagen_url' => $imagenUrl,
                 'imagen_srcset' => $imagenSrcset,
                 'imagen_sizes' => $imagenSizes,
-                'disponible_hoy' => $disponibleHoy, // ✅ FLAG CLAVE
-                'dias_disponibles' => $diasDisponibles, // ✅ PARA EL TOAST
+                'disponible_hoy' => $disponibleHoy,
+                'dias_disponibles' => $diasDisponibles,
+                // 🔥 NUEVOS CAMPOS
+                'tiene_opciones' => $tieneOpciones,
+                'tiene_composicion' => $tieneComposicion,
+                'tipo_producto' => $tipoProducto,
             ];
         }
 
@@ -247,8 +272,6 @@ class MenuTactilController extends Controller
             'comisionista' => $this->getComisionistaNombre()
         ]);
     }
-
-
     private function getComisionistaNombre()
     {
         $comisionistaId = session('venta_tactil_comisionista_id');
@@ -411,7 +434,7 @@ class MenuTactilController extends Controller
         try {
             $clienteId = session('cliente_id');
             
-            // Obtener la composición del combo
+            // Obtener la composición del producto (si tiene)
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_detalle')
                 ->where('IdDetalleProducto', $idProducto)
@@ -419,7 +442,6 @@ class MenuTactilController extends Controller
             
             $composicion = [];
             foreach ($detalles as $detalle) {
-                // Obtener el producto
                 $producto = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_productodetalle')
                     ->where('IdProducto', $detalle->IdProducto)
@@ -434,7 +456,7 @@ class MenuTactilController extends Controller
                 ];
             }
             
-            // Obtener las opciones
+            // 🔥 OBTENER LAS OPCIONES (UNIVERSAL)
             $opciones = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_combo_opcion')
                 ->where('id_producto_combo', $idProducto)
@@ -444,14 +466,12 @@ class MenuTactilController extends Controller
             
             $opcionesFormateadas = [];
             foreach ($opciones as $opcion) {
-                // Obtener producto original
                 $original = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_productodetalle')
                     ->where('IdProducto', $opcion->id_producto_original)
                     ->where('IdCliente', $clienteId)
                     ->first();
                 
-                // Obtener producto sustituto
                 $sustituto = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_productodetalle')
                     ->where('IdProducto', $opcion->id_producto_sustituto)
@@ -469,24 +489,68 @@ class MenuTactilController extends Controller
                     'cantidad_maxima' => (int) ($opcion->cantidad ?? 1),
                 ];
             }
+
+            // 🔥 DETERMINAR TIPO DE PRODUCTO (UNIVERSAL)
+            $tieneOpciones = !empty($opcionesFormateadas);
+            $tieneComposicion = !empty($composicion);
             
+            $tipoProducto = 'normal';
+            if ($tieneComposicion && $tieneOpciones) {
+                $tipoProducto = 'combo';
+            } elseif ($tieneComposicion && !$tieneOpciones) {
+                $tipoProducto = 'pack';
+            } elseif (!$tieneComposicion && $tieneOpciones) {
+                $tipoProducto = 'con_opciones';
+            }
+
+            // 🔥 OBTENER NOMBRE DEL PRODUCTO
+            $nombreProducto = 'Producto #' . $idProducto;
+            try {
+                $productoRel = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario as r')
+                    ->join('inventario_productodetalle as p', 'r.IdProducto', '=', 'p.IdProducto')
+                    ->where('r.IdDetalleProducto', $idProducto)
+                    ->first();
+                
+                if ($productoRel) {
+                    $nombreProducto = $productoRel->Descripcion ?? 'Producto #' . $idProducto;
+                }
+            } catch (\Exception $e) {
+                // Si falla, usar el ID
+            }
+
+            // 🔥 RETORNAR CON CLAVE "producto" (UNIVERSAL)
             return response()->json([
                 'success' => true,
-                'combo' => [
+                'producto' => [
                     'id' => $idProducto,
-                    'nombre' => 'Combo',
+                    'nombre' => $nombreProducto,
+                    'tipo' => $tipoProducto,
                     'precio_real' => 0,
                     'composicion' => $composicion,
                     'opciones' => $opcionesFormateadas,
+                    'tiene_opciones' => $tieneOpciones,
+                    'tiene_composicion' => $tieneComposicion,
                 ]
             ]);
             
         } catch (\Exception $e) {
             \Log::error('Error en getDetallesCombo: ' . $e->getMessage());
+            
+            // 🔥 SI FALLA, DEVOLVER UN RESPONSE VÁLIDO
             return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+                'success' => true,
+                'producto' => [
+                    'id' => $idProducto,
+                    'nombre' => 'Producto #' . $idProducto,
+                    'tipo' => 'normal',
+                    'precio_real' => 0,
+                    'composicion' => [],
+                    'opciones' => [],
+                    'tiene_opciones' => false,
+                    'tiene_composicion' => false,
+                ]
+            ]);
         }
     }
 
