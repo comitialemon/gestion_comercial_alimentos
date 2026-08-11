@@ -641,7 +641,4 @@ class VentaEditarController extends Controller
             ], 500);
         }
     }
-
-
-
 }

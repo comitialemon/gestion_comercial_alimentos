@@ -116,6 +116,7 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosGerenteControl
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSucursalMayoristaController;
 use App\Http\Controllers\Operacion\FichaTecnicaController;
+use App\Http\Controllers\Gestion\Impuestos\VentaController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -769,6 +770,58 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // ---------- CONTROL INTERNO ----------
             Route::prefix('control-interno')->group(function () {
+                // ============================================================
+                // GESTIÓN DE VENTAS / FACTURAS
+                // ============================================================
+                Route::prefix('ventas')->group(function () {
+                    // 📋 GESTIÓN DE ESTADOS
+                    Route::get('/gestion-estado', [VentaController::class, 'gestionEstado'])->name('gestion.ventas.gestion-estado');
+                    // 📋 Listado
+                    Route::get('/', [VentaController::class, 'index'])->name('gestion.ventas.index');
+                    // 🔍 Buscar productos
+                    Route::get('/buscar-productos', [VentaController::class, 'buscarProductos'])->name('gestion.ventas.buscar-productos');
+                    // 📊 Estadísticas
+                    Route::get('/estadisticas', [VentaController::class, 'estadisticas'])->name('gestion.ventas.estadisticas');
+                    // 👁️ VER DETALLE - Super Usuario
+                    Route::get('/gestion-estado/{id}/show', [VentaController::class, 'showGestionEstado'])
+                        ->name('gestion.ventas.gestion-estado.show');
+                    Route::get('/gestion-estado/{id}/detalle', [VentaController::class, 'getDetalleFacturaModal'])->name('gestion.ventas.gestion-estado.detalle');
+                    // ✏️ Editar factura
+                    Route::get('/{id}/edit', [VentaController::class, 'edit'])->name('gestion.ventas.edit');
+                    // 💾 Actualizar productos
+                    Route::put('/{id}', [VentaController::class, 'update'])->name('gestion.ventas.update');
+                    // 🔥🔥🔥 AGREGAR ESTA RUTA 🔥🔥🔥
+                    // Cambiar estado (Activar/Desactivar)
+                    Route::post('/{id}/cambiar-estado', [VentaController::class, 'cambiarEstado'])->name('gestion.ventas.cambiar-estado');
+                    // 🖨️ Reimprimir
+                    Route::get('/{id}/reimprimir', [VentaController::class, 'reimprimir'])->name('gestion.ventas.reimprimir');
+                    // 🔥 Obtener opciones
+                    Route::get('/{id}/opciones', [VentaController::class, 'getOpcionesProducto'])->name('gestion.ventas.opciones');
+                    // ============================================================
+                    // MIS FACTURAS - Para operadores (editar SOLO opciones de combos)
+                    // ============================================================
+                    Route::prefix('mis-facturas')->group(function () {
+                        // 📋 Listado de mis facturas
+                        Route::get('/', [VentaController::class, 'misFacturas'])
+                            ->name('gestion.mis-facturas');
+                        
+                        // ✏️ Editar opciones de mi factura
+                        Route::get('/{id}/edit', [VentaController::class, 'editMisFacturas'])
+                            ->name('gestion.mis-facturas.edit');
+                        
+                        // 💾 Actualizar mi factura
+                        Route::put('/{id}', [VentaController::class, 'updateMisFacturas'])
+                            ->name('gestion.mis-facturas.update');
+                        
+                        // 🖨️ Reimprimir mi factura
+                        Route::get('/{id}/reimprimir', [VentaController::class, 'reimprimir'])
+                            ->name('gestion.mis-facturas.reimprimir');
+                             // 👁️ VER DETALLE (NUEVO)
+                        Route::get('/{id}/show', [VentaController::class, 'showMisFacturas'])
+                            ->name('gestion.mis-facturas.show');
+                    });
+
+                });
                 // Informe Sucursal
                 Route::prefix('informe-sucursal')->group(function () {
                     Route::get('/', [InformeSucursalController::class, 'index'])->name('gestion.reportes.control-interno.informe-sucursal');
