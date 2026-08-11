@@ -151,7 +151,6 @@ class LiquidacionVendedorController extends Controller
             'fechaId' => $fechaId,
         ]);
     }
-
     /**
      * Guardar liquidación y contabilizar
      */
@@ -184,6 +183,60 @@ class LiquidacionVendedorController extends Controller
         DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
         try {
+            // =============================================
+            // 🔥🔥🔥 ELIMINAR TODAS LAS VENTAS CON NUMEROFACTURA = 0
+            //     DEL OPERADOR, CLIENTE Y SUCURSAL ACTUAL
+            //     - Sin importar ActivoInactivo (0 o 1)
+            //     - Para asegurar que NO queden facturas a medias
+            //     - ES IMPOSIBLE QUE TENGAN INVENTARIO (nunca se pagaron)
+            // =============================================
+            
+            // 1. OBTENER IDs DE LAS VENTAS SIN FACTURA
+            $ventasSinFactura = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdCliente', $clienteId)
+                ->where('IdClienteSucursal', $sucursalId)
+                ->where('IdOperadorIngresa', $operadorId)
+                ->where('NumeroFactura', 0)
+                ->pluck('IdVentas')
+                ->toArray();
+
+            if (!empty($ventasSinFactura)) {
+                Log::warning('🗑️ ELIMINANDO VENTAS SIN FACTURA (NumeroFactura = 0) ANTES DE LIQUIDAR', [
+                    'operador' => $operadorId,
+                    'cliente' => $clienteId,
+                    'sucursal' => $sucursalId,
+                    'cantidad_ventas' => count($ventasSinFactura),
+                    'ids_ventas' => $ventasSinFactura
+                ]);
+
+                // 2. ELIMINAR DETALLES DE LAS VENTAS
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_detalle')
+                    ->whereIn('idventas', $ventasSinFactura)
+                    ->delete();
+
+                // 3. ELIMINAR LIQUIDACIONES (por si acaso, aunque no deberían tener)
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_liquidacion')
+                    ->whereIn('IdVentas', $ventasSinFactura)
+                    ->delete();
+
+                // 4. ELIMINAR LAS VENTAS
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas')
+                    ->whereIn('IdVentas', $ventasSinFactura)
+                    ->delete();
+
+                Log::info('✅ Ventas sin factura eliminadas correctamente', [
+                    'cantidad' => count($ventasSinFactura)
+                ]);
+            }
+
+            // =============================================
+            // CONTINUAR CON LIQUIDACIÓN NORMAL
+            // =============================================
+
             $sumaMontos = array_sum(array_column($request->conceptos, 'monto_confirmacion'));
             $diferencia = round($request->vEntasConfirma - $sumaMontos, 2);
 
@@ -266,7 +319,7 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // 🔥 OBTENER LOS IDENTIFICADORES REALES DE CADA CONCEPTO DESDE LAS VENTAS (SOLO ACTIVAS)
+            // 🔥 OBTENER LOS IDENTIFICADORES REALES DE CADA CONCEPTO DESDE LAS VENTAS
             // =============================================
             $liquidacionesVenta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_liquidacion as l')
@@ -277,7 +330,8 @@ class LiquidacionVendedorController extends Controller
                 ->where('v.IdOperadorIngresa', $operadorId)
                 ->where('v.LiquidadoVendedor', 0)
                 ->where('v.IdEstado', 1)
-                ->where('v.ActivoInactivo', 1)  // ✅ CORREGIDO
+                ->where('v.ActivoInactivo', 1)
+                ->where('v.NumeroFactura', '>', 0)  // 👈 SOLO CON FACTURA
                 ->whereDate('v.FechaVenta', $fechaStr)
                 ->select('c.IdConceptoLiquidacion', 'c.requiere_identificador', 'c.usa_identificador_factura', 'l.IdIdentificador')
                 ->get();
@@ -384,7 +438,7 @@ class LiquidacionVendedorController extends Controller
                 ]);
 
             // =============================================
-            // COSTO DE VENTA (SOLO VENTAS ACTIVAS)
+            // COSTO DE VENTA (SOLO VENTAS CON FACTURA)
             // =============================================
             
             $ventasLiquidadas = DB::connection('mysql_gestion_comercial_alimentos')
@@ -394,7 +448,8 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdOperadorIngresa', $operadorId)
                 ->where('LiquidadoVendedor', 0)
                 ->where('IdEstado', 1)
-                ->where('ActivoInactivo', 1)  // ✅ CORREGIDO
+                ->where('ActivoInactivo', 1)
+                ->where('NumeroFactura', '>', 0)  // 👈 SOLO CON FACTURA
                 ->whereDate('FechaVenta', $fechaStr)
                 ->pluck('IdVentas')
                 ->toArray();
@@ -543,11 +598,11 @@ class LiquidacionVendedorController extends Controller
             }
 
             // =============================================
-            // ACTUALIZAR LIQUIDACIÓN Y VENTAS (SOLO ACTIVAS)
+            // ACTUALIZAR LIQUIDACIÓN Y VENTAS (SOLO CON FACTURA)
             // =============================================
             $liquidacion->update(['IdDiario' => $diarioId]);
 
-            // Actualizar ventas por fecha (SOLO ACTIVAS)
+            // Actualizar ventas por fecha (SOLO LAS QUE TIENEN FACTURA)
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -555,7 +610,8 @@ class LiquidacionVendedorController extends Controller
                 ->where('IdOperadorIngresa', $operadorId)
                 ->where('LiquidadoVendedor', 0)
                 ->where('IdEstado', 1)
-                ->where('ActivoInactivo', 1)  // ✅ CORREGIDO
+                ->where('ActivoInactivo', 1)
+                ->where('NumeroFactura', '>', 0)  // 👈 SOLO CON FACTURA
                 ->whereDate('FechaVenta', $fechaStr)
                 ->update(['LiquidadoVendedor' => $diarioId]);
 
