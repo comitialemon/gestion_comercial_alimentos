@@ -201,7 +201,7 @@ class VentaController extends Controller
             ->leftJoin('todos_cliente_sucursal as s', 'v.IdClienteSucursal', '=', 's.IdClienteSucursal')
             ->where('v.IdCliente', $clienteId)
             ->where('v.IdOperadorIngresa', $operadorId)
-            ->where('v.IdClienteSucursal', $sucursalId); // 🔥 Siempre la sucursal logueada
+            ->where('v.IdClienteSucursal', $sucursalId);
         
         // 🔥 FILTRO POR ESTADO
         if ($request->filled('estado') && $request->estado !== '') {
@@ -220,6 +220,7 @@ class VentaController extends Controller
             $query->where('v.NumeroFactura', 'like', '%' . $request->buscar . '%');
         }
         
+        // 🔥🔥🔥 SELECCIONAR EXPLÍCITAMENTE LOS CAMPOS 🔥🔥🔥
         $ventas = $query->select([
                 'v.IdVentas',
                 'v.NumeroFactura',
@@ -235,44 +236,47 @@ class VentaController extends Controller
             ->orderBy('v.IdVentas', 'desc')
             ->paginate(20);
         
-        // 🔥 Transformar datos y verificar si tiene personalización
-        $ventas->getCollection()->transform(function ($venta) {
+        // 🔥 TRANSFORMAR LOS DATOS PARA QUE TENGAN EL FORMATO CORRECTO
+        $ventasTransformadas = $ventas->toArray();
+        $ventasTransformadas['data'] = collect($ventas->items())->map(function ($venta) {
+            // Verificar si tiene personalización
             $tienePersonalizacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle')
                 ->where('idventas', $venta->IdVentas)
                 ->whereNotNull('personalizacion')
                 ->where('personalizacion', '!=', 'null')
+                ->where('personalizacion', '!=', '[]')
                 ->exists();
             
             return [
                 'IdVentas' => $venta->IdVentas,
-                'NumeroFactura' => $venta->NumeroFactura,
-                'NumeroAutorizacion' => $venta->NumeroAutorizacion,
+                'NumeroFactura' => $venta->NumeroFactura ?? 'N/A',
+                'NumeroAutorizacion' => $venta->NumeroAutorizacion ?? '',
                 'FechaVenta' => $venta->FechaVenta,
-                'ImporteVenta' => (float) $venta->ImporteVenta,
-                'ActivoInactivo' => $venta->ActivoInactivo,
-                'LiquidadoVendedor' => $venta->LiquidadoVendedor,
+                'ImporteVenta' => (float) ($venta->ImporteVenta ?? 0),
+                'ActivoInactivo' => (int) ($venta->ActivoInactivo ?? 0),
+                'LiquidadoVendedor' => (float) ($venta->LiquidadoVendedor ?? 0),
                 'cliente_nombre' => $venta->cliente_nombre ?? 'Sin cliente',
                 'sucursal_nombre' => $venta->sucursal_nombre ?? 'Sin sucursal',
                 'tiene_personalizacion' => $tienePersonalizacion,
             ];
-        });
+        })->toArray();
         
-        // 🔥 Obtener nombre del operador
+        // 🔥 OBTENER NOMBRE DEL OPERADOR
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
             ->where('o.IdOperador', $operadorId)
             ->first();
         
-        // 🔥 Obtener nombre de la sucursal actual
+        // 🔥 OBTENER NOMBRE DE LA SUCURSAL ACTUAL
         $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdClienteSucursal', $sucursalId)
             ->first();
         
         return Inertia::render('Gestion/Impuestos/Ventas/MisFacturas', [
-            'ventas' => $ventas,
+            'ventas' => $ventasTransformadas, // 🔥 Usar los datos transformados
             'operadorNombre' => $operador->Nombre ?? 'Operador',
             'sucursalNombre' => $sucursalActual->Nombre ?? 'Actual',
             'filtroEstado' => $request->estado,
