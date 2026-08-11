@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, inject, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import axios from 'axios'
+import { inject } from 'vue'
 
 const toast = inject('toast')
 
@@ -14,24 +15,75 @@ const emit = defineEmits(['update:visible', 'activado'])
 // =============================================
 // ESTADO
 // =============================================
-const loading = ref(false)
-const activando = ref(false)
+const cargando = ref(false)
 const venta = ref(null)
 const detalles = ref([])
+const activando = ref(false)
+const error = ref(null)
 
 // =============================================
-// COMPUTADOS
+// CARGAR DATOS
 // =============================================
-const totalFactura = computed(() => {
-    return detalles.value?.reduce((sum, d) => sum + (d.totalbolivianos || 0), 0) || 0
-})
-
-const getEstadoColor = (activo) => {
-    return activo === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+const cargarDetalle = async () => {
+    if (!props.ventaId) return
+    
+    cargando.value = true
+    error.value = null
+    
+    try {
+        const response = await axios.get(`/gestion/reportes/control-interno/ventas/${props.ventaId}/detalle-modal`)
+        
+        if (response.data.success) {
+            venta.value = response.data.venta
+            detalles.value = response.data.detalles || []
+            console.log('📝 Detalles cargados:', detalles.value)
+        } else {
+            error.value = response.data.message || 'Error al cargar el detalle'
+        }
+    } catch (err) {
+        console.error('Error:', err)
+        error.value = err.response?.data?.message || 'Error al cargar el detalle'
+    } finally {
+        cargando.value = false
+    }
 }
 
-const getEstadoTexto = (activo) => {
-    return activo === 1 ? 'Inactivo' : 'Activo'
+// =============================================
+// ACTIVAR FACTURA
+// =============================================
+const activarFactura = async () => {
+    if (!venta.value) return
+    
+    activando.value = true
+    
+    try {
+        const response = await axios.post(`/gestion/reportes/control-interno/ventas/${venta.value.IdVentas}/cambiar-estado`, {
+            estado: 0
+        })
+        
+        if (response.data.success) {
+            toast?.success('Factura activada', response.data.message)
+            emit('activado')
+            cerrar()
+        } else {
+            toast?.error('Error', response.data.message)
+        }
+    } catch (err) {
+        console.error('Error:', err)
+        toast?.error('Error', err.response?.data?.message || 'Error al activar')
+    } finally {
+        activando.value = false
+    }
+}
+
+// =============================================
+// CERRAR MODAL
+// =============================================
+const cerrar = () => {
+    emit('update:visible', false)
+    venta.value = null
+    detalles.value = []
+    error.value = null
 }
 
 // =============================================
@@ -53,265 +105,225 @@ const formatearFecha = (fecha) => {
     })
 }
 
-// =============================================
-// CARGAR DETALLE
-// =============================================
-const cargarDetalle = async () => {
-    if (!props.ventaId) return
-    
-    loading.value = true
-    
-    try {
-        const response = await axios.get(`/gestion/reportes/control-interno/ventas/gestion-estado/${props.ventaId}/detalle`)
-        
-        if (response.data.success) {
-            venta.value = response.data.venta
-            detalles.value = response.data.detalles || []
-            console.log('📦 Detalles cargados:', detalles.value)
-        } else {
-            toast?.error('Error', response.data.message || 'Error al cargar el detalle')
-            cerrar()
-        }
-    } catch (error) {
-        console.error('Error cargando detalle:', error)
-        toast?.error('Error', 'Error al cargar el detalle de la factura')
-        cerrar()
-    } finally {
-        loading.value = false
-    }
+const getEstadoColor = (activo) => {
+    return activo === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+}
+
+const getEstadoTexto = (activo) => {
+    return activo === 1 ? 'Inactivo' : 'Activo'
+}
+
+const puedeActivar = () => {
+    return venta.value && venta.value.ActivoInactivo === 1 && venta.value.LiquidadoVendedor === 0
 }
 
 // =============================================
-// ACTIVAR FACTURA
-// =============================================
-const activarFactura = async () => {
-    if (!venta.value) return
-    
-    if (!confirm('¿Estás seguro de activar esta factura?\n\nAl activarla, el operador podrá editarla.')) {
-        return
-    }
-    
-    activando.value = true
-    
-    try {
-        const response = await fetch(`/gestion/reportes/control-interno/ventas/${venta.value.IdVentas}/cambiar-estado`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            },
-            body: JSON.stringify({
-                estado: 0
-            })
-        })
-        
-        const data = await response.json()
-        
-        if (data.success) {
-            toast?.success('Factura activada', 'La factura se ha activado correctamente. El operador ahora puede editarla.')
-            emit('activado', venta.value.IdVentas)
-            cerrar()
-        } else {
-            toast?.error('Error', data.message || 'Error al activar')
-        }
-    } catch (error) {
-        console.error('Error activando:', error)
-        toast?.error('Error', 'Error al activar la factura')
-    } finally {
-        activando.value = false
-    }
-}
-
-// =============================================
-// CERRAR MODAL
-// =============================================
-const cerrar = () => {
-    emit('update:visible', false)
-    venta.value = null
-    detalles.value = []
-}
-
-// =============================================
-// WATCH - Cuando se abre el modal
+// WATCH
 // =============================================
 watch(() => props.visible, (nuevoValor) => {
     if (nuevoValor && props.ventaId) {
         cargarDetalle()
     }
 })
+
+watch(() => props.ventaId, (nuevoId) => {
+    if (props.visible && nuevoId) {
+        cargarDetalle()
+    }
+})
 </script>
 
 <template>
-    <Teleport to="body">
-        <div v-if="visible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrar">
-            <div class="bg-white rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
+    <div v-if="visible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-2 sm:p-4" @click.self="cerrar">
+        <div class="bg-white rounded-xl w-full max-w-4xl max-h-[95vh] overflow-hidden shadow-xl flex flex-col">
+            
+            <!-- 🔥 HEADER -->
+            <div class="bg-primary-700 px-4 py-3 flex justify-between items-center flex-shrink-0">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-file-invoice text-white text-xl"></i>
+                    <div>
+                        <h3 class="text-white font-bold text-sm sm:text-base">Detalle de Factura</h3>
+                        <p class="text-white/70 text-[10px] sm:text-xs" v-if="venta">
+                            N° {{ venta.NumeroFactura }} - {{ formatearFecha(venta.FechaVenta) }}
+                        </p>
+                    </div>
+                </div>
+                <button @click="cerrar" class="text-white/80 hover:text-white text-xl">✕</button>
+            </div>
+
+            <!-- 🔥 CONTENIDO -->
+            <div class="flex-1 overflow-y-auto p-3 sm:p-5">
                 
-                <!-- Header -->
-                <div class="bg-primary-700 px-4 py-2.5 flex justify-between items-center flex-shrink-0">
-                    <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 bg-white rounded-lg flex items-center justify-center">
-                            <i class="fas fa-file-invoice text-primary-600 text-xs"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-white font-bold text-sm">Detalle de Factura</h3>
-                            <p class="text-white/70 text-[10px]">
-                                <span v-if="venta">N° {{ venta.NumeroFactura }} - {{ formatearFecha(venta.FechaVenta) }}</span>
-                                <span v-else class="text-white/50">Cargando...</span>
-                            </p>
-                        </div>
-                    </div>
-                    <button @click="cerrar" class="text-white/80 hover:text-white transition text-sm">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-
                 <!-- Cargando -->
-                <div v-if="loading" class="flex-1 flex items-center justify-center p-8">
-                    <div class="text-center text-gray-400">
-                        <i class="fas fa-spinner fa-spin text-3xl mb-2 block"></i>
-                        <p class="text-sm">Cargando detalle de la factura...</p>
-                    </div>
+                <div v-if="cargando" class="flex justify-center items-center py-12">
+                    <i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i>
+                    <span class="ml-2 text-gray-500">Cargando detalle...</span>
                 </div>
 
-                <!-- Contenido -->
-                <div v-else-if="venta" class="flex-1 overflow-y-auto p-4">
+                <!-- Error -->
+                <div v-else-if="error" class="bg-red-50 border border-red-200 rounded-lg p-4 text-center text-red-600">
+                    <i class="fas fa-exclamation-circle text-xl mb-2 block"></i>
+                    {{ error }}
+                </div>
+
+                <!-- Datos -->
+                <template v-else-if="venta">
                     
-                    <!-- Info de la venta -->
-                    <div class="bg-gray-50 rounded-lg p-3 mb-4 grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                    <!-- Cabecera de la venta -->
+                    <div class="bg-gray-50 rounded-lg p-3 sm:p-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 mb-4">
                         <div>
-                            <span class="text-gray-500 block">Sucursal</span>
-                            <span class="font-medium">{{ venta.sucursal_nombre || '-' }}</span>
+                            <div class="text-[10px] text-gray-400">Cliente</div>
+                            <div class="text-xs sm:text-sm font-medium text-gray-800">{{ venta.cliente_nombre || 'Sin cliente' }}</div>
+                            <div class="text-[10px] text-gray-400">NIT: {{ venta.cliente_nit || '-' }}</div>
                         </div>
                         <div>
-                            <span class="text-gray-500 block">Vendedor</span>
-                            <span class="font-medium">{{ venta.vendedor_nombre || '-' }}</span>
+                            <div class="text-[10px] text-gray-400">Sucursal</div>
+                            <div class="text-xs sm:text-sm font-medium text-gray-800">{{ venta.sucursal_nombre || 'Sin sucursal' }}</div>
                         </div>
                         <div>
-                            <span class="text-gray-500 block">Estado</span>
-                            <span class="px-2 py-0.5 text-[10px] rounded-full inline-block" :class="getEstadoColor(venta.ActivoInactivo)">
+                            <div class="text-[10px] text-gray-400">Vendedor</div>
+                            <div class="text-xs sm:text-sm font-medium text-gray-800">{{ venta.vendedor_nombre || '-' }}</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] text-gray-400">Estado</div>
+                            <span class="px-2 py-1 text-xs rounded-full" :class="getEstadoColor(venta.ActivoInactivo)">
                                 {{ getEstadoTexto(venta.ActivoInactivo) }}
                             </span>
-                        </div>
-                        <div>
-                            <span class="text-gray-500 block">Fecha</span>
-                            <span class="font-medium">{{ formatearFecha(venta.FechaVenta) }}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-500 block">Ticket Día</span>
-                            <span class="font-medium">{{ venta.TicketDia || '-' }}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-500 block">Lugar Venta</span>
-                            <span class="font-medium">{{ venta.LugarVenta || 'Mostrador' }}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-500 block">Liquidado</span>
-                            <span class="font-medium">{{ venta.LiquidadoVendedor > 0 ? '✅ Sí' : '❌ No' }}</span>
-                        </div>
-                        <div>
-                            <span class="text-gray-500 block">Total</span>
-                            <span class="font-bold text-primary-600">{{ formatearMonto(totalFactura) }} Bs</span>
+                            <div v-if="venta.LiquidadoVendedor > 0" class="text-[10px] text-red-500">
+                                <i class="fas fa-check-circle"></i> Liquidada
+                            </div>
                         </div>
                     </div>
 
-                    <!-- Productos -->
+                    <!-- 🔥 TABLA DE DETALLES -->
                     <div class="border rounded-lg overflow-hidden">
-                        <div class="bg-gray-50 px-3 py-2 border-b flex justify-between items-center text-xs font-medium text-gray-600">
-                            <span class="flex-1">Producto</span>
-                            <span class="w-12 text-center">Cant.</span>
-                            <span class="w-16 text-right">Precio</span>
-                            <span class="w-16 text-right">Total</span>
-                        </div>
-                        
-                        <div class="divide-y divide-gray-100 max-h-80 overflow-y-auto">
-                            <div v-for="detalle in detalles" :key="detalle.IdDetalleVenta" class="px-3 py-2 hover:bg-gray-50">
-                                
-                                <!-- CABECERA DEL PRODUCTO -->
-                                <div class="flex justify-between items-start">
-                                    <div class="flex-1">
-                                        <div class="flex items-center gap-2 flex-wrap">
-                                            <span class="font-bold text-gray-800 text-sm">{{ detalle.producto_nombre || 'Producto' }}</span>
-                                            <span v-if="detalle.producto_codigo" class="text-[10px] text-gray-400">({{ detalle.producto_codigo }})</span>
+                        <table class="w-full text-sm">
+                            <thead class="bg-gray-50 border-b">
+                                <tr>
+                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Producto</th>
+                                    <th class="px-3 py-2 text-center text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Cant.</th>
+                                    <th class="px-3 py-2 text-right text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Precio</th>
+                                    <th class="px-3 py-2 text-right text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100">
+                                <tr v-for="detalle in detalles" :key="detalle.IdDetalleVenta" class="hover:bg-gray-50">
+                                    <td class="px-3 py-2">
+                                        <div class="text-xs sm:text-sm font-medium text-gray-800">{{ detalle.producto_nombre }}</div>
+                                        <div class="text-[10px] text-gray-400">{{ detalle.producto_codigo }}</div>
+                                        
+                                        <!-- 🔥 MOSTRAR PRODUCTOS DETALLE (ORIGINALES Y SUSTITUTOS) -->
+                                        <div v-if="detalle.productos_detalle && detalle.productos_detalle.length > 0" 
+                                             class="mt-1 space-y-0.5">
+                                            <div v-for="prod in detalle.productos_detalle" 
+                                                 :key="prod.id_producto"
+                                                 class="text-[10px] flex items-center gap-1"
+                                                 :class="prod.color || 'text-gray-600'">
+                                                <span>{{ prod.icon || '📦' }}</span>
+                                                <span>{{ prod.nombre }}</span>
+                                                <span class="font-semibold">x{{ prod.cantidad }}</span>
+                                                <span v-if="prod.tipo === 'sustituto'" class="text-[8px] text-amber-500">
+                                                    (reemplaza al original)
+                                                </span>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="flex gap-2 text-right flex-shrink-0 ml-4">
-                                        <span class="w-12 text-center text-gray-700">{{ detalle.unidades }}</span>
-                                        <span class="w-16 text-right text-gray-700">{{ formatearMonto(detalle.preciounidades) }}</span>
-                                        <span class="w-16 text-right font-bold text-primary-600">{{ formatearMonto(detalle.totalbolivianos) }}</span>
-                                    </div>
-                                </div>
+                                        
+                                        <!-- 🔥 PERSONALIZACIÓN AGRUPADA (fallback) -->
+                                        <div v-else-if="detalle.personalizacion && detalle.personalizacion.length > 0" 
+                                             class="mt-1 space-y-0.5">
+                                            <div v-for="item in detalle.personalizacion" 
+                                                 :key="item.id_producto_sustituto"
+                                                 class="text-[10px] flex items-center gap-1 text-amber-600">
+                                                <span>🔄</span>
+                                                <span>{{ item.nombre_sustituto }}</span>
+                                                <span class="font-semibold">x{{ item.cantidad_total }}</span>
+                                                <span class="text-[8px] text-amber-500">
+                                                    (reemplaza a {{ item.nombre_original }})
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- 🔥 COMPOSICIÓN (si no hay personalización) -->
+                                        <div v-else-if="detalle.composicion && detalle.composicion.length > 0 && !detalle.tiene_personalizacion" 
+                                             class="mt-1 space-y-0.5">
+                                            <div v-for="comp in detalle.composicion" 
+                                                 :key="comp.id_producto"
+                                                 class="text-[10px] flex items-center gap-1 text-gray-500">
+                                                <span>📦</span>
+                                                <span>{{ comp.nombre }}</span>
+                                                <span class="font-semibold">x{{ comp.porcion * detalle.unidades }}</span>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-3 py-2 text-center text-xs sm:text-sm text-gray-700">
+                                        {{ detalle.unidades }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right text-xs sm:text-sm text-gray-700">
+                                        {{ formatearMonto(detalle.preciounidades) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right text-xs sm:text-sm font-bold text-primary-600">
+                                        {{ formatearMonto(detalle.totalbolivianos) }}
+                                    </td>
+                                </tr>
+                                <tr v-if="!detalles.length">
+                                    <td colspan="4" class="px-3 py-8 text-center text-gray-400 text-sm">
+                                        No hay detalles
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="bg-gray-50 border-t">
+                                <tr>
+                                    <td colspan="3" class="px-3 py-2 text-right text-xs sm:text-sm font-bold">TOTAL:</td>
+                                    <td class="px-3 py-2 text-right text-sm sm:text-base font-bold text-primary-700">
+                                        {{ formatearMonto(venta.ImporteVenta) }} Bs
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
 
-                                <!-- 🔥 DETALLE DE PRODUCTOS (ORIGINALES Y SUSTITUTOS) -->
-                                <div v-if="detalle.productos_detalle && detalle.productos_detalle.length > 0" class="mt-1.5 pl-3 border-l-2 border-amber-300">
-                                    <div class="text-amber-600 font-medium text-[9px] mb-0.5">PRODUCTO DETALLE</div>
-                                    <div v-for="item in detalle.productos_detalle" :key="`${item.id_producto}-${item.tipo}`" class="flex items-center gap-1 text-gray-700 text-[10px]">
-                                        <span class="text-gray-400">{{ item.icon }}</span>
-                                        <span :class="item.color">{{ item.nombre }}</span>
-                                        <span class="text-gray-500 font-medium">x{{ item.cantidad }}</span>
-                                        <span v-if="item.tipo === 'sustituto'" class="text-gray-400 text-[9px]">(reemplaza al original)</span>
-                                        <span v-else class="text-gray-400 text-[9px]">(original)</span>
-                                    </div>
-                                </div>
-
-                                <!-- 🔥 COMPOSICIÓN ORIGINAL (si no tiene personalización) -->
-                                <div v-else-if="detalle.es_agrupado && detalle.composicion && detalle.composicion.length > 0" class="mt-1.5 pl-3 border-l-2 border-blue-200">
-                                    <div class="text-blue-600 font-medium text-[9px] mb-0.5">PRODUCTO DETALLE</div>
-                                    <div v-for="comp in detalle.composicion" :key="comp.id_producto" class="flex items-center gap-1 text-gray-700 text-[10px]">
-                                        <span class="text-gray-400">•</span>
-                                        <span>{{ comp.nombre }}</span>
-                                        <span class="text-gray-500 font-medium">x{{ comp.cantidad_real || comp.porcion || 1 }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <!-- Sin productos -->
-                            <div v-if="!detalles || !detalles.length" class="px-3 py-4 text-center text-gray-400 text-xs">
-                                No hay productos en esta factura
-                            </div>
+                    <!-- 🔥 INFORMACIÓN ADICIONAL -->
+                    <div class="mt-4 text-[10px] sm:text-xs text-gray-400 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <div>
+                            <span class="font-medium">N° Autorización:</span> 
+                            {{ venta.NumeroAutorizacion || '-' }}
                         </div>
-                        
-                        <!-- Total -->
-                        <div class="bg-gray-50 px-3 py-2 border-t flex justify-end text-xs font-bold">
-                            <span class="text-gray-700 mr-4">TOTAL:</span>
-                            <span class="text-primary-700 text-sm">{{ formatearMonto(totalFactura) }} Bs</span>
+                        <div>
+                            <span class="font-medium">Fecha:</span> 
+                            {{ formatearFecha(venta.FechaVenta) }}
+                        </div>
+                        <div>
+                            <span class="font-medium">Última actualización:</span> 
+                            {{ formatearFecha(venta.FechaUltimaActualizcion) }}
                         </div>
                     </div>
-                </div>
 
-                <!-- Footer -->
-                <div class="bg-gray-50 px-4 py-2.5 border-t flex justify-end gap-2 flex-shrink-0">
-                    <button @click="cerrar" class="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs hover:bg-gray-100 transition">
-                        Cerrar
-                    </button>
+                </template>
+            </div>
+
+            <!-- 🔥 FOOTER -->
+            <div class="border-t px-4 py-3 flex flex-wrap justify-between items-center gap-2 bg-gray-50 flex-shrink-0">
+                <div class="text-xs text-gray-500">
+                    <i class="fas fa-info-circle text-primary-500 mr-1"></i>
+                    <span class="text-green-600">● Activo</span> = Borrador (editable) 
+                    <span class="text-red-600">● Inactivo</span> = Cerrado
+                </div>
+                <div class="flex gap-2">
                     <button 
-                        v-if="venta && venta.ActivoInactivo === 1 && venta.LiquidadoVendedor === 0"
-                        @click="activarFactura"
+                        v-if="puedeActivar()" 
+                        @click="activarFactura" 
                         :disabled="activando"
-                        class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
+                        class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs flex items-center gap-2 disabled:opacity-50"
                     >
-                        <i v-if="activando" class="fas fa-spinner fa-spin mr-1"></i>
-                        <i v-else class="fas fa-check-circle mr-1"></i>
+                        <i v-if="activando" class="fas fa-spinner fa-spin"></i>
+                        <i v-else class="fas fa-check"></i>
                         {{ activando ? 'Activando...' : 'Activar Factura' }}
+                    </button>
+                    <button @click="cerrar" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs hover:bg-gray-100">
+                        Cerrar
                     </button>
                 </div>
             </div>
         </div>
-    </Teleport>
+    </div>
 </template>
-
-<style scoped>
-.max-h-80 {
-    max-height: 320px;
-}
-
-.max-h-80::-webkit-scrollbar {
-    width: 4px;
-}
-.max-h-80::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 4px;
-}
-.max-h-80::-webkit-scrollbar-track {
-    background: #f1f5f9;
-}
-</style>

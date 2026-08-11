@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { ref, computed, onMounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, inject, reactive } from 'vue'
 import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
@@ -17,43 +17,34 @@ const props = defineProps({
 // =============================================
 // ESTADO
 // =============================================
-const loading = ref(false)
 const guardando = ref(false)
 const detallesEdit = ref([])
-const modalPersonalizarVisible = ref(false)
+const modalVisible = ref(false)
 const productoActual = ref(null)
 const opcionesAgrupadas = ref([])
-const cantidadProductos = ref(1)
+const cantidadesTemp = ref({})
 
 // =============================================
-// INICIALIZAR DETALLES
+// INICIALIZAR
 // =============================================
 const inicializarDetalles = () => {
     if (props.detalles && props.detalles.length) {
         detallesEdit.value = props.detalles.map(d => ({
             ...d,
-            _editando: false,
-            _original_personalizacion: d.personalizacion || null
+            _editando: false
         }))
-    } else {
-        detallesEdit.value = []
     }
 }
 
 // =============================================
-// AGRUPAR OPCIONES POR PRODUCTO - CORREGIDO
+// AGRUPAR OPCIONES
 // =============================================
-const agruparOpcionesPorProducto = (detalle, totalCombos) => {
+const agruparOpciones = (detalle, totalCombos) => {
     const grupos = {}
     const composicion = detalle.composicion || []
     const opciones = detalle.opciones_disponibles || []
     
-    // 🔥 OBTENER PERSONALIZACIÓN ACTUAL
-    let personalizacionActual = detalle.personalizacion
-    
-    if (!personalizacionActual) {
-        personalizacionActual = []
-    }
+    let personalizacionActual = detalle.personalizacion || []
     
     if (typeof personalizacionActual === 'string') {
         try {
@@ -63,89 +54,116 @@ const agruparOpcionesPorProducto = (detalle, totalCombos) => {
         }
     }
     
-    if (personalizacionActual && !Array.isArray(personalizacionActual) && personalizacionActual.sustitutos) {
-        personalizacionActual = [{
-            sustitutos: personalizacionActual.sustitutos
-        }]
-    }
-    
     if (!Array.isArray(personalizacionActual)) {
         personalizacionActual = []
     }
     
-    // Si la personalización tiene menos combos, replicar
-    if (personalizacionActual.length === 1 && personalizacionActual.length < totalCombos && totalCombos > 0) {
-        const sustitutosBase = personalizacionActual[0].sustitutos || []
-        const nuevaPersonalizacion = []
-        for (let i = 0; i < totalCombos; i++) {
-            nuevaPersonalizacion.push({
-                sustitutos: sustitutosBase.map(s => ({ ...s }))
-            })
-        }
-        personalizacionActual = nuevaPersonalizacion
+    // Crear mapa de sustitutos
+    const sustitutosMap = {}
+    if (personalizacionActual.length > 0) {
+        personalizacionActual.forEach(combo => {
+            if (combo.sustitutos) {
+                combo.sustitutos.forEach(sust => {
+                    const key = sust.id_producto_original
+                    if (!sustitutosMap[key]) {
+                        sustitutosMap[key] = {}
+                    }
+                    const subKey = sust.id_producto_sustituto
+                    sustitutosMap[key][subKey] = (sustitutosMap[key][subKey] || 0) + (sust.cantidad || 0)
+                })
+            }
+        })
     }
     
-    console.log('📝 Personalización procesada:', JSON.stringify(personalizacionActual, null, 2))
-    
-    // 🔥 PROCESAR CADA PRODUCTO DE LA COMPOSICIÓN
     composicion.forEach(item => {
         const idOriginal = item.id_producto
         const nombreOriginal = item.nombre || 'Producto'
         const cantidadPorCombo = item.porcion || 1
         const cantidadTotal = cantidadPorCombo * totalCombos
         
-        let cantidadSustitutoTotal = 0
-        let sustitutoSeleccionado = null
-        let idSustitutoSeleccionado = null
+        const opcionesDelProducto = opciones.filter(o => o.id_producto_original === idOriginal)
+        const tieneOpciones = opcionesDelProducto.length > 0 && opcionesDelProducto.some(o => o.id_producto_sustituto !== idOriginal)
         
-        // 🔥 BUSCAR EN LA PERSONALIZACIÓN
-        if (personalizacionActual && personalizacionActual.length > 0) {
-            personalizacionActual.forEach(p => {
-                if (p.sustitutos && p.sustitutos.length > 0) {
-                    p.sustitutos.forEach(sust => {
-                        // 🔥 CLAVE: Buscar por id_producto_original
-                        if (sust.id_producto_original === idOriginal) {
-                            const cantidad = Number(sust.cantidad) || 0
-                            cantidadSustitutoTotal += cantidad
-                            
-                            // Si el sustituto es diferente al original, es un cambio
-                            if (sust.id_producto_sustituto !== idOriginal) {
-                                idSustitutoSeleccionado = sust.id_producto_sustituto
-                                const opcionEncontrada = opciones.find(o => o.id_producto_sustituto === sust.id_producto_sustituto)
-                                if (opcionEncontrada) {
-                                    sustitutoSeleccionado = opcionEncontrada
-                                }
-                            }
-                        }
+        const opcionesConCantidad = []
+        
+        // Opción original (siempre presente)
+        const cantidadOriginal = sustitutosMap[idOriginal]?.[idOriginal] || 0
+        opcionesConCantidad.push({
+            id_sustituto: idOriginal,
+            nombre: nombreOriginal,
+            codigo: '',
+            cantidad_maxima: cantidadPorCombo || 1,
+            cantidad_actual: cantidadOriginal > 0 ? cantidadOriginal : (tieneOpciones ? 0 : cantidadTotal),
+            es_original: true,
+            es_fijo: !tieneOpciones,
+            cantidad_fija: !tieneOpciones ? cantidadTotal : 0
+        })
+        
+        // Opciones sustitutas (solo si tiene opciones)
+        if (tieneOpciones) {
+            opcionesDelProducto.forEach(op => {
+                const idSustituto = op.id_producto_sustituto
+                if (idSustituto !== idOriginal) {
+                    const cantidadSustituto = sustitutosMap[idOriginal]?.[idSustituto] || 0
+                    opcionesConCantidad.push({
+                        id_sustituto: idSustituto,
+                        nombre: op.nombre_sustituto || 'Producto',
+                        codigo: op.codigo_sustituto || '',
+                        cantidad_maxima: op.cantidad_maxima || cantidadPorCombo || 1,
+                        cantidad_actual: cantidadSustituto,
+                        es_original: false,
+                        es_fijo: false,
+                        cantidad_fija: 0
                     })
                 }
             })
         }
         
-        // 🔥 CALCULAR ORIGINALES = TOTAL - SUSTITUTOS
-        const cantidadOriginal = cantidadTotal - cantidadSustitutoTotal
+        // Si no tiene opciones, es fijo
+        if (!tieneOpciones) {
+            grupos[idOriginal] = {
+                id_producto_original: idOriginal,
+                nombre_original: nombreOriginal,
+                cantidad_total: cantidadTotal,
+                cantidad_original: cantidadTotal,
+                tiene_opciones: false,
+                es_fijo: true,
+                opciones: [{
+                    id_sustituto: idOriginal,
+                    nombre: nombreOriginal,
+                    cantidad_maxima: cantidadTotal,
+                    cantidad_actual: cantidadTotal,
+                    es_original: true,
+                    es_fijo: true,
+                    cantidad_fija: cantidadTotal
+                }]
+            }
+            return
+        }
         
-        console.log(`📊 ${nombreOriginal} | Total: ${cantidadTotal} | Sustituto: ${cantidadSustitutoTotal} | Original: ${cantidadOriginal}`)
+        // Calcular total de sustitutos
+        let totalSustitutos = 0
+        opcionesConCantidad.forEach(o => {
+            if (!o.es_original) {
+                totalSustitutos += Number(o.cantidad_actual) || 0
+            }
+        })
         
-        // 🔥 CREAR GRUPO
+        // Calcular cantidad original restante
+        const cantidadOriginalRestante = cantidadTotal - totalSustitutos
+        const opcionOriginal = opcionesConCantidad.find(o => o.es_original)
+        if (opcionOriginal) {
+            opcionOriginal.cantidad_actual = cantidadOriginalRestante > 0 ? cantidadOriginalRestante : 0
+        }
+        
         grupos[idOriginal] = {
             id_producto_original: idOriginal,
             nombre_original: nombreOriginal,
             cantidad_total: cantidadTotal,
-            cantidad_original: cantidadOriginal > 0 ? cantidadOriginal : 0,
-            cantidad_original_input: cantidadOriginal > 0 ? cantidadOriginal : 0,
-            cantidad_sustituto: cantidadSustitutoTotal,
-            tiene_sustituto: cantidadSustitutoTotal > 0,
-            sustituto_nombre: sustitutoSeleccionado ? sustitutoSeleccionado.nombre_sustituto : null,
-            id_sustituto_seleccionado: idSustitutoSeleccionado,
-            opciones: opciones.filter(o => o.id_producto_original === idOriginal).map(op => ({
-                id_sustituto: op.id_producto_sustituto,
-                nombre: op.nombre_sustituto,
-                codigo: op.codigo_sustituto || '',
-                cantidad_maxima: op.cantidad_maxima || item.porcion || 1,
-                cantidad_actual: (cantidadSustitutoTotal > 0 && idSustitutoSeleccionado === op.id_producto_sustituto) ? cantidadSustitutoTotal : 0,
-                es_seleccionado: idSustitutoSeleccionado === op.id_producto_sustituto
-            }))
+            cantidad_original: cantidadOriginalRestante > 0 ? cantidadOriginalRestante : 0,
+            tiene_opciones: true,
+            es_fijo: false,
+            opciones: opcionesConCantidad
         }
     })
     
@@ -155,176 +173,183 @@ const agruparOpcionesPorProducto = (detalle, totalCombos) => {
 // =============================================
 // ABRIR MODAL
 // =============================================
-const abrirCambioOpciones = (detalle, index) => {
-    if (!detalle.tiene_opciones && !detalle.es_agrupado) {
-        toast?.warning('Sin opciones', 'Este producto no tiene opciones de cambio disponibles')
-        return
-    }
-    
+const abrirModal = (detalle, index) => {
     const totalCombos = Number(detalle.unidades) || 1
-    
-    console.log('🔍 Abriendo modal:', {
-        producto: detalle.producto_nombre,
-        totalCombos: totalCombos,
-        personalizacion: detalle.personalizacion
-    })
     
     productoActual.value = {
         id: detalle.idrelacionventainventario,
         nombre: detalle.producto_nombre,
         composicion: detalle.composicion || [],
         opciones: detalle.opciones_disponibles || [],
-        tipo_producto: detalle.es_agrupado ? 'combo' : 'con_opciones',
-        precio_real: detalle.preciounidades || 0,
         total_unidades: totalCombos,
         detalleIndex: index
     }
     
-    const grupos = agruparOpcionesPorProducto(detalle, totalCombos)
+    const grupos = agruparOpciones(detalle, totalCombos)
     opcionesAgrupadas.value = grupos
     
-    console.log('🔍 Grupos generados:', grupos)
+    // Inicializar cantidades temporales
+    cantidadesTemp.value = {}
+    grupos.forEach((grupo) => {
+        grupo.opciones.forEach((opcion) => {
+            const key = `${grupo.id_producto_original}_${opcion.id_sustituto}`
+            cantidadesTemp.value[key] = Number(opcion.cantidad_actual) || 0
+        })
+    })
     
-    modalPersonalizarVisible.value = true
+    modalVisible.value = true
 }
 
 // =============================================
-// VALIDAR CANTIDADES
+// ACTUALIZAR CANTIDAD TEMPORAL
 // =============================================
-const validarCantidades = (grupo) => {
-    if (grupo.cantidad_original_input > grupo.cantidad_total) {
-        grupo.cantidad_original_input = grupo.cantidad_total
-    }
-    if (grupo.cantidad_original_input < 0) {
-        grupo.cantidad_original_input = 0
-    }
+const actualizarCantidadTemp = (grupo, opcion, nuevoValor) => {
+    const total = grupo.cantidad_total
     
-    grupo.opciones.forEach(op => {
-        if (op.cantidad_actual > grupo.cantidad_total) {
-            op.cantidad_actual = grupo.cantidad_total
-        }
-        if (op.cantidad_actual < 0) {
-            op.cantidad_actual = 0
+    // No permitir negativos
+    if (nuevoValor < 0) nuevoValor = 0
+    
+    // Si es fijo, no se puede modificar
+    if (opcion.es_fijo) return
+    
+    // Actualizar el valor
+    const key = `${grupo.id_producto_original}_${opcion.id_sustituto}`
+    cantidadesTemp.value[key] = nuevoValor
+    opcion.cantidad_actual = nuevoValor
+    
+    // Recalcular total de sustitutos
+    let totalSustitutos = 0
+    grupo.opciones.forEach(o => {
+        if (!o.es_original && !o.es_fijo) {
+            totalSustitutos += Number(o.cantidad_actual) || 0
         }
     })
+    
+    // Calcular cantidad original restante
+    const cantidadOriginalRestante = total - totalSustitutos
+    const opcionOriginal = grupo.opciones.find(o => o.es_original)
+    if (opcionOriginal && !opcionOriginal.es_fijo) {
+        opcionOriginal.cantidad_actual = cantidadOriginalRestante >= 0 ? cantidadOriginalRestante : 0
+        const keyOrig = `${grupo.id_producto_original}_${opcionOriginal.id_sustituto}`
+        cantidadesTemp.value[keyOrig] = opcionOriginal.cantidad_actual
+    }
+    
+    // Actualizar el estado del grupo
+    grupo.cantidad_original = cantidadOriginalRestante >= 0 ? cantidadOriginalRestante : 0
+    
+    // Forzar actualización de la vista
+    opcionesAgrupadas.value = [...opcionesAgrupadas.value]
 }
 
-const actualizarSeleccion = (grupo, opcion) => {
-    if (opcion.cantidad_actual > 0) {
-        if (opcion.cantidad_actual > grupo.cantidad_total) {
-            opcion.cantidad_actual = grupo.cantidad_total
-        }
+// =============================================
+// GUARDAR PERSONALIZACIÓN
+// =============================================
+const guardarPersonalizacion = async () => {
+    // Validar que todos los grupos estén completos
+    let hayError = false
+    let mensajeError = ''
+    
+    for (const grupo of opcionesAgrupadas.value) {
+        if (grupo.es_fijo) continue
         
-        opcion.es_seleccionado = true
+        let total = 0
         grupo.opciones.forEach(o => {
-            if (o.id_sustituto !== opcion.id_sustituto) {
-                o.es_seleccionado = false
-                o.cantidad_actual = 0
+            if (!o.es_fijo) {
+                total += Number(o.cantidad_actual) || 0
             }
         })
-        grupo.cantidad_original_input = grupo.cantidad_total - opcion.cantidad_actual
-    } else {
-        opcion.es_seleccionado = false
-        grupo.cantidad_original_input = grupo.cantidad_total
-    }
-}
-
-const calcularTotalAsignado = (grupo) => {
-    let total = Number(grupo.cantidad_original_input) || 0
-    grupo.opciones.forEach(op => {
-        if (op.es_seleccionado && op.cantidad_actual > 0) {
-            total += Number(op.cantidad_actual)
-        }
-    })
-    return total
-}
-
-const validarTodosLosGrupos = () => {
-    for (const grupo of opcionesAgrupadas.value) {
-        if (calcularTotalAsignado(grupo) !== Number(grupo.cantidad_total)) {
-            return false
+        
+        if (total !== grupo.cantidad_total) {
+            hayError = true
+            mensajeError = `"${grupo.nombre_original}" debe sumar ${grupo.cantidad_total} unidades (actual: ${total})`
+            break
         }
     }
-    return true
-}
-
-// =============================================
-// CONFIRMAR CAMBIO DE OPCIONES
-// =============================================
-const confirmarCambioOpciones = () => {
-    const index = productoActual.value?.detalleIndex
     
-    if (index === undefined || index === null) {
-        toast?.error('Error', 'No se encontró el producto a actualizar')
+    if (hayError) {
+        toast?.warning('Cantidades incorrectas', mensajeError)
         return
     }
     
-    const detalleActual = detallesEdit.value[index]
+    const index = productoActual.value.detalleIndex
+    const totalCombos = productoActual.value.total_unidades
     
-    if (!detalleActual) {
-        toast?.error('Error', 'No se encontró el producto a actualizar')
-        return
-    }
-    
-    const totalCombos = Number(productoActual.value.total_unidades) || 1
-    
-    if (!validarTodosLosGrupos()) {
-        toast?.warning('Cantidades incompletas', 'Debes asignar todas las unidades de cada producto')
-        return
-    }
-    
-    // 🔥 CONSTRUIR PERSONALIZACIÓN
+    // Construir personalización
     const nuevaPersonalizacion = []
     
     for (let i = 0; i < totalCombos; i++) {
         const sustitutos = []
         
         opcionesAgrupadas.value.forEach(grupo => {
-            // Buscar el sustituto seleccionado
-            const sustitutoSeleccionado = grupo.opciones.find(op => op.es_seleccionado && Number(op.cantidad_actual) > 0)
-            
-            // Si hay sustituto seleccionado
-            if (sustitutoSeleccionado) {
-                const cantidadPorCombo = Math.round(Number(sustitutoSeleccionado.cantidad_actual) / totalCombos)
-                if (cantidadPorCombo > 0) {
-                    sustitutos.push({
-                        id_producto_original: Number(grupo.id_producto_original),
-                        id_producto_sustituto: Number(sustitutoSeleccionado.id_sustituto),
-                        cantidad: cantidadPorCombo
-                    })
+            if (grupo.es_fijo) {
+                // Producto fijo
+                const opcionFija = grupo.opciones.find(o => o.es_fijo)
+                if (opcionFija && opcionFija.cantidad_actual > 0) {
+                    const cantidadPorCombo = Math.floor(opcionFija.cantidad_actual / totalCombos)
+                    if (cantidadPorCombo > 0) {
+                        sustitutos.push({
+                            id_producto_original: grupo.id_producto_original,
+                            id_producto_sustituto: opcionFija.id_sustituto,
+                            cantidad: cantidadPorCombo
+                        })
+                    }
                 }
+                return
             }
             
-            // 🔥 SI NO HAY SUSTITUTO, NO AGREGAR NADA (el original se asume)
-            // Los originales NO se guardan en la personalización
-            // Solo se guardan los cambios (sustitutos)
+            // Producto con opciones
+            grupo.opciones.forEach(op => {
+                if (op.es_fijo) return
+                
+                const cantidadTotal = Number(op.cantidad_actual) || 0
+                
+                if (cantidadTotal > 0) {
+                    const cantidadPorCombo = Math.floor(cantidadTotal / totalCombos)
+                    const residuo = cantidadTotal % totalCombos
+                    
+                    const cantidadAUsar = (i === totalCombos - 1) 
+                        ? (cantidadPorCombo + residuo) 
+                        : cantidadPorCombo
+                    
+                    if (cantidadAUsar > 0) {
+                        sustitutos.push({
+                            id_producto_original: grupo.id_producto_original,
+                            id_producto_sustituto: op.id_sustituto,
+                            cantidad: cantidadAUsar
+                        })
+                    }
+                }
+            })
         })
         
-        // Si hay sustitutos, agregarlos
         if (sustitutos.length > 0) {
             nuevaPersonalizacion.push({ sustitutos })
         }
     }
     
-    // Si no hay personalización (todos son originales), crear un array vacío
-    // o con un solo elemento para que no se pierda
-    if (nuevaPersonalizacion.length === 0) {
-        // Si no hay cambios, no guardar personalización (se usará la composición original)
-        detalleActual.personalizacion = null
-        detalleActual.tiene_personalizacion = false
-    } else {
-        detalleActual.personalizacion = nuevaPersonalizacion
-        detalleActual.tiene_personalizacion = true
+    const personalizacionFinal = nuevaPersonalizacion.length > 0 ? nuevaPersonalizacion : null
+    
+    // Actualizar el detalle local
+    const nuevoDetalle = {
+        ...detallesEdit.value[index],
+        personalizacion: personalizacionFinal,
+        tiene_personalizacion: personalizacionFinal !== null && personalizacionFinal.length > 0
     }
     
-    console.log('📝 PERSONALIZACION FINAL:', JSON.stringify(nuevaPersonalizacion, null, 2))
-    console.log('📝 CANTIDAD DE COMBOS:', nuevaPersonalizacion.length)
+    detallesEdit.value = [
+        ...detallesEdit.value.slice(0, index),
+        nuevoDetalle,
+        ...detallesEdit.value.slice(index + 1)
+    ]
     
-    modalPersonalizarVisible.value = false
+    // Cerrar modal
+    modalVisible.value = false
     productoActual.value = null
     opcionesAgrupadas.value = []
+    cantidadesTemp.value = {}
     
-    toast?.success('Opciones actualizadas', 'La personalización se ha actualizado correctamente')
+    // Guardar en la BD
+    await guardarCambios()
 }
 
 // =============================================
@@ -348,20 +373,15 @@ const guardarCambios = async () => {
             }))
         }
         
-        console.log('📤 Enviando al servidor:', JSON.stringify(payload, null, 2))
-        
         const response = await axios.put(`/gestion/reportes/control-interno/ventas/mis-facturas/${props.venta.IdVentas}`, payload)
         
         if (response.data.success) {
-            toast?.success('Factura actualizada', 'Los cambios se guardaron correctamente')
-            setTimeout(() => {
-                router.reload()
-            }, 500)
+            toast?.success('Cambios guardados', 'La personalización se actualizó correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al guardar')
         }
     } catch (error) {
-        console.error('Error guardando:', error)
+        console.error('Error:', error)
         toast?.error('Error', error.response?.data?.message || 'Error al guardar')
     } finally {
         guardando.value = false
@@ -372,9 +392,7 @@ const guardarCambios = async () => {
 // FINALIZAR EDICIÓN
 // =============================================
 const finalizarEdicion = async () => {
-    if (!confirm('¿Estás seguro de finalizar la edición?\n\nEsto cerrará la factura y no podrás modificarla nuevamente.')) {
-        return
-    }
+    if (!confirm('¿Estás seguro de finalizar la edición? La factura quedará cerrada y no podrá editarse.')) return
     
     guardando.value = true
     
@@ -393,14 +411,12 @@ const finalizarEdicion = async () => {
         
         if (response.data.success) {
             toast?.success('Factura finalizada', 'La factura se ha cerrado correctamente')
-            setTimeout(() => {
-                router.get('/gestion/reportes/control-interno/ventas/mis-facturas')
-            }, 1500)
+            setTimeout(() => router.get('/gestion/reportes/control-interno/ventas/mis-facturas'), 1500)
         } else {
             toast?.error('Error', response.data.message || 'Error al finalizar')
         }
     } catch (error) {
-        console.error('Error finalizando:', error)
+        console.error('Error:', error)
         toast?.error('Error', error.response?.data?.message || 'Error al finalizar')
     } finally {
         guardando.value = false
@@ -408,47 +424,25 @@ const finalizarEdicion = async () => {
 }
 
 // =============================================
-// VOLVER AL LISTADO
+// UTILIDADES
 // =============================================
+const formatearMonto = (monto) => Number(monto || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+const formatearFecha = (fecha) => {
+    if (!fecha) return '-'
+    const d = new Date(fecha)
+    return d.toLocaleDateString('es-BO', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+const totalFactura = computed(() => detallesEdit.value.reduce((sum, d) => sum + (d.totalbolivianos || 0), 0))
+const tieneOpciones = (detalle) => detalle.tiene_opciones === true || detalle.es_agrupado === true
+
 const volver = () => {
     if (confirm('¿Seguro que quieres salir? Los cambios no guardados se perderán.')) {
         router.get('/gestion/reportes/control-interno/ventas/mis-facturas')
     }
 }
 
-// =============================================
-// UTILIDADES
-// =============================================
-const formatearMonto = (monto) => {
-    return Number(monto || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, '.')
-}
-
-const formatearFecha = (fecha) => {
-    if (!fecha) return '-'
-    const d = new Date(fecha)
-    return d.toLocaleDateString('es-BO', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    })
-}
-
-const totalFactura = computed(() => {
-    return detallesEdit.value.reduce((sum, d) => sum + (d.totalbolivianos || 0), 0)
-})
-
-const tieneOpciones = (detalle) => {
-    return detalle.tiene_opciones === true || detalle.es_agrupado === true
-}
-
-// =============================================
-// CICLO DE VIDA
-// =============================================
-onMounted(() => {
-    inicializarDetalles()
-})
+onMounted(() => inicializarDetalles())
 </script>
 
 <template>
@@ -462,247 +456,156 @@ onMounted(() => {
                             <i class="fas fa-edit text-primary-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Editar Opciones de Factura</h1>
-                            <p class="text-[10px] text-gray-500">
-                                N° {{ venta.NumeroFactura }} - {{ formatearFecha(venta.FechaVenta) }}
-                                <span class="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[9px]">
-                                    <i class="fas fa-exchange-alt mr-1"></i> Cambiar opciones
-                                </span>
-                            </p>
+                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Editar Opciones</h1>
+                            <p class="text-[10px] text-gray-500">N° {{ venta.NumeroFactura }} - {{ formatearFecha(venta.FechaVenta) }}</p>
+                            <p class="text-[10px] text-green-600">✅ Los cambios se guardan automáticamente al aplicar</p>
                         </div>
                     </div>
-                    <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
-                            @click="volver"
-                            class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium transition"
-                        >
-                            <i class="fas fa-arrow-left mr-1"></i> Volver
+                    <div class="flex gap-2">
+                        <button @click="volver" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 rounded-lg text-xs">Volver</button>
+                        <button @click="finalizarEdicion" :disabled="guardando" class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs disabled:opacity-50">
+                            {{ guardando ? 'Cerrando...' : 'Finalizar' }}
                         </button>
-                        <button 
-                            @click="finalizarEdicion"
-                            :disabled="guardando"
-                            class="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
-                        >
-                            <i v-if="guardando" class="fas fa-spinner fa-spin mr-1"></i>
-                            <i v-else class="fas fa-check-circle mr-1"></i>
-                            {{ guardando ? 'Cerrando...' : 'Finalizar Edición' }}
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Info de la venta -->
-                <div class="bg-white rounded-xl shadow-sm p-3 mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                    <div>
-                        <span class="text-gray-500">Sucursal:</span>
-                        <span class="font-medium block">{{ venta.sucursal_nombre || '-' }}</span>
-                    </div>
-                    <div>
-                        <span class="text-gray-500">Vendedor:</span>
-                        <span class="font-medium block">{{ venta.vendedor_nombre || '-' }}</span>
                     </div>
                 </div>
 
                 <!-- Tabla de productos -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cantidad</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Precio Unit.</th>
-                                    <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                                    <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Opciones</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(detalle, index) in detallesEdit" :key="index" class="hover:bg-gray-50">
-                                    <td class="px-3 py-2">
-                                        <div class="text-xs font-medium text-gray-800">{{ detalle.producto_nombre }}</div>
-                                        <div class="text-[10px] text-gray-400">{{ detalle.producto_codigo || 'Sin código' }}</div>
-                                        <div v-if="detalle.tiene_personalizacion" class="text-[10px] text-amber-600">
-                                            <i class="fas fa-check-circle mr-1"></i> Personalizado
-                                        </div>
-                                    </td>
-                                    <td class="px-3 py-2 text-center text-xs text-gray-700">
-                                        {{ detalle.unidades }}
-                                    </td>
-                                    <td class="px-3 py-2 text-right text-xs font-medium text-gray-700">
-                                        {{ formatearMonto(detalle.preciounidades) }}
-                                    </td>
-                                    <td class="px-3 py-2 text-right text-xs font-bold text-primary-600">
-                                        {{ formatearMonto(detalle.totalbolivianos) }}
-                                    </td>
-                                    <td class="px-3 py-2 text-center">
-                                        <button 
-                                            v-if="tieneOpciones(detalle)"
-                                            @click="abrirCambioOpciones(detalle, index)"
-                                            :disabled="guardando"
-                                            class="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-xs font-medium transition flex items-center gap-1 mx-auto disabled:opacity-50"
-                                            title="Cambiar opciones del producto"
-                                        >
-                                            <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
-                                            <i v-else class="fas fa-exchange-alt text-[10px]"></i>
-                                            {{ guardando ? 'Guardando...' : 'Cambiar' }}
-                                        </button>
-                                        <span v-else class="text-[10px] text-gray-400" title="Sin opciones de cambio">
-                                            <i class="fas fa-minus text-xs"></i>
-                                        </span>
-                                    </td>
-                                </tr>
-                                <tr v-if="!detallesEdit.length">
-                                    <td colspan="5" class="px-3 py-8 text-center text-gray-400 text-sm">
-                                        <i class="fas fa-box-open text-3xl block mb-2 text-gray-300"></i>
-                                        No hay productos en esta factura
-                                    </td>
-                                </tr>
-                            </tbody>
-                            <tfoot v-if="detallesEdit.length" class="bg-gray-50 border-t-2 border-gray-200">
-                                <tr>
-                                    <td colspan="3" class="px-3 py-2 text-right text-xs font-bold text-gray-700">TOTAL:</td>
-                                    <td class="px-3 py-2 text-right text-sm font-bold text-primary-700">
-                                        {{ formatearMonto(totalFactura) }} Bs
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500">Producto</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Cant.</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Precio</th>
+                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500">Total</th>
+                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500">Opciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr v-for="(detalle, index) in detallesEdit" :key="index" class="hover:bg-gray-50">
+                                <td class="px-3 py-2">
+                                    <div class="text-xs font-medium text-gray-800">{{ detalle.producto_nombre }}</div>
+                                    <div class="text-[10px] text-gray-400">{{ detalle.producto_codigo }}</div>
+                                    <div v-if="detalle.tiene_personalizacion" class="text-[10px] text-amber-600">✓ Personalizado</div>
+                                </td>
+                                <td class="px-3 py-2 text-center text-xs text-gray-700">{{ detalle.unidades }}</td>
+                                <td class="px-3 py-2 text-right text-xs text-gray-700">{{ formatearMonto(detalle.preciounidades) }}</td>
+                                <td class="px-3 py-2 text-right text-xs font-bold text-primary-600">{{ formatearMonto(detalle.totalbolivianos) }}</td>
+                                <td class="px-3 py-2 text-center">
+                                    <button v-if="tieneOpciones(detalle)" @click="abrirModal(detalle, index)" :disabled="guardando"
+                                            class="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-xs">
+                                        <i class="fas fa-exchange-alt"></i> Cambiar
+                                    </button>
+                                    <span v-else class="text-xs text-gray-400">—</span>
+                                </td>
+                            </tr>
+                            <tr v-if="!detallesEdit.length">
+                                <td colspan="5" class="px-3 py-8 text-center text-gray-400 text-sm">No hay productos</td>
+                            </tr>
+                        </tbody>
+                        <tfoot class="bg-gray-50 border-t">
+                            <tr>
+                                <td colspan="3" class="px-3 py-2 text-right text-xs font-bold">TOTAL:</td>
+                                <td class="px-3 py-2 text-right text-sm font-bold text-primary-700">{{ formatearMonto(totalFactura) }}</td>
+                                <td></td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
 
-                <!-- Botones -->
-                <div class="flex justify-end gap-2 mt-4">
-                    <button 
-                        @click="volver"
-                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition"
-                    >
-                        Cancelar
-                    </button>
-                    <button 
-                        @click="finalizarEdicion"
-                        :disabled="guardando"
-                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
-                    >
-                        <i v-if="guardando" class="fas fa-spinner fa-spin mr-1"></i>
-                        <i v-else class="fas fa-check-circle mr-1"></i>
-                        {{ guardando ? 'Cerrando...' : 'Finalizar Edición' }}
-                    </button>
+                <!-- Indicador de guardado automático -->
+                <div class="flex justify-between items-center mt-4">
+                    <div class="text-xs text-gray-400">
+                        <i class="fas fa-sync-alt text-green-500"></i>
+                        Los cambios se guardan automáticamente al aplicar
+                    </div>
+                    <span v-if="guardando" class="text-xs text-primary-600">
+                        <i class="fas fa-spinner fa-spin"></i> Guardando...
+                    </span>
                 </div>
             </div>
         </div>
 
-        <!-- Modal de Cambio de Opciones -->
-        <div v-if="modalPersonalizarVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="modalPersonalizarVisible = false">
+        <!-- Modal -->
+        <div v-if="modalVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="modalVisible = false">
             <div class="bg-white rounded-xl max-w-lg w-full max-h-[90vh] overflow-hidden shadow-xl flex flex-col">
-                
+                <!-- Header -->
                 <div class="bg-primary-700 px-4 py-2.5 flex justify-between items-center flex-shrink-0">
-                    <div class="flex items-center gap-2">
-                        <div class="w-7 h-7 bg-white rounded-lg flex items-center justify-center">
-                            <i class="fas fa-layer-group text-primary-600 text-xs"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-white font-bold text-sm">Cambiar Opciones</h3>
-                            <p class="text-white/70 text-[10px]">{{ productoActual?.nombre }}</p>
-                            <p class="text-white/50 text-[9px]">Total: {{ productoActual?.total_unidades || 0 }} unidades</p>
-                            <p class="text-white/40 text-[9px]">⚠️ La suma debe ser {{ productoActual?.total_unidades || 0 }}</p>
-                        </div>
+                    <div>
+                        <h3 class="text-white font-bold text-sm">Cambiar Opciones</h3>
+                        <p class="text-white/70 text-[10px]">{{ productoActual?.nombre }}</p>
+                        <p class="text-white/50 text-[9px]">Total: {{ productoActual?.total_unidades || 0 }} unidades</p>
                     </div>
-                    <button @click="modalPersonalizarVisible = false" class="text-white/80 hover:text-white transition text-sm">
-                        <i class="fas fa-times"></i>
-                    </button>
+                    <button @click="modalVisible = false" class="text-white/80 hover:text-white">✕</button>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4">
-                    <div v-if="!opcionesAgrupadas.length" class="text-center text-gray-400 py-6 text-sm">
-                        <i class="fas fa-spinner fa-spin text-xl mb-1 block"></i>
-                        Cargando opciones...
-                    </div>
-                    
-                    <div v-else>
-                        <div v-for="grupo in opcionesAgrupadas" :key="grupo.id_producto_original" class="border-b pb-4 mb-4 last:border-b-0">
-                            
-                            <div class="flex justify-between items-center mb-2">
-                                <div>
-                                    <span class="text-sm font-semibold text-gray-800">{{ grupo.nombre_original }}</span>
-                                    <span class="text-[10px] text-gray-400 ml-2">(Total: {{ grupo.cantidad_total }} unid)</span>
-                                </div>
-                                <span class="text-xs font-medium text-gray-500">
-                                    {{ grupo.cantidad_original > 0 ? grupo.cantidad_original : 0 }} originales
-                                </span>
-                            </div>
-                            
-                            <div class="space-y-2">
-                                <div class="flex items-center gap-3 p-2 rounded-lg border border-blue-200 bg-blue-50">
-                                    <div class="flex-1 min-w-0">
-                                        <div class="text-xs font-medium text-gray-800">📦 {{ grupo.nombre_original }} (Original)</div>
-                                        <div class="text-[10px] text-gray-400">Producto por defecto</div>
+                <!-- Contenido -->
+                <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                    <div v-for="grupo in opcionesAgrupadas" :key="grupo.id_producto_original" class="border-b pb-3 last:border-0">
+                        <!-- Encabezado -->
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-sm font-semibold text-gray-800">{{ grupo.nombre_original }}</span>
+                            <span class="text-xs font-medium text-gray-500">Total: {{ grupo.cantidad_total }} unid</span>
+                        </div>
+
+                        <!-- Producto FIJO (sin opciones) -->
+                        <div v-if="grupo.es_fijo" class="text-sm text-gray-600 bg-gray-50 rounded-lg p-2">
+                            <i class="fas fa-lock text-gray-400 mr-1"></i>
+                            Producto fijo: <strong>{{ grupo.cantidad_total }}</strong> unidades
+                            <div class="text-[10px] text-gray-400 mt-1">No se puede modificar porque no tiene opciones de sustitución</div>
+                        </div>
+
+                        <!-- Producto con opciones -->
+                        <div v-else class="space-y-2">
+                            <div v-for="opcion in grupo.opciones" :key="opcion.id_sustituto"
+                                 class="flex items-center gap-3 p-2 rounded-lg border"
+                                 :class="opcion.es_original ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-white'">
+                                
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-xs font-medium" :class="opcion.es_original ? 'text-blue-700' : 'text-gray-800'">
+                                        {{ opcion.nombre }}
+                                        <span v-if="opcion.es_original" class="text-[10px] text-blue-500 ml-1">(original)</span>
                                     </div>
-                                    <div class="flex items-center gap-2">
-                                        <input 
-                                            type="number" 
-                                            v-model.number="grupo.cantidad_original_input" 
-                                            :max="grupo.cantidad_total"
-                                            :min="0"
-                                            class="w-16 text-center text-sm border border-gray-300 rounded px-1 py-1 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                            @input="validarCantidades(grupo)"
-                                        />
-                                        <span class="text-xs text-gray-500">unid</span>
-                                    </div>
+                                    <div class="text-[10px] text-gray-400">máx {{ opcion.cantidad_maxima || grupo.cantidad_total }} unid</div>
                                 </div>
                                 
-                                <div v-for="opcion in grupo.opciones" :key="opcion.id_sustituto"
-                                     class="flex items-center gap-3 p-2 rounded-lg border transition"
-                                     :class="opcion.es_seleccionado ? 'border-amber-300 bg-amber-50' : 'border-gray-200 bg-white hover:bg-gray-50'">
-                                    
-                                    <div class="flex-1 min-w-0">
-                                        <div class="text-xs font-medium text-gray-800 truncate">
-                                            🔄 {{ opcion.nombre }}
-                                            <span v-if="opcion.es_seleccionado" class="text-amber-600 text-[9px] ml-1">(seleccionado)</span>
-                                        </div>
-                                        <div class="text-[10px] text-gray-400">máx {{ opcion.cantidad_maxima || grupo.cantidad_total }} unid</div>
-                                    </div>
-                                    
-                                    <div class="flex items-center gap-2">
-                                        <input 
-                                            type="number" 
-                                            v-model.number="opcion.cantidad_actual" 
-                                            :max="grupo.cantidad_total"
-                                            :min="0"
-                                            class="w-16 text-center text-sm border border-gray-300 rounded px-1 py-1 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                            :class="opcion.es_seleccionado ? 'border-amber-400 bg-amber-50' : ''"
-                                            @input="actualizarSeleccion(grupo, opcion)"
-                                        />
-                                        <span class="text-xs text-gray-500">unid</span>
-                                    </div>
+                                <div class="flex items-center gap-2">
+                                    <input 
+                                        type="number" 
+                                        v-model.number="opcion.cantidad_actual"
+                                        @input="actualizarCantidadTemp(grupo, opcion, Number($event.target.value))"
+                                        :min="0"
+                                        class="w-16 text-center text-sm border border-gray-300 rounded px-1 py-1 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                        :class="opcion.es_original ? 'bg-blue-50' : ''"
+                                    />
+                                    <span class="text-xs text-gray-500">unid</span>
                                 </div>
                             </div>
-                            
-                            <div class="mt-2 text-[10px] text-gray-500 bg-gray-50 rounded p-1.5 flex justify-between items-center">
-                                <span>
-                                    <span class="font-medium">Total asignado:</span>
-                                    {{ calcularTotalAsignado(grupo) }} / {{ grupo.cantidad_total }} unidades
-                                </span>
-                                <span v-if="calcularTotalAsignado(grupo) !== grupo.cantidad_total" class="text-amber-600">
-                                    ⚠️ Faltan {{ grupo.cantidad_total - calcularTotalAsignado(grupo) }} unidades
-                                </span>
-                                <span v-else class="text-green-600">
-                                    ✅ Completo
-                                </span>
-                            </div>
+                        </div>
+
+                        <!-- Resumen con estado de validación -->
+                        <div class="mt-2 text-[10px] text-gray-500 bg-gray-50 rounded p-1.5 flex justify-between">
+                            <span>Total asignado: 
+                                <strong>{{ grupo.opciones.reduce((sum, o) => sum + Number(o.cantidad_actual), 0) }}</strong>
+                                / {{ grupo.cantidad_total }}
+                            </span>
+                            <span v-if="grupo.es_fijo" class="text-gray-400">🔒 Fijo</span>
+                            <span v-else-if="grupo.opciones.reduce((sum, o) => sum + Number(o.cantidad_actual), 0) === grupo.cantidad_total" 
+                                  class="text-green-600">✅ Completo</span>
+                            <span v-else-if="grupo.opciones.reduce((sum, o) => sum + Number(o.cantidad_actual), 0) > grupo.cantidad_total" 
+                                  class="text-red-600">⚠️ Excede por {{ grupo.opciones.reduce((sum, o) => sum + Number(o.cantidad_actual), 0) - grupo.cantidad_total }}</span>
+                            <span v-else class="text-amber-600">⚠️ Faltan {{ grupo.cantidad_total - grupo.opciones.reduce((sum, o) => sum + Number(o.cantidad_actual), 0) }}</span>
                         </div>
                     </div>
                 </div>
 
-                <div class="bg-gray-50 px-4 py-2.5 border-t flex justify-end gap-2 flex-shrink-0">
-                    <button @click="modalPersonalizarVisible = false" class="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg text-xs hover:bg-gray-100 transition">
-                        Cancelar
-                    </button>
-                    <button 
-                        @click="confirmarCambioOpciones"
-                        :disabled="!validarTodosLosGrupos()"
-                        class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50"
-                    >
-                        <i class="fas fa-check mr-1"></i> Aplicar Cambios
+                <!-- Footer -->
+                <div class="bg-gray-50 px-4 py-2.5 border-t flex justify-end gap-2">
+                    <button @click="modalVisible = false" class="px-3 py-1.5 border border-gray-300 rounded-lg text-xs">Cancelar</button>
+                    <button @click="guardarPersonalizacion" :disabled="guardando" class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs flex items-center gap-2 disabled:opacity-50">
+                        <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
+                        <i v-else class="fas fa-check"></i>
+                        {{ guardando ? 'Guardando...' : 'Aplicar' }}
                     </button>
                 </div>
             </div>
@@ -711,12 +614,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-input[type="number"] {
-    -webkit-appearance: textfield;
-    -moz-appearance: textfield;
-    appearance: textfield;
-}
-
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;

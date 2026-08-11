@@ -783,8 +783,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // 📊 Estadísticas
                     Route::get('/estadisticas', [VentaController::class, 'estadisticas'])->name('gestion.ventas.estadisticas');
                     // 👁️ VER DETALLE - Super Usuario
-                    Route::get('/gestion-estado/{id}/show', [VentaController::class, 'showGestionEstado'])
-                        ->name('gestion.ventas.gestion-estado.show');
+                    Route::get('/gestion-estado/{id}/show', [VentaController::class, 'showGestionEstado'])->name('gestion.ventas.gestion-estado.show');
                     Route::get('/gestion-estado/{id}/detalle', [VentaController::class, 'getDetalleFacturaModal'])->name('gestion.ventas.gestion-estado.detalle');
                     // ✏️ Editar factura
                     Route::get('/{id}/edit', [VentaController::class, 'edit'])->name('gestion.ventas.edit');
@@ -797,6 +796,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/{id}/reimprimir', [VentaController::class, 'reimprimir'])->name('gestion.ventas.reimprimir');
                     // 🔥 Obtener opciones
                     Route::get('/{id}/opciones', [VentaController::class, 'getOpcionesProducto'])->name('gestion.ventas.opciones');
+                    // 👁️ VER DETALLE (NUEVO)
+                    Route::get('/{id}/detalle-modal', [VentaController::class, 'getDetalleFacturaModal'])->name('gestion.ventas.detalle-modal');
                     // ============================================================
                     // MIS FACTURAS - Para operadores (editar SOLO opciones de combos)
                     // ============================================================

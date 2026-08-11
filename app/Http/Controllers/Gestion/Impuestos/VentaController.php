@@ -200,16 +200,10 @@ class VentaController extends Controller
             ->leftJoin('todos_identificador as c', 'v.IdCliente', '=', 'c.IdIdentificador')
             ->leftJoin('todos_cliente_sucursal as s', 'v.IdClienteSucursal', '=', 's.IdClienteSucursal')
             ->where('v.IdCliente', $clienteId)
-            ->where('v.IdOperadorIngresa', $operadorId);
+            ->where('v.IdOperadorIngresa', $operadorId)
+            ->where('v.IdClienteSucursal', $sucursalId); // 🔥 Siempre la sucursal logueada
         
-        // 🔥 Filtro por sucursal
-        if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
-            $query->where('v.IdClienteSucursal', $request->sucursal_id);
-        } else {
-            $query->where('v.IdClienteSucursal', $sucursalId);
-        }
-        
-        // 🔥 Filtro por estado
+        // 🔥 FILTRO POR ESTADO
         if ($request->filled('estado') && $request->estado !== '') {
             if ($request->estado === 'activos') {
                 $query->where('v.ActivoInactivo', 0);
@@ -217,7 +211,7 @@ class VentaController extends Controller
                 $query->where('v.ActivoInactivo', 1);
             }
         } else {
-            // Por defecto, solo activas
+            // 🔥 Por defecto, solo activas
             $query->where('v.ActivoInactivo', 0);
         }
         
@@ -243,7 +237,6 @@ class VentaController extends Controller
         
         // 🔥 Transformar datos y verificar si tiene personalización
         $ventas->getCollection()->transform(function ($venta) {
-            // Verificar si tiene detalles con personalización
             $tienePersonalizacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle')
                 ->where('idventas', $venta->IdVentas)
@@ -265,14 +258,6 @@ class VentaController extends Controller
             ];
         });
         
-        // 🔥 Obtener sucursales del cliente
-        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_cliente_sucursal')
-            ->where('IdCliente', $clienteId)
-            ->where('ActivoInactivo', 0)
-            ->orderBy('Nombre')
-            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
-        
         // 🔥 Obtener nombre del operador
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
@@ -280,11 +265,16 @@ class VentaController extends Controller
             ->where('o.IdOperador', $operadorId)
             ->first();
         
+        // 🔥 Obtener nombre de la sucursal actual
+        $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first();
+        
         return Inertia::render('Gestion/Impuestos/Ventas/MisFacturas', [
             'ventas' => $ventas,
-            'sucursales' => $sucursales,
-            'sucursalActual' => $sucursalId,
             'operadorNombre' => $operador->Nombre ?? 'Operador',
+            'sucursalNombre' => $sucursalActual->Nombre ?? 'Actual',
             'filtroEstado' => $request->estado,
             'buscar' => $request->buscar,
         ]);
@@ -487,14 +477,16 @@ class VentaController extends Controller
             // 🔥 OBTENER SI SE QUIERE FINALIZAR
             $finalizar = $request->input('finalizar', false);
             
-            // 🔥 ELIMINAR DETALLES EXISTENTES
-            DB::connection('mysql_gestion_comercial_alimentos')
+            // 🔥🔥🔥 OBTENER DETALLES EXISTENTES PARA MANTENER IDs 🔥🔥🔥
+            $detallesExistentes = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle')
                 ->where('idventas', $id)
-                ->delete();
+                ->get()
+                ->keyBy('idrelacionventainventario');
             
-            // 🔥 INSERTAR NUEVOS DETALLES
+            // 🔥🔥🔥 ACTUALIZAR O INSERTAR DETALLES 🔥🔥🔥
             $totalVenta = 0;
+            $idsDetallesActualizados = [];
             
             foreach ($request->detalles as $detalle) {
                 $total = $detalle['unidades'] * $detalle['preciounidades'];
@@ -513,18 +505,25 @@ class VentaController extends Controller
                     'entregado' => 0,
                 ];
                 
-                // 🔥 GUARDAR PERSONALIZACIÓN SI EXISTE
-                if (!empty($detalle['personalizacion']) && is_array($detalle['personalizacion'])) {
-                    $data['personalizacion'] = json_encode($detalle['personalizacion']);
+                // 🔥 GUARDAR PERSONALIZACIÓN
+                if (isset($detalle['personalizacion']) && $detalle['personalizacion'] !== null) {
+                    if (is_array($detalle['personalizacion'])) {
+                        if (count($detalle['personalizacion']) > 0) {
+                            $data['personalizacion'] = json_encode($detalle['personalizacion']);
+                        } else {
+                            $data['personalizacion'] = null;
+                        }
+                    } else {
+                        $data['personalizacion'] = $detalle['personalizacion'];
+                    }
                 } else {
-                    // 🔥 Si no tiene personalización, verificar si es combo/pack
+                    // Si no tiene personalización, verificar si es combo/pack
                     $tieneComposicion = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('inventario_relacion_ventainventario_detalle')
                         ->where('IdDetalleProducto', $detalle['idrelacionventainventario'])
                         ->exists();
                     
                     if ($tieneComposicion) {
-                        // 🔥 CREAR PERSONALIZACIÓN AUTOMÁTICA CON PRODUCTOS ORIGINALES
                         $composicion = DB::connection('mysql_gestion_comercial_alimentos')
                             ->table('inventario_relacion_ventainventario_detalle')
                             ->where('IdDetalleProducto', $detalle['idrelacionventainventario'])
@@ -546,17 +545,43 @@ class VentaController extends Controller
                         }
                         
                         $data['personalizacion'] = json_encode($personalizacion);
-                        
-                        \Log::info('🔄 Personalización creada automáticamente para producto:', [
-                            'id' => $detalle['idrelacionventainventario'],
-                            'unidades' => $unidades
-                        ]);
                     }
                 }
                 
+                // 🔥🔥🔥 BUSCAR SI YA EXISTE UN DETALLE CON ESTE PRODUCTO 🔥🔥🔥
+                $detalleExistente = $detallesExistentes->get($detalle['idrelacionventainventario']);
+                
+                if ($detalleExistente) {
+                    // 🔥 ACTUALIZAR DETALLE EXISTENTE
+                    DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('impuestos_ventas_detalle')
+                        ->where('idventasdetalle', $detalleExistente->idventasdetalle)
+                        ->update($data);
+                    
+                    $idsDetallesActualizados[] = $detalleExistente->idventasdetalle;
+                } else {
+                    // 🔥 INSERTAR NUEVO DETALLE
+                    $idNuevo = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('impuestos_ventas_detalle')
+                        ->insertGetId($data);
+                    
+                    $idsDetallesActualizados[] = $idNuevo;
+                }
+            }
+            
+            // 🔥🔥🔥 ELIMINAR DETALLES QUE YA NO EXISTEN 🔥🔥🔥
+            if (!empty($idsDetallesActualizados)) {
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('impuestos_ventas_detalle')
-                    ->insert($data);
+                    ->where('idventas', $id)
+                    ->whereNotIn('idventasdetalle', $idsDetallesActualizados)
+                    ->delete();
+            } else {
+                // Si no hay detalles, eliminar todos
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_detalle')
+                    ->where('idventas', $id)
+                    ->delete();
             }
             
             // 🔥 ACTUALIZAR TOTAL DE LA VENTA
@@ -570,7 +595,7 @@ class VentaController extends Controller
                     'ActivoInactivo' => $finalizar ? 1 : 0,
                 ]);
             
-            // 🔥🔥🔥 REPROCESAR INVENTARIO DE LA FACTURA (SOLO ESTA)
+            // 🔥🔥🔥 REPROCESAR INVENTARIO DE LA FACTURA 🔥🔥🔥
             $this->reprocesarFacturaIndividual($id, $clienteId, $sucursalId, $operadorId);
             
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
@@ -593,9 +618,9 @@ class VentaController extends Controller
             ], 500);
         }
     }
-        
     /**
      * 🔥 REPROCESAR UNA SOLA FACTURA (para cuando se edita)
+     * CORREGIDO: Lógica correcta de combos y personalización
      */
     private function reprocesarFacturaIndividual($idVentas, $clienteId, $sucursalId, $operadorId)
     {
@@ -625,46 +650,18 @@ class VentaController extends Controller
             ->value('IdTipoOperacion');
 
         if (!$idTipoOperacion) {
-            $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_tipooperacion')
-                ->where('IdCliente', $clienteId)
-                ->where(DB::raw('UPPER(Detalle)'), 'VENTAS')
-                ->where('ActivoInactivo', 0)
-                ->value('IdTipoOperacion');
-        }
-
-        if (!$idTipoOperacion) {
             throw new \Exception('No se encontró el tipo de operación "Ventas"');
         }
         
-        // 🔥🔥🔥 PASO 1: ELIMINAR TODOS LOS MOVIMIENTOS VIEJOS 🔥🔥🔥
+        // 🔥🔥🔥 PASO 1: ELIMINAR TODOS LOS MOVIMIENTOS DE ESTA FACTURA 🔥🔥🔥
         $eliminados = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente')
             ->where('IdDocumento', $idVentas)
             ->where('IdCliente', $clienteId)
-            ->where('IdTipoDeOperacion', $idTipoOperacion)
+            ->where('IdSucursal', $sucursalId)
             ->delete();
         
-        \Log::info('🗑️ Eliminados ' . $eliminados . ' movimientos viejos de VENTAS');
-        
-        // 🔥 También eliminar movimientos de ANULACIÓN si existen
-        $idTipoAnulacion = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_tipooperacion')
-            ->where('IdCliente', $clienteId)
-            ->where('Detalle', 'Anulación Venta')
-            ->where('ActivoInactivo', 0)
-            ->value('IdTipoOperacion');
-
-        if ($idTipoAnulacion) {
-            $eliminadosAnulacion = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_propiamente')
-                ->where('IdDocumento', $idVentas)
-                ->where('IdCliente', $clienteId)
-                ->where('IdTipoDeOperacion', $idTipoAnulacion)
-                ->delete();
-            
-            \Log::info('🗑️ Eliminados ' . $eliminadosAnulacion . ' movimientos de ANULACIÓN');
-        }
+        \Log::info('🗑️ Eliminados ' . $eliminados . ' movimientos de la factura');
         
         // 🔥 OBTENER FECHA
         $fechaVenta = date('Y-m-d', strtotime($venta->FechaVenta));
@@ -726,106 +723,78 @@ class VentaController extends Controller
             ->where('idventas', $idVentas)
             ->get();
         
-        // 🔥 CANASTA ACUMULADORA
+        // 🔥 CANASTA ACUMULADORA - productos que se descontarán
         $productosADescontar = [];
         
         foreach ($detalles as $detalle) {
+            $unidadesDetalle = (float) $detalle->unidades;
+            
             \Log::info('📦 Procesando detalle:', [
                 'id' => $detalle->idrelacionventainventario,
-                'unidades' => $detalle->unidades,
+                'unidades' => $unidadesDetalle,
                 'personalizacion' => $detalle->personalizacion
             ]);
             
-            $unidadesDetalle = floatval($detalle->unidades);
-            
-            // 🔥 VERIFICAR SI TIENE PERSONALIZACIÓN
-            $tienePersonalizacion = false;
-            $personalizacion = null;
-            
-            if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
-                $personalizacion = json_decode($detalle->personalizacion, true);
-                $tienePersonalizacion = !empty($personalizacion) && is_array($personalizacion);
-            }
-            
-            // 🔥 OBTENER LA COMPOSICIÓN ORIGINAL
+            // 🔥 OBTENER LA COMPOSICIÓN ORIGINAL DEL PRODUCTO
             $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario_detalle')
                 ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
-                ->get()
-                ->keyBy('IdProducto');
+                ->get();
             
-            // 🔥 SI TIENE PERSONALIZACIÓN
-            if ($tienePersonalizacion && $personalizacion) {
+            if ($composicionOriginal->isEmpty()) {
+                \Log::warning('⚠️ Producto sin composición, no se procesa en inventario');
+                continue;
+            }
+            
+            // 🔥 DECODIFICAR PERSONALIZACIÓN
+            $personalizacion = null;
+            if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
+                $personalizacion = json_decode($detalle->personalizacion, true);
+            }
+            
+            // 🔥 Si tiene personalización, procesar los sustitutos
+            if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
                 \Log::info('✅ Producto con personalización');
                 
-                foreach ($personalizacion as $index => $p) {
-                    if (!is_array($p)) continue;
+                // 🔥 Para cada combo (si hay 3 combos, hay 3 elementos en personalizacion)
+                foreach ($personalizacion as $comboIndex => $comboData) {
+                    $sustitutos = $comboData['sustitutos'] ?? [];
                     
-                    $sustitutos = isset($p['sustitutos']) && is_array($p['sustitutos']) ? $p['sustitutos'] : [];
-                    
-                    // 🔥 Procesar cada producto de la composición original
-                    foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
-                        $cantidadOriginal = floatval($composicion->Porcion);
+                    // 🔥 Procesar cada sustituto del combo
+                    foreach ($sustitutos as $sust) {
+                        $idProducto = $sust['id_producto_sustituto'];
+                        $cantidad = (float) ($sust['cantidad'] ?? 0);
                         
-                        // 🔥 Calcular cuánto se reemplazó
-                        $totalReemplazado = 0.0;
-                        foreach ($sustitutos as $sustituto) {
-                            if (isset($sustituto['id_producto_original']) && $sustituto['id_producto_original'] == $idProductoOriginal) {
-                                $totalReemplazado += floatval($sustituto['cantidad'] ?? 0);
+                        if ($cantidad > 0) {
+                            if (!isset($productosADescontar[$idProducto])) {
+                                $productosADescontar[$idProducto] = 0;
                             }
-                        }
-                        
-                        // 🔥 Productos originales que quedan (NO reemplazados)
-                        $quedanOriginales = $cantidadOriginal - $totalReemplazado;
-                        if ($quedanOriginales > 0) {
-                            $cantidad = $quedanOriginales * $unidadesDetalle;
-                            if (!isset($productosADescontar[$idProductoOriginal])) {
-                                $productosADescontar[$idProductoOriginal] = 0.0;
-                            }
-                            $productosADescontar[$idProductoOriginal] += floatval($cantidad);
-                        }
-                        
-                        // 🔥 Sustitutos (productos que se agregaron en reemplazo)
-                        foreach ($sustitutos as $sustituto) {
-                            if (isset($sustituto['id_producto_original']) && $sustituto['id_producto_original'] == $idProductoOriginal) {
-                                $idSustituto = $sustituto['id_producto_sustituto'] ?? null;
-                                $cantidadSustituto = floatval($sustituto['cantidad'] ?? 0);
-                                
-                                if ($idSustituto && $cantidadSustituto > 0) {
-                                    $cantidad = $cantidadSustituto * $unidadesDetalle;
-                                    if (!isset($productosADescontar[$idSustituto])) {
-                                        $productosADescontar[$idSustituto] = 0.0;
-                                    }
-                                    $productosADescontar[$idSustituto] += floatval($cantidad);
-                                }
-                            }
+                            $productosADescontar[$idProducto] += $cantidad;
                         }
                     }
                 }
-                
             } else {
-                // 🔥 SIN PERSONALIZACIÓN - COMPOSICIÓN NORMAL
-                \Log::info('📦 Producto sin personalización');
+                // 🔥 SIN PERSONALIZACIÓN - usar composición original
+                \Log::info('📦 Producto sin personalización, usando composición original');
                 
-                foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
-                    $cantidad = floatval($composicion->Porcion) * $unidadesDetalle;
-                    if (!isset($productosADescontar[$idProductoOriginal])) {
-                        $productosADescontar[$idProductoOriginal] = 0.0;
+                foreach ($composicionOriginal as $comp) {
+                    $idProducto = $comp->IdProducto;
+                    $cantidad = (float) $comp->Porcion * $unidadesDetalle;
+                    
+                    if (!isset($productosADescontar[$idProducto])) {
+                        $productosADescontar[$idProducto] = 0;
                     }
-                    $productosADescontar[$idProductoOriginal] += floatval($cantidad);
+                    $productosADescontar[$idProducto] += $cantidad;
                 }
             }
         }
         
         // 🔥🔥🔥 PASO 3: CREAR NUEVOS MOVIMIENTOS 🔥🔥🔥
-        \Log::info('📦 Nuevos productos a descontar:', $productosADescontar);
+        \Log::info('📦 Productos a descontar:', $productosADescontar);
         
         foreach ($productosADescontar as $idProducto => $cantidadTotal) {
-            $cantidadTotal = floatval($cantidadTotal);
-            
             if ($cantidadTotal <= 0) continue;
             
-            // Redondear a 2 decimales
             $cantidadTotal = round($cantidadTotal, 2);
             
             $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
@@ -839,7 +808,7 @@ class VentaController extends Controller
                 ->orderBy('IdPrecioCosto', 'DESC')
                 ->value('PrecioCosto');
             
-            $precioCosto = floatval($precioCosto ?? 0);
+            $precioCosto = (float) ($precioCosto ?? 0);
             $costoTotal = $cantidadTotal * $precioCosto;
             
             DB::connection('mysql_gestion_comercial_alimentos')
@@ -860,14 +829,12 @@ class VentaController extends Controller
             
             \Log::info('✅ Descontado:', [
                 'producto' => $nombreProducto ?? 'Producto #' . $idProducto,
-                'unidades' => $cantidadTotal,
-                'costo_total' => $costoTotal
+                'unidades' => $cantidadTotal
             ]);
         }
         
         \Log::info('✅ Factura ' . $venta->NumeroFactura . ' reprocesada correctamente');
-    }
-    
+    }   
     /**
      * 🖨️ REIMPRIMIR FACTURA
      */
@@ -1323,7 +1290,7 @@ class VentaController extends Controller
             }
             
             // =============================================
-            // 2. OBTENER DETALLES
+            // 2. OBTENER DETALLES CON PRODUCTOS
             // =============================================
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle as d')
@@ -1360,6 +1327,7 @@ class VentaController extends Controller
                 
                 // 🔥 Obtener composición original
                 $composicion = [];
+                $mapaComposicion = []; // Para búsqueda rápida
                 if ($tieneComposicion) {
                     $composicionDetalles = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('inventario_relacion_ventainventario_detalle')
@@ -1377,69 +1345,130 @@ class VentaController extends Controller
                             'nombre' => $producto->Descripcion ?? 'Producto',
                             'porcion' => (float) $comp->Porcion,
                         ];
+                        $mapaComposicion[$comp->IdProducto] = [
+                            'nombre' => $producto->Descripcion ?? 'Producto',
+                            'porcion' => (float) $comp->Porcion
+                        ];
                     }
                 }
                 
-                // 🔥 CALCULAR ORIGINALES Y SUSTITUTOS
-                $productosDetalle = [];
-                
-                // Para cada producto en la composición
-                foreach ($composicion as $comp) {
-                    $idProducto = $comp['id_producto'];
-                    $nombreProducto = $comp['nombre'];
-                    $cantidadTotal = $comp['porcion'] * $unidadesDetalle;
-                    
-                    // Buscar si este producto fue reemplazado
-                    $cantidadSustituto = 0;
-                    $nombreSustituto = null;
-                    $idSustituto = null;
-                    
-                    if ($tienePersonalizacion && $personalizacion) {
-                        foreach ($personalizacion as $p) {
-                            if (isset($p['sustitutos']) && is_array($p['sustitutos'])) {
-                                foreach ($p['sustitutos'] as $sust) {
-                                    if ($sust['id_producto_original'] == $idProducto) {
-                                        $cantidadSustituto += (float) ($sust['cantidad'] ?? 0);
-                                        $idSustituto = $sust['id_producto_sustituto'];
-                                        
-                                        // Obtener nombre del sustituto
-                                        if ($idSustituto && $idSustituto != $idProducto) {
-                                            $nombreSustituto = DB::connection('mysql_gestion_comercial_alimentos')
-                                                ->table('inventario_productodetalle')
-                                                ->where('IdProducto', $idSustituto)
-                                                ->value('Descripcion');
-                                        }
-                                    }
+                // 🔥 CONSTRUIR MAPA DE SUSTITUTOS DESDE PERSONALIZACIÓN
+                $sustitutosMap = [];
+                if ($tienePersonalizacion && $personalizacion) {
+                    foreach ($personalizacion as $combo) {
+                        if (isset($combo['sustitutos']) && is_array($combo['sustitutos'])) {
+                            foreach ($combo['sustitutos'] as $sust) {
+                                $key = $sust['id_producto_original'];
+                                $subKey = $sust['id_producto_sustituto'];
+                                if (!isset($sustitutosMap[$key])) {
+                                    $sustitutosMap[$key] = [];
                                 }
+                                $sustitutosMap[$key][$subKey] = ($sustitutosMap[$key][$subKey] ?? 0) + (float) ($sust['cantidad'] ?? 0);
                             }
                         }
                     }
-                    
-                    // 🔥 Calcular cantidad original (la que NO fue reemplazada)
-                    $cantidadOriginal = $cantidadTotal - $cantidadSustituto;
-                    
-                    // 🔥 AGREGAR PRODUCTO ORIGINAL (si queda)
-                    if ($cantidadOriginal > 0) {
-                        $productosDetalle[] = [
-                            'tipo' => 'original',
-                            'id_producto' => $idProducto,
-                            'nombre' => $nombreProducto,
-                            'cantidad' => $cantidadOriginal,
-                            'icon' => '📦',
-                            'color' => 'text-blue-600'
-                        ];
+                }
+                
+                // 🔥 CALCULAR PRODUCTOS DETALLE (ORIGINALES Y SUSTITUTOS)
+                $productosDetalle = [];
+                
+                // 🔥 Obtener opciones disponibles
+                $opcionesDisponibles = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_relacion_ventainventario_combo_opcion')
+                    ->where('id_producto_combo', $detalle->idrelacionventainventario)
+                    ->where('activo', 1)
+                    ->get();
+                
+                // Crear mapa de sustitutos permitidos
+                $sustitutosPermitidos = [];
+                foreach ($opcionesDisponibles as $op) {
+                    if ($op->id_producto_original != $op->id_producto_sustituto) {
+                        $sustitutosPermitidos[$op->id_producto_original][] = $op->id_producto_sustituto;
                     }
+                }
+                
+                // Procesar cada producto de la composición
+                foreach ($composicion as $comp) {
+                    $idOriginal = $comp['id_producto'];
+                    $nombreOriginal = $comp['nombre'];
+                    $cantidadTotal = $comp['porcion'] * $unidadesDetalle;
                     
-                    // 🔥 AGREGAR SUSTITUTO (si existe)
-                    if ($cantidadSustituto > 0 && $idSustituto && $idSustituto != $idProducto) {
-                        $productosDetalle[] = [
-                            'tipo' => 'sustituto',
-                            'id_producto' => $idSustituto,
-                            'nombre' => $nombreSustituto ?? 'Producto',
-                            'cantidad' => $cantidadSustituto,
-                            'icon' => '🔄',
-                            'color' => 'text-amber-600'
-                        ];
+                    // Verificar si tiene sustitutos
+                    $sustitutosDelProducto = $sustitutosMap[$idOriginal] ?? [];
+                    
+                    if (empty($sustitutosDelProducto)) {
+                        // 🔥 SIN SUSTITUTOS - Mostrar solo el original
+                        if ($cantidadTotal > 0) {
+                            $productosDetalle[] = [
+                                'tipo' => 'original',
+                                'id_producto' => $idOriginal,
+                                'nombre' => $nombreOriginal,
+                                'cantidad' => round($cantidadTotal, 2),
+                                'icon' => '📦',
+                                'color' => 'text-blue-600'
+                            ];
+                        }
+                    } else {
+                        // 🔥 CON SUSTITUTOS - Mostrar originales y sustitutos
+                        $totalSustitutos = 0;
+                        
+                        // Primero, procesar los sustitutos
+                        foreach ($sustitutosDelProducto as $idSustituto => $cantidadSustituto) {
+                            if ($idSustituto == $idOriginal) continue; // Saltar el original
+                            
+                            $nombreSustituto = DB::connection('mysql_gestion_comercial_alimentos')
+                                ->table('inventario_productodetalle')
+                                ->where('IdProducto', $idSustituto)
+                                ->value('Descripcion');
+                            
+                            if ($cantidadSustituto > 0) {
+                                $productosDetalle[] = [
+                                    'tipo' => 'sustituto',
+                                    'id_producto' => $idSustituto,
+                                    'nombre' => $nombreSustituto ?? 'Producto',
+                                    'cantidad' => round($cantidadSustituto, 2),
+                                    'icon' => '🔄',
+                                    'color' => 'text-amber-600'
+                                ];
+                                $totalSustitutos += $cantidadSustituto;
+                            }
+                        }
+                        
+                        // Cantidad original restante
+                        $cantidadOriginalRestante = $cantidadTotal - $totalSustitutos;
+                        if ($cantidadOriginalRestante > 0) {
+                            $productosDetalle[] = [
+                                'tipo' => 'original',
+                                'id_producto' => $idOriginal,
+                                'nombre' => $nombreOriginal,
+                                'cantidad' => round($cantidadOriginalRestante, 2),
+                                'icon' => '📦',
+                                'color' => 'text-blue-600'
+                            ];
+                        }
+                    }
+                }
+                
+                // 🔥 Si no hay composición, pero hay personalización (caso especial)
+                if (empty($composicion) && $tienePersonalizacion) {
+                    foreach ($personalizacion as $combo) {
+                        if (isset($combo['sustitutos'])) {
+                            foreach ($combo['sustitutos'] as $sust) {
+                                $nombreSustituto = DB::connection('mysql_gestion_comercial_alimentos')
+                                    ->table('inventario_productodetalle')
+                                    ->where('IdProducto', $sust['id_producto_sustituto'])
+                                    ->value('Descripcion');
+                                
+                                $productosDetalle[] = [
+                                    'tipo' => 'sustituto',
+                                    'id_producto' => $sust['id_producto_sustituto'],
+                                    'nombre' => $nombreSustituto ?? 'Producto',
+                                    'cantidad' => (float) ($sust['cantidad'] ?? 0) * $unidadesDetalle,
+                                    'icon' => '🔄',
+                                    'color' => 'text-amber-600'
+                                ];
+                            }
+                        }
                     }
                 }
                 
@@ -1456,6 +1485,7 @@ class VentaController extends Controller
                     'es_agrupado' => $tieneComposicion,
                     'productos_detalle' => $productosDetalle,
                     'composicion' => $composicion,
+                    'personalizacion' => $personalizacion, // Para fallback
                 ];
             });
             
@@ -1467,6 +1497,7 @@ class VentaController extends Controller
             
         } catch (\Exception $e) {
             \Log::error('Error cargando detalle de factura: ' . $e->getMessage());
+            \Log::error('Trace: ' . $e->getTraceAsString());
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
