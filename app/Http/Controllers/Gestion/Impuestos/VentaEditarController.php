@@ -392,7 +392,55 @@ class VentaEditarController extends Controller
     }
 
     /**
-     * 🔥 REPROCESAR INVENTARIO - Busca SOLO por ID (sin filtros de sesión)
+     * 🔥 OBTENER EL ID DE TIPO DE OPERACIÓN "VENTAS" PARA UN CLIENTE
+     */
+    private function getIdTipoOperacionVentas($clienteId)
+    {
+        // Buscar "Ventas" para este cliente
+        $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('Detalle', 'Ventas')
+            ->where('ActivoInactivo', 0)
+            ->value('IdTipoOperacion');
+        
+        if ($idTipoOperacion) {
+            \Log::info('✅ Tipo Operacion "Ventas" encontrado: ' . $idTipoOperacion . ' para cliente ' . $clienteId);
+            return $idTipoOperacion;
+        }
+        
+        // Si no encuentra "Ventas", buscar por "Salida" (fallback)
+        $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('Concepto', 'Salida')
+            ->where('ActivoInactivo', 0)
+            ->orderBy('IdTipoOperacion')
+            ->value('IdTipoOperacion');
+        
+        if ($idTipoOperacion) {
+            \Log::info('⚠️ Usando fallback "Salida": ' . $idTipoOperacion . ' para cliente ' . $clienteId);
+            return $idTipoOperacion;
+        }
+        
+        // Último fallback: cualquier tipo activo
+        $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_tipooperacion')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->value('IdTipoOperacion');
+        
+        if ($idTipoOperacion) {
+            \Log::info('⚠️ Usando fallback cualquier tipo: ' . $idTipoOperacion . ' para cliente ' . $clienteId);
+            return $idTipoOperacion;
+        }
+        
+        \Log::error('❌ No se encontró tipo de operación para cliente ' . $clienteId);
+        return null;
+    }
+    /**
+     * 🔥 REPROCESAR INVENTARIO - CORREGIDO (Solo la glosa)
+     * Esto se ejecuta cuando se cambia la fecha de la factura
      */
     public function reprocesarInventario($id)
     {
@@ -401,13 +449,13 @@ class VentaEditarController extends Controller
             $sucursalId = session('cliente_sucursal_id');
             $operadorId = session('operador_id');
             
-            \Log::info('=== REPROCESANDO INVENTARIO ===');
+            \Log::info('=== REPROCESANDO INVENTARIO (POR CAMBIO DE FECHA) ===');
             \Log::info('Venta ID: ' . $id);
             
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
             
             // =============================================
-            // 1. OBTENER LA VENTA - SOLO POR ID (SIN FILTROS)
+            // 1. OBTENER LA VENTA
             // =============================================
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
@@ -415,75 +463,43 @@ class VentaEditarController extends Controller
                 ->first();
             
             if (!$venta) {
-                \Log::error('❌ Venta no encontrada con ID: ' . $id);
                 throw new \Exception('Venta no encontrada con ID: ' . $id);
             }
             
             \Log::info('✅ Venta encontrada:', [
                 'IdVentas' => $venta->IdVentas,
                 'NumeroFactura' => $venta->NumeroFactura,
-                'IdCliente' => $venta->IdCliente,
-                'IdClienteSucursal' => $venta->IdClienteSucursal,
-                'FechaVenta' => $venta->FechaVenta
+                'FechaVenta' => $venta->FechaVenta,
             ]);
             
             // =============================================
-            // 2. OBTENER FECHA ANTERIOR
+            // 2. OBTENER EL ID_TIPO_OPERACION "VENTAS"
             // =============================================
-            $fechaAnterior = date('d/m/Y H:i', strtotime($venta->FechaVenta));
+            $idTipoOperacion = $this->getIdTipoOperacionVentas($venta->IdCliente);
+            
+            if (!$idTipoOperacion) {
+                throw new \Exception('No se encontró tipo de operación "Ventas" para el cliente ' . $venta->IdCliente);
+            }
+            
+            \Log::info('📌 ID Tipo Operacion "Ventas": ' . $idTipoOperacion);
             
             // =============================================
-            // 3. ELIMINAR MOVIMIENTOS DE INVENTARIO ANTERIORES
+            // 3. ELIMINAR MOVIMIENTOS DE ESTA FACTURA
             // =============================================
             $eliminados = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
-                ->where('IdTipoDeOperacion', 2)
                 ->where('IdDocumento', $id)
+                ->where('IdCliente', $venta->IdCliente)
+                ->where('IdSucursal', $venta->IdClienteSucursal)
                 ->delete();
             
             \Log::info("🗑️ Eliminados {$eliminados} movimientos de inventario");
             
             // =============================================
-            // 4. USAR LA FECHA ACTUAL DE LA VENTA
+            // 4. OBTENER LA NUEVA FECHA DE LA VENTA
             // =============================================
-            $fechaNueva = date('d/m/Y H:i', strtotime($venta->FechaVenta));
             $fechaVenta = date('Y-m-d', strtotime($venta->FechaVenta));
             
-            // =============================================
-            // 5. OBTENER NOMBRE DEL OPERADOR
-            // =============================================
-            $operador = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_operador as o')
-                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
-                ->where('o.IdOperador', $venta->IdOperadorIngresa)
-                ->first();
-            
-            $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
-            
-            // =============================================
-            // 6. DETERMINAR SI ES FACTURA O RECIBO
-            // =============================================
-            $reciboFactura = "Factura";
-            
-            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_cliente_sucursal')
-                ->where('IdClienteSucursal', $venta->IdClienteSucursal)
-                ->first();
-            
-            $nitCero = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_identificador')
-                ->where('CI_NIT', '99')
-                ->value('IdIdentificador');
-            
-            if ($sucursal && $sucursal->ActivaInactivaR == 0 && $venta->IdNIT == $nitCero) {
-                $reciboFactura = "Recibo";
-            }
-            
-            \Log::info("Tipo de documento: {$reciboFactura}");
-            
-            // =============================================
-            // 7. OBTENER ID DE FECHA
-            // =============================================
             $idFecha = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_fecha')
                 ->where('Fecha', $fechaVenta)
@@ -498,11 +514,10 @@ class VentaEditarController extends Controller
                         'CierreSucursal' => 0,
                         'CierrePermanente' => 0,
                     ]);
-                \Log::info("📅 Fecha creada: {$fechaVenta} (ID: {$idFecha})");
             }
             
             // =============================================
-            // 8. OBTENER ALMACÉN PRINCIPAL
+            // 5. OBTENER ALMACÉN
             // =============================================
             $idAlmacen = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_almacen')
@@ -519,12 +534,32 @@ class VentaEditarController extends Controller
                     ->value('IdAlmacen');
             }
             
-            \Log::info("🏪 Almacén ID: {$idAlmacen}");
+            // =============================================
+            // 6. OBTENER NOMBRE DEL OPERADOR
+            // =============================================
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as o')
+                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('o.IdOperador', $venta->IdOperadorIngresa)
+                ->first();
             
-            $idTipoOperacion = 2;
+            $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
             
             // =============================================
-            // 9. PROCESAR DETALLES
+            // 7. DETERMINAR SI ES FACTURA O RECIBO
+            // =============================================
+            $reciboFactura = "Factura";
+            $nitCero = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_identificador')
+                ->where('CI_NIT', '99')
+                ->value('IdIdentificador');
+            
+            if ($venta->IdNIT == $nitCero) {
+                $reciboFactura = "Recibo";
+            }
+            
+            // =============================================
+            // 8. OBTENER DETALLES CON PERSONALIZACIÓN
             // =============================================
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle')
@@ -532,76 +567,130 @@ class VentaEditarController extends Controller
                 ->get();
             
             if ($detalles->isEmpty()) {
-                \Log::warning('⚠️ La venta no tiene detalles');
+                DB::connection('mysql_gestion_comercial_alimentos')->commit();
+                return response()->json([
+                    'success' => true,
+                    'message' => '✅ Venta reprocesada sin movimientos (sin detalles)',
+                    'movimientos' => 0,
+                    'detalles' => [
+                        'eliminados' => $eliminados,
+                        'insertados' => 0,
+                        'fecha_anterior' => date('d/m/Y H:i', strtotime($venta->FechaVenta)),
+                        'fecha_nueva' => date('d/m/Y H:i', strtotime($venta->FechaVenta)),
+                        'productos' => []
+                    ]
+                ]);
             }
             
+            // =============================================
+            // 9. PROCESAR DETALLES - ACUMULADOR DE PRODUCTOS
+            // =============================================
             $totalMovimientos = 0;
             $productosAfectados = [];
+            $productosADescontar = [];
             
             foreach ($detalles as $detalle) {
-                \Log::info("Procesando detalle:", [
-                    'idrelacionventainventario' => $detalle->idrelacionventainventario,
-                    'unidades' => $detalle->unidades
-                ]);
+                $unidadesDetalle = (float) $detalle->unidades;
                 
-                $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
+                // OBTENER COMPOSICIÓN ORIGINAL
+                $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_detalle')
                     ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
                     ->get();
                 
-                if ($productosPorcion->isEmpty()) {
-                    \Log::warning('⚠️ Producto sin composición:', [
-                        'IdDetalleProducto' => $detalle->idrelacionventainventario
-                    ]);
+                if ($composicionOriginal->isEmpty()) {
+                    continue;
                 }
                 
-                foreach ($productosPorcion as $porcion) {
-                    $cantidadDescontar = $porcion->Porcion * $detalle->unidades;
-                    
-                    $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_productodetalle_precio_costo')
-                        ->where('IdProducto', $porcion->IdProducto)
-                        ->orderBy('IdPrecioCosto', 'DESC')
-                        ->value('PrecioCosto');
-                    
-                    $costoTotal = $cantidadDescontar * ($precioCosto ?? 0);
-                    
-                    DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_propiamente')
-                        ->insert([
-                            'IdTipoDeOperacion' => $idTipoOperacion,
-                            'IdDocumento' => $id,
-                            'IdFecha' => $idFecha,
-                            'IdAlmacen' => $idAlmacen,
-                            'IdProducto' => $porcion->IdProducto,
-                            'Glosa' => "{$reciboFactura} Ventas No {$venta->NumeroFactura}; Op.{$nombreOperador}",
-                            'D_H' => 'H',
-                            'Unidades' => $cantidadDescontar,
-                            'Bolivianos' => $costoTotal,
-                            'IdCliente' => $venta->IdCliente,
-                            'IdSucursal' => $venta->IdClienteSucursal,
-                        ]);
-                    
-                    $totalMovimientos++;
-                    
-                    // Guardar productos afectados para el modal
-                    $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('inventario_productodetalle')
-                        ->where('IdProducto', $porcion->IdProducto)
-                        ->value('Descripcion');
-                    
-                    $productosAfectados[] = [
-                        'id' => $porcion->IdProducto,
-                        'nombre' => $nombreProducto ?? 'Producto #' . $porcion->IdProducto,
-                        'cantidad' => $cantidadDescontar
-                    ];
+                // DECODIFICAR PERSONALIZACIÓN
+                $personalizacion = null;
+                if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
+                    $personalizacion = json_decode($detalle->personalizacion, true);
                 }
+                
+                // Si tiene personalización, procesar sustitutos
+                if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
+                    foreach ($personalizacion as $comboData) {
+                        $sustitutos = $comboData['sustitutos'] ?? [];
+                        
+                        foreach ($sustitutos as $sust) {
+                            $idProducto = $sust['id_producto_sustituto'];
+                            $cantidad = (float) ($sust['cantidad'] ?? 0);
+                            
+                            if ($cantidad > 0) {
+                                if (!isset($productosADescontar[$idProducto])) {
+                                    $productosADescontar[$idProducto] = 0;
+                                }
+                                $productosADescontar[$idProducto] += $cantidad;
+                            }
+                        }
+                    }
+                } else {
+                    // SIN PERSONALIZACIÓN - usar composición original
+                    foreach ($composicionOriginal as $comp) {
+                        $idProducto = $comp->IdProducto;
+                        $cantidad = (float) $comp->Porcion * $unidadesDetalle;
+                        
+                        if (!isset($productosADescontar[$idProducto])) {
+                            $productosADescontar[$idProducto] = 0;
+                        }
+                        $productosADescontar[$idProducto] += $cantidad;
+                    }
+                }
+            }
+            
+            // =============================================
+            // 10. CREAR NUEVOS MOVIMIENTOS CON LA NUEVA FECHA
+            // =============================================
+            foreach ($productosADescontar as $idProducto => $cantidadTotal) {
+                if ($cantidadTotal <= 0) continue;
+                
+                $cantidadTotal = round($cantidadTotal, 2);
+                
+                $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle')
+                    ->where('IdProducto', $idProducto)
+                    ->value('Descripcion');
+                
+                $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle_precio_costo')
+                    ->where('IdProducto', $idProducto)
+                    ->orderBy('IdPrecioCosto', 'DESC')
+                    ->value('PrecioCosto');
+                
+                $precioCosto = (float) ($precioCosto ?? 0);
+                $costoTotal = $cantidadTotal * $precioCosto;
+                
+                // 🔥 GLOSA ORIGINAL - SIN "Fecha Actualizada"
+                DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_propiamente')
+                    ->insert([
+                        'IdTipoDeOperacion' => $idTipoOperacion,
+                        'IdDocumento' => $id,
+                        'IdFecha' => $idFecha,
+                        'IdAlmacen' => $idAlmacen,
+                        'IdProducto' => $idProducto,
+                        'Glosa' => "{$reciboFactura} Ventas No {$venta->NumeroFactura}; Op.{$nombreOperador} (Reprocesado)",
+                        'D_H' => 'H',
+                        'Unidades' => $cantidadTotal,
+                        'Bolivianos' => $costoTotal,
+                        'IdCliente' => $venta->IdCliente,
+                        'IdSucursal' => $venta->IdClienteSucursal,
+                    ]);
+                
+                $totalMovimientos++;
+                
+                $productosAfectados[] = [
+                    'id' => $idProducto,
+                    'nombre' => $nombreProducto ?? 'Producto #' . $idProducto,
+                    'cantidad' => $cantidadTotal
+                ];
             }
             
             \Log::info("✅ Insertados {$totalMovimientos} movimientos de inventario");
             
             // =============================================
-            // 10. ACTUALIZAR VENTA (marcar como procesada)
+            // 11. ACTUALIZAR VENTA
             // =============================================
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
@@ -614,26 +703,23 @@ class VentaEditarController extends Controller
             
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
             
-            \Log::info('✅ REPROCESO COMPLETADO CON ÉXITO');
-            
             return response()->json([
                 'success' => true,
-                'message' => '✅ La venta fue reprocesada correctamente',
+                'message' => '✅ La venta fue reprocesada correctamente con la nueva fecha',
                 'movimientos' => $totalMovimientos,
-                'fecha' => $fechaNueva,
+                'fecha' => date('d/m/Y H:i', strtotime($venta->FechaVenta)),
                 'detalles' => [
                     'eliminados' => $eliminados,
                     'insertados' => $totalMovimientos,
-                    'fecha_anterior' => $fechaAnterior,
-                    'fecha_nueva' => $fechaNueva,
+                    'fecha_anterior' => date('d/m/Y H:i', strtotime($venta->FechaVenta)),
+                    'fecha_nueva' => date('d/m/Y H:i', strtotime($venta->FechaVenta)),
                     'productos' => $productosAfectados
                 ]
             ]);
             
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-            \Log::error('❌ Error reprocesando inventario: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            \Log::error('❌ Error reprocesando: ' . $e->getMessage());
             
             return response()->json([
                 'success' => false,
