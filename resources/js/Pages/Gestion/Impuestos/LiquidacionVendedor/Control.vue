@@ -4,6 +4,7 @@ import { router } from '@inertiajs/vue3'
 import { ref } from 'vue'
 import axios from 'axios'
 import Liquidacion from './Liquidacion.vue'
+import MiniInventario from '@/Pages/Gestion/Inventario/InventarioFisicoDiario/MiniInventario.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -14,10 +15,17 @@ const props = defineProps({
 const fechaSeleccionada = ref('')
 const loading = ref(false)
 const mostrarLiquidacion = ref(false)
+const mostrarMiniInventario = ref(false)
 const liquidacionData = ref(null)
 const conceptosData = ref(null)
 const fechaId = ref(null)
 const fechaStr = ref('')
+
+// Datos del mini inventario
+const productosMiniInventario = ref([])
+const cantidadRequerida = ref(0)
+const idCabecera = ref(null)
+const esBorrador = ref(false)
 
 const seleccionarFecha = async () => {
     if (!fechaSeleccionada.value) {
@@ -27,44 +35,109 @@ const seleccionarFecha = async () => {
     
     loading.value = true
     try {
-        const response = await axios.get(`/gestion/impuestos/liquidacion-vendedor/datos/${fechaSeleccionada.value}`)
+        // 1. Verificar estado del mini inventario
+        const estadoResponse = await axios.get(
+            `/gestion/inventario/inventario-fisico-diario/estado/${fechaSeleccionada.value}`
+        )
+        
+        console.log('🔍 Estado del mini inventario:', estadoResponse.data)
+        
+        if (!estadoResponse.data.success) {
+            alert('Error al verificar el estado del inventario')
+            loading.value = false
+            return
+        }
+
+        // 2. Si requiere mini inventario, mostrarlo
+        if (estadoResponse.data.requiereMiniInventario) {
+            console.log('✅ Requiere mini inventario - Cargando productos...')
+            
+            const productosResponse = await axios.get(
+                `/gestion/inventario/inventario-fisico-diario/obtener-productos/${fechaSeleccionada.value}`
+            )
+            
+            console.log('📦 Productos recibidos:', productosResponse.data)
+            
+            if (productosResponse.data.success) {
+                if (productosResponse.data.already_done) {
+                    // Ya completó (por si acaso)
+                    await cargarLiquidacion(fechaSeleccionada.value)
+                } else {
+                    // Mostrar mini inventario
+                    productosMiniInventario.value = productosResponse.data.productos || []
+                    cantidadRequerida.value = productosResponse.data.cantidad_requerida || 0
+                    idCabecera.value = productosResponse.data.id_cabecera
+                    esBorrador.value = productosResponse.data.es_borrador || false
+                    fechaId.value = productosResponse.data.fecha_id
+                    fechaStr.value = productosResponse.data.fecha_str
+                    mostrarMiniInventario.value = true
+                    mostrarLiquidacion.value = false
+                    loading.value = false
+                }
+            } else {
+                alert('Error al cargar productos para inventario: ' + productosResponse.data.message)
+                loading.value = false
+            }
+            return
+        }
+
+        // 3. No requiere mini inventario → cargar liquidación
+        await cargarLiquidacion(fechaSeleccionada.value)
+
+    } catch (error) {
+        console.error('❌ Error:', error)
+        console.error('❌ Detalles:', error.response?.data)
+        alert('Error al cargar los datos: ' + (error.response?.data?.message || error.message))
+        loading.value = false
+    }
+}
+
+const cargarLiquidacion = async (fechaIdParam) => {
+    try {
+        const response = await axios.get(`/gestion/impuestos/liquidacion-vendedor/datos/${fechaIdParam}`)
         
         if (response.data.success) {
             if (response.data.liquidacion) {
-                // Liquidación existente
                 liquidacionData.value = response.data.liquidacion
-                conceptosData.value = null // Cargar desde liquidacion.detalles
+                conceptosData.value = null
             } else {
-                // Nueva liquidación
                 liquidacionData.value = response.data.data
                 conceptosData.value = response.data.conceptos
             }
             fechaId.value = response.data.fechaId
             fechaStr.value = response.data.fechaStr
             mostrarLiquidacion.value = true
+            mostrarMiniInventario.value = false
         } else {
-            alert('Error al cargar los datos')
+            alert('Error al cargar los datos de liquidación')
         }
     } catch (error) {
         console.error('Error:', error)
-        alert('Error al cargar los datos')
+        alert('Error al cargar los datos de liquidación')
     } finally {
         loading.value = false
     }
 }
 
+const continuarDesdeMiniInventario = () => {
+    mostrarMiniInventario.value = false
+    cargarLiquidacion(fechaId.value)
+}
+
 const volver = () => {
     mostrarLiquidacion.value = false
+    mostrarMiniInventario.value = false
     fechaSeleccionada.value = ''
     liquidacionData.value = null
     conceptosData.value = null
+    productosMiniInventario.value = []
 }
 </script>
 
 <template>
     <div class="min-h-screen bg-gray-100">
         <div class="py-6 px-4 sm:px-6 lg:px-8">
-            <div class="max-w-2xl mx-auto">
+            <div class="max-w-4xl mx-auto">
                 <!-- Header -->
                 <div class="bg-white rounded-xl shadow-sm p-5 mb-6">
                     <div class="flex items-center gap-3">
@@ -73,13 +146,16 @@ const volver = () => {
                         </div>
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Liquidación de Ventas</h1>
-                            <p class="text-xs text-gray-500">{{ mostrarLiquidacion ? 'Confirmar montos' : 'Seleccione la fecha a liquidar' }}</p>
+                            <p class="text-xs text-gray-500">
+                                {{ mostrarMiniInventario ? 'Realiza el inventario físico rápido' : 
+                                   mostrarLiquidacion ? 'Confirmar montos' : 'Seleccione la fecha a liquidar' }}
+                            </p>
                         </div>
                     </div>
                 </div>
 
                 <!-- Selector de fechas -->
-                <div v-if="!mostrarLiquidacion" class="bg-white rounded-xl shadow-sm p-6">
+                <div v-if="!mostrarLiquidacion && !mostrarMiniInventario" class="bg-white rounded-xl shadow-sm p-6">
                     <label class="block text-sm font-medium text-gray-700 mb-2">
                         📅 Fecha de Liquidación
                     </label>
@@ -105,9 +181,22 @@ const volver = () => {
                     </button>
                 </div>
 
+                <!-- Mini Inventario -->
+                <MiniInventario 
+                    v-if="mostrarMiniInventario"
+                    :productos="productosMiniInventario"
+                    :fecha-id="fechaId"
+                    :fecha-str="fechaStr"
+                    :cantidad-requerida="cantidadRequerida"
+                    :id-cabecera="idCabecera"
+                    :es-borrador="esBorrador"
+                    @continuar="continuarDesdeMiniInventario"
+                    @volver="volver"
+                />
+
                 <!-- Formulario de liquidación -->
                 <Liquidacion 
-                    v-else
+                    v-if="mostrarLiquidacion"
                     :liquidacion="liquidacionData"
                     :conceptos="conceptosData"
                     :fecha-str="fechaStr"

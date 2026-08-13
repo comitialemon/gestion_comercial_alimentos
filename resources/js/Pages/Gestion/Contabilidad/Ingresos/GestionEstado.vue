@@ -394,10 +394,6 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/ingresos" class="flex-1 sm:flex-initial bg-gray-500 hover:bg-gray-600 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
-                            <i class="fas fa-list text-[10px]"></i>
-                            <span>Listado</span>
-                        </Link>
                         <Link href="/gestion/ingresos/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
                             <i class="fas fa-plus text-[10px]"></i>
                             <span>Nuevo Ingreso</span>

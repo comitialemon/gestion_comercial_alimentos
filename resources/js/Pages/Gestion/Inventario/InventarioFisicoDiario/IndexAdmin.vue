@@ -2,13 +2,14 @@
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { ref, watch, onMounted, onUnmounted, computed, inject } from 'vue'
+import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
 
 const toast = inject('toast')
 
 const props = defineProps({
-    ajustes: Object,
+    inventarios: Object,
     sucursales: Array,
     sucursalActual: Number,
     filtroEstado: String,
@@ -20,7 +21,6 @@ const props = defineProps({
 // ESTADO DE FILTROS
 // =============================================
 
-// 🔥 Inicializar vacío - SIN auto-selección
 const sucursalId = ref(props.sucursalSeleccionada || '')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
@@ -29,17 +29,15 @@ const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
 
 // =============================================
-// 🔥 NUEVA FUNCIÓN: Construir URL con filtros para paginación
+// CONSTRUIR URL CON FILTROS PARA PAGINACIÓN
 // =============================================
 const construirUrlConFiltros = (url) => {
     if (!url) return '#'
     
     try {
-        // Crear objeto URL
         const urlObj = new URL(url, window.location.origin)
         const params = new URLSearchParams(urlObj.search)
         
-        // Mantener los filtros actuales
         if (sucursalId.value) {
             params.set('sucursal_id', sucursalId.value)
         }
@@ -87,7 +85,7 @@ const sucursalNombre = computed(() => {
 const sucursalesExpandidas = ref({})
 
 const inicializarExpandidas = () => {
-    const grupos = ajustesAgrupados.value
+    const grupos = inventariosAgrupados.value
     Object.keys(grupos).forEach(id => {
         sucursalesExpandidas.value[id] = true
     })
@@ -114,37 +112,39 @@ const contraerTodas = () => {
 // =============================================
 // AGRUPACIÓN POR SUCURSAL
 // =============================================
-const ajustesAgrupados = computed(() => {
-    if (!props.ajustes?.data) return {}
+const inventariosAgrupados = computed(() => {
+    if (!props.inventarios?.data) return {}
     
     const grupos = {}
     
-    props.ajustes.data.forEach(ajuste => {
-        const sucursalNombre = ajuste.sucursal_nombre || 'Sin sucursal'
-        const sucursalId = ajuste.IdSucursal || 0
+    props.inventarios.data.forEach(item => {
+        const sucursalNombre = item.sucursal_nombre || 'Sin sucursal'
+        const sucursalId = item.IdSucursal || 0
         
         if (!grupos[sucursalId]) {
             grupos[sucursalId] = {
                 id: sucursalId,
                 nombre: sucursalNombre,
-                ajustes: [],
-                total: 0
+                items: [],
+                total_productos: 0,
+                total_contados: 0
             }
         }
         
-        grupos[sucursalId].ajustes.push(ajuste)
-        grupos[sucursalId].total += 1
+        grupos[sucursalId].items.push(item)
+        grupos[sucursalId].total_productos += item.CantidadTotalProductos || 0
+        grupos[sucursalId].total_contados += item.CantidadContados || 0
     })
     
     return grupos
 })
 
-const sucursalesConAjustes = computed(() => {
-    return Object.values(ajustesAgrupados.value)
+const sucursalesConInventarios = computed(() => {
+    return Object.values(inventariosAgrupados.value)
 })
 
 const actualizarExpandidas = () => {
-    const grupos = ajustesAgrupados.value
+    const grupos = inventariosAgrupados.value
     const idsActuales = Object.keys(grupos)
     
     idsActuales.forEach(id => {
@@ -170,7 +170,7 @@ const aplicarFiltros = () => {
         buscar: buscador.value || undefined
     }
     
-    router.get('/gestion/inventario/ajustes/gestion-estado', params, {
+    router.get('/gestion/inventario/inventario-fisico-diario/admin', params, {
         preserveState: true,
         replace: true,
         onSuccess: () => {
@@ -196,7 +196,7 @@ const limpiarSucursal = () => {
 }
 
 let timeoutBuscador
-const buscarAjustes = () => {
+const buscarInventarios = () => {
     clearTimeout(timeoutBuscador)
     timeoutBuscador = setTimeout(() => {
         aplicarFiltros()
@@ -208,7 +208,6 @@ const limpiarBusqueda = () => {
     aplicarFiltros()
 }
 
-// Cerrar autocompletes
 const handleClickOutside = (event) => {
     const container = document.querySelector('.sucursal-autocomplete')
     if (container && !container.contains(event.target)) {
@@ -217,134 +216,75 @@ const handleClickOutside = (event) => {
 }
 
 // =============================================
-// ESTADO
+// MODAL DE DETALLE
 // =============================================
-const cambiando = ref({})
-const loading = ref(false)
-const isMobile = ref(window.innerWidth < 768)
+const mostrarModal = ref(false)
+const inventarioSeleccionado = ref(null)
+const loadingDetalle = ref(false)
 
-// Modal
-const modalVisible = ref(false)
-const modalData = ref({
-    id: null,
-    numero: null
-})
-
-// =============================================
-// TOAST
-// =============================================
-const mostrarToast = (mensaje, tipo = 'success') => {
-    const toastAnterior = document.querySelector('.custom-toast')
-    if (toastAnterior) toastAnterior.remove()
+const verDetalle = async (id) => {
+    loadingDetalle.value = true
+    mostrarModal.value = true
     
-    const colores = {
-        success: 'bg-green-500',
-        error: 'bg-red-500',
-        info: 'bg-blue-500',
-        warning: 'bg-yellow-500'
+    try {
+        const response = await axios.get(`/gestion/inventario/inventario-fisico-diario/obtener-por-id/${id}`)
+        
+        if (response.data.success) {
+            inventarioSeleccionado.value = response.data.data
+        } else {
+            inventarioSeleccionado.value = null
+        }
+    } catch (error) {
+        console.error('Error al obtener detalle:', error)
+        inventarioSeleccionado.value = null
+    } finally {
+        loadingDetalle.value = false
     }
-    const iconos = {
-        success: 'fa-check-circle',
-        error: 'fa-exclamation-circle',
-        info: 'fa-info-circle',
-        warning: 'fa-exclamation-triangle'
-    }
-    
-    const toast = document.createElement('div')
-    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${colores[tipo] || 'bg-blue-500'}`
-    toast.innerHTML = `<i class="fas ${iconos[tipo] || 'fa-info-circle'}"></i> ${mensaje}`
-    document.body.appendChild(toast)
-    setTimeout(() => {
-        if (toast && toast.remove) toast.remove()
-    }, 4000)
-}
-
-// =============================================
-// SWITCH / MODAL
-// =============================================
-const toggleSwitch = (ajuste) => {
-    if (ajuste.ActivoInactivo === 0) {
-        mostrarToast('Este ajuste ya está en estado ACTIVO (Borrador). Puede editarlo.', 'info')
-        return
-    }
-    
-    if (cambiando.value[ajuste.IdAjustesPrincipal]) return
-    abrirModalConfirmacion(ajuste)
-}
-
-const abrirModalConfirmacion = (ajuste) => {
-    modalData.value = {
-        id: ajuste.IdAjustesPrincipal,
-        numero: ajuste.NumeroCorrelativo
-    }
-    modalVisible.value = true
 }
 
 const cerrarModal = () => {
-    modalVisible.value = false
-    modalData.value = { id: null, numero: null }
-}
-
-const ejecutarCambioEstado = async () => {
-    if (!modalData.value.id) return
-    
-    cambiando.value[modalData.value.id] = true
-    loading.value = true
-    
-    try {
-        const response = await fetch(`/gestion/inventario/ajustes/${modalData.value.id}/cambiar-estado`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
-            },
-            body: JSON.stringify({
-                estado: 0
-            })
-        })
-        
-        const data = await response.json()
-        
-        if (data.success) {
-            mostrarToast(data.message, 'success')
-            aplicarFiltros()
-        } else {
-            mostrarToast(data.message, 'error')
-            cerrarModal()
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        mostrarToast('Error al cambiar el estado', 'error')
-        cerrarModal()
-    } finally {
-        cambiando.value[modalData.value.id] = false
-        loading.value = false
-    }
+    mostrarModal.value = false
+    inventarioSeleccionado.value = null
 }
 
 // =============================================
 // UTILIDADES
 // =============================================
-// 🔥 CORREGIDO: 1 = Inactivo (Contabilizado), 0 = Activo (Borrador)
+const formatearNumero = (value) => {
+    if (value === undefined || value === null) return '0.00'
+    return Number(value).toLocaleString('es-BO', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })
+}
+
 const getEstadoColor = (activo) => {
-    return activo === 1 ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'
+    if (activo === 1) return 'bg-green-100 text-green-800'
+    if (activo === 2) return 'bg-red-100 text-red-800'
+    return 'bg-yellow-100 text-yellow-800'
 }
 
 const getEstadoIcono = (activo) => {
-    return activo === 1 ? 'fas fa-lock' : 'fas fa-pencil-alt'
+    if (activo === 1) return 'fas fa-check-circle'
+    if (activo === 2) return 'fas fa-times-circle'
+    return 'fas fa-pencil-alt'
 }
 
 const getEstadoTexto = (activo) => {
-    return activo === 1 ? 'Inactivo' : 'Activo'
+    if (activo === 1) return 'Completado'
+    if (activo === 2) return 'Anulado'
+    return 'Borrador'
 }
 
-const getConceptoColor = (concepto) => {
-    return concepto === 'Ingreso' || concepto === 'INGRESO' ? 'text-emerald-600 font-bold' : 'text-red-600 font-bold'
+const reimprimirPDF = (id) => {
+    window.open(`/gestion/inventario/inventario-fisico-diario/pdf/${id}`, '_blank')
 }
 
-const puedeDesactivar = (ajuste) => {
-    return ajuste.ActivoInactivo === 1
-}
+// =============================================
+// ESTADO
+// =============================================
+const loading = ref(false)
+const isMobile = ref(window.innerWidth < 768)
 
 // =============================================
 // CICLO DE VIDA
@@ -362,7 +302,6 @@ onMounted(() => {
         if (sucursal) {
             sucursalBusqueda.value = sucursal.nombre
         }
-        // Si hay sucursal seleccionada, cargar datos
         aplicarFiltros()
     }
     
@@ -388,14 +327,14 @@ onUnmounted(() => {
                             <i class="fas fa-clipboard-list text-primary-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Estados - Ajustes</h1>
-                            <p class="text-[10px] text-gray-500">Cambiar estado de ajustes de inventario</p>
+                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Inventario Físico Diario</h1>
+                            <p class="text-[10px] text-gray-500 hidden xs:block">Historial de inventarios físicos realizados</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <Link href="/gestion/inventario/ajustes/create" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
-                            <i class="fas fa-plus text-[10px]"></i>
-                            <span>Nuevo Ajuste</span>
+                        <Link href="/gestion/inventario/inventario-fisico-diario/config" class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1">
+                            <i class="fas fa-cog text-[10px]"></i>
+                            <span>Configuración</span>
                         </Link>
                     </div>
                 </div>
@@ -404,7 +343,7 @@ onUnmounted(() => {
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-center gap-3">
                         
-                        <!-- 🔥 Sucursal - Autocomplete -->
+                        <!-- Sucursal - Autocomplete -->
                         <div class="sucursal-autocomplete flex items-center gap-1">
                             <label class="text-xs font-medium text-gray-700">Sucursal:</label>
                             <div class="relative">
@@ -413,7 +352,7 @@ onUnmounted(() => {
                                     v-model="sucursalBusqueda"
                                     @focus="mostrarSucursales = true"
                                     @input="mostrarSucursales = true"
-                                    class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-36 sm:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                    class="border border-gray-300 rounded-md px-2 py-1 text-xs w-36 sm:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     placeholder="Seleccione Sucursal..."
                                     autocomplete="off"
                                 />
@@ -426,6 +365,7 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-[10px]"></i>
                                 </button>
                                 
+                                <!-- Lista de sucursales -->
                                 <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto min-w-[180px]">
                                     <div 
@@ -458,10 +398,11 @@ onUnmounted(() => {
                         <!-- Estado -->
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
+                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-md px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
-                                <option value="activos">Activos (Borrador)</option>
-                                <option value="inactivos">Inactivos (Contabilizado)</option>
+                                <option value="completados">Completados</option>
+                                <option value="borradores">Borradores</option>
+                                <option value="anulados">Anulados</option>
                             </select>
                         </div>
                         
@@ -470,9 +411,9 @@ onUnmounted(() => {
                             <input 
                                 type="text" 
                                 v-model="buscador" 
-                                @input="buscarAjustes"
-                                placeholder="N° Ajuste..."
-                                class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-28 sm:w-32 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                @input="buscarInventarios"
+                                placeholder="N° Correlativo..."
+                                class="border border-gray-300 rounded-md px-2 py-1 text-xs w-28 sm:w-32 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
                             <button 
                                 v-if="buscador" 
@@ -496,34 +437,31 @@ onUnmounted(() => {
                     
                     <div v-if="buscador" class="mt-2 text-[10px] text-gray-500">
                         <span class="font-semibold">{{ buscador }}</span>
-                        <span class="ml-2">({{ ajustes?.total || 0 }} resultados)</span>
+                        <span class="ml-2">({{ inventarios?.total || 0 }} resultados)</span>
                     </div>
                     
                     <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
                         <i class="fas fa-info-circle"></i> 
-                        <span class="text-green-600">● Activo</span> = Borrador (editable) | 
-                        <span class="text-red-600">● Inactivo</span> = Contabilizado (no editable)
+                        <span class="text-green-600">● Completado</span> | 
+                        <span class="text-yellow-600">● Borrador</span> | 
+                        <span class="text-red-600">● Anulado</span>
                     </div>
                 </div>
 
-                <!-- ============================================= -->
-                <!-- CONTENIDO PRINCIPAL -->
-                <!-- ============================================= -->
-
-                <!-- 🔥 MENSAJE: SIN SUCURSAL SELECCIONADA -->
+                <!-- MENSAJE: SIN SUCURSAL SELECCIONADA -->
                 <div v-if="!sucursalId" class="bg-white rounded-lg shadow-sm p-8 sm:p-12 text-center">
                     <div class="w-16 h-16 sm:w-20 sm:h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-store text-primary-400 text-3xl sm:text-4xl"></i>
                     </div>
                     <h3 class="text-base sm:text-lg font-semibold text-gray-700">Seleccione una Sucursal</h3>
                     <p class="text-xs sm:text-sm text-gray-400 mt-2 max-w-sm mx-auto">
-                        Use el campo de búsqueda de sucursales para visualizar los ajustes de una sucursal específica.
+                        Use el campo de búsqueda de sucursales para visualizar los inventarios de una sucursal específica.
                     </p>
                 </div>
 
-                <!-- 🔥 GRID AGRUPADA POR SUCURSAL (solo si hay sucursal seleccionada) -->
-                <div v-else-if="sucursalesConAjustes.length > 0">
-                    <div v-for="grupo in sucursalesConAjustes" :key="grupo.id" class="mb-3">
+                <!-- GRID AGRUPADA POR SUCURSAL -->
+                <div v-else-if="sucursalesConInventarios.length > 0">
+                    <div v-for="grupo in sucursalesConInventarios" :key="grupo.id" class="mb-3">
                         
                         <!-- Encabezado de Sucursal -->
                         <div 
@@ -538,15 +476,15 @@ onUnmounted(() => {
                                 <i class="fas fa-store text-primary-600 text-xs sm:text-sm flex-shrink-0"></i>
                                 <h2 class="font-bold text-primary-800 text-xs sm:text-sm truncate">{{ grupo.nombre }}</h2>
                                 <span class="text-[9px] sm:text-xs text-primary-600 bg-primary-100 px-1.5 sm:px-2 py-0.5 rounded-full flex-shrink-0">
-                                    {{ grupo.ajustes.length }}
+                                    {{ grupo.items.length }}
                                 </span>
                             </div>
                             <div class="text-xs sm:text-sm font-bold text-primary-700 flex-shrink-0">
-                                {{ grupo.total }} ajustes
+                                {{ grupo.total_contados }} / {{ grupo.total_productos }} contados
                             </div>
                         </div>
 
-                        <!-- Tabla de ajustes -->
+                        <!-- Tabla de inventarios -->
                         <transition 
                             enter-active-class="transition-all duration-300 ease-in-out"
                             enter-from-class="max-h-0 opacity-0 overflow-hidden"
@@ -562,54 +500,41 @@ onUnmounted(() => {
                                     <table class="min-w-full divide-y divide-gray-200">
                                         <thead class="bg-gray-50">
                                             <tr>
-                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Ajuste</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">N°</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Concepto</th>
-                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipo Operación</th>
-                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Almacén</th>
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Operador</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Productos</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Contados</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
-                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">PDF</th>
+                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
-                                            <tr v-for="ajuste in grupo.ajustes" :key="ajuste.IdAjustesPrincipal" class="hover:bg-gray-50">
-                                                <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ ajuste.NumeroCorrelativo }}</td>
-                                                <td class="px-3 py-2 text-xs text-gray-500">{{ ajuste.fecha_formateada || '-' }}</td>
-                                                <td class="px-3 py-2 text-xs">
-                                                    <span class="font-bold" :class="getConceptoColor(ajuste.ConceptoOperacion)">
-                                                        {{ ajuste.ConceptoOperacion || '-' }}
-                                                    </span>
+                                            <tr v-for="item in grupo.items" :key="item.IdFisicoDiario" class="hover:bg-gray-50">
+                                                <td class="px-3 py-2 text-xs font-mono font-bold text-primary-600">
+                                                    {{ item.NumeroCorrelativo || '-' }}
                                                 </td>
-                                                <td class="px-3 py-2 text-xs text-gray-700">{{ ajuste.tipo_operacion?.Detalle || '-' }}</td>
-                                                <td class="px-3 py-2 text-xs text-gray-700">{{ ajuste.almacen?.Almacen || '-' }}</td>
-                                                <td class="px-3 py-2 text-center">
-                                                    <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoColor(ajuste.ActivoInactivo)">
-                                                        <i :class="getEstadoIcono(ajuste.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
-                                                        {{ getEstadoTexto(ajuste.ActivoInactivo) }}
-                                                    </span>
+                                                <td class="px-3 py-2 text-xs text-gray-500">{{ item.fecha_formateada || '-' }}</td>
+                                                <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="item.nombre_operador">
+                                                    {{ item.nombre_operador || 'N/A' }}
+                                                </td>
+                                                <td class="px-3 py-2 text-xs text-center">{{ item.CantidadTotalProductos || 0 }}</td>
+                                                <td class="px-3 py-2 text-xs text-center font-medium text-primary-600">
+                                                    {{ item.CantidadContados || 0 }}
                                                 </td>
                                                 <td class="px-3 py-2 text-center">
-                                                    <div v-if="puedeDesactivar(ajuste)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
-                                                        <div class="w-9 h-5 rounded-full transition-colors duration-200 ease-in-out" 
-                                                             :class="ajuste.ActivoInactivo === 1 ? 'bg-red-500' : 'bg-green-500'">
-                                                            <div class="absolute w-4 h-4 bg-white rounded-full top-[2px] transition-transform duration-200 ease-in-out"
-                                                                 :class="ajuste.ActivoInactivo === 1 ? 'translate-x-[18px]' : 'translate-x-[2px]'">
-                                                            </div>
-                                                        </div>
-                                                        <span class="ml-2 text-[10px]" :class="cambiando[ajuste.IdAjustesPrincipal] ? 'text-gray-400' : (ajuste.ActivoInactivo === 1 ? 'text-red-600' : 'text-green-600')">
-                                                            <i v-if="cambiando[ajuste.IdAjustesPrincipal]" class="fas fa-spinner fa-spin"></i>
-                                                            <span v-else>{{ ajuste.ActivoInactivo === 1 ? 'Inactivo' : 'Activo' }}</span>
-                                                        </span>
-                                                    </div>
-                                                    <span v-else class="text-[10px] text-gray-400">
-                                                        <i class="fas fa-lock mr-1"></i> Activo
+                                                    <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoColor(item.ActivoInactivo)">
+                                                        <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
+                                                        {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
                                                 </td>
-                                                <td class="px-3 py-2 text-right">
-                                                    <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600 hover:text-red-800" title="PDF">
-                                                        <i class="fas fa-file-pdf text-sm"></i>
-                                                    </a>
+                                                <td class="px-3 py-2 text-right space-x-1.5 whitespace-nowrap">
+                                                    <button @click="verDetalle(item.IdFisicoDiario)" class="text-blue-600 hover:text-blue-800 text-xs" title="Ver detalle">
+                                                        <i class="fas fa-eye"></i>
+                                                    </button>
+                                                    <button v-if="item.ActivoInactivo === 1" @click="reimprimirPDF(item.IdFisicoDiario)" class="text-red-600 hover:text-red-800 text-xs" title="PDF">
+                                                        <i class="fas fa-file-pdf"></i>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -618,43 +543,32 @@ onUnmounted(() => {
 
                                 <!-- MÓVIL: Tarjetas -->
                                 <div class="md:hidden divide-y divide-gray-100">
-                                    <div v-for="ajuste in grupo.ajustes" :key="ajuste.IdAjustesPrincipal" class="p-3 hover:bg-gray-50 transition">
+                                    <div v-for="item in grupo.items" :key="item.IdFisicoDiario" class="p-3 hover:bg-gray-50 transition">
                                         <div class="flex justify-between items-start gap-2">
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center gap-2 flex-wrap">
-                                                    <span class="font-bold text-primary-700 text-sm">N° {{ ajuste.NumeroCorrelativo }}</span>
-                                                    <span class="text-[10px] font-bold" :class="getConceptoColor(ajuste.ConceptoOperacion)">
-                                                        {{ ajuste.ConceptoOperacion || '-' }}
-                                                    </span>
-                                                </div>
-                                                <div class="text-xs text-gray-500 mt-0.5">
-                                                    {{ ajuste.fecha_formateada || '-' }}
-                                                </div>
-                                                <div class="text-xs text-gray-600 mt-1">
-                                                    <span class="text-gray-400">Tipo:</span> {{ ajuste.tipo_operacion?.Detalle || '-' }}
+                                                    <span class="font-bold text-primary-700 text-sm">#{{ item.NumeroCorrelativo || 'Sin número' }}</span>
+                                                    <span class="text-[10px] text-gray-500">{{ item.fecha_formateada || '-' }}</span>
                                                 </div>
                                                 <div class="text-xs text-gray-600 mt-0.5">
-                                                    <span class="text-gray-400">Almacén:</span> {{ ajuste.almacen?.Almacen || '-' }}
+                                                    <span class="text-gray-400">Operador:</span> {{ item.nombre_operador || 'N/A' }}
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-1">
-                                                    <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(ajuste.ActivoInactivo)">
-                                                        <i :class="getEstadoIcono(ajuste.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
-                                                        {{ getEstadoTexto(ajuste.ActivoInactivo) }}
+                                                    <span class="text-xs text-gray-500">Productos: {{ item.CantidadTotalProductos || 0 }}</span>
+                                                    <span class="text-xs font-medium text-primary-600">Contados: {{ item.CantidadContados || 0 }}</span>
+                                                    <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(item.ActivoInactivo)">
+                                                        <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
+                                                        {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
                                                 </div>
                                             </div>
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
-                                                <a :href="`/gestion/inventario/ajustes/${ajuste.IdAjustesPrincipal}/pdf`" target="_blank" class="text-red-600" title="PDF">
+                                                <button @click="verDetalle(item.IdFisicoDiario)" class="text-blue-600" title="Ver detalle">
+                                                    <i class="fas fa-eye text-lg"></i>
+                                                </button>
+                                                <button v-if="item.ActivoInactivo === 1" @click="reimprimirPDF(item.IdFisicoDiario)" class="text-red-600" title="PDF">
                                                     <i class="fas fa-file-pdf text-lg"></i>
-                                                </a>
-                                                <div v-if="puedeDesactivar(ajuste)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(ajuste)">
-                                                    <div class="w-8 h-4 rounded-full transition-colors duration-200 ease-in-out"
-                                                         :class="ajuste.ActivoInactivo === 1 ? 'bg-red-500' : 'bg-green-500'">
-                                                        <div class="absolute w-3.5 h-3.5 bg-white rounded-full top-[1px] transition-transform duration-200 ease-in-out"
-                                                             :class="ajuste.ActivoInactivo === 1 ? 'translate-x-[16px]' : 'translate-x-[2px]'">
-                                                        </div>
-                                                    </div>
-                                                </div>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
@@ -664,14 +578,14 @@ onUnmounted(() => {
                         </transition>
                     </div>
                     
-                    <!-- 🔥 PAGINACIÓN CON FILTROS CORREGIDA -->
-                    <div v-if="props.ajustes?.data?.length" class="bg-white rounded-lg shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
+                    <!-- PAGINACIÓN CON FILTROS -->
+                    <div v-if="props.inventarios?.data?.length" class="bg-white rounded-lg shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <p class="text-[10px] sm:text-xs text-gray-500">
-                            Mostrando {{ props.ajustes.from || 0 }} - {{ props.ajustes.to || 0 }} de {{ props.ajustes.total || 0 }}
+                            Mostrando {{ props.inventarios.from || 0 }} - {{ props.inventarios.to || 0 }} de {{ props.inventarios.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
                             <Link 
-                                v-for="link in props.ajustes.links" 
+                                v-for="link in props.inventarios.links" 
                                 :key="link.label" 
                                 :href="construirUrlConFiltros(link.url)"
                                 class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
@@ -687,49 +601,110 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- 🔥 MENSAJE: SIN DATOS EN LA SUCURSAL SELECCIONADA -->
+                <!-- MENSAJE: SIN DATOS -->
                 <div v-else class="bg-white rounded-lg shadow-sm p-6 sm:p-8 text-center text-gray-500">
                     <i class="fas fa-clipboard-list text-3xl sm:text-4xl block mb-2 text-gray-300"></i>
                     <p class="text-sm sm:text-base">
-                        <span v-if="buscador">No hay ajustes que coincidan con "{{ buscador }}"</span>
-                        <span v-else>No hay ajustes registrados en esta sucursal</span>
+                        <span v-if="buscador">No hay inventarios que coincidan con "{{ buscador }}"</span>
+                        <span v-else>No hay inventarios físicos registrados en esta sucursal</span>
                     </p>
                 </div>
 
             </div>
         </div>
 
-        <!-- MODAL DE CONFIRMACIÓN -->
-        <div v-if="modalVisible" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
-            <div class="bg-white rounded-xl w-full max-w-[90%] sm:max-w-sm overflow-hidden shadow-xl">
-                <div class="p-4 border-b bg-yellow-50">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 bg-yellow-100">
-                            <i class="fas fa-sync-alt text-yellow-600 text-xl"></i>
-                        </div>
-                        <div class="flex-1">
-                            <h3 class="font-bold text-gray-800 text-sm sm:text-base">Cambiar Estado</h3>
-                            <p class="text-[10px] sm:text-xs text-gray-500">Ajuste N° {{ modalData.numero }}</p>
+        <!-- MODAL DE DETALLE -->
+        <div v-if="mostrarModal" class="fixed inset-0 z-50 overflow-y-auto">
+            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+                <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="cerrarModal"></div>
+
+                <div class="inline-block overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+                    <!-- Header -->
+                    <div class="px-4 pt-4 pb-3 border-b bg-primary-50">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <i class="fas fa-clipboard-list text-primary-600 text-lg"></i>
+                                <h3 class="text-base font-medium text-gray-900">Detalle del Inventario Físico</h3>
+                                <span v-if="inventarioSeleccionado" class="text-xs text-gray-500 ml-2">
+                                    #{{ inventarioSeleccionado.numero_correlativo || 'Sin número' }}
+                                </span>
+                            </div>
+                            <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600">
+                                <i class="fas fa-times text-lg"></i>
+                            </button>
                         </div>
                     </div>
-                </div>
-                <div class="p-4 sm:p-5">
-                    <p class="text-xs sm:text-sm text-gray-700 text-center">
-                        ¿Estás seguro de cambiar este ajuste a <span class="font-bold text-green-600">ACTIVO</span>?
-                    </p>
-                    <p class="text-[10px] sm:text-xs text-gray-400 text-center mt-2">
-                        Al activarlo, el ajuste pasará a estado <span class="font-bold text-green-600">BORRADOR</span> y podrá editarse.
-                    </p>
-                </div>
-                <div class="p-3 sm:p-4 bg-gray-50 flex justify-end gap-2 sm:gap-3">
-                    <button @click="cerrarModal" class="px-3 sm:px-4 py-1.5 sm:py-2 border border-gray-300 rounded-lg text-xs text-gray-700 hover:bg-gray-100 transition">
-                        Cancelar
-                    </button>
-                    <button @click="ejecutarCambioEstado" :disabled="loading" class="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs text-white transition flex items-center gap-2 bg-green-600 hover:bg-green-700">
-                        <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-check"></i>
-                        Activar
-                    </button>
+
+                    <!-- Cuerpo -->
+                    <div class="px-4 py-4 sm:px-6">
+                        <div v-if="loadingDetalle" class="flex justify-center py-8">
+                            <i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i>
+                        </div>
+
+                        <div v-else-if="!inventarioSeleccionado" class="text-center py-8 text-gray-500">
+                            <i class="fas fa-info-circle text-3xl mb-2 block"></i>
+                            <p class="text-sm">No se encontró información</p>
+                        </div>
+
+                        <div v-else>
+                            <!-- Resumen -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                                    <p class="text-[10px] text-gray-500">Fecha</p>
+                                    <p class="text-sm font-semibold">{{ inventarioSeleccionado.fecha || '-' }}</p>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                                    <p class="text-[10px] text-gray-500">Productos</p>
+                                    <p class="text-sm font-semibold text-primary-600">{{ inventarioSeleccionado.total_productos || 0 }}</p>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                                    <p class="text-[10px] text-gray-500">Con diferencia</p>
+                                    <p class="text-sm font-semibold text-yellow-600">{{ inventarioSeleccionado.con_diferencia || 0 }}</p>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-2 text-center">
+                                    <p class="text-[10px] text-gray-500">Operador</p>
+                                    <p class="text-sm font-semibold truncate">{{ inventarioSeleccionado.operador || 'N/A' }}</p>
+                                </div>
+                            </div>
+
+                            <!-- Tabla -->
+                            <div class="overflow-x-auto">
+                                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                                    <thead class="bg-gray-50">
+                                        <tr>
+                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">#</th>
+                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">Código</th>
+                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">Producto</th>
+                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Sistema</th>
+                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Contado</th>
+                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Diferencia</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="bg-white divide-y divide-gray-200">
+                                        <tr v-for="(item, index) in inventarioSeleccionado.detalles" :key="index" class="hover:bg-gray-50">
+                                            <td class="px-2 py-1.5 text-gray-500">{{ index + 1 }}</td>
+                                            <td class="px-2 py-1.5 font-mono text-gray-600">{{ item.codigo || '-' }}</td>
+                                            <td class="px-2 py-1.5 text-gray-700 max-w-[200px] truncate" :title="item.producto">{{ item.producto }}</td>
+                                            <td class="px-2 py-1.5 text-right font-mono">{{ formatearNumero(item.sistema) }}</td>
+                                            <td class="px-2 py-1.5 text-right font-mono font-semibold" :class="item.contado > 0 ? 'text-green-600' : 'text-gray-500'">
+                                                {{ formatearNumero(item.contado) }}
+                                            </td>
+                                            <td class="px-2 py-1.5 text-right font-mono font-bold" :class="item.diferencia > 0 ? 'text-green-600' : item.diferencia < 0 ? 'text-red-600' : 'text-gray-400'">
+                                                {{ formatearNumero(item.diferencia) }}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Footer -->
+                    <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 sm:px-6 flex justify-end">
+                        <button @click="cerrarModal" class="px-4 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                            Cerrar
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -738,16 +713,14 @@ onUnmounted(() => {
 
 <style scoped>
 @media (max-width: 640px) {
-    .xs\:inline { display: inline; }
-    .xs\:block { display: block; }
+    .xs\:inline {
+        display: inline;
+    }
+    .xs\:block {
+        display: block;
+    }
 }
 
-.custom-toast {
-    max-width: 90%;
-    z-index: 9999;
-}
-
-/* Transición para expandir/contraer */
 .max-h-0 {
     max-height: 0;
 }
@@ -767,7 +740,6 @@ onUnmounted(() => {
     overflow: hidden;
 }
 
-/* Autocomplete */
 .sucursal-autocomplete {
     display: inline-flex;
     align-items: center;

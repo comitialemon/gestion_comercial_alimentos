@@ -117,6 +117,10 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosSucursalMayoristaController;
 use App\Http\Controllers\Operacion\FichaTecnicaController;
 use App\Http\Controllers\Gestion\Impuestos\VentaController;
+use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarController;
+use App\Http\Controllers\Gestion\Inventario\InventarioFisicoDiarioConfigController;
+use App\Http\Controllers\Gestion\Inventario\InventarioFisicoDiarioController;
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -545,6 +549,70 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/', [InventarioFisicoMantenimientoController::class, 'index'])->name('gestion.inventario-fisico-mantenimiento.index');
                 Route::put('/{id}/estado', [InventarioFisicoMantenimientoController::class, 'updateEstado'])->name('gestion.inventario-fisico-mantenimiento.estado');
             });
+
+            // ============================================================
+            // INVENTARIO FÍSICO DIARIO
+            // ============================================================
+            Route::prefix('inventario-fisico-diario')->group(function () {
+                
+                // 📋 LISTADO PRINCIPAL
+                Route::get('/', [InventarioFisicoDiarioController::class, 'index'])
+                    ->name('gestion.inventario.inventario-fisico-diario.index');
+                
+                // 📋 CONFIGURACIÓN - CRUD
+                Route::get('/config', [InventarioFisicoDiarioConfigController::class, 'index'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.index');
+                
+                Route::get('/config/create', [InventarioFisicoDiarioConfigController::class, 'create'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.create');
+
+                Route::post('/config', [InventarioFisicoDiarioConfigController::class, 'store'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.store');
+                // 📋 LISTADO ADMINISTRATIVO
+                Route::get('/admin', [InventarioFisicoDiarioController::class, 'indexAdmin'])
+                    ->name('gestion.inventario.inventario-fisico-diario.admin');
+                                    
+                Route::post('/guardar-progreso', [InventarioFisicoDiarioController::class, 'guardarProgreso'])
+                    ->name('gestion.inventario.inventario-fisico-diario.guardar-progreso');
+                
+                Route::post('/guardar-mini-inventario', [InventarioFisicoDiarioController::class, 'guardarMiniInventario'])
+                    ->name('gestion.inventario.inventario-fisico-diario.guardar-mini-inventario');
+                    
+                Route::get('/config/{id}/edit', [InventarioFisicoDiarioConfigController::class, 'edit'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.edit');
+                
+                Route::put('/config/{id}', [InventarioFisicoDiarioConfigController::class, 'update'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.update');
+                
+                Route::delete('/config/{id}', [InventarioFisicoDiarioConfigController::class, 'destroy'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.destroy');
+                
+                Route::patch('/config/{id}/toggle', [InventarioFisicoDiarioConfigController::class, 'toggle'])
+                    ->name('gestion.inventario.inventario-fisico-diario.config.toggle');
+
+                // 🆕 MINI INVENTARIO - OPERADOR
+                Route::get('/estado/{fechaId}', [InventarioFisicoDiarioController::class, 'getEstado'])
+                    ->name('gestion.inventario.inventario-fisico-diario.estado');
+                
+                Route::get('/obtener-productos/{fechaId}', [InventarioFisicoDiarioController::class, 'obtenerProductos'])
+                    ->name('gestion.inventario.inventario-fisico-diario.obtener-productos');
+
+
+                // 📊 CONSULTAS
+                Route::get('/obtener-por-id/{id}', [InventarioFisicoDiarioController::class, 'obtenerPorId'])
+                    ->name('gestion.inventario.inventario-fisico-diario.obtener-por-id');
+                
+                Route::get('/obtener-por-fecha/{fechaId}', [InventarioFisicoDiarioController::class, 'obtenerPorFecha'])
+                    ->name('gestion.inventario.inventario-fisico-diario.obtener-por-fecha');
+                
+                Route::get('/obtener-ultimo-por-fecha/{fechaId}', [InventarioFisicoDiarioController::class, 'obtenerUltimoPorFecha'])
+                    ->name('gestion.inventario.inventario-fisico-diario.obtener-ultimo-por-fecha');
+
+                // 📄 PDF
+                Route::get('/pdf/{id}', [InventarioFisicoDiarioController::class, 'pdf'])
+                    ->name('gestion.inventario.inventario-fisico-diario.pdf');
+            });
+
 
             // Fichas Técnicas - DENTRO DEL GRUPO inventario
             Route::prefix('ficha-tecnica')->group(function () {

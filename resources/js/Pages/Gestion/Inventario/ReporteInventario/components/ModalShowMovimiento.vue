@@ -271,11 +271,6 @@ const imprimir = () => {
                                 </div>
                                 
                                 <div>
-                                    <span class="text-[10px] text-gray-400 font-semibold uppercase block">ID Documento</span>
-                                    <span class="font-mono font-medium text-gray-700">#{{ data.movimiento.IdDocumento }}</span>
-                                </div>
-                                
-                                <div>
                                     <span class="text-[10px] text-gray-400 font-semibold uppercase block">Tipo Movimiento</span>
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full inline-block"
                                           :class="data.movimiento.D_H === 'D' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
