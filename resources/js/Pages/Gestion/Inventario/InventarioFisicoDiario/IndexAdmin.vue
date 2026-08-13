@@ -29,6 +29,17 @@ const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
 
 // =============================================
+// RESPONSIVE
+// =============================================
+const isMobile = ref(window.innerWidth < 768)
+const isTablet = ref(window.innerWidth >= 768 && window.innerWidth < 1024)
+
+const handleResize = () => {
+    isMobile.value = window.innerWidth < 768
+    isTablet.value = window.innerWidth >= 768 && window.innerWidth < 1024
+}
+
+// =============================================
 // CONSTRUIR URL CON FILTROS PARA PAGINACIÓN
 // =============================================
 const construirUrlConFiltros = (url) => {
@@ -164,10 +175,16 @@ const actualizarExpandidas = () => {
 // ACCIONES
 // =============================================
 const aplicarFiltros = () => {
-    const params = {
-        sucursal_id: sucursalId.value || undefined,
-        estado: estadoFiltro.value || undefined,
-        buscar: buscador.value || undefined
+    const params = {}
+    
+    if (sucursalId.value && sucursalId.value !== '') {
+        params.sucursal_id = sucursalId.value
+    }
+    if (estadoFiltro.value && estadoFiltro.value !== '') {
+        params.estado = estadoFiltro.value
+    }
+    if (buscador.value && buscador.value !== '') {
+        params.buscar = buscador.value
     }
     
     router.get('/gestion/inventario/inventario-fisico-diario/admin', params, {
@@ -281,18 +298,8 @@ const reimprimirPDF = (id) => {
 }
 
 // =============================================
-// ESTADO
-// =============================================
-const loading = ref(false)
-const isMobile = ref(window.innerWidth < 768)
-
-// =============================================
 // CICLO DE VIDA
 // =============================================
-const handleResize = () => {
-    isMobile.value = window.innerWidth < 768
-}
-
 onMounted(() => {
     window.addEventListener('resize', handleResize)
     document.addEventListener('click', handleClickOutside)
@@ -319,16 +326,16 @@ onUnmounted(() => {
 <template>
     <div class="min-h-screen bg-gray-100 pb-20">
         <div class="py-3 px-3 sm:py-4 sm:px-5 lg:px-6">
-            <div class="max-w-full lg:max-w-7xl mx-auto">
+            <div class="max-w-full mx-auto">
                 <!-- Header -->
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
+                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
                             <i class="fas fa-clipboard-list text-primary-600 text-sm"></i>
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Inventario Físico Diario</h1>
-                            <p class="text-[10px] text-gray-500 hidden xs:block">Historial de inventarios físicos realizados</p>
+                            <p class="text-[10px] text-gray-500 hidden sm:block">Historial de inventarios físicos realizados</p>
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
@@ -339,21 +346,21 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Filtros -->
+                <!-- Filtros - Responsive -->
                 <div class="bg-white rounded-lg shadow-sm p-3 mb-4">
-                    <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
                         
                         <!-- Sucursal - Autocomplete -->
-                        <div class="sucursal-autocomplete flex items-center gap-1">
-                            <label class="text-xs font-medium text-gray-700">Sucursal:</label>
-                            <div class="relative">
+                        <div class="sucursal-autocomplete flex items-center gap-1 flex-1 sm:flex-none min-w-[120px]">
+                            <label class="text-xs font-medium text-gray-700 hidden sm:block">Sucursal:</label>
+                            <div class="relative flex-1 sm:flex-none">
                                 <input 
                                     type="text"
                                     v-model="sucursalBusqueda"
                                     @focus="mostrarSucursales = true"
                                     @input="mostrarSucursales = true"
-                                    class="border border-gray-300 rounded-md px-2 py-1 text-xs w-36 sm:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                    placeholder="Seleccione Sucursal..."
+                                    class="border border-gray-300 rounded-md px-2 py-1 text-xs w-full sm:w-36 md:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                    placeholder="Buscar sucursal..."
                                     autocomplete="off"
                                 />
                                 <button 
@@ -365,7 +372,6 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-[10px]"></i>
                                 </button>
                                 
-                                <!-- Lista de sucursales -->
                                 <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
                                     class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto min-w-[180px]">
                                     <div 
@@ -387,18 +393,15 @@ onUnmounted(() => {
                                     <i class="fas fa-search mr-1"></i> No se encontraron sucursales
                                 </div>
                             </div>
-                            <span v-if="sucursalId && sucursalNombre" class="text-[10px] text-primary-600 font-medium ml-1">
+                            <span v-if="sucursalId && sucursalNombre" class="text-[10px] text-primary-600 font-medium ml-1 hidden sm:inline">
                                 <i class="fas fa-check-circle"></i> {{ sucursalNombre }}
-                            </span>
-                            <span v-else class="text-[10px] text-gray-400 ml-1">
-                                <i class="fas fa-store"></i> Ninguna
                             </span>
                         </div>
                         
-                        <!-- Estado -->
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-md px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
+                        <!-- Estado - Select -->
+                        <div class="flex items-center gap-1 sm:gap-2 flex-1 sm:flex-none">
+                            <label class="text-xs font-medium text-gray-700 hidden sm:block">Estado:</label>
+                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-md px-2 py-1 text-xs w-full sm:w-32 md:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none bg-white">
                                 <option value="">Todos</option>
                                 <option value="completados">Completados</option>
                                 <option value="borradores">Borradores</option>
@@ -407,30 +410,30 @@ onUnmounted(() => {
                         </div>
                         
                         <!-- Buscador -->
-                        <div class="flex items-center gap-1">
+                        <div class="flex items-center gap-1 flex-1 sm:flex-none">
                             <input 
                                 type="text" 
                                 v-model="buscador" 
                                 @input="buscarInventarios"
                                 placeholder="N° Correlativo..."
-                                class="border border-gray-300 rounded-md px-2 py-1 text-xs w-28 sm:w-32 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                class="border border-gray-300 rounded-md px-2 py-1 text-xs w-full sm:w-28 md:w-32 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
                             <button 
                                 v-if="buscador" 
                                 @click="limpiarBusqueda" 
-                                class="text-gray-400 hover:text-gray-600 text-xs"
+                                class="text-gray-400 hover:text-gray-600 text-xs flex-shrink-0"
                             >
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
                         
-                        <!-- Botones Expandir/Contraer -->
-                        <div class="flex gap-1 ml-auto">
-                            <button @click="expandirTodas" class="text-[10px] bg-primary-100 hover:bg-primary-200 text-primary-700 px-2 py-1 rounded transition">
-                                <i class="fas fa-plus-circle"></i> Expandir
+                        <!-- Botones Expandir/Contraer - Responsive -->
+                        <div class="flex gap-1 ml-auto w-full sm:w-auto justify-end">
+                            <button @click="expandirTodas" class="text-[10px] bg-primary-100 hover:bg-primary-200 text-primary-700 px-2 py-1 rounded transition flex-1 sm:flex-none text-center">
+                                <i class="fas fa-plus-circle"></i> <span class="hidden xs:inline">Expandir</span>
                             </button>
-                            <button @click="contraerTodas" class="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition">
-                                <i class="fas fa-minus-circle"></i> Contraer
+                            <button @click="contraerTodas" class="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition flex-1 sm:flex-none text-center">
+                                <i class="fas fa-minus-circle"></i> <span class="hidden xs:inline">Contraer</span>
                             </button>
                         </div>
                     </div>
@@ -449,7 +452,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- MENSAJE: SIN SUCURSAL SELECCIONADA -->
-                <div v-if="!sucursalId" class="bg-white rounded-lg shadow-sm p-8 sm:p-12 text-center">
+                <div v-if="!sucursalId" class="bg-white rounded-lg shadow-sm p-6 sm:p-12 text-center">
                     <div class="w-16 h-16 sm:w-20 sm:h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-store text-primary-400 text-3xl sm:text-4xl"></i>
                     </div>
@@ -463,7 +466,7 @@ onUnmounted(() => {
                 <div v-else-if="sucursalesConInventarios.length > 0">
                     <div v-for="grupo in sucursalesConInventarios" :key="grupo.id" class="mb-3">
                         
-                        <!-- Encabezado de Sucursal -->
+                        <!-- Encabezado de Sucursal - Responsive -->
                         <div 
                             @click="toggleSucursal(grupo.id)"
                             class="flex flex-wrap items-center justify-between gap-2 bg-primary-50 rounded-t-lg px-3 sm:px-4 py-2 border border-primary-200 cursor-pointer hover:bg-primary-100 transition"
@@ -480,7 +483,7 @@ onUnmounted(() => {
                                 </span>
                             </div>
                             <div class="text-xs sm:text-sm font-bold text-primary-700 flex-shrink-0">
-                                {{ grupo.total_contados }} / {{ grupo.total_productos }} contados
+                                <span class="hidden xs:inline">Contados:</span> {{ grupo.total_contados }} / {{ grupo.total_productos }}
                             </div>
                         </div>
 
@@ -541,8 +544,52 @@ onUnmounted(() => {
                                     </table>
                                 </div>
 
+                                <!-- TABLET: Tabla compacta -->
+                                <div class="hidden sm:block md:hidden overflow-x-auto">
+                                    <table class="min-w-full divide-y divide-gray-200">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500 uppercase">N°</th>
+                                                <th class="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500 uppercase">Fecha</th>
+                                                <th class="px-2 py-1.5 text-left text-[10px] font-medium text-gray-500 uppercase">Operador</th>
+                                                <th class="px-2 py-1.5 text-center text-[10px] font-medium text-gray-500 uppercase">Contados</th>
+                                                <th class="px-2 py-1.5 text-center text-[10px] font-medium text-gray-500 uppercase">Estado</th>
+                                                <th class="px-2 py-1.5 text-right text-[10px] font-medium text-gray-500 uppercase">Acciones</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="bg-white divide-y divide-gray-200">
+                                            <tr v-for="item in grupo.items" :key="item.IdFisicoDiario" class="hover:bg-gray-50">
+                                                <td class="px-2 py-1.5 text-xs font-mono font-bold text-primary-600">
+                                                    {{ item.NumeroCorrelativo || '-' }}
+                                                </td>
+                                                <td class="px-2 py-1.5 text-xs text-gray-500">{{ item.fecha_formateada || '-' }}</td>
+                                                <td class="px-2 py-1.5 text-xs text-gray-700 max-w-[100px] truncate" :title="item.nombre_operador">
+                                                    {{ item.nombre_operador || 'N/A' }}
+                                                </td>
+                                                <td class="px-2 py-1.5 text-xs text-center font-medium text-primary-600">
+                                                    {{ item.CantidadContados || 0 }}
+                                                </td>
+                                                <td class="px-2 py-1.5 text-center">
+                                                    <span class="px-1 py-0.5 text-[9px] rounded-full whitespace-nowrap" :class="getEstadoColor(item.ActivoInactivo)">
+                                                        <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[7px]"></i>
+                                                        {{ getEstadoTexto(item.ActivoInactivo) }}
+                                                    </span>
+                                                </td>
+                                                <td class="px-2 py-1.5 text-right space-x-1 whitespace-nowrap">
+                                                    <button @click="verDetalle(item.IdFisicoDiario)" class="text-blue-600 hover:text-blue-800 text-xs" title="Ver detalle">
+                                                        <i class="fas fa-eye text-xs"></i>
+                                                    </button>
+                                                    <button v-if="item.ActivoInactivo === 1" @click="reimprimirPDF(item.IdFisicoDiario)" class="text-red-600 hover:text-red-800 text-xs" title="PDF">
+                                                        <i class="fas fa-file-pdf text-xs"></i>
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
                                 <!-- MÓVIL: Tarjetas -->
-                                <div class="md:hidden divide-y divide-gray-100">
+                                <div class="sm:hidden divide-y divide-gray-100">
                                     <div v-for="item in grupo.items" :key="item.IdFisicoDiario" class="p-3 hover:bg-gray-50 transition">
                                         <div class="flex justify-between items-start gap-2">
                                             <div class="min-w-0 flex-1">
@@ -553,9 +600,9 @@ onUnmounted(() => {
                                                 <div class="text-xs text-gray-600 mt-0.5">
                                                     <span class="text-gray-400">Operador:</span> {{ item.nombre_operador || 'N/A' }}
                                                 </div>
-                                                <div class="flex items-center gap-3 mt-1">
-                                                    <span class="text-xs text-gray-500">Productos: {{ item.CantidadTotalProductos || 0 }}</span>
-                                                    <span class="text-xs font-medium text-primary-600">Contados: {{ item.CantidadContados || 0 }}</span>
+                                                <div class="flex items-center gap-3 mt-1 flex-wrap">
+                                                    <span class="text-xs text-gray-500">Prod: {{ item.CantidadTotalProductos || 0 }}</span>
+                                                    <span class="text-xs font-medium text-primary-600">Cont: {{ item.CantidadContados || 0 }}</span>
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(item.ActivoInactivo)">
                                                         <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
@@ -564,10 +611,10 @@ onUnmounted(() => {
                                             </div>
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
                                                 <button @click="verDetalle(item.IdFisicoDiario)" class="text-blue-600" title="Ver detalle">
-                                                    <i class="fas fa-eye text-lg"></i>
+                                                    <i class="fas fa-eye text-base"></i>
                                                 </button>
                                                 <button v-if="item.ActivoInactivo === 1" @click="reimprimirPDF(item.IdFisicoDiario)" class="text-red-600" title="PDF">
-                                                    <i class="fas fa-file-pdf text-lg"></i>
+                                                    <i class="fas fa-file-pdf text-base"></i>
                                                 </button>
                                             </div>
                                         </div>
@@ -578,9 +625,9 @@ onUnmounted(() => {
                         </transition>
                     </div>
                     
-                    <!-- PAGINACIÓN CON FILTROS -->
+                    <!-- PAGINACIÓN CON FILTROS - Responsive -->
                     <div v-if="props.inventarios?.data?.length" class="bg-white rounded-lg shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
-                        <p class="text-[10px] sm:text-xs text-gray-500">
+                        <p class="text-[10px] sm:text-xs text-gray-500 text-center sm:text-left">
                             Mostrando {{ props.inventarios.from || 0 }} - {{ props.inventarios.to || 0 }} de {{ props.inventarios.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
@@ -613,30 +660,30 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- MODAL DE DETALLE -->
+        <!-- MODAL DE DETALLE - Responsive -->
         <div v-if="mostrarModal" class="fixed inset-0 z-50 overflow-y-auto">
-            <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+            <div class="flex items-center justify-center min-h-screen px-3 sm:px-4 pt-4 pb-20 text-center sm:block sm:p-0">
                 <div class="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" @click="cerrarModal"></div>
 
-                <div class="inline-block overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+                <div class="inline-block overflow-hidden text-left align-bottom transition-all transform bg-white rounded-lg shadow-xl sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full w-full max-w-full">
                     <!-- Header -->
-                    <div class="px-4 pt-4 pb-3 border-b bg-primary-50">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2">
-                                <i class="fas fa-clipboard-list text-primary-600 text-lg"></i>
-                                <h3 class="text-base font-medium text-gray-900">Detalle del Inventario Físico</h3>
-                                <span v-if="inventarioSeleccionado" class="text-xs text-gray-500 ml-2">
+                    <div class="px-3 sm:px-4 pt-3 sm:pt-4 pb-2 sm:pb-3 border-b bg-primary-50">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0 flex-1">
+                                <i class="fas fa-clipboard-list text-primary-600 text-base sm:text-lg flex-shrink-0"></i>
+                                <h3 class="text-sm sm:text-base font-medium text-gray-900 truncate">Detalle del Inventario Físico</h3>
+                                <span v-if="inventarioSeleccionado" class="text-[10px] sm:text-xs text-gray-500 flex-shrink-0 ml-1">
                                     #{{ inventarioSeleccionado.numero_correlativo || 'Sin número' }}
                                 </span>
                             </div>
-                            <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600">
-                                <i class="fas fa-times text-lg"></i>
+                            <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600 flex-shrink-0">
+                                <i class="fas fa-times text-base sm:text-lg"></i>
                             </button>
                         </div>
                     </div>
 
                     <!-- Cuerpo -->
-                    <div class="px-4 py-4 sm:px-6">
+                    <div class="px-3 sm:px-6 py-3 sm:py-4">
                         <div v-if="loadingDetalle" class="flex justify-center py-8">
                             <i class="fas fa-spinner fa-spin text-primary-600 text-2xl"></i>
                         </div>
@@ -647,49 +694,49 @@ onUnmounted(() => {
                         </div>
 
                         <div v-else>
-                            <!-- Resumen -->
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                            <!-- Resumen - Responsive -->
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-3 sm:mb-4">
                                 <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[10px] text-gray-500">Fecha</p>
-                                    <p class="text-sm font-semibold">{{ inventarioSeleccionado.fecha || '-' }}</p>
+                                    <p class="text-[9px] sm:text-[10px] text-gray-500">Fecha</p>
+                                    <p class="text-xs sm:text-sm font-semibold truncate">{{ inventarioSeleccionado.fecha || '-' }}</p>
                                 </div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[10px] text-gray-500">Productos</p>
-                                    <p class="text-sm font-semibold text-primary-600">{{ inventarioSeleccionado.total_productos || 0 }}</p>
+                                    <p class="text-[9px] sm:text-[10px] text-gray-500">Productos</p>
+                                    <p class="text-xs sm:text-sm font-semibold text-primary-600">{{ inventarioSeleccionado.total_productos || 0 }}</p>
                                 </div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[10px] text-gray-500">Con diferencia</p>
-                                    <p class="text-sm font-semibold text-yellow-600">{{ inventarioSeleccionado.con_diferencia || 0 }}</p>
+                                    <p class="text-[9px] sm:text-[10px] text-gray-500">Con diferencia</p>
+                                    <p class="text-xs sm:text-sm font-semibold text-yellow-600">{{ inventarioSeleccionado.con_diferencia || 0 }}</p>
                                 </div>
                                 <div class="bg-gray-50 rounded-lg p-2 text-center">
-                                    <p class="text-[10px] text-gray-500">Operador</p>
-                                    <p class="text-sm font-semibold truncate">{{ inventarioSeleccionado.operador || 'N/A' }}</p>
+                                    <p class="text-[9px] sm:text-[10px] text-gray-500">Operador</p>
+                                    <p class="text-xs sm:text-sm font-semibold truncate">{{ inventarioSeleccionado.operador || 'N/A' }}</p>
                                 </div>
                             </div>
 
-                            <!-- Tabla -->
+                            <!-- Tabla - Responsive -->
                             <div class="overflow-x-auto">
-                                <table class="min-w-full divide-y divide-gray-200 text-xs">
+                                <table class="min-w-full divide-y divide-gray-200 text-[10px] sm:text-xs">
                                     <thead class="bg-gray-50">
                                         <tr>
-                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">#</th>
-                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">Código</th>
-                                            <th class="px-2 py-1.5 text-left font-medium text-gray-500">Producto</th>
-                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Sistema</th>
-                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Contado</th>
-                                            <th class="px-2 py-1.5 text-right font-medium text-gray-500">Diferencia</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-left font-medium text-gray-500">#</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-left font-medium text-gray-500 hidden sm:table-cell">Código</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-left font-medium text-gray-500">Producto</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-medium text-gray-500">Sistema</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-medium text-gray-500">Contado</th>
+                                            <th class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-medium text-gray-500">Diferencia</th>
                                         </tr>
                                     </thead>
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         <tr v-for="(item, index) in inventarioSeleccionado.detalles" :key="index" class="hover:bg-gray-50">
-                                            <td class="px-2 py-1.5 text-gray-500">{{ index + 1 }}</td>
-                                            <td class="px-2 py-1.5 font-mono text-gray-600">{{ item.codigo || '-' }}</td>
-                                            <td class="px-2 py-1.5 text-gray-700 max-w-[200px] truncate" :title="item.producto">{{ item.producto }}</td>
-                                            <td class="px-2 py-1.5 text-right font-mono">{{ formatearNumero(item.sistema) }}</td>
-                                            <td class="px-2 py-1.5 text-right font-mono font-semibold" :class="item.contado > 0 ? 'text-green-600' : 'text-gray-500'">
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 text-gray-500 text-center">{{ index + 1 }}</td>
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 font-mono text-gray-600 hidden sm:table-cell">{{ item.codigo || '-' }}</td>
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 text-gray-700 max-w-[80px] sm:max-w-[200px] truncate" :title="item.producto">{{ item.producto }}</td>
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-mono">{{ formatearNumero(item.sistema) }}</td>
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-mono font-semibold" :class="item.contado > 0 ? 'text-green-600' : 'text-gray-500'">
                                                 {{ formatearNumero(item.contado) }}
                                             </td>
-                                            <td class="px-2 py-1.5 text-right font-mono font-bold" :class="item.diferencia > 0 ? 'text-green-600' : item.diferencia < 0 ? 'text-red-600' : 'text-gray-400'">
+                                            <td class="px-1 sm:px-2 py-1 sm:py-1.5 text-right font-mono font-bold" :class="item.diferencia > 0 ? 'text-green-600' : item.diferencia < 0 ? 'text-red-600' : 'text-gray-400'">
                                                 {{ formatearNumero(item.diferencia) }}
                                             </td>
                                         </tr>
@@ -700,8 +747,8 @@ onUnmounted(() => {
                     </div>
 
                     <!-- Footer -->
-                    <div class="px-4 py-3 bg-gray-50 border-t border-gray-200 sm:px-6 flex justify-end">
-                        <button @click="cerrarModal" class="px-4 py-1.5 text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
+                    <div class="px-3 sm:px-6 py-2 sm:py-3 bg-gray-50 border-t border-gray-200 flex justify-end">
+                        <button @click="cerrarModal" class="px-3 sm:px-4 py-1 sm:py-1.5 text-xs sm:text-sm text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition">
                             Cerrar
                         </button>
                     </div>
@@ -718,6 +765,16 @@ onUnmounted(() => {
     }
     .xs\:block {
         display: block;
+    }
+}
+
+/* Para móvil, mostrar todo en una columna */
+@media (max-width: 640px) {
+    .sucursal-autocomplete {
+        width: 100%;
+    }
+    .sucursal-autocomplete .relative {
+        flex: 1;
     }
 }
 
@@ -745,5 +802,17 @@ onUnmounted(() => {
     align-items: center;
     flex-wrap: wrap;
     gap: 4px;
+}
+
+/* Scroll personalizado para el modal */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f5f9;
 }
 </style>
