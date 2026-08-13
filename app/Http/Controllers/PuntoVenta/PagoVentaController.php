@@ -746,9 +746,8 @@ class PagoVentaController extends Controller
     {
         return $this->timezoneService->getFechaActual();
     }
-
     /**
-     * Generar PDF de factura con altura DINÁMICA
+     * Generar PDF de factura con altura DINÁMICA y DETALLE DE PERSONALIZACIÓN
      */
     public function facturaPdf($id)
     {
@@ -785,43 +784,156 @@ class PagoVentaController extends Controller
             $nombreCliente = $cliente ? $cliente->Nombre : 'CONSUMIDOR FINAL';
             $nitCliente = $cliente ? $cliente->CI_NIT : '0';
             
+            // 🔥 OBTENER DETALLES CON PERSONALIZACIÓN
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle as d')
-                ->join('inventario_relacion_ventainventario as p', 'd.idrelacionventainventario', '=', 'p.IdDetalleProducto')
+                ->leftJoin('inventario_relacion_ventainventario as r', 'd.idrelacionventainventario', '=', 'r.IdDetalleProducto')
                 ->where('d.idventas', $id)
-                ->select('p.Detalle as nombre', 'd.unidades', 'd.preciounidades', 'd.totalbolivianos')
-                ->get();
+                ->get([
+                    'd.*',
+                    'r.Detalle as producto_nombre',
+                    'r.Codigo as producto_codigo',
+                    'r.PrecioVenta as producto_precio'
+                ]);
             
-            $pagos = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('impuestos_ventas_liquidacion as l')
-                ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
-                ->leftJoin('todos_identificador as i', 'l.IdIdentificador', '=', 'i.IdIdentificador')
-                ->where('l.IdVentas', $id)
-                ->select('c.Concepto', 'l.Bolivianos', 'i.CI_NIT', 'i.Nombre as identificador_nombre')
-                ->get();
+            // 🔥 PROCESAR DETALLES CON PERSONALIZACIÓN
+            $detallesProcesados = [];
+            $totalGeneral = 0;
             
-            $comisionista = null;
-            if ($venta->IdComisionista) {
-                $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('impuestos_ventas_comisionitas as c')
-                    ->join('todos_identificador as i', 'c.IdIdentificador', '=', 'i.IdIdentificador')
-                    ->where('c.IdComisionista', $venta->IdComisionista)
-                    ->first();
-            }
-            
-            $operador = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_operador as o')
-                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
-                ->where('o.IdOperador', $venta->IdOperadorIngresa)
-                ->first();
-            
-            $lugarVenta = null;
-            if ($venta->LugarVenta) {
-                $lugar = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('impuestos_ventas_lugar_venta')
-                    ->where('IdLugar', $venta->LugarVenta)
-                    ->first();
-                $lugarVenta = $lugar ? $lugar->Lugar : null;
+            foreach ($detalles as $detalle) {
+                $productoNombre = $detalle->producto_nombre ?? 'Producto';
+                $unidades = (float) $detalle->unidades;
+                $precio = (float) $detalle->preciounidades;
+                $subtotal = (float) $detalle->totalbolivianos;
+                $totalGeneral += $subtotal;
+                
+                $productoData = [
+                    'nombre' => $productoNombre,
+                    'unidades' => $unidades,
+                    'precio' => $precio,
+                    'subtotal' => $subtotal,
+                    'tiene_personalizacion' => false,
+                    'productos_detalle' => []
+                ];
+                
+                // 🔥 DECODIFICAR PERSONALIZACIÓN
+                if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
+                    $personalizacion = json_decode($detalle->personalizacion, true);
+                    
+                    if (!empty($personalizacion) && is_array($personalizacion)) {
+                        $productoData['tiene_personalizacion'] = true;
+                        
+                        // 🔥 OBTENER COMPOSICIÓN ORIGINAL
+                        $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
+                            ->table('inventario_relacion_ventainventario_detalle')
+                            ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
+                            ->get();
+                        
+                        // 🔥 MAPA DE PRODUCTOS ORIGINALES
+                        $originales = [];
+                        foreach ($composicionOriginal as $comp) {
+                            $producto = DB::connection('mysql_gestion_comercial_alimentos')
+                                ->table('inventario_productodetalle')
+                                ->where('IdProducto', $comp->IdProducto)
+                                ->first();
+                            
+                            $originales[$comp->IdProducto] = [
+                                'nombre' => $producto->Descripcion ?? 'Producto',
+                                'porcion' => (float) $comp->Porcion,
+                                'cantidad_total' => (float) $comp->Porcion * $unidades
+                            ];
+                        }
+                        
+                        // 🔥 MAPA DE SUSTITUTOS (los que se cambiaron)
+                        $sustitutosMap = [];
+                        foreach ($personalizacion as $comboIndex => $combo) {
+                            if (isset($combo['sustitutos']) && is_array($combo['sustitutos'])) {
+                                foreach ($combo['sustitutos'] as $sustituto) {
+                                    $idOriginal = $sustituto['id_producto_original'] ?? null;
+                                    $idSustituto = $sustituto['id_producto_sustituto'] ?? null;
+                                    $cantidad = (float) ($sustituto['cantidad'] ?? 0);
+                                    
+                                    if ($idOriginal && $idSustituto && $cantidad > 0) {
+                                        // Si el sustituto es DIFERENTE al original, se reemplazó
+                                        if ($idSustituto != $idOriginal) {
+                                            $nombreSustituto = DB::connection('mysql_gestion_comercial_alimentos')
+                                                ->table('inventario_productodetalle')
+                                                ->where('IdProducto', $idSustituto)
+                                                ->value('Descripcion');
+                                            
+                                            $key = 'sust_' . $idSustituto;
+                                            if (!isset($sustitutosMap[$key])) {
+                                                $sustitutosMap[$key] = [
+                                                    'nombre' => $nombreSustituto ?? 'Producto #' . $idSustituto,
+                                                    'cantidad' => 0,
+                                                    'es_sustituto' => true,
+                                                    'id_original' => $idOriginal,
+                                                    'nombre_original' => $originales[$idOriginal]['nombre'] ?? 'Original'
+                                                ];
+                                            }
+                                            $sustitutosMap[$key]['cantidad'] += $cantidad;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 🔥 CONSTRUIR LISTA DE PRODUCTOS DETALLE (FORMATO COMPACTO)
+                        $productosDetalle = [];
+                        
+                        // RECORRER TODOS LOS PRODUCTOS ORIGINALES
+                        foreach ($originales as $idOriginal => $original) {
+                            $cantidadSustituto = 0;
+                            $nombreSustituto = null;
+                            
+                            // Buscar si este original fue reemplazado
+                            foreach ($sustitutosMap as $sust) {
+                                if ($sust['id_original'] == $idOriginal) {
+                                    $cantidadSustituto += $sust['cantidad'];
+                                    $nombreSustituto = $sust['nombre'];
+                                }
+                            }
+                            
+                            // 🔥 CALCULAR CUÁNTOS QUEDARON ORIGINALES
+                            $cantidadOriginalQueQueda = $original['cantidad_total'] - $cantidadSustituto;
+                            
+                            // 🔥 SI QUEDARON ORIGINALES, MOSTRARLOS
+                            if ($cantidadOriginalQueQueda > 0) {
+                                $productosDetalle[] = [
+                                    'nombre' => $original['nombre'],
+                                    'cantidad' => $cantidadOriginalQueQueda,
+                                    'es_sustituto' => false
+                                ];
+                            }
+                            
+                            // 🔥 SI HAY SUSTITUTOS, MOSTRARLOS
+                            foreach ($sustitutosMap as $sust) {
+                                if ($sust['id_original'] == $idOriginal) {
+                                    $productosDetalle[] = [
+                                        'nombre' => $sust['nombre'],
+                                        'cantidad' => $sust['cantidad'],
+                                        'es_sustituto' => true
+                                    ];
+                                }
+                            }
+                        }
+                        
+                        // Si no se encontraron originales, mostrar solo sustitutos
+                        if (empty($productosDetalle) && !empty($sustitutosMap)) {
+                            foreach ($sustitutosMap as $sust) {
+                                $productosDetalle[] = [
+                                    'nombre' => $sust['nombre'],
+                                    'cantidad' => $sust['cantidad'],
+                                    'es_sustituto' => true
+                                ];
+                            }
+                        }
+                        
+                        $productoData['productos_detalle'] = $productosDetalle;
+                    }
+                }
+                
+                $detallesProcesados[] = $productoData;
             }
             
             // =============================================
@@ -844,36 +956,37 @@ class PagoVentaController extends Controller
             $alturaTotal = 0;
             
             // CABECERA
-            $alturaTotal += 5;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 6;
-            $alturaTotal += 5;
-            $alturaTotal += 4;
-            $alturaTotal += 6;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            if ($lugarVenta) $alturaTotal += 4;
-            $alturaTotal += 6;
+            $alturaTotal += 5 + 4 + 4 + 4 + 4 + 6 + 5 + 4 + 6 + 4 + 4 + 4 + 6;
             
-            // TABLA DE PRODUCTOS
+            // TABLA DE PRODUCTOS CON DETALLE
             $pdfCalc->SetFont('helvetica', 'B', 7);
-            $alturaTotal += 4;
-            $alturaTotal += 2;
+            $alturaTotal += 4 + 2;
             
-            foreach ($detalles as $detalle) {
-                $nombreProducto = $detalle->nombre ?? 'Producto';
+            foreach ($detallesProcesados as $detalle) {
+                $nombreProducto = $detalle['nombre'] ?? 'Producto';
                 $alturaNombre = $pdfCalc->getStringHeight(35, $nombreProducto);
                 $alturaTotal += max(4, $alturaNombre);
+                
+                if ($detalle['tiene_personalizacion'] && !empty($detalle['productos_detalle'])) {
+                    foreach ($detalle['productos_detalle'] as $prodDet) {
+                        $textoDetalle = "  - " . $prodDet['nombre'] . " x" . $prodDet['cantidad'];
+                        $alturaDetalle = $pdfCalc->getStringHeight(50, $textoDetalle);
+                        $alturaTotal += max(3, $alturaDetalle);
+                    }
+                }
             }
             
-            $alturaTotal += 3;
-            $alturaTotal += 6;
+            $alturaTotal += 3 + 6;
             
             // PAGOS
+            $pagos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas_liquidacion as l')
+                ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
+                ->leftJoin('todos_identificador as i', 'l.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('l.IdVentas', $id)
+                ->select('c.Concepto', 'l.Bolivianos', 'i.CI_NIT', 'i.Nombre as identificador_nombre')
+                ->get();
+            
             foreach ($pagos as $pago) {
                 $alturaTotal += 4;
                 if ($pago->CI_NIT && $pago->CI_NIT != 0) {
@@ -881,16 +994,19 @@ class PagoVentaController extends Controller
                 }
             }
             
-            $alturaTotal += 6;
-            $alturaTotal += 8;
+            $alturaTotal += 6 + 8;
             
-            if ($comisionista) $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 4;
-            $alturaTotal += 6;
-            $alturaTotal += 4;
+            $comisionista = null;
+            if ($venta->IdComisionista) {
+                $comisionista = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_comisionitas as c')
+                    ->join('todos_identificador as i', 'c.IdIdentificador', '=', 'i.IdIdentificador')
+                    ->where('c.IdComisionista', $venta->IdComisionista)
+                    ->first();
+                if ($comisionista) $alturaTotal += 4;
+            }
             
-            $alturaTotal += 10;
+            $alturaTotal += 4 + 4 + 6 + 4 + 10;
             
             $alturaMinima = 80;
             $alturaFinal = max($alturaMinima, min(500, $alturaTotal));
@@ -977,15 +1093,21 @@ class PagoVentaController extends Controller
             $pdf->Cell($width, 4, "CLIENTE: " . $nombreCliente, 0, 1, 'L');
             $y += 4;
             
-            if ($lugarVenta) {
-                $pdf->SetXY($x, $y);
-                $pdf->Cell($width, 4, "SERVICIO EN: " . $lugarVenta, 0, 1, 'L');
-                $y += 4;
+            if ($venta->LugarVenta) {
+                $lugar = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('impuestos_ventas_lugar_venta')
+                    ->where('IdLugar', $venta->LugarVenta)
+                    ->first();
+                if ($lugar) {
+                    $pdf->SetXY($x, $y);
+                    $pdf->Cell($width, 4, "SERVICIO EN: " . $lugar->Lugar, 0, 1, 'L');
+                    $y += 4;
+                }
             }
             
-            $y += 2;
+            $y += 1;
             
-            // TABLA DE PRODUCTOS
+            // TABLA DE PRODUCTOS CON DETALLE DE PERSONALIZACIÓN
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY($x, $y);
             $pdf->Cell(8, 4, "CANT", 0, 0, 'L');
@@ -999,11 +1121,11 @@ class PagoVentaController extends Controller
             $y += 4;
             
             $totalGeneral = 0;
-            foreach ($detalles as $detalle) {
-                $nombreProducto = $detalle->nombre ?? 'Producto';
-                $cantidad = $detalle->unidades;
-                $precio = $detalle->preciounidades;
-                $subtotal = $detalle->totalbolivianos;
+            foreach ($detallesProcesados as $detalle) {
+                $nombreProducto = $detalle['nombre'] ?? 'Producto';
+                $cantidad = $detalle['unidades'] ?? 0;
+                $precio = $detalle['precio'] ?? 0;
+                $subtotal = $detalle['subtotal'] ?? 0;
                 $totalGeneral += $subtotal;
                 
                 $startY = $y;
@@ -1021,11 +1143,27 @@ class PagoVentaController extends Controller
                 $pdf->MultiCell(35, 4, $nombreProducto, 0, 'L');
                 
                 $y = $pdf->GetY();
+                
+                // 🔥 DETALLE DE PERSONALIZACIÓN (FORMATO COMPACTO)
+                if ($detalle['tiene_personalizacion'] && !empty($detalle['productos_detalle'])) {
+                    $pdf->SetFont('helvetica', '', 6);
+                    $pdf->SetTextColor(80, 80, 80);
+                    
+                    foreach ($detalle['productos_detalle'] as $prodDet) {
+                        $textoDetalle = $prodDet['nombre'] . " x" . $prodDet['cantidad'];
+                        $pdf->SetXY($x , $y);
+                        $pdf->MultiCell(50, 3, $textoDetalle, 0, 'L');
+                        $y = $pdf->GetY();
+                    }
+                    
+                    $pdf->SetTextColor(0, 0, 0);
+                    $pdf->SetFont('helvetica', '', 7);
+                }
             }
             
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 1, "", 'T', 1);
-            $y += 3;
+            $y += 1;
             
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY($x, $y);
@@ -1072,14 +1210,20 @@ class PagoVentaController extends Controller
             }
             
             // OPERADOR
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as o')
+                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('o.IdOperador', $venta->IdOperadorIngresa)
+                ->first();
+            
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "VENDEDOR: " . ($operador->Nombre ?? ''), 0, 1, 'L');
             $y += 4;
             
-            // 🔥 TICKET DIA (se muestra el número generado al finalizar el pago)
+            // TICKET DIA
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "TICKET: " . ($venta->TicketDia ?? '0'), 0, 1, 'L');
-            $y += 6;
+            $y += 3;
             
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 1, "________________________________________", 0, 1, 'C');
