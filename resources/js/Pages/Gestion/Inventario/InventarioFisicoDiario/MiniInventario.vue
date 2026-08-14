@@ -45,6 +45,12 @@ const primaryLight = inject('primaryLight', 'var(--color-primary-50)')
 // =============================================
 // COMPUTADOS
 // =============================================
+
+// 🔥 CANTIDAD REAL DE PRODUCTOS (NO LA CONFIGURACIÓN)
+const cantidadReal = computed(() => {
+    return productosContados.value?.length || 0
+})
+
 const contados = computed(() => {
     if (!productosContados.value || productosContados.value.length === 0) return 0
     return productosContados.value.filter(p => {
@@ -261,18 +267,21 @@ watch(() => props.productos, () => {
                         <i class="fas fa-pen mr-0.5"></i> <span class="hidden xs:inline">Progreso guardado</span>
                         <span class="xs:hidden">Borrador</span>
                     </span>
+                    <span class="text-gray-400 ml-1 sm:ml-2 text-[8px] sm:text-[10px]">
+                        (Config: {{ cantidadRequerida }} | Real: {{ cantidadReal }})
+                    </span>
                 </p>
             </div>
             <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
                 <span class="text-[9px] sm:text-xs text-gray-500 whitespace-nowrap">
                     <span class="hidden xs:inline">Progreso: </span>
-                    <strong>{{ contados }}</strong> / {{ cantidadRequerida }}
+                    <strong>{{ contados }}</strong> / {{ cantidadReal }}
                 </span>
                 <div class="w-12 sm:w-16 md:w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden flex-shrink-0">
                     <div 
                         class="h-full transition-all duration-300"
                         :style="{ 
-                            width: `${Math.min((contados / cantidadRequerida) * 100, 100)}%`,
+                            width: `${Math.min((contados / cantidadReal) * 100, 100)}%`,
                             backgroundColor: primaryColor
                         }"
                     ></div>
@@ -295,10 +304,27 @@ watch(() => props.productos, () => {
             </div>
         </div>
 
+        <!-- 🔥 CONTADOR DE FALTANTES -->
+        <div class="text-[9px] sm:text-xs text-center mb-2 flex flex-wrap items-center justify-center gap-2">
+            <span class="text-gray-500">
+                <span class="font-medium">{{ productosContados.length }}</span> productos en total
+            </span>
+            <span class="text-gray-300">|</span>
+            <span :class="todosContados ? 'text-green-600' : 'text-yellow-600'">
+                <span class="font-medium">{{ contados }}</span> contados
+            </span>
+            <span v-if="!todosContados" class="text-red-500 font-medium">
+                (faltan {{ cantidadReal - contados }})
+            </span>
+            <span v-else class="text-green-600">
+                ✅ Todos contados
+            </span>
+        </div>
+
         <!-- ============================================ -->
-        <!-- VISTA MÓVIL: TARJETAS (menor a 768px)        -->
+        <!-- VISTA MÓVIL: TARJETAS                        -->
         <!-- ============================================ -->
-        <div v-if="productosContados && productosContados.length > 0" class="md:hidden space-y-2">
+        <div v-if="productosContados && productosContados.length > 0" class="md:hidden space-y-2 max-h-[400px] overflow-y-auto pr-1">
             <div 
                 v-for="(producto, index) in productosContados" 
                 :key="producto.IdProducto"
@@ -324,13 +350,11 @@ watch(() => props.productos, () => {
 
                 <!-- Grid: Saldo | Contado | Diferencia -->
                 <div class="grid grid-cols-3 gap-2">
-                    <!-- Saldo Sistema -->
                     <div class="bg-white rounded px-2 py-1.5 border border-gray-200 text-center">
                         <div class="text-[8px] text-gray-400 uppercase font-medium">Saldo</div>
                         <div class="text-sm font-bold text-gray-700">{{ formatearNumero(producto.saldo_sistema) }}</div>
                     </div>
 
-                    <!-- Contado (input) -->
                     <div class="bg-white rounded px-2 py-1.5 border border-gray-200 text-center" :class="{ 'border-green-400': producto.cantidad !== null && producto.cantidad !== '' }">
                         <div class="text-[8px] text-gray-400 uppercase font-medium">Contado</div>
                         <input 
@@ -340,12 +364,12 @@ watch(() => props.productos, () => {
                             @input="onCantidadChangeInput($event, producto)"
                             @blur="onCantidadBlur(producto)"
                             class="w-full text-sm font-bold text-gray-800 bg-transparent border-0 p-0 focus:ring-0 outline-none text-center"
+                            :class="{ 'text-red-500': producto.cantidad === null || producto.cantidad === '' }"
                             placeholder="0"
                             :disabled="loading"
                         />
                     </div>
 
-                    <!-- Diferencia -->
                     <div class="bg-white rounded px-2 py-1.5 border border-gray-200 text-center">
                         <div class="text-[8px] text-gray-400 uppercase font-medium">Dif.</div>
                         <div class="text-sm font-bold" :class="getDiferenciaColor(producto.cantidad, producto.saldo_sistema)">
@@ -358,12 +382,12 @@ watch(() => props.productos, () => {
         </div>
 
         <!-- ============================================ -->
-        <!-- VISTA DESKTOP: TABLA (mayor o igual a 768px) -->
+        <!-- VISTA DESKTOP: TABLA                         -->
         <!-- ============================================ -->
         <div v-if="productosContados && productosContados.length > 0" class="hidden md:block">
-            <div class="overflow-x-auto -mx-2 sm:mx-0">
+            <div class="overflow-x-auto max-h-[450px] overflow-y-auto">
                 <table class="min-w-full divide-y divide-gray-200 text-xs">
-                    <thead class="bg-gray-50">
+                    <thead class="bg-gray-50 sticky top-0 z-10">
                         <tr>
                             <th class="px-2 py-1.5 text-left font-medium text-gray-500 w-8">#</th>
                             <th class="px-2 py-1.5 text-left font-medium text-gray-500">Producto</th>
@@ -386,6 +410,9 @@ watch(() => props.productos, () => {
                             <td class="px-2 py-1.5 text-gray-500 text-center">{{ index + 1 }}</td>
                             <td class="px-2 py-1.5 text-gray-700 max-w-[200px] truncate" :title="producto.Descripcion">
                                 {{ producto.Descripcion || 'Sin nombre' }}
+                                <span v-if="producto.Codigo && producto.Codigo !== '-'" class="text-gray-400 ml-1 text-[8px]">
+                                    ({{ producto.Codigo }})
+                                </span>
                             </td>
                             <td class="px-2 py-1.5 text-center text-gray-600 font-medium">
                                 {{ formatearNumero(producto.saldo_sistema) }}
@@ -402,6 +429,7 @@ watch(() => props.productos, () => {
                                         borderColor: producto.cantidad !== null && producto.cantidad !== '' ? '#22c55e' : '#d1d5db',
                                         backgroundColor: producto.cantidad !== null && producto.cantidad !== '' ? '#f0fdf4' : 'white'
                                     }"
+                                    :class="{ 'border-red-400 ring-1 ring-red-200': producto.cantidad === null || producto.cantidad === '' }"
                                     placeholder="0"
                                     :disabled="loading"
                                 />
@@ -421,12 +449,14 @@ watch(() => props.productos, () => {
             </div>
         </div>
 
-        <!-- Resumen -->
+        <!-- ============================================ -->
+        <!-- BOTONES Y RESUMEN                            -->
+        <!-- ============================================ -->
         <div v-if="productosContados && productosContados.length > 0" class="mt-2 sm:mt-3 pt-2 border-t border-gray-200">
             <div class="flex flex-col xs:flex-row justify-between items-start xs:items-center gap-2">
                 <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[9px] sm:text-xs">
                     <span class="text-gray-500 whitespace-nowrap">
-                        Contados: <strong class="text-gray-800">{{ contados }}</strong> / {{ cantidadRequerida }}
+                        Contados: <strong class="text-gray-800">{{ contados }}</strong> / {{ cantidadReal }}
                     </span>
                     <span class="text-gray-500 whitespace-nowrap">
                         Total: <strong class="text-gray-800">{{ formatearNumero(totalContado) }}</strong>
@@ -461,19 +491,20 @@ watch(() => props.productos, () => {
                 </div>
             </div>
 
-            <!-- Mensajes de estado -->
             <div v-if="!todosContados" class="mt-1.5 sm:mt-2 text-center">
-                <p class="text-[8px] sm:text-[10px] text-red-500">
+                <p class="text-[8px] sm:text-[10px] text-red-500 font-medium">
                     <i class="fas fa-exclamation-circle mr-0.5"></i>
-                    Faltan <strong>{{ cantidadRequerida - contados }}</strong> productos
+                    ⚠️ Faltan <strong>{{ cantidadReal - contados }}</strong> productos
                     <span class="hidden xs:inline">por contar</span>
+                    <span class="xs:hidden">({{ cantidadReal - contados }})</span>
+                    <span class="text-red-400"> — Completa todos los campos para guardar</span>
                 </p>
             </div>
 
             <div v-if="todosContados" class="mt-1.5 sm:mt-2 text-center">
-                <p class="text-[8px] sm:text-[10px] text-green-600">
+                <p class="text-[8px] sm:text-[10px] text-green-600 font-medium">
                     <i class="fas fa-check-circle mr-0.5"></i>
-                    ✅ Todos listos. Puedes guardar.
+                    ✅ Todos los productos han sido contados. ¡Puedes guardar!
                 </p>
             </div>
         </div>
@@ -519,14 +550,18 @@ input[type="text"] {
 }
 
 /* Scroll personalizado para tabla */
-.overflow-x-auto::-webkit-scrollbar {
-    height: 4px;
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
 }
-.overflow-x-auto::-webkit-scrollbar-thumb {
+.overflow-y-auto::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 4px;
 }
-.overflow-x-auto::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track {
     background: #f1f5f9;
+}
+
+.overflow-y-auto {
+    scroll-behavior: smooth;
 }
 </style>

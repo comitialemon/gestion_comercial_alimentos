@@ -120,6 +120,9 @@ use App\Http\Controllers\Gestion\Impuestos\VentaController;
 use App\Http\Controllers\Gestion\Impuestos\VentaReprocesarController;
 use App\Http\Controllers\Gestion\Inventario\InventarioFisicoDiarioConfigController;
 use App\Http\Controllers\Gestion\Inventario\InventarioFisicoDiarioController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorDetalleController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1262,7 +1265,107 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::post('/api/validar-hora', [PedidoExtraordinarioSucursalController::class, 'apiValidarHora'])
                     ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.api.validar-hora');
             });
+            // ============================================================
+            // CLIENTES MAYORISTAS (Contenedores + Pedidos)
+            // ============================================================
+            Route::prefix('clientes-mayoristas')->group(function () {
+                
+                // ============================================================
+                // CONTENEDORES (ya existentes)
+                // ============================================================
+                Route::prefix('contenedores')->group(function () {
+                    // Listado principal
+                    Route::get('/', [ContenedorController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.index');
+                    
+                    // Gestión de estados
+                    Route::get('/gestion-estado', [ContenedorController::class, 'gestionEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.gestion-estado');
+                    
+                    // Cambiar estado (Activo ↔ Inactivo)
+                    Route::post('/{id}/cambiar-estado', [ContenedorController::class, 'cambiarEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.cambiar-estado');
+                    
+                    // Crear / Editar
+                    Route::get('/create', [ContenedorController::class, 'create'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.create');
+                    
+                    Route::post('/', [ContenedorController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.store');
+                    
+                    Route::get('/{id}/edit', [ContenedorController::class, 'edit'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.edit');
+                    
+                    Route::put('/{id}', [ContenedorController::class, 'update'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.update');
+                    
+                    // Ver / Eliminar
+                    Route::get('/{id}', [ContenedorController::class, 'show'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.show');
+                    
+                    Route::delete('/{id}', [ContenedorController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.destroy');
+                    
+                    // Toggle estado
+                    Route::post('/{id}/toggle-estado', [ContenedorController::class, 'toggleEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.toggle-estado');
+                    
+                    // Finalizar (BORRADOR → ACTIVO)
+                    Route::post('/{id}/finalizar', [ContenedorController::class, 'finalizar'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.finalizar');
+                    
+                    // Detalles (Productos)
+                    Route::post('/detalle', [ContenedorController::class, 'agregarProducto'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.store');
+                    Route::put('/detalle/{id}', [ContenedorController::class, 'actualizarProducto'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.update');
+                    Route::delete('/detalle/{id}', [ContenedorController::class, 'eliminarProducto'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.destroy');
+                });
 
+                // ============================================================
+                // PEDIDOS CLIENTES
+                // ============================================================
+                Route::prefix('pedidos-clientes')->group(function () {
+                    
+                    // Lista de pedidos
+                    Route::get('/', [PedidoClienteController::class, 'index'])
+                        ->name('operacion.pedidos-clientes.pedidos.index');
+                    
+                    // Crear nuevo pedido (menú de contenedores)
+                    Route::get('/create', [PedidoClienteController::class, 'create'])
+                        ->name('operacion.pedidos-clientes.pedidos.create');
+
+                    Route::post('/carrito/agregar', [PedidoClienteController::class, 'agregarAlCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.agregar');
+
+                     Route::delete('/carrito/detalle/{id}', [PedidoClienteController::class, 'eliminarDelCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.eliminar');
+
+                    Route::delete('/carrito/{id}/vaciar', [PedidoClienteController::class, 'vaciarCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.vaciar');
+
+                    Route::get('/contenedor/{id}/productos', [PedidoClienteController::class, 'getProductosContenedor'])
+                        ->name('operacion.pedidos-clientes.api.contenedor-productos');
+
+                    // 🔥 REVISAR PEDIDO (NUEVA VISTA)
+                    Route::get('/{id}/review', [PedidoClienteController::class, 'review'])
+                        ->name('operacion.pedidos-clientes.pedidos.review');
+                    
+                    // Ver detalle del pedido
+                    Route::get('/{id}', [PedidoClienteController::class, 'show'])
+                        ->name('operacion.pedidos-clientes.pedidos.show');
+                    
+                    // Finalizar pedido
+                    Route::post('/{id}/finalizar', [PedidoClienteController::class, 'finalizarPedido'])
+                        ->name('operacion.pedidos-clientes.pedidos.finalizar');
+
+                    // ✅ PDF del pedido
+                    Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
+                        ->name('operacion.pedidos-clientes.pedidos.pdf');
+                });
+
+            });
             // ============================================================
             // REPORTES DE PEDIDOS - SUPERVISOR
             // ============================================================

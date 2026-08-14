@@ -439,7 +439,7 @@ class InventarioFisicoDiarioController extends Controller
             ->where('ActivoInactivo', 0)
             ->delete();
 
-        // 3. OBTENER INGREDIENTES
+        // 3. 🔥 OBTENER TODOS LOS PRODUCTOS DISPONIBLES (SIN LÍMITE)
         $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_productodetalle as p')
             ->join('inventario_relacion_ventainventario_detalle as d', 'p.IdProducto', '=', 'd.IdProducto')
@@ -452,11 +452,15 @@ class InventarioFisicoDiarioController extends Controller
             ->select('p.IdProducto', 'p.Codigo', 'p.Descripcion')
             ->distinct()
             ->inRandomOrder()
-            ->limit($config->CantidadProductos)
-            ->get();
+            ->get();  // 👈 SIN LIMITE - TODOS LOS PRODUCTOS DISPONIBLES
 
-        // FALLBACKS...
+        // 🔥 FALLBACK 1: Si no hay ingredientes, buscar productos BASE
         if ($productosQuery->isEmpty()) {
+            Log::warning('⚠️ No hay ingredientes en la sucursal, buscando productos BASE', [
+                'cliente' => $clienteId,
+                'sucursal' => $sucursalId
+            ]);
+
             $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario as rv')
                 ->leftJoin('inventario_relacion_ventainventario_detalle as d', 'rv.IdDetalleProducto', '=', 'd.IdDetalleProducto')
@@ -464,14 +468,19 @@ class InventarioFisicoDiarioController extends Controller
                 ->where('rv.IdCliente', $clienteId)
                 ->where('rv.ActivoInactivo', 0)
                 ->where('pc.id_sucursal', $sucursalId)
-                ->whereNull('d.IdDetalleProducto')
+                ->whereNull('d.IdDetalleProducto')  // 👈 SOLO BASE (NO COMBOS)
                 ->select('rv.IdDetalleProducto as IdProducto', 'rv.Codigo', 'rv.Detalle as Descripcion')
                 ->inRandomOrder()
-                ->limit($config->CantidadProductos)
                 ->get();
         }
 
+        // 🔥 FALLBACK 2: Si no hay BASE, usar productos de venta
         if ($productosQuery->isEmpty()) {
+            Log::warning('⚠️ No hay productos BASE, usando productos de venta', [
+                'cliente' => $clienteId,
+                'sucursal' => $sucursalId
+            ]);
+
             $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_relacion_ventainventario')
                 ->where('IdCliente', $clienteId)
@@ -479,7 +488,6 @@ class InventarioFisicoDiarioController extends Controller
                 ->where('ActivoInactivo', 0)
                 ->select('IdDetalleProducto as IdProducto', 'Codigo', 'Detalle as Descripcion')
                 ->inRandomOrder()
-                ->limit($config->CantidadProductos)
                 ->get();
         }
 
@@ -488,6 +496,20 @@ class InventarioFisicoDiarioController extends Controller
                 'success' => false,
                 'message' => 'No hay productos disponibles para contar en esta sucursal.'
             ], 404);
+        }
+
+        // 🔥 CALCULAR LA CANTIDAD REAL DE PRODUCTOS
+        $cantidadReal = $productosQuery->count();
+        $cantidadConfigurada = $config->CantidadProductos;
+
+        // 🔥 LOG PARA SABER SI HAY DIFERENCIA
+        if ($cantidadReal < $cantidadConfigurada) {
+            Log::info('⚠️ Hay menos productos disponibles que los configurados', [
+                'configurados' => $cantidadConfigurada,
+                'disponibles' => $cantidadReal,
+                'sucursal' => $sucursalId,
+                'cliente' => $clienteId
+            ]);
         }
 
         // 4. Calcular saldos
@@ -523,13 +545,16 @@ class InventarioFisicoDiarioController extends Controller
         // 5. Obtener tipo de operación
         $idTipoOperacion = $this->getTipoOperacionInventarioFisicoDiario();
 
-        // 6. CREAR CABECERA BORRADOR (SIN número correlativo)
+        // 6. Generar número correlativo
+        $numeroCorrelativo = $this->generarNumeroCorrelativo($sucursalId);
+
+        // 7. 🔥 CREAR CABECERA BORRADOR - CON LA CANTIDAD REAL DE PRODUCTOS
         $cabecera = InventarioFisicoDiarioCabecera::create([
             'IdFecha' => $fechaId,
             'IdCliente' => $clienteId,
             'IdSucursal' => $sucursalId,
             'IdOperador' => $operadorId,
-            'CantidadTotalProductos' => $config->CantidadProductos,
+            'CantidadTotalProductos' => $cantidadReal,  // 👈 CANTIDAD REAL
             'CantidadContados' => 0,
             'FechaRegistro' => now(),
             'ActivoInactivo' => 0,
@@ -537,7 +562,15 @@ class InventarioFisicoDiarioController extends Controller
             'IdTipoOperacion' => $idTipoOperacion,
         ]);
 
-        // 7. CREAR DETALLES
+        Log::info('📝 Borrador de mini inventario creado', [
+            'id_cabecera' => $cabecera->IdFisicoDiario,
+            'productos_disponibles' => $cantidadReal,
+            'productos_configurados' => $cantidadConfigurada,
+            'operador' => $operadorId,
+            'sucursal' => $sucursalId
+        ]);
+
+        // 8. CREAR DETALLES
         foreach ($productos as $producto) {
             InventarioFisicoDiarioDetalle::create([
                 'IdFisicoDiario' => $cabecera->IdFisicoDiario,
@@ -555,10 +588,11 @@ class InventarioFisicoDiarioController extends Controller
             'es_borrador' => false,
             'id_cabecera' => $cabecera->IdFisicoDiario,
             'productos' => $productos,
-            'cantidad_requerida' => $config->CantidadProductos,
+            'cantidad_requerida' => $cantidadReal,  // 👈 CANTIDAD REAL
             'fecha_str' => date('d/m/Y', strtotime($fecha->Fecha)),
             'fecha_id' => $fechaId,
             'numero_correlativo' => null,
+            'cantidad_configurada' => $cantidadConfigurada,  // 👈 PARA INFO (OPCIONAL)
         ]);
     }
 

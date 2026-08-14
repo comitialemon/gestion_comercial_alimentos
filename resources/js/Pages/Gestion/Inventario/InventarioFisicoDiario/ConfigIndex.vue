@@ -201,8 +201,8 @@ const guardar = async () => {
         return
     }
     
-    if (formData.value.cantidad_productos > 100) {
-        if (toast) toast.error('Validación', 'La cantidad no puede ser mayor a 100')
+    if (formData.value.cantidad_productos > 500) {
+        if (toast) toast.error('Validación', 'La cantidad no puede ser mayor a 500')
         return
     }
     
@@ -437,7 +437,7 @@ onMounted(() => {
                                 v-model="formData.cantidad_productos" 
                                 placeholder="Productos"
                                 min="1"
-                                max="100"
+                                max="500"
                                 class="w-full border border-gray-300 rounded-md px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.cantidad_productos }"
                                 @keyup.enter="guardar"

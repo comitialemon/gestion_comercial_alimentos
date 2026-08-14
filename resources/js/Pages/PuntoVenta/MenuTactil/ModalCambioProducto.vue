@@ -8,10 +8,11 @@ const props = defineProps({
     combo: Object,
     opciones: Array,
     cantidad: { type: Number, default: 1 },
-    personalizacionesIniciales: { type: Array, default: () => [] }
+    personalizacionesIniciales: { type: Array, default: () => [] },
+    tipoProducto: { type: String, default: 'normal' }
 })
 
-const emit = defineEmits(['update:visible', 'confirm', 'close'])
+const emit = defineEmits(['update:visible', 'confirm', 'close', 'update:cantidad'])
 
 const pestañaActiva = ref(0)
 const personalizaciones = ref([])
@@ -45,6 +46,127 @@ const getCantidadSeleccionada = (idx, idOriginal, idSustituto) => {
     return found?.cantidad || 0
 }
 
+// 🔥 OBTENER MÁXIMO PERMITIDO PARA UN SUSTITUTO
+const getMaximoPermitido = (idOriginal, idSustituto) => {
+    const grupo = props.opciones?.find(g => g.id_producto_original === idOriginal)
+    const opcion = grupo?.opciones?.find(o => o.id_sustituto === idSustituto)
+    return opcion?.cantidad_maxima || getTotalUnidades(idOriginal)
+}
+
+// 🔥 FUNCIÓN PRINCIPAL: Actualizar cantidad desde input CON VALIDACIÓN ESTRICTA
+const actualizarCantidadSustituto = (idx, idOriginal, idSustituto, nuevoValor) => {
+    // 1. Limpiar el valor (solo números)
+    let valorLimpio = nuevoValor.replace(/[^0-9]/g, '')
+    let cantidad = parseInt(valorLimpio) || 0
+    
+    // 2. Obtener límites
+    const maximo = getMaximoPermitido(idOriginal, idSustituto)
+    const totalUnidades = getTotalUnidades(idOriginal)
+    const yaSeleccionado = getCantidadSeleccionada(idx, idOriginal, idSustituto)
+    const disponible = getUnidadesOriginales(idx, idOriginal) + yaSeleccionado
+    
+    // 3. 🔥 VALIDACIÓN ESTRICTA: No puede exceder el disponible
+    if (cantidad > disponible) {
+        cantidad = disponible
+    }
+    
+    // 4. No puede ser negativo
+    if (cantidad < 0) {
+        cantidad = 0
+    }
+    
+    // 5. No puede exceder el máximo por opción
+    if (cantidad > maximo) {
+        cantidad = maximo
+    }
+    
+    // 6. Actualizar la personalización
+    if (!personalizaciones.value[idx]) {
+        personalizaciones.value[idx] = { sustitutos: [] }
+    }
+    const combo = personalizaciones.value[idx]
+    if (!combo.sustitutos) combo.sustitutos = []
+    
+    const existente = combo.sustitutos.find(s => 
+        s.id_producto_original === idOriginal && 
+        s.id_producto_sustituto === idSustituto
+    )
+    
+    if (cantidad === 0) {
+        // Eliminar si es 0
+        const index = combo.sustitutos.findIndex(s => 
+            s.id_producto_original === idOriginal && 
+            s.id_producto_sustituto === idSustituto
+        )
+        if (index !== -1) {
+            combo.sustitutos.splice(index, 1)
+        }
+    } else if (existente) {
+        existente.cantidad = cantidad
+    } else {
+        combo.sustitutos.push({ 
+            id_producto_original: idOriginal, 
+            id_producto_sustituto: idSustituto, 
+            cantidad: cantidad 
+        })
+    }
+}
+
+// 🔥 FUNCIÓN PARA INPUT DE CANTIDAD DE COMBOS CON VALIDACIÓN
+const actualizarCantidadTotal = (nuevoValor) => {
+    let cantidad = parseInt(nuevoValor) || 1
+    
+    // Validar límites
+    if (cantidad < 1) cantidad = 1
+    if (cantidad > 99) cantidad = 99
+    
+    const diff = cantidad - personalizaciones.value.length
+    
+    if (diff > 0) {
+        // Agregar más combos
+        for (let i = 0; i < diff; i++) {
+            personalizaciones.value.push({ sustitutos: [] })
+        }
+    } else if (diff < 0) {
+        // Quitar combos
+        personalizaciones.value.splice(cantidad)
+        if (pestañaActiva.value >= personalizaciones.value.length) {
+            pestañaActiva.value = personalizaciones.value.length - 1
+        }
+    }
+    
+    emit('update:cantidad', cantidad)
+}
+
+// 🔥 MANEJADOR PARA INPUT (convierte el evento)
+const handleInputCantidadTotal = (e) => {
+    const val = e.target.value
+    // Si está vacío, no hacer nada
+    if (val === '') return
+    actualizarCantidadTotal(val)
+}
+
+// 🔥 MANEJADOR PARA BLUR (cuando pierde el foco, corregir)
+const handleBlurCantidadTotal = (e) => {
+    let val = parseInt(e.target.value) || 1
+    if (val < 1) val = 1
+    if (val > 99) val = 99
+    e.target.value = val
+    actualizarCantidadTotal(val)
+}
+
+// Botones + y - para cantidad de combos
+const incrementarCombos = () => {
+    const nueva = personalizaciones.value.length + 1
+    if (nueva <= 99) actualizarCantidadTotal(nueva)
+}
+
+const decrementarCombos = () => {
+    const nueva = personalizaciones.value.length - 1
+    if (nueva >= 1) actualizarCantidadTotal(nueva)
+}
+
+// Botones + y - para sustitutos (con validación)
 const seleccionarSustituto = (idx, idOriginal, idSustituto) => {
     if (!personalizaciones.value[idx]) {
         personalizaciones.value[idx] = { sustitutos: [] }
@@ -58,14 +180,20 @@ const seleccionarSustituto = (idx, idOriginal, idSustituto) => {
     )
     
     const disponible = getUnidadesOriginales(idx, idOriginal)
-    const maximo = props.opciones?.find(g => g.id_producto_original === idOriginal)
-        ?.opciones?.find(o => o.id_sustituto === idSustituto)?.cantidad_maxima || getTotalUnidades(idOriginal)
+    const maximo = getMaximoPermitido(idOriginal, idSustituto)
     
     if (existente) {
-        if (existente.cantidad < maximo && disponible > 0) existente.cantidad++
+        // Solo incrementar si no excede el máximo y hay disponibilidad
+        if (existente.cantidad < maximo && disponible > 0) {
+            existente.cantidad++
+        }
     } else {
         if (disponible > 0) {
-            combo.sustitutos.push({ id_producto_original: idOriginal, id_producto_sustituto: idSustituto, cantidad: 1 })
+            combo.sustitutos.push({ 
+                id_producto_original: idOriginal, 
+                id_producto_sustituto: idSustituto, 
+                cantidad: 1 
+            })
         }
     }
 }
@@ -91,6 +219,7 @@ const estaCompleto = (idx) => {
     for (const grupo of props.opciones) {
         if (!grupo.opciones?.length) continue
         const reemplazado = getTotalReemplazado(idx, grupo.id_producto_original)
+        // 🔥 No puede exceder el total de unidades
         if (reemplazado > getTotalUnidades(grupo.id_producto_original)) return false
     }
     return true
@@ -134,7 +263,8 @@ watch(() => props.visible, (visible) => {
         if (props.personalizacionesIniciales?.length) {
             personalizaciones.value = JSON.parse(JSON.stringify(props.personalizacionesIniciales))
         } else {
-            personalizaciones.value = Array.from({ length: props.cantidad || 1 }, () => ({ sustitutos: [] }))
+            const cantidadInicial = props.cantidad || 1
+            personalizaciones.value = Array.from({ length: cantidadInicial }, () => ({ sustitutos: [] }))
         }
     }
 })
@@ -170,6 +300,13 @@ const progreso = computed(() => {
 })
 
 const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
+
+const etiquetaPersonalizacion = computed(() => {
+    if (props.tipoProducto === 'pack') return 'Personalizar pack'
+    if (props.tipoProducto === 'combo') return 'Personalizar combo'
+    if (props.tipoProducto === 'con_opciones') return 'Personalizar producto'
+    return 'Personalizar'
+})
 </script>
 
 <template>
@@ -185,7 +322,7 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                             <i v-else class="fas fa-box-open text-primary-600 text-xs"></i>
                         </div>
                         <div>
-                            <h3 class="text-white font-bold text-sm">Personalizar combo</h3>
+                            <h3 class="text-white font-bold text-sm">{{ etiquetaPersonalizacion }}</h3>
                             <p class="text-white/70 text-[10px]">{{ combo?.nombre }}</p>
                         </div>
                     </div>
@@ -199,20 +336,46 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                     <div class="h-0.5 bg-primary-500 transition-all duration-300" :style="{ width: progreso + '%' }"></div>
                 </div>
 
-                <!-- Pestañas -->
-                <div v-if="mostrarPestanas" class="flex border-b overflow-x-auto bg-gray-50 text-xs">
+                <!-- Pestañas con INPUT numérico -->
+                <div v-if="mostrarPestanas" class="flex items-center border-b bg-gray-50 p-2 gap-2 overflow-x-auto">
                     <button 
                         v-for="(_, index) in personalizaciones" 
                         :key="index"
                         @click="pestañaActiva = index"
-                        class="px-3 py-1.5 font-medium transition whitespace-nowrap"
+                        class="px-3 py-1 text-xs font-medium rounded-lg transition whitespace-nowrap"
                         :class="pestañaActiva === index 
-                            ? 'border-b-2 border-primary-600 text-primary-600' 
-                            : 'text-gray-500 hover:text-gray-700'"
+                            ? 'bg-primary-100 text-primary-700 border border-primary-300' 
+                            : 'bg-white text-gray-500 hover:bg-gray-100 border border-gray-200'"
                     >
                         #{{ index + 1 }}
                         <span v-if="estaCompleto(index)" class="ml-0.5 text-green-500">✓</span>
                     </button>
+                    
+                    <!-- 🔥 INPUT PARA CANTIDAD TOTAL DE COMBOS CON VALIDACIÓN -->
+                    <div class="flex items-center gap-1 ml-auto bg-white rounded-lg border border-gray-200 px-1.5 py-0.5">
+                        <button 
+                            @click="decrementarCombos"
+                            class="w-5 h-5 rounded bg-red-100 hover:bg-red-200 text-red-600 text-xs flex items-center justify-center"
+                            :disabled="personalizaciones.length <= 1"
+                        >−</button>
+                        
+                        <input 
+                            type="number"
+                            :value="personalizaciones.length"
+                            @input="handleInputCantidadTotal"
+                            @blur="handleBlurCantidadTotal"
+                            min="1"
+                            max="99"
+                            class="w-8 text-center text-xs font-bold border-0 focus:ring-0 p-0"
+                            style="appearance: textfield; -moz-appearance: textfield;"
+                        />
+                        
+                        <button 
+                            @click="incrementarCombos"
+                            class="w-5 h-5 rounded bg-primary-100 hover:bg-primary-200 text-primary-600 text-xs flex items-center justify-center"
+                            :disabled="personalizaciones.length >= 99"
+                        >+</button>
+                    </div>
                 </div>
 
                 <!-- Contenido -->
@@ -249,7 +412,7 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                                 <span>🔄 Reemp: <strong class="text-blue-600">{{ getTotalReemplazado(pestañaActiva, grupo.id_producto_original) }}</strong></span>
                             </div>
                             
-                            <!-- Opciones -->
+                            <!-- 🔥 OPCIONES CON INPUT NUMÉRICO Y VALIDACIÓN -->
                             <div class="space-y-1.5">
                                 <div v-for="op in grupo.opciones" :key="op.id_sustituto"
                                      class="flex items-center gap-2 p-2 rounded-lg border text-sm transition"
@@ -258,16 +421,39 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                                          : 'bg-white border-gray-200 hover:bg-gray-50'">
                                     <div class="flex-1 min-w-0">
                                         <div class="text-xs font-medium text-gray-800 truncate">{{ op.nombre }}</div>
-                                        <div class="text-[10px] text-gray-400">máx {{ op.cantidad_maxima || getTotalUnidades(grupo.id_producto_original) }}</div>
+                                        <div class="text-[10px] text-gray-400">
+                                            máx {{ op.cantidad_maxima || getTotalUnidades(grupo.id_producto_original) }}
+                                        </div>
                                     </div>
+                                    
+                                    <!-- 🔥 CONTROLES CON INPUT Y VALIDACIÓN -->
                                     <div class="flex items-center gap-1">
-                                        <button @click="removerSustituto(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
-                                                class="w-6 h-6 rounded bg-red-100 hover:bg-red-200 text-red-600 text-sm disabled:opacity-30 flex items-center justify-center"
-                                                :disabled="getCantidadSeleccionada(pestañaActiva, grupo.id_producto_original, op.id_sustituto) === 0">−</button>
-                                        <span class="w-6 text-center font-bold text-sm">{{ getCantidadSeleccionada(pestañaActiva, grupo.id_producto_original, op.id_sustituto) }}</span>
-                                        <button @click="seleccionarSustituto(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
-                                                class="w-6 h-6 rounded bg-primary-100 hover:bg-primary-200 text-primary-600 text-sm disabled:opacity-30 flex items-center justify-center"
-                                                :disabled="getUnidadesOriginales(pestañaActiva, grupo.id_producto_original) <= 0">+</button>
+                                        <button 
+                                            @click="removerSustituto(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
+                                            class="w-6 h-6 rounded bg-red-100 hover:bg-red-200 text-red-600 text-sm disabled:opacity-30 flex items-center justify-center"
+                                            :disabled="getCantidadSeleccionada(pestañaActiva, grupo.id_producto_original, op.id_sustituto) === 0"
+                                        >−</button>
+                                        
+                                        <input 
+                                            type="number"
+                                            :value="getCantidadSeleccionada(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
+                                            @input="actualizarCantidadSustituto(
+                                                pestañaActiva, 
+                                                grupo.id_producto_original, 
+                                                op.id_sustituto, 
+                                                $event.target.value
+                                            )"
+                                            min="0"
+                                            :max="getUnidadesOriginales(pestañaActiva, grupo.id_producto_original) + getCantidadSeleccionada(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
+                                            class="w-10 text-center font-bold text-sm border rounded-lg p-0.5 focus:border-primary-400 focus:outline-none"
+                                            style="appearance: textfield; -moz-appearance: textfield;"
+                                        />
+                                        
+                                        <button 
+                                            @click="seleccionarSustituto(pestañaActiva, grupo.id_producto_original, op.id_sustituto)"
+                                            class="w-6 h-6 rounded bg-primary-100 hover:bg-primary-200 text-primary-600 text-sm disabled:opacity-30 flex items-center justify-center"
+                                            :disabled="getUnidadesOriginales(pestañaActiva, grupo.id_producto_original) <= 0"
+                                        >+</button>
                                     </div>
                                 </div>
                             </div>
@@ -296,7 +482,7 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                 <div class="bg-gray-50 px-4 py-2.5 border-t">
                     <div class="flex justify-between items-center mb-2">
                         <div>
-                            <p class="text-[10px] text-gray-500">Precio</p>
+                            <p class="text-[10px] text-gray-500">Precio unitario</p>
                             <p class="text-sm font-bold text-primary-700">{{ Number(combo?.precio_real || 0).toFixed(2) }} Bs</p>
                         </div>
                         <div class="text-right">
@@ -312,7 +498,7 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
                         <button @click="siguiente" 
                                 class="flex-1 py-1.5 rounded-lg bg-primary-600 text-white text-xs font-medium hover:bg-primary-700 disabled:opacity-50"
                                 :disabled="!estaCompleto(pestañaActiva)">
-                            {{ mostrarPestanas && pestañaActiva < personalizaciones.length - 1 ? 'Siguiente →' : 'Agregar' }}
+                            {{ mostrarPestanas && pestañaActiva < personalizaciones.length - 1 ? 'Siguiente →' : 'Agregar al carrito' }}
                         </button>
                     </div>
                     <button @click="cerrar" class="w-full mt-1 text-[10px] text-gray-400 hover:text-gray-600">Cancelar</button>
@@ -321,3 +507,17 @@ const mostrarPestanas = computed(() => personalizaciones.value.length > 1)
         </div>
     </Teleport>
 </template>
+
+<style scoped>
+input[type="number"] {
+    -webkit-appearance: textfield;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+</style>

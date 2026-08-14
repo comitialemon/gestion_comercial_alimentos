@@ -67,7 +67,7 @@ class InventarioFisicoDiarioConfigController extends Controller
     {
         $request->validate([
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'CantidadProductos' => 'required|integer|min:1|max:100',
+            'CantidadProductos' => 'required|integer|min:1|max:500',
         ]);
 
         $clienteId = session('cliente_id');
@@ -147,7 +147,7 @@ class InventarioFisicoDiarioConfigController extends Controller
     {
         $request->validate([
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'CantidadProductos' => 'required|integer|min:1|max:100',
+            'CantidadProductos' => 'required|integer|min:1|max:500',
         ]);
 
         $clienteId = session('cliente_id');
