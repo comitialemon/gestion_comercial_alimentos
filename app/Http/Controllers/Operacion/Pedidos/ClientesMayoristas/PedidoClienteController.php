@@ -445,14 +445,41 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ FINALIZAR PEDIDO (VERSIÓN CORREGIDA CON VERIFICACIÓN)
+     * ✅ FINALIZAR PEDIDO - VALIDACIÓN CORREGIDA CON diffInDays()
      */
     public function finalizarPedido(Request $request, $idPedido)
     {
+        // ✅ VALIDACIÓN CON FECHA DE ENTREGA MÍNIMO 1 DÍA DESPUÉS DE HOY
         $request->validate([
             'IdCliente' => 'required|exists:todos_cliente,IdCliente',
-            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'FechaEntrega' => 'nullable|date|after_or_equal:today',
+            'IdSucursal' => [
+                'required',
+                'exists:todos_cliente_sucursal,IdClienteSucursal',
+                function ($attribute, $value, $fail) use ($request) {
+                    $exists = ClienteSucursal::where('IdClienteSucursal', $value)
+                        ->where('IdCliente', $request->IdCliente)
+                        ->exists();
+                    if (!$exists) {
+                        $fail('La sucursal no pertenece al cliente seleccionado.');
+                    }
+                }
+            ],
+            'FechaEntrega' => [
+                'nullable',
+                'date',
+                function ($attribute, $value, $fail) {
+                    $fechaEntrega = Carbon::parse($value);
+                    $hoy = Carbon::now('America/La_Paz');
+                    
+                    // ✅ Calcular diferencia en días
+                    $diasDiferencia = $hoy->diffInDays($fechaEntrega, false);
+                    
+                    // ✅ Si la diferencia es menor a 1 día (0 o negativa), falla
+                    if ($diasDiferencia < 1) {
+                        $fail('La fecha de entrega debe ser mínimo 1 día después de hoy.');
+                    }
+                }
+            ],
             'Observaciones' => 'nullable|string|max:500',
         ]);
 
@@ -501,40 +528,32 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ ==========================================
             // ✅ OBTENER NUEVO NÚMERO DE PEDIDO POR SUCURSAL
-            // ✅ ==========================================
-            
-            // 1. Obtener el máximo número de pedido para esta sucursal
             $maxNumero = PedidoCliente::where('IdCliente', $request->IdCliente)
                 ->where('IdSucursal', $request->IdSucursal)
                 ->where('NumeroPedido', '!=', '0')
                 ->whereNotNull('NumeroPedido')
                 ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
 
-            // 2. Calcular el siguiente número
             $nuevoNumero = $maxNumero + 1;
             $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
 
-            // 3. 🔒 VERIFICAR QUE NO EXISTA (por si acaso)
+            // 🔒 VERIFICAR QUE NO EXISTA
             $existe = PedidoCliente::where('IdCliente', $request->IdCliente)
                 ->where('IdSucursal', $request->IdSucursal)
                 ->where('NumeroPedido', $numeroPedidoFormateado)
                 ->exists();
 
             if ($existe) {
-                // Si existe (casi nunca pasa), buscar el siguiente disponible
                 $nuevoNumero = $nuevoNumero + 1;
                 $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
                 
-                // Verificar una vez más (por si acaso)
                 $existeNuevamente = PedidoCliente::where('IdCliente', $request->IdCliente)
                     ->where('IdSucursal', $request->IdSucursal)
                     ->where('NumeroPedido', $numeroPedidoFormateado)
                     ->exists();
                     
                 if ($existeNuevamente) {
-                    // Si sigue existiendo, buscar hasta encontrar uno libre
                     do {
                         $nuevoNumero++;
                         $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
@@ -546,7 +565,7 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ ACTUALIZAR PEDIDO CON EL NUEVO NÚMERO
+            // ✅ ACTUALIZAR PEDIDO
             $pedido->update([
                 'IdCliente' => $request->IdCliente,
                 'IdSucursal' => $request->IdSucursal,
@@ -665,14 +684,12 @@ class PedidoClienteController extends Controller
                     ->with('error', 'El pedido no existe.');
             }
 
-            // ✅ VERIFICAR QUE TENGA PRODUCTOS
             $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
             if ($totalDetalles === 0) {
                 return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                     ->with('error', 'El pedido no tiene productos.');
             }
 
-            // ✅ OBTENER DATOS DE LA EMPRESA
             $empresa = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente')
                 ->where('IdCliente', $clienteId)
@@ -683,14 +700,12 @@ class PedidoClienteController extends Controller
                 ->where('IdClienteSucursal', $sucursalId)
                 ->first(['Nombre', 'NumeroSucursal', 'Direccion', 'Telefono']);
 
-            // ✅ OBTENER DATOS DEL OPERADOR
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
                 ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
 
-            // ✅ AGRUPAR POR ORDENCONTENEDOR (cada contenedor es independiente)
             $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
@@ -712,13 +727,9 @@ class PedidoClienteController extends Controller
                 ];
             })->values();
 
-            // ✅ CALCULAR TOTALES
             $totalUnidades = $pedido->detalles->sum('Cantidad');
             $totalContenedores = $pedido->detalles->groupBy('OrdenContenedor')->count();
 
-            // =============================================
-            // GENERAR PDF
-            // =============================================
             $pdf = new \TCPDF('P', 'mm', array(80, 300), true, 'UTF-8', false);
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
@@ -726,12 +737,8 @@ class PedidoClienteController extends Controller
             $pdf->SetAutoPageBreak(true, 10);
             $pdf->AddPage();
 
-            // =============================================
-            // CABECERA
-            // =============================================
             $y = 10;
             
-            // Empresa
             $pdf->SetFont('helvetica', 'B', 12);
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 6, $empresa->Nombre ?? 'EMPRESA', 0, 1, 'C');
@@ -754,7 +761,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 2, '----------------------------------------', 0, 1, 'C');
             $y += 4;
 
-            // Título
             $pdf->SetFont('helvetica', 'B', 11);
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 5, 'PEDIDO DE PRODUCTOS', 0, 1, 'C');
@@ -765,9 +771,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 4, 'N° ' . ($pedido->NumeroPedido ?? '000000'), 0, 1, 'C');
             $y += 6;
 
-            // =============================================
-            // INFORMACIÓN DEL PEDIDO
-            // =============================================
             $pdf->SetFont('helvetica', '', 8);
             
             $pdf->SetXY(5, $y);
@@ -796,10 +799,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(30, 4, $pedido->EstadoPedido ?? 'Pendiente', 0, 1, 'R');
             $y += 6;
 
-            // =============================================
-            // TABLA DE PRODUCTOS
-            // =============================================
-            
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY(5, $y);
             $pdf->Cell(5, 4, '#', 0, 0, 'C');
@@ -814,7 +813,6 @@ class PedidoClienteController extends Controller
             $contador = 0;
             
             foreach ($detallesAgrupados as $item) {
-                // ✅ Contenedor (usamos Codigo)
                 $pdf->SetFont('helvetica', 'B', 7);
                 $pdf->SetXY(5, $y);
                 $pdf->Cell(70, 3, '#' . $item['Orden'] . ' ' . $item['Codigo'] . ' (Cap: ' . $item['CapacidadTotal'] . ' und)', 0, 1, 'L');
@@ -846,9 +844,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 1, '', 'T', 1);
             $y += 3;
 
-            // =============================================
-            // TOTALES
-            // =============================================
             $pdf->SetFont('helvetica', 'B', 8);
             
             $pdf->SetXY(5, $y);
@@ -863,9 +858,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(30, 5, number_format($totalUnidades, 0, ',', '.'), 0, 1, 'R');
             $y += 6;
 
-            // =============================================
-            // OBSERVACIONES
-            // =============================================
             if ($pedido->Observaciones) {
                 $pdf->SetFont('helvetica', 'B', 7);
                 $pdf->SetXY(5, $y);
@@ -878,9 +870,6 @@ class PedidoClienteController extends Controller
                 $y = $pdf->GetY() + 2;
             }
 
-            // =============================================
-            // PIE DE PÁGINA
-            // =============================================
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 2, '----------------------------------------', 0, 1, 'C');
             $y += 4;
@@ -893,9 +882,6 @@ class PedidoClienteController extends Controller
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 3, 'Gracias por su pedido', 0, 1, 'C');
 
-            // =============================================
-            // SALIDA DEL PDF
-            // =============================================
             $nombreArchivo = 'Pedido_' . ($pedido->NumeroPedido ?? '000000') . '.pdf';
             $pdf->Output($nombreArchivo, 'I');
             exit;

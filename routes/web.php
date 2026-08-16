@@ -1278,19 +1278,126 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 // CONTENEDORES
                 // ============================================================
                 Route::prefix('contenedores')->group(function () {
-                    // ... (todo el código de contenedores que ya tienes)
+                    // Listado principal
+                    Route::get('/', [ContenedorController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.index');
+                    
+                    // Gestión de estados
+                    Route::get('/gestion-estado', [ContenedorController::class, 'gestionEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.gestion-estado');
+                    
+                    // Crear / Editar
+                    Route::get('/create', [ContenedorController::class, 'create'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.create');
+                    
+                    Route::post('/', [ContenedorController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.store');
+                    
+                    Route::get('/{id}/edit', [ContenedorController::class, 'edit'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.edit');
+                    
+                    Route::put('/{id}', [ContenedorController::class, 'update'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.update');
+                    
+                    // Ver / Eliminar
+                    Route::get('/{id}', [ContenedorController::class, 'show'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.show');
+                    
+                    Route::delete('/{id}', [ContenedorController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.destroy');
+                    
+                    // ACCIONES ESPECIALES
+                    Route::post('/{id}/asignar-grupos', [ContenedorController::class, 'asignarGrupos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-grupos');
+                    
+                    Route::post('/{id}/finalizar', [ContenedorController::class, 'finalizar'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.finalizar');
+                    
+                    Route::post('/{id}/cambiar-estado', [ContenedorController::class, 'cambiarEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.cambiar-estado');
+                    
+                    Route::post('/{id}/toggle-estado', [ContenedorController::class, 'toggleEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.toggle-estado');
+                    
+                    Route::get('/{id}/productos', [ContenedorController::class, 'getProductos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.productos');
+                    
+                    // TIPOS DE CONTENEDOR
+                    Route::prefix('tipos')->group(function () {
+                        Route::get('/', [ContenedorTipoController::class, 'index'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.index');
+                        
+                        Route::get('/create', [ContenedorTipoController::class, 'create'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.create');
+                        
+                        Route::post('/', [ContenedorTipoController::class, 'store'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.store');
+                        
+                        Route::get('/{id}/edit', [ContenedorTipoController::class, 'edit'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.edit');
+                        
+                        Route::put('/{id}', [ContenedorTipoController::class, 'update'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.update');
+                        
+                        Route::delete('/{id}', [ContenedorTipoController::class, 'destroy'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.destroy');
+                        
+                        Route::post('/{id}/cambiar-estado', [ContenedorTipoController::class, 'cambiarEstado'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.cambiar-estado');
+                        
+                        Route::get('/list', [ContenedorTipoController::class, 'getTipos'])
+                            ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.list');
+                    });
                 });
 
                 // ============================================================
                 // PEDIDOS CLIENTES
                 // ============================================================
                 Route::prefix('pedidos-clientes')->group(function () {
-                    // ... (todo el código de pedidos clientes que ya tienes)
+                    // Lista de pedidos
+                    Route::get('/', [PedidoClienteController::class, 'index'])
+                        ->name('operacion.pedidos-clientes.pedidos.index');
+                    
+                    // Crear nuevo pedido
+                    Route::get('/create', [PedidoClienteController::class, 'create'])
+                        ->name('operacion.pedidos-clientes.pedidos.create');
+
+                    // API: Agregar al carrito
+                    Route::post('/carrito/agregar', [PedidoClienteController::class, 'agregarAlCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.agregar');
+
+                    // API: Eliminar del carrito
+                    Route::delete('/carrito/detalle/{id}', [PedidoClienteController::class, 'eliminarDelCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.eliminar');
+
+                    // API: Vaciar carrito
+                    Route::delete('/carrito/{id}/vaciar', [PedidoClienteController::class, 'vaciarCarrito'])
+                        ->name('operacion.pedidos-clientes.api.carrito.vaciar');
+
+                    // API: Obtener productos de un contenedor
+                    Route::get('/contenedor/{id}/productos', [ContenedorController::class, 'getProductos'])
+                        ->name('operacion.pedidos-clientes.api.contenedor-productos');
+
+                    // Revisar pedido
+                    Route::get('/{id}/review', [PedidoClienteController::class, 'review'])
+                        ->name('operacion.pedidos-clientes.pedidos.review');
+                    
+                    // Ver detalle del pedido
+                    Route::get('/{id}', [PedidoClienteController::class, 'show'])
+                        ->name('operacion.pedidos-clientes.pedidos.show');
+                    
+                    // Finalizar pedido
+                    Route::post('/{id}/finalizar', [PedidoClienteController::class, 'finalizarPedido'])
+                        ->name('operacion.pedidos-clientes.pedidos.finalizar');
+
+                    // PDF del pedido
+                    Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
+                        ->name('operacion.pedidos-clientes.pedidos.pdf');
                 });
             });
 
             // ============================================================
-            // REPORTES DE PEDIDOS - SUPERVISOR (SOLO ESTE GRUPO DEBE QUEDAR)
+            // REPORTES DE PEDIDOS
             // ============================================================
             Route::prefix('reportes')->group(function () {
                 
@@ -1332,13 +1439,15 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         ->name('operacion.pedidos.reportes.informe-sucursal-mayorista.exportar-excel');
                 });
 
+                // ============================================================
                 // ✅ NUEVO: INFORME CLIENTES MAYORISTAS
-                // ✅ INFORME CLIENTES MAYORISTAS
+                // ============================================================
                 Route::prefix('informe-clientes-mayoristas')->group(function () {
+                    // Vista del informe
                     Route::get('/', [InformePedidosClientesMayoristasController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.index');
                     
-                    // PDF - SOLO RESUMEN
+                    // PDF - SOLO RESUMEN (Matriz)
                     Route::post('/exportar-pdf-resumen', [InformePedidosClientesMayoristasController::class, 'exportarPdfResumen'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-resumen');
                     
@@ -1346,21 +1455,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/exportar-pdf-detalle', [InformePedidosClientesMayoristasController::class, 'exportarPdfDetalle'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-detalle');
                 });
+
             });
 
-        }); // ← FIN DEL GRUPO Route::prefix('pedidos')
-        
-        // ============================================================
-        // ⚠️ ELIMINA ESTE GRUPO DUPLICADO ⚠️
-        // ============================================================
-        // Route::prefix('reportes')->group(function () {
-        //     ... (todo esto debe ELIMINARSE) ...
-        // });
+        });
 
         // ============================================================
-        // REPORTES DE OPERACIÓN (estos están bien, NO los elimines)
+        // REPORTES DE OPERACIÓN (Arqueos, Inventarios, etc.)
         // ============================================================
         Route::prefix('reportes')->group(function () {
+            
             // Arqueo Caja Bolivianos - Automático
             Route::prefix('arqueo-caja-bolivianos-automatico')->group(function () {
                 Route::get('/', [ArqueoCajaBolivianosAutomaticoController::class, 'index'])
@@ -1379,13 +1483,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // Inventario Relación Venta
             Route::prefix('inventario-relacion-venta')->group(function () {
-                Route::get('/', [InventarioRelacionVentaController::class, 'index'])->name('operacion.reportes.inventario-relacion-venta');
+                Route::get('/', [InventarioRelacionVentaController::class, 'index'])
+                    ->name('operacion.reportes.inventario-relacion-venta');
             });
 
             // Inventario por Tipo de Operación (Sucursal Logueada)
             Route::prefix('inventario-tipo-operacion')->group(function () {
-                Route::get('/', [InventarioTipoOperacionController::class, 'index'])->name('operacion.reportes.inventario-tipo-operacion');
-                Route::get('/exportar', [InventarioTipoOperacionController::class, 'exportar'])->name('operacion.reportes.inventario-tipo-operacion.exportar');
+                Route::get('/', [InventarioTipoOperacionController::class, 'index'])
+                    ->name('operacion.reportes.inventario-tipo-operacion');
+                Route::get('/exportar', [InventarioTipoOperacionController::class, 'exportar'])
+                    ->name('operacion.reportes.inventario-tipo-operacion.exportar');
             });
 
             // Inventario por Tipo de Operación (escogiendo Sucursal)
@@ -1395,6 +1502,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/exportar', [InventarioTipoOperacionSucursalController::class, 'exportar'])
                     ->name('operacion.reportes.inventario-tipo-operacion-sucursal.exportar');
             });
+
         });
 
     });
