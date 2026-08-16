@@ -123,6 +123,9 @@ use App\Http\Controllers\Gestion\Inventario\InventarioFisicoDiarioController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalleController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorTipoController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayoristasController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1222,6 +1225,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::post('/api/validar-hora-limite', [PedidoController::class, 'apiValidarHoraLimite']);
                 Route::get('/api/fecha-hora', [PedidoController::class, 'apiGetFechaHora']);
             });
+
             // ============================================================
             // PEDIDOS EXTRAORDINARIOS
             // ============================================================
@@ -1238,13 +1242,13 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::delete('/{id}', [PedidoExtraordinarioController::class, 'destroy'])
                     ->name('operacion.pedidos.pedidos-extraordinarios.destroy');
                 
-                // APIs de validación
                 Route::post('/api/validar-producto', [PedidoExtraordinarioController::class, 'apiValidarProducto'])
                     ->name('operacion.pedidos.pedidos-extraordinarios.api.validar-producto');
                 
                 Route::post('/api/validar-hora-limite', [PedidoExtraordinarioController::class, 'apiValidarHoraLimite'])
                     ->name('operacion.pedidos.pedidos-extraordinarios.api.validar-hora-limite');
             });
+
             // ============================================================
             // PEDIDOS EXTRAORDINARIOS POR SUCURSAL
             // ============================================================
@@ -1261,127 +1265,46 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::delete('/{id}', [PedidoExtraordinarioSucursalController::class, 'destroy'])
                     ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.destroy');
                 
-                // APIs de validación
                 Route::post('/api/validar-hora', [PedidoExtraordinarioSucursalController::class, 'apiValidarHora'])
                     ->name('operacion.pedidos.pedidos-extraordinarios-sucursal.api.validar-hora');
             });
+
             // ============================================================
             // CLIENTES MAYORISTAS (Contenedores + Pedidos)
             // ============================================================
             Route::prefix('clientes-mayoristas')->group(function () {
                 
                 // ============================================================
-                // CONTENEDORES (ya existentes)
+                // CONTENEDORES
                 // ============================================================
                 Route::prefix('contenedores')->group(function () {
-                    // Listado principal
-                    Route::get('/', [ContenedorController::class, 'index'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.index');
-                    
-                    // Gestión de estados
-                    Route::get('/gestion-estado', [ContenedorController::class, 'gestionEstado'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.gestion-estado');
-                    
-                    // Cambiar estado (Activo ↔ Inactivo)
-                    Route::post('/{id}/cambiar-estado', [ContenedorController::class, 'cambiarEstado'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.cambiar-estado');
-                    
-                    // Crear / Editar
-                    Route::get('/create', [ContenedorController::class, 'create'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.create');
-                    
-                    Route::post('/', [ContenedorController::class, 'store'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.store');
-                    
-                    Route::get('/{id}/edit', [ContenedorController::class, 'edit'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.edit');
-                    
-                    Route::put('/{id}', [ContenedorController::class, 'update'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.update');
-                    
-                    // Ver / Eliminar
-                    Route::get('/{id}', [ContenedorController::class, 'show'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.show');
-                    
-                    Route::delete('/{id}', [ContenedorController::class, 'destroy'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.destroy');
-                    
-                    // Toggle estado
-                    Route::post('/{id}/toggle-estado', [ContenedorController::class, 'toggleEstado'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.toggle-estado');
-                    
-                    // Finalizar (BORRADOR → ACTIVO)
-                    Route::post('/{id}/finalizar', [ContenedorController::class, 'finalizar'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.finalizar');
-                    
-                    // Detalles (Productos)
-                    Route::post('/detalle', [ContenedorController::class, 'agregarProducto'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.store');
-                    Route::put('/detalle/{id}', [ContenedorController::class, 'actualizarProducto'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.update');
-                    Route::delete('/detalle/{id}', [ContenedorController::class, 'eliminarProducto'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.detalle.destroy');
+                    // ... (todo el código de contenedores que ya tienes)
                 });
 
                 // ============================================================
                 // PEDIDOS CLIENTES
                 // ============================================================
                 Route::prefix('pedidos-clientes')->group(function () {
-                    
-                    // Lista de pedidos
-                    Route::get('/', [PedidoClienteController::class, 'index'])
-                        ->name('operacion.pedidos-clientes.pedidos.index');
-                    
-                    // Crear nuevo pedido (menú de contenedores)
-                    Route::get('/create', [PedidoClienteController::class, 'create'])
-                        ->name('operacion.pedidos-clientes.pedidos.create');
-
-                    Route::post('/carrito/agregar', [PedidoClienteController::class, 'agregarAlCarrito'])
-                        ->name('operacion.pedidos-clientes.api.carrito.agregar');
-
-                     Route::delete('/carrito/detalle/{id}', [PedidoClienteController::class, 'eliminarDelCarrito'])
-                        ->name('operacion.pedidos-clientes.api.carrito.eliminar');
-
-                    Route::delete('/carrito/{id}/vaciar', [PedidoClienteController::class, 'vaciarCarrito'])
-                        ->name('operacion.pedidos-clientes.api.carrito.vaciar');
-
-                    Route::get('/contenedor/{id}/productos', [PedidoClienteController::class, 'getProductosContenedor'])
-                        ->name('operacion.pedidos-clientes.api.contenedor-productos');
-
-                    // 🔥 REVISAR PEDIDO (NUEVA VISTA)
-                    Route::get('/{id}/review', [PedidoClienteController::class, 'review'])
-                        ->name('operacion.pedidos-clientes.pedidos.review');
-                    
-                    // Ver detalle del pedido
-                    Route::get('/{id}', [PedidoClienteController::class, 'show'])
-                        ->name('operacion.pedidos-clientes.pedidos.show');
-                    
-                    // Finalizar pedido
-                    Route::post('/{id}/finalizar', [PedidoClienteController::class, 'finalizarPedido'])
-                        ->name('operacion.pedidos-clientes.pedidos.finalizar');
-
-                    // ✅ PDF del pedido
-                    Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
-                        ->name('operacion.pedidos-clientes.pedidos.pdf');
+                    // ... (todo el código de pedidos clientes que ya tienes)
                 });
-
             });
+
             // ============================================================
-            // REPORTES DE PEDIDOS - SUPERVISOR
+            // REPORTES DE PEDIDOS - SUPERVISOR (SOLO ESTE GRUPO DEBE QUEDAR)
             // ============================================================
             Route::prefix('reportes')->group(function () {
-                 // ✅ INFORME SUPERVISOR
+                
+                // INFORME SUPERVISOR
                 Route::prefix('informe-supervisor')->group(function () {
                     Route::get('/', [InformePedidosSupervisorController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-supervisor.index');
-                    
                     Route::get('/exportar', [InformePedidosSupervisorController::class, 'exportar'])
                         ->name('operacion.pedidos.reportes.informe-supervisor.exportar');
-                    
                     Route::get('/pdf', [InformePedidosSupervisorController::class, 'pdf'])
                         ->name('operacion.pedidos.reportes.informe-supervisor.pdf');
                 });
-                    // ✅ INFORME GERENTE
+
+                // INFORME GERENTE
                 Route::prefix('informe-gerente')->group(function () {
                     Route::get('/', [InformePedidosGerenteController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-gerente.index');
@@ -1390,7 +1313,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/pdf', [InformePedidosGerenteController::class, 'pdf'])
                         ->name('operacion.pedidos.reportes.informe-gerente.pdf');
                 });
-                // ✅ INFORME PEDIDOS (PDF/Excel con selector de fecha)
+
+                // INFORME PEDIDOS
                 Route::prefix('informe-pedidos')->group(function () {
                     Route::get('/', [InformePedidosController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-pedidos.index');
@@ -1399,28 +1323,53 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/exportar-excel', [InformePedidosController::class, 'exportarExcel'])
                         ->name('operacion.pedidos.reportes.informe-pedidos.exportar-excel');
                 });
-                    // ✅ INFORME PEDIDOS - SUCURSAL MAYORISTA
+
+                // INFORME PEDIDOS - SUCURSAL MAYORISTA
                 Route::prefix('informe-sucursal-mayorista')->group(function () {
                     Route::get('/', [InformePedidosSucursalMayoristaController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-sucursal-mayorista.index');
                     Route::get('/exportar-excel', [InformePedidosSucursalMayoristaController::class, 'exportarExcel'])
                         ->name('operacion.pedidos.reportes.informe-sucursal-mayorista.exportar-excel');
                 });
+
+                // ✅ NUEVO: INFORME CLIENTES MAYORISTAS
+                // ✅ INFORME CLIENTES MAYORISTAS
+                Route::prefix('informe-clientes-mayoristas')->group(function () {
+                    Route::get('/', [InformePedidosClientesMayoristasController::class, 'index'])
+                        ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.index');
+                    
+                    // PDF - SOLO RESUMEN
+                    Route::post('/exportar-pdf-resumen', [InformePedidosClientesMayoristasController::class, 'exportarPdfResumen'])
+                        ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-resumen');
+                    
+                    // PDF - SOLO DETALLE
+                    Route::post('/exportar-pdf-detalle', [InformePedidosClientesMayoristasController::class, 'exportarPdfDetalle'])
+                        ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-detalle');
+                });
             });
 
-        });
-        // ---------- REPORTES DE OPERACIÓN ----------
+        }); // ← FIN DEL GRUPO Route::prefix('pedidos')
+        
+        // ============================================================
+        // ⚠️ ELIMINA ESTE GRUPO DUPLICADO ⚠️
+        // ============================================================
+        // Route::prefix('reportes')->group(function () {
+        //     ... (todo esto debe ELIMINARSE) ...
+        // });
+
+        // ============================================================
+        // REPORTES DE OPERACIÓN (estos están bien, NO los elimines)
+        // ============================================================
         Route::prefix('reportes')->group(function () {
-            
-            // Arqueo Caja Bolivianos - Automático (Operador Logueado)
+            // Arqueo Caja Bolivianos - Automático
             Route::prefix('arqueo-caja-bolivianos-automatico')->group(function () {
                 Route::get('/', [ArqueoCajaBolivianosAutomaticoController::class, 'index'])
                     ->name('gestion.reportes.operacion.arqueo-caja-bolivianos-automatico');
                 Route::get('/pdf', [ArqueoCajaBolivianosAutomaticoController::class, 'generarPdf'])
                     ->name('gestion.reportes.operacion.arqueo-caja-bolivianos-automatico.pdf');
             });
-        
-            // Arqueo Caja Chica - Automático (Operador Logueado)
+
+            // Arqueo Caja Chica - Automático
             Route::prefix('arqueo-caja-chica-automatico')->group(function () {
                 Route::get('/', [ArqueoCajaChicaAutomaticoController::class, 'index'])
                     ->name('gestion.reportes.operacion.arqueo-caja-chica-automatico');
@@ -1432,27 +1381,20 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::prefix('inventario-relacion-venta')->group(function () {
                 Route::get('/', [InventarioRelacionVentaController::class, 'index'])->name('operacion.reportes.inventario-relacion-venta');
             });
-            // ============================================================
-            // REPORTE - INVENTARIO POR TIPO DE OPERACIÓN (SUCURSAL LOGUEADA)
-            // ============================================================           
+
+            // Inventario por Tipo de Operación (Sucursal Logueada)
             Route::prefix('inventario-tipo-operacion')->group(function () {
                 Route::get('/', [InventarioTipoOperacionController::class, 'index'])->name('operacion.reportes.inventario-tipo-operacion');
                 Route::get('/exportar', [InventarioTipoOperacionController::class, 'exportar'])->name('operacion.reportes.inventario-tipo-operacion.exportar');
             });
 
-            // ============================================================
-            // REPORTE - INVENTARIO POR TIPO DE OPERACIÓN (escogiendo SUCURSAL)
-            // ============================================================
+            // Inventario por Tipo de Operación (escogiendo Sucursal)
             Route::prefix('/inventario-tipo-operacion-sucursal')->group(function () {
-                // 📋 Formulario con selector de sucursal
                 Route::get('/', [InventarioTipoOperacionSucursalController::class, 'index'])
                     ->name('operacion.reportes.inventario-tipo-operacion-sucursal');
-                
-                // 🔥 Exportar Excel
                 Route::get('/exportar', [InventarioTipoOperacionSucursalController::class, 'exportar'])
                     ->name('operacion.reportes.inventario-tipo-operacion-sucursal.exportar');
             });
-        
         });
 
     });

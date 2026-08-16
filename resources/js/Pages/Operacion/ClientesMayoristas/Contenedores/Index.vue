@@ -613,30 +613,15 @@ onUnmounted(() => {
                                         <thead class="bg-gray-50">
                                             <tr>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
-                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Nombre</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Productos</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Total Und.</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
-                                                <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Ver</th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             <tr v-for="item in grupo.contenedores" :key="item.IdContenedor" class="hover:bg-gray-50">
                                                 <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ item.Codigo }}</td>
-                                                <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="item.Nombre">
-                                                    <i class="fas fa-box text-primary-400 mr-2 text-xs"></i>
-                                                    {{ item.Nombre }}
-                                                </td>
                                                 <td class="px-3 py-2 text-center text-xs">{{ formatearNumero(item.CapacidadTotal) }}</td>
-                                                <td class="px-3 py-2 text-center text-xs">{{ item.cantidad_productos || 0 }}</td>
-                                                <td class="px-3 py-2 text-center text-xs font-bold" :class="item.TotalUnidades == item.CapacidadTotal ? 'text-green-600' : 'text-red-600'">
-                                                    {{ formatearNumero(item.TotalUnidades) }}
-                                                    <span v-if="item.TotalUnidades != item.CapacidadTotal" class="text-[10px] text-red-500 ml-1">
-                                                        (¡Inc!)
-                                                    </span>
-                                                </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoBadge(item.ActivoInactivo)">
                                                         <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
@@ -662,14 +647,6 @@ onUnmounted(() => {
                                                 </td>
                                                 <td class="px-3 py-2 text-right">
                                                     <div class="flex justify-end gap-2">
-                                                        <!-- 🔥 BOTÓN VER DETALLE (OJO) -->
-                                                        <button 
-                                                            @click="abrirModal(item)" 
-                                                            class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded" 
-                                                            title="Ver detalle"
-                                                        >
-                                                            <i class="fas fa-eye text-sm"></i>
-                                                        </button>
                                                         <!-- BOTÓN EDITAR (solo borrador) -->
                                                         <Link 
                                                             v-if="item.ActivoInactivo === 0" 

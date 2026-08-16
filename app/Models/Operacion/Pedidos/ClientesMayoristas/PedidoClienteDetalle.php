@@ -40,4 +40,28 @@ class PedidoClienteDetalle extends Model
     {
         return $this->belongsTo(ProductoDetalle::class, 'IdProducto', 'IdProducto');
     }
+
+    // ==================== ACCESORS ====================
+    
+    public function getCantidadFormateadaAttribute()
+    {
+        return number_format($this->Cantidad, 0, ',', '.');
+    }
+
+    // ==================== SCOPES ====================
+    
+    public function scopePorPedido($query, $idPedido)
+    {
+        return $query->where('IdPedidoCliente', $idPedido);
+    }
+
+    public function scopePorContenedor($query, $idContenedor)
+    {
+        return $query->where('IdContenedor', $idContenedor);
+    }
+
+    public function scopePorProducto($query, $idProducto)
+    {
+        return $query->where('IdProducto', $idProducto);
+    }
 }

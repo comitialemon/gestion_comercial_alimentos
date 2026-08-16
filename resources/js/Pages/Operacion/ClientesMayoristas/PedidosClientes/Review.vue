@@ -35,9 +35,17 @@ const props = defineProps({
 // ==================== ESTADO ====================
 const loading = ref(false)
 const observaciones = ref(props.pedido?.Observaciones || '')
+const fechaEntrega = ref('')
 const modalConfirmacionVisible = ref(false)
+const errorFechaEntrega = ref('')
 
 // ==================== COMPUTADOS ====================
+const fechaMinima = computed(() => {
+    const hoy = new Date()
+    hoy.setDate(hoy.getDate() + 1)
+    return hoy.toISOString().split('T')[0]
+})
+
 const totalUnidades = computed(() => {
     let total = 0
     if (props.detallesAgrupados && props.detallesAgrupados.length > 0) {
@@ -69,7 +77,6 @@ const fechaPedido = computed(() => {
     return new Date().toLocaleString('es-BO')
 })
 
-// ✅ FUNCIÓN PARA FORMATEAR NÚMEROS
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') {
         return '0'
@@ -86,16 +93,41 @@ const irAtras = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
 }
 
-// ==================== ABRIR MODAL DE CONFIRMACIÓN ====================
+const validarFechaEntrega = () => {
+    if (!fechaEntrega.value) {
+        errorFechaEntrega.value = 'La fecha de entrega es obligatoria'
+        return false
+    }
+    
+    const hoy = new Date()
+    hoy.setHours(0, 0, 0, 0)
+    
+    const fechaSeleccionada = new Date(fechaEntrega.value)
+    fechaSeleccionada.setHours(0, 0, 0, 0)
+    
+    if (fechaSeleccionada <= hoy) {
+        errorFechaEntrega.value = 'La fecha de entrega debe ser mínimo 1 día después de hoy'
+        return false
+    }
+    
+    errorFechaEntrega.value = ''
+    return true
+}
+
 const abrirModalConfirmacion = () => {
     if (props.detallesAgrupados.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
         return
     }
+    
+    if (!validarFechaEntrega()) {
+        toast?.error('Error', errorFechaEntrega.value)
+        return
+    }
+    
     modalConfirmacionVisible.value = true
 }
 
-// ==================== FINALIZAR PEDIDO (confirmado) - CORREGIDO ====================
 const finalizarPedido = async () => {
     modalConfirmacionVisible.value = false
     loading.value = true
@@ -104,19 +136,17 @@ const finalizarPedido = async () => {
         const response = await axios.post(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`, {
             IdCliente: props.pedido.IdCliente,
             IdSucursal: props.pedido.IdSucursal,
-            FechaEntrega: null,
+            FechaEntrega: fechaEntrega.value,
             Observaciones: observaciones.value || null
         })
         
         if (response.data.success) {
             toast?.success('Pedido finalizado', `Pedido N° ${response.data.numero_pedido} creado correctamente`)
             
-            // ✅ ABRIR PDF EN NUEVA PESTAÑA
             if (response.data.pdf_url) {
                 window.open(response.data.pdf_url, '_blank')
             }
             
-            // ✅ REDIRIGIR AL INDEX DE PEDIDOS
             setTimeout(() => {
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
             }, 1500)
@@ -137,7 +167,7 @@ const finalizarPedido = async () => {
     <div class="min-h-screen bg-gray-100">
         <div class="max-w-4xl mx-auto px-3 py-4">
             
-            <!-- HEADER - Botón volver -->
+            <!-- HEADER -->
             <div class="flex items-center justify-between mb-4">
                 <button 
                     @click="irAtras"
@@ -146,7 +176,9 @@ const finalizarPedido = async () => {
                     <i class="fas fa-arrow-left"></i>
                     Volver
                 </button>
-                <span class="text-xs text-gray-400">Pedido #{{ pedido?.NumeroPedido || 'Nuevo' }}</span>
+                <span class="text-xs text-gray-400">
+                    Pedido #{{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
+                </span>
             </div>
 
             <!-- DOCUMENTO DEL PEDIDO -->
@@ -158,7 +190,8 @@ const finalizarPedido = async () => {
                         <div>
                             <h1 class="text-xl font-bold text-gray-800">Pedido de Productos</h1>
                             <p class="text-sm text-gray-500 mt-1">
-                                <span class="font-medium">N° Pedido:</span> {{ pedido?.NumeroPedido || 'Nuevo' }}
+                                <span class="font-medium">N° Pedido:</span> 
+                                {{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
                             </p>
                         </div>
                         <div class="text-sm text-gray-500 sm:text-right">
@@ -189,7 +222,6 @@ const finalizarPedido = async () => {
                         </h2>
                     </div>
 
-                    <!-- Lista de contenedores -->
                     <div v-if="detallesAgrupados.length === 0" class="text-center text-gray-400 py-8">
                         <i class="fas fa-inbox text-3xl mb-2 block"></i>
                         <p>No hay productos en este pedido</p>
@@ -201,19 +233,16 @@ const finalizarPedido = async () => {
                             :key="idx"
                             class="border rounded-lg overflow-hidden bg-white shadow-xs"
                         >
-                            <!-- Cabecera del contenedor -->
                             <div class="flex items-center justify-between px-4 py-3 bg-gray-50 border-b">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-xs font-mono bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full font-semibold">#{{ idx + 1 }}</span>
-                                    <span class="font-semibold text-gray-800">{{ item.Nombre }}</span>
-                                    <span class="text-xs text-gray-400 font-mono">({{ item.Codigo }})</span>
+                                    <span class="font-semibold text-gray-800">{{ item.Codigo }}</span>
                                 </div>
                                 <span class="text-xs font-bold bg-white border px-2.5 py-1 rounded-md text-primary-600 shadow-2xs">
                                     {{ formatearNumero(item.total_unidades) }} und
                                 </span>
                             </div>
 
-                            <!-- Tabla de productos del contenedor (Evita cortes de texto) -->
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left border-collapse">
                                     <thead>
@@ -241,7 +270,6 @@ const finalizarPedido = async () => {
                         </div>
                     </div>
 
-                    <!-- Total general -->
                     <div v-if="detallesAgrupados.length > 0" class="mt-6 pt-4 border-t flex justify-end">
                         <div class="text-right">
                             <p class="text-xs text-gray-500 font-medium">Total unidades generales</p>
@@ -250,8 +278,35 @@ const finalizarPedido = async () => {
                     </div>
                 </div>
 
-                <!-- OBSERVACIONES -->
-                <div class="p-6">
+                <!-- FECHA DE ENTREGA Y OBSERVACIONES -->
+                <div class="p-6 space-y-4">
+                    <!-- FECHA DE ENTREGA -->
+                    <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                        <div class="w-32">
+                            <label class="text-xs font-medium text-gray-500">
+                                Fecha de Entrega <span class="text-red-500">*</span>
+                            </label>
+                        </div>
+                        <div class="flex-1 w-full">
+                            <input 
+                                type="date"
+                                v-model="fechaEntrega"
+                                :min="fechaMinima"
+                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-primary-500 focus:border-primary-500"
+                                :class="{'border-red-500': errorFechaEntrega}"
+                            />
+                            <p v-if="errorFechaEntrega" class="text-xs text-red-500 mt-1">
+                                <i class="fas fa-exclamation-circle mr-1"></i>
+                                {{ errorFechaEntrega }}
+                            </p>
+                            <p class="text-[10px] text-gray-400 mt-1">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                La fecha de entrega debe ser mínimo 1 día después de hoy
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- OBSERVACIONES -->
                     <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                         <div class="w-32">
                             <label class="text-xs font-medium text-gray-500">Observaciones</label>
@@ -288,14 +343,12 @@ const finalizarPedido = async () => {
                 </div>
             </div>
 
-            <!-- FOOTER -->
             <div class="mt-4 text-center text-xs text-gray-400">
                 <i class="fas fa-shield-alt mr-1"></i>
                 Al finalizar el pedido se generará un comprobante
             </div>
         </div>
 
-        <!-- MODAL DE CONFIRMACIÓN -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
             title="Confirmar Pedido"

@@ -24,6 +24,7 @@ const capacidadTotalContenedor = ref(0)
 const contenedorData = ref(null)
 const errorMensaje = ref('')
 const excedeCapacidad = ref(false)
+const errorCarga = ref(false)
 
 // ==================== COMPUTADOS ====================
 const mostrar = computed({
@@ -72,7 +73,6 @@ const colorBarra = computed(() => {
     return 'bg-primary-500'
 })
 
-// ✅ FUNCIÓN PARA FORMATEAR NÚMEROS
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') {
         return '0'
@@ -84,12 +84,11 @@ const formatearNumero = (valor) => {
     return numero.toFixed(0)
 }
 
-// ✅ FUNCIÓN PARA VALIDAR Y ACTUALIZAR CANTIDAD
+// ==================== FUNCIONES DE CANTIDAD ====================
 const actualizarCantidad = (producto, event) => {
     const input = event.target
     let valor = input.value.replace(/,/g, '.').trim()
     
-    // Si está vacío, poner 0
     if (valor === '' || valor === '-') {
         producto.Cantidad = 0
         producto.selected = false
@@ -98,10 +97,8 @@ const actualizarCantidad = (producto, event) => {
         return
     }
     
-    // Convertir a número
     let cantidad = parseFloat(valor)
     
-    // Si no es un número válido o es negativo, resetear
     if (isNaN(cantidad) || cantidad < 0) {
         producto.Cantidad = 0
         producto.selected = false
@@ -111,14 +108,6 @@ const actualizarCantidad = (producto, event) => {
         return
     }
     
-    // Validar máximo por producto
-    const maximo = Number(producto.CantidadMaxima) || 0
-    if (cantidad > maximo) {
-        cantidad = maximo
-        input.value = maximo
-    }
-    
-    // Validar capacidad total del contenedor
     const otrasUnidades = totalUnidadesSeleccionadas.value - (producto.Cantidad || 0)
     const disponible = capacidadTotalContenedor.value - otrasUnidades
     
@@ -134,12 +123,10 @@ const actualizarCantidad = (producto, event) => {
     validarCapacidad()
 }
 
-// ✅ RECALCULAR TOTAL DE UNIDADES SELECCIONADAS
 const recalcularTotal = () => {
     totalUnidadesSeleccionadas.value = productosSeleccionados.value.reduce((sum, p) => sum + (p.Cantidad || 0), 0)
 }
 
-// ✅ VALIDAR SI EXCEDE LA CAPACIDAD
 const validarCapacidad = () => {
     if (totalUnidadesSeleccionadas.value > capacidadTotalContenedor.value && capacidadTotalContenedor.value > 0) {
         excedeCapacidad.value = true
@@ -150,7 +137,6 @@ const validarCapacidad = () => {
     }
 }
 
-// ✅ LIMPIAR TODAS LAS CANTIDADES
 const limpiarTodo = () => {
     productosSeleccionados.value.forEach(p => {
         p.Cantidad = 0
@@ -163,37 +149,15 @@ const limpiarTodo = () => {
     excedeCapacidad.value = false
 }
 
-// ✅ APLICAR CANTIDAD MÁXIMA DISPONIBLE
-const aplicarMaximo = () => {
-    const disponible = capacidadTotalContenedor.value - totalUnidadesSeleccionadas.value
-    if (disponible <= 0) {
-        alert('No hay más unidades disponibles en este contenedor')
-        return
-    }
-    
-    // Buscar el primer producto sin cantidad o con cantidad menor al máximo
-    const productoParaMax = productosSeleccionados.value.find(p => p.Cantidad < p.CantidadMaxima)
-    if (!productoParaMax) {
-        alert('Todos los productos ya están al máximo')
-        return
-    }
-    
-    const maximoProducto = Number(productoParaMax.CantidadMaxima) || 0
-    const cantidadAplicar = Math.min(maximoProducto, disponible)
-    
-    if (cantidadAplicar <= 0) return
-    
-    productoParaMax.Cantidad = cantidadAplicar
-    productoParaMax.selected = true
-    recalcularTotal()
-    validarCapacidad()
-}
-
-// ==================== FUNCIONES ====================
+// ==================== CARGAR PRODUCTOS ====================
 const cargarProductos = async () => {
-    if (!props.contenedor) return
+    if (!props.contenedor) {
+        console.warn('No hay contenedor seleccionado')
+        return
+    }
     
     loading.value = true
+    errorCarga.value = false
     contenedorData.value = props.contenedor
     capacidadTotalContenedor.value = parseFloat(props.contenedor.CapacidadTotal) || 0
     busquedaProducto.value = ''
@@ -205,23 +169,89 @@ const cargarProductos = async () => {
     try {
         const response = await axios.get(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos`)
         
+        console.log('📦 Respuesta del servidor:', response.data)
+        
         if (response.data.success) {
-            const data = response.data.data
-            productosSeleccionados.value = data.productos.map(p => ({
+            let productosRaw = []
+            
+            // 🔥 CASO 1: Tiene data.productos_agrupados
+            if (response.data.data && response.data.data.productos_agrupados) {
+                const agrupados = response.data.data.productos_agrupados
+                agrupados.forEach(grupo => {
+                    if (grupo.productos) {
+                        grupo.productos.forEach(p => {
+                            productosRaw.push({
+                                IdProducto: p.IdProducto,
+                                Codigo: p.Codigo,
+                                Descripcion: p.Descripcion,
+                                Precio: p.Precio || 0,
+                                IdGrupoAnalisis: p.IdGrupoAnalisis,
+                                GrupoAnalisis: grupo.grupo_nombre || 'Sin grupo'
+                            })
+                        })
+                    }
+                })
+                console.log('✅ Productos extraídos de productos_agrupados:', productosRaw.length)
+            }
+            // 🔥 CASO 2: Tiene productos directamente (tu caso actual)
+            else if (response.data.productos && Array.isArray(response.data.productos)) {
+                productosRaw = response.data.productos.map(p => ({
+                    IdProducto: p.IdProducto,
+                    Codigo: p.Codigo,
+                    Descripcion: p.Descripcion,
+                    Precio: p.Precio || 0,
+                    IdGrupoAnalisis: p.IdGrupoAnalisis || 0,
+                    GrupoAnalisis: p.GrupoAnalisis || 'Sin grupo'
+                }))
+                console.log('✅ Productos extraídos de productos:', productosRaw.length)
+            }
+            // 🔥 CASO 3: Tiene data.productos
+            else if (response.data.data && response.data.data.productos) {
+                productosRaw = response.data.data.productos.map(p => ({
+                    IdProducto: p.IdProducto,
+                    Codigo: p.Codigo,
+                    Descripcion: p.Descripcion,
+                    Precio: p.Precio || 0,
+                    IdGrupoAnalisis: p.IdGrupoAnalisis || 0,
+                    GrupoAnalisis: p.GrupoAnalisis || 'Sin grupo'
+                }))
+                console.log('✅ Productos extraídos de data.productos:', productosRaw.length)
+            }
+            
+            // ✅ Si no hay productos, mostrar mensaje
+            if (!productosRaw || productosRaw.length === 0) {
+                console.warn('⚠️ No se encontraron productos')
+                productosSeleccionados.value = []
+                return
+            }
+            
+            // ✅ Agregar Cantidad a cada producto
+            productosSeleccionados.value = productosRaw.map(p => ({
                 ...p,
                 Cantidad: 0,
                 selected: false,
-                CantidadMaxima: parseFloat(p.CantidadMaxima) || 0
+                CantidadMaxima: capacidadTotalContenedor.value
             }))
+            
+            console.log(`✅ ${productosSeleccionados.value.length} productos cargados`)
+        } else {
+            errorCarga.value = true
+            errorMensaje.value = '❌ Error al cargar los productos: ' + (response.data.message || 'Error desconocido')
         }
     } catch (error) {
-        console.error('Error al cargar productos:', error)
+        console.error('❌ Error al cargar productos:', error)
+        errorCarga.value = true
         errorMensaje.value = '❌ Error al cargar los productos. Intenta nuevamente.'
+        
+        if (error.response) {
+            console.error('📡 Respuesta del error:', error.response.data)
+        }
     } finally {
         loading.value = false
     }
 }
 
+// ==================== AGREGAR AL CARRITO ====================
 const agregarAlCarrito = () => {
     if (!puedeAgregar.value) return
 
@@ -279,12 +309,17 @@ watch(
                 <div class="flex items-center justify-between gap-3">
                     <div class="min-w-0 flex-1">
                         <h3 class="font-bold text-gray-800 text-base sm:text-lg truncate">
-                            {{ contenedorData?.Nombre || 'Contenedor' }}
+                            {{ contenedorData?.Codigo || 'Contenedor' }}
+                            <span class="text-xs font-normal text-gray-500 ml-2">
+                                {{ contenedorData?.TipoContenedor || '' }}
+                            </span>
                         </h3>
                         <p class="text-xs text-gray-500">
                             <span class="font-mono bg-white/50 px-2 py-0.5 rounded">{{ contenedorData?.Codigo }}</span>
                             <span class="mx-1">•</span>
                             Capacidad: {{ formatearNumero(contenedorData?.CapacidadTotal || 0) }} und
+                            <span class="mx-1">•</span>
+                            <span class="text-primary-600">{{ productosSeleccionados.length }} productos</span>
                         </p>
                     </div>
                     <button 
@@ -335,8 +370,23 @@ watch(
             <!-- Body -->
             <div class="p-3 sm:p-5 overflow-y-auto" style="max-height: calc(95vh - 240px);">
                 
-                <!-- Mensaje de error -->
-                <div v-if="excedeCapacidad" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2 animate-shake">
+                <!-- Mensaje de error de carga -->
+                <div v-if="errorCarga" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+                    <i class="fas fa-exclamation-triangle mt-0.5 text-red-500"></i>
+                    <div>
+                        <p class="font-medium">Error al cargar productos</p>
+                        <p class="text-xs text-red-600">{{ errorMensaje }}</p>
+                        <button 
+                            @click="cargarProductos"
+                            class="mt-2 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded transition"
+                        >
+                            <i class="fas fa-sync mr-1"></i> Reintentar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mensaje de error de capacidad -->
+                <div v-if="excedeCapacidad && !errorCarga" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2 animate-shake">
                     <i class="fas fa-exclamation-triangle mt-0.5 text-red-500"></i>
                     <div>
                         <p class="font-medium">¡Capacidad excedida!</p>
@@ -345,7 +395,7 @@ watch(
                 </div>
 
                 <!-- Mensaje de éxito -->
-                <div v-else-if="estaCompleto && !excedeCapacidad" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
+                <div v-else-if="estaCompleto && !excedeCapacidad && !errorCarga" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
                     <i class="fas fa-check-circle mt-0.5 text-green-500"></i>
                     <div>
                         <p class="font-medium">¡Contenedor completo!</p>
@@ -361,6 +411,7 @@ watch(
                         v-model="busquedaProducto"
                         placeholder="Buscar producto por código o nombre..."
                         class="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-gray-50 focus:bg-white"
+                        :disabled="loading || errorCarga"
                     />
                     <button 
                         v-if="busquedaProducto"
@@ -378,16 +429,16 @@ watch(
                 </div>
 
                 <!-- Sin productos -->
-                <div v-else-if="productosFiltrados.length === 0" class="text-center py-12 text-gray-400">
+                <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-12 text-gray-400">
                     <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
                         <i class="fas fa-box-open text-2xl text-gray-300"></i>
                     </div>
                     <p class="text-sm font-medium">No hay productos disponibles</p>
-                    <p class="text-xs mt-1">Prueba con otra búsqueda</p>
+                    <p class="text-xs mt-1">Este contenedor no tiene grupos de análisis asignados</p>
                 </div>
 
-                <!-- Lista de productos -->
-                <div v-else class="space-y-2">
+                <!-- Lista de productos SIMPLE -->
+                <div v-else-if="!errorCarga && productosSeleccionados.length > 0" class="space-y-2">
                     <div 
                         v-for="producto in productosFiltrados" 
                         :key="producto.IdProducto"
@@ -398,11 +449,12 @@ watch(
                             <div class="flex items-center gap-2 flex-wrap">
                                 <span class="text-xs font-mono text-gray-400 bg-white px-2 py-0.5 rounded">{{ producto.Codigo }}</span>
                                 <span class="text-sm font-medium text-gray-800 truncate">{{ producto.Descripcion }}</span>
+                                <span class="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
                             </div>
                             <div class="flex items-center gap-3 mt-0.5">
                                 <span class="text-[10px] text-gray-400">
                                     <i class="fas fa-arrow-up mr-0.5"></i>
-                                    Máx: {{ formatearNumero(producto.CantidadMaxima) }} und
+                                    Máx: {{ formatearNumero(capacidadTotalContenedor) }} und
                                 </span>
                                 <span v-if="producto.Cantidad > 0" class="text-[10px] text-primary-600 font-medium">
                                     <i class="fas fa-check-circle"></i> {{ producto.Cantidad }} und
@@ -414,14 +466,14 @@ watch(
                                 type="number"
                                 step="any"
                                 min="0"
-                                :max="producto.CantidadMaxima"
+                                :max="capacidadTotalContenedor"
                                 :value="producto.Cantidad || 0"
                                 @input="actualizarCantidad(producto, $event)"
                                 @focus="$event.target.select()"
                                 class="w-full sm:w-32 text-right border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
                                 :class="{
                                     'border-primary-400 bg-primary-50': producto.Cantidad > 0,
-                                    'border-red-300': producto.Cantidad > producto.CantidadMaxima
+                                    'border-red-300': producto.Cantidad > capacidadTotalContenedor
                                 }"
                                 placeholder="0"
                             />
@@ -434,7 +486,11 @@ watch(
             <!-- Footer -->
             <div class="p-4 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-3">
                 <div class="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
-                    <span v-if="excedeCapacidad" class="text-red-600 font-medium">
+                    <span v-if="errorCarga" class="text-red-600 font-medium">
+                        <i class="fas fa-exclamation-circle mr-1"></i>
+                        Error al cargar, reintenta
+                    </span>
+                    <span v-else-if="excedeCapacidad" class="text-red-600 font-medium">
                         <i class="fas fa-exclamation-circle mr-1"></i>
                         Reduce las cantidades para continuar
                     </span>
@@ -451,14 +507,14 @@ watch(
                     <button 
                         @click="limpiarTodo"
                         class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm transition flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
-                        :disabled="loading"
+                        :disabled="loading || errorCarga"
                     >
                         <i class="fas fa-eraser text-xs"></i>
                         Limpiar
                     </button>
                     <button 
                         @click="agregarAlCarrito"
-                        :disabled="!puedeAgregar"
+                        :disabled="!puedeAgregar || errorCarga"
                         class="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-1 sm:flex-none justify-center"
                     >
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
@@ -472,7 +528,6 @@ watch(
 </template>
 
 <style scoped>
-/* Animaciones */
 @keyframes fadeInUp {
     from {
         opacity: 0;
@@ -498,7 +553,6 @@ watch(
     animation: shake 0.4s ease-in-out;
 }
 
-/* Quitar flechas del input number */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
@@ -508,7 +562,6 @@ input[type="number"] {
     -moz-appearance: textfield;
 }
 
-/* Scroll personalizado */
 .overflow-y-auto::-webkit-scrollbar {
     width: 6px;
 }
@@ -524,7 +577,6 @@ input[type="number"] {
     background: #a8a8a8;
 }
 
-/* Transiciones suaves */
 [v-show] {
     transition: all 0.2s ease;
 }

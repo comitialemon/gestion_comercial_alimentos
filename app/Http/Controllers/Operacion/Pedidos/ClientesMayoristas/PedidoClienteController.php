@@ -22,11 +22,14 @@ class PedidoClienteController extends Controller
      */
     public function index()
     {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
         $pedidos = PedidoCliente::porContexto()
+            ->with(['cliente', 'sucursal', 'operador'])
             ->orderBy('IdPedidoCliente', 'desc')
-            ->get();
-            
-        // ✅ CORREGIDO: Ruta correcta
+            ->paginate(20);
+
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Index', [
             'pedidos' => $pedidos,
         ]);
@@ -41,58 +44,55 @@ class PedidoClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ✅ Obtener contenedores ACTIVOS (ActivoInactivo = 1)
+        // ✅ Obtener contenedores ACTIVOS
         $contenedores = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
-            ->with(['detalles.producto'])
-            ->orderBy('Nombre')
+            ->with(['tipoContenedor', 'gruposAnalisis'])
+            ->orderBy('Codigo')
             ->get()
             ->map(function($contenedor) {
                 return [
                     'IdContenedor' => $contenedor->IdContenedor,
                     'Codigo' => $contenedor->Codigo,
-                    'Nombre' => $contenedor->Nombre,
+                    'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                     'CapacidadTotal' => $contenedor->CapacidadTotal,
                     'CapacidadTotalFormateada' => number_format($contenedor->CapacidadTotal, 0, ',', '.'),
-                    'cantidad_productos' => $contenedor->detalles->count(),
-                    'productos' => $contenedor->detalles->map(function($detalle) {
-                        return [
-                            'IdProducto' => $detalle->IdProducto,
-                            'Codigo' => $detalle->producto ? $detalle->producto->Codigo : '-',
-                            'Descripcion' => $detalle->producto ? $detalle->producto->Descripcion : '-',
-                            'Cantidad' => $detalle->Cantidad,
-                            'CantidadFormateada' => number_format($detalle->Cantidad, 0, ',', '.'),
-                        ];
-                    }),
+                    'total_productos' => $contenedor->contarProductosActivos(),
+                    'grupos' => $contenedor->gruposAnalisis->pluck('Grupo')->implode(', '),
                 ];
             });
 
-        // ✅ Obtener clientes para el selector
+        // ✅ Obtener clientes
         $clientes = Cliente::where('IdCliente', $clienteId)
             ->get(['IdCliente as id', 'Nombre']);
 
-        // ✅ Obtener sucursales para el selector
+        // ✅ Obtener sucursales
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre']);
 
-        // ✅ Buscar si existe un pedido BORRADOR para este operador
-        $pedidoBorrador = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('IdOperador', $operadorId)
-            ->where('ActivoInactivo', 0)
-            ->with(['detalles.producto', 'detalles.contenedor'])
-            ->first();
+        // ✅ Buscar pedido BORRADOR
+        $pedidoBorrador = PedidoCliente::obtenerBorradorActivo();
 
-        // ✅ Si hay borrador, cargar sus detalles al carrito
+        // ✅ Cargar carrito
         $carrito = [];
         if ($pedidoBorrador) {
-            $carrito = $pedidoBorrador->detalles->groupBy('IdContenedor')->map(function($items, $contenedorId) {
-                $contenedor = $items->first()->contenedor;
+            $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
+                ->with(['producto', 'contenedor'])
+                ->orderBy('OrdenContenedor')
+                ->orderBy('IdProducto')
+                ->get();
+
+            $carrito = $detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+                $primerItem = $items->first();
+                $contenedor = $primerItem->contenedor;
+                $total = $items->sum('Cantidad');
+                
                 return [
-                    'IdContenedor' => $contenedorId,
+                    'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                    'Nombre' => $contenedor ? $contenedor->Nombre : '-',
+                    'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
                     'productos' => $items->map(function($item) {
                         return [
@@ -103,12 +103,12 @@ class PedidoClienteController extends Controller
                             'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
                         ];
                     }),
-                    'total_unidades' => $items->sum('Cantidad'),
+                    'total_unidades' => $total,
+                    'esta_completo' => $total == ($contenedor ? $contenedor->CapacidadTotal : 0),
                 ];
             })->values();
         }
 
-        // ✅ CORREGIDO: Ruta correcta
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Create', [
             'contenedores' => $contenedores,
             'clientes' => $clientes,
@@ -120,36 +120,59 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR (para el modal)
+     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR
      */
     public function getProductosContenedor($id)
     {
-        $contenedor = Contenedor::where('IdContenedor', $id)
+        $clienteId = session('cliente_id');
+
+        $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
-            ->with(['detalles.producto'])
-            ->firstOrFail();
+            ->with(['gruposAnalisis', 'tipoContenedor'])
+            ->findOrFail($id);
+
+        // ✅ Obtener productos de los grupos
+        $productos = ProductoDetalle::where('IdCliente', $clienteId)
+            ->whereIn('IdGrupoAnalisis', $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis'))
+            ->where('ActivoInactivo', 0)
+            ->orderBy('IdGrupoAnalisis')
+            ->orderBy('Descripcion')
+            ->get();
+
+        // ✅ Agrupar por grupo de análisis
+        $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function($items, $grupoId) {
+            $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
+            return [
+                'grupo_id' => $grupoId,
+                'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
+                'productos' => $items->map(function($producto) {
+                    return [
+                        'IdProducto' => $producto->IdProducto,
+                        'Codigo' => $producto->Codigo,
+                        'Descripcion' => $producto->Descripcion,
+                        'Precio' => $producto->Precio,
+                        'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
+                    ];
+                })->values(),
+            ];
+        })->values();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
-                'Nombre' => $contenedor->Nombre,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
-                'productos' => $contenedor->detalles->map(function($detalle) {
-                    return [
-                        'IdProducto' => $detalle->IdProducto,
-                        'Codigo' => $detalle->producto ? $detalle->producto->Codigo : '-',
-                        'Descripcion' => $detalle->producto ? $detalle->producto->Descripcion : '-',
-                        'CantidadMaxima' => $detalle->Cantidad,
-                    ];
-                }),
+                'CapacidadTotalFormateada' => number_format($contenedor->CapacidadTotal, 0, ',', '.'),
+                'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'productos_agrupados' => $productosAgrupados,
+                'total_productos' => $productos->count(),
             ]
         ]);
     }
 
     /**
-     * ✅ AGREGAR PRODUCTOS AL CARRITO (desde el modal)
+     * ✅ AGREGAR PRODUCTOS AL CARRITO (nuevo contenedor)
      */
     public function agregarAlCarrito(Request $request)
     {
@@ -164,19 +187,36 @@ class PedidoClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ✅ Verificar que el contenedor existe y está activo
-        $contenedor = Contenedor::where('IdContenedor', $request->IdContenedor)
+        // ✅ Verificar contenedor
+        $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
-            ->firstOrFail();
+            ->with(['gruposAnalisis'])
+            ->findOrFail($request->IdContenedor);
 
-        // ✅ Calcular total de unidades seleccionadas
+        // ✅ Calcular total de unidades
         $totalUnidades = array_sum(array_column($request->productos, 'Cantidad'));
 
-        // ✅ Validar que no exceda la capacidad del contenedor
-        if ($totalUnidades > $contenedor->CapacidadTotal) {
+        // ✅ Validar que la cantidad sea EXACTAMENTE la capacidad del contenedor
+        if ((float) $totalUnidades != (float) $contenedor->CapacidadTotal) {
             return response()->json([
                 'success' => false,
-                'message' => "La suma de productos ({$totalUnidades}) excede la capacidad del contenedor ({$contenedor->CapacidadTotal})"
+                'message' => "La suma de productos ({$totalUnidades}) debe ser EXACTAMENTE la capacidad del contenedor ({$contenedor->CapacidadTotal})"
+            ], 400);
+        }
+
+        // ✅ Validar que los productos pertenezcan a los grupos del contenedor
+        $gruposIds = $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis')->toArray();
+        $productosIds = array_column($request->productos, 'IdProducto');
+        
+        $productosValidos = ProductoDetalle::whereIn('IdProducto', $productosIds)
+            ->whereIn('IdGrupoAnalisis', $gruposIds)
+            ->where('ActivoInactivo', 0)
+            ->count();
+
+        if ($productosValidos != count($productosIds)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Uno o más productos no pertenecen a los grupos de este contenedor'
             ], 400);
         }
 
@@ -184,68 +224,27 @@ class PedidoClienteController extends Controller
 
         try {
             // ✅ Buscar o crear pedido BORRADOR
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdOperador', $operadorId)
-                ->where('ActivoInactivo', 0)
-                ->first();
-
-            if (!$pedido) {
-                // ✅ Generar número de pedido
-                $maxNumero = PedidoCliente::where('IdCliente', $clienteId)
-                    ->max('NumeroPedido');
-                $numeroPedido = $maxNumero ? intval($maxNumero) + 1 : 1;
-                $numeroPedidoFormateado = str_pad($numeroPedido, 6, '0', STR_PAD_LEFT);
-
-                $pedido = PedidoCliente::create([
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId,
-                    'IdOperador' => $operadorId,
-                    'NumeroPedido' => $numeroPedidoFormateado,
-                    'FechaPedido' => Carbon::now('America/La_Paz'),
-                    'FechaEntrega' => null,
-                    'TotalUnidades' => 0,
-                    'TotalContenedores' => 0,
-                    'ActivoInactivo' => 0,
-                    'EstadoPedido' => 'Borrador',
-                    'Observaciones' => null,
-                    'FechaInserta' => Carbon::now('America/La_Paz'),
-                ]);
-            }
+            $pedido = PedidoCliente::obtenerOCrearBorrador([
+                'IdSucursal' => $sucursalId,
+            ]);
 
             // ✅ Obtener el máximo OrdenContenedor actual
             $maxOrden = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                 ->max('OrdenContenedor') ?? 0;
             $nuevoOrden = $maxOrden + 1;
 
-            // ✅ Agregar productos al detalle
+            // ✅ Guardar los productos con el nuevo orden
             foreach ($request->productos as $producto) {
-                // ✅ Verificar si el producto ya existe para este contenedor en el pedido
-                $existe = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                    ->where('IdContenedor', $request->IdContenedor)
-                    ->where('IdProducto', $producto['IdProducto'])
-                    ->exists();
-
-                if ($existe) {
-                    // ✅ Actualizar cantidad si ya existe
-                    PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                        ->where('IdContenedor', $request->IdContenedor)
-                        ->where('IdProducto', $producto['IdProducto'])
-                        ->update([
-                            'Cantidad' => $producto['Cantidad']
-                        ]);
-                } else {
-                    // ✅ Crear nuevo detalle
-                    PedidoClienteDetalle::create([
-                        'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                        'IdContenedor' => $request->IdContenedor,
-                        'IdProducto' => $producto['IdProducto'],
-                        'Cantidad' => $producto['Cantidad'],
-                        'OrdenContenedor' => $nuevoOrden,
-                    ]);
-                }
+                PedidoClienteDetalle::create([
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'IdContenedor' => $request->IdContenedor,
+                    'IdProducto' => $producto['IdProducto'],
+                    'Cantidad' => $producto['Cantidad'],
+                    'OrdenContenedor' => $nuevoOrden,
+                ]);
             }
 
-            // ✅ Actualizar totales del pedido
+            // ✅ Actualizar totales
             $totales = $this->calcularTotales($pedido->IdPedidoCliente);
             $pedido->update([
                 'TotalUnidades' => $totales['total_unidades'],
@@ -256,7 +255,7 @@ class PedidoClienteController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Productos agregados al carrito correctamente',
+                'message' => 'Contenedor agregado al carrito correctamente',
                 'pedido' => $pedido,
                 'totales' => $totales,
             ]);
@@ -273,7 +272,7 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ ELIMINAR PRODUCTO DEL CARRITO
+     * ✅ ELIMINAR CONTENEDOR DEL CARRITO
      */
     public function eliminarDelCarrito($idDetalle)
     {
@@ -288,7 +287,11 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
-            $detalle->delete();
+            // ✅ Eliminar TODOS los productos del mismo contenedor (mismo orden)
+            $orden = $detalle->OrdenContenedor;
+            PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                ->where('OrdenContenedor', $orden)
+                ->delete();
 
             // ✅ Actualizar totales
             $totales = $this->calcularTotales($pedido->IdPedidoCliente);
@@ -309,7 +312,7 @@ class PedidoClienteController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Producto eliminado del carrito',
+                'message' => 'Contenedor eliminado del carrito',
                 'totales' => $totales,
             ]);
 
@@ -338,10 +341,7 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
-            // ✅ Eliminar todos los detalles
             PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->delete();
-
-            // ✅ Eliminar el pedido borrador
             $pedido->delete();
 
             return response()->json([
@@ -361,26 +361,120 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ FINALIZAR PEDIDO (desde Review) - RESPUESTA JSON
+     * ✅ REVISAR PEDIDO
+     */
+    public function review($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            $sucursalId = session('cliente_sucursal_id');
+            $operadorId = session('operador_id');
+            
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdPedidoCliente', $id)
+                ->where('ActivoInactivo', 0)
+                ->with(['detalles.producto', 'detalles.contenedor'])
+                ->first();
+
+            if (!$pedido) {
+                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
+                    ->with('error', 'El pedido no existe o ya fue finalizado.');
+            }
+
+            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
+            if ($totalDetalles === 0) {
+                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
+                    ->with('error', 'El pedido no tiene productos.');
+            }
+
+            // ✅ Agrupar por OrdenContenedor
+            $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+                $primerItem = $items->first();
+                $contenedor = $primerItem->contenedor;
+                $total = $items->sum('Cantidad');
+                
+                return [
+                    'IdContenedor' => $primerItem->IdContenedor,
+                    'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                    'Orden' => intval($orden),
+                    'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'productos' => $items->map(function($item) {
+                        return [
+                            'IdProducto' => $item->IdProducto,
+                            'Codigo' => $item->producto ? $item->producto->Codigo : '-',
+                            'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
+                            'Cantidad' => $item->Cantidad,
+                            'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
+                        ];
+                    }),
+                    'total_unidades' => $total,
+                    'esta_completo' => $total == ($contenedor ? $contenedor->CapacidadTotal : 0),
+                ];
+            })->values();
+
+            // ✅ Datos adicionales
+            $cliente = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente')
+                ->where('IdCliente', $clienteId)
+                ->first(['Nombre']);
+            
+            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_cliente_sucursal')
+                ->where('IdClienteSucursal', $sucursalId)
+                ->first(['Nombre']);
+            
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                ->where('todos_operador.IdOperador', $operadorId)
+                ->first(['todos_identificador.Nombre as nombre']);
+
+            return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Review', [
+                'pedido' => $pedido,
+                'detallesAgrupados' => $detallesAgrupados,
+                'clienteNombre' => $cliente->Nombre ?? 'Sin cliente',
+                'sucursalNombre' => $sucursal->Nombre ?? 'Sin sucursal',
+                'operadorNombre' => $operador->nombre ?? 'Sin operador',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en review: ' . $e->getMessage());
+            return redirect()->route('operacion.pedidos-clientes.pedidos.create')
+                ->with('error', 'Error al cargar la revisión: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * ✅ FINALIZAR PEDIDO (VERSIÓN CORREGIDA CON VERIFICACIÓN)
      */
     public function finalizarPedido(Request $request, $idPedido)
     {
         $request->validate([
             'IdCliente' => 'required|exists:todos_cliente,IdCliente',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'FechaEntrega' => 'nullable|date',
+            'FechaEntrega' => 'nullable|date|after_or_equal:today',
             'Observaciones' => 'nullable|string|max:500',
         ]);
 
+        // ✅ VALIDAR QUE LA SUCURSAL PERTENEZCA AL CLIENTE
+        $sucursalValida = ClienteSucursal::where('IdClienteSucursal', $request->IdSucursal)
+            ->where('IdCliente', $request->IdCliente)
+            ->exists();
+
+        if (!$sucursalValida) {
+            return response()->json([
+                'success' => false,
+                'message' => 'La sucursal no pertenece al cliente seleccionado.'
+            ], 400);
+        }
+
         try {
             $clienteId = session('cliente_id');
-            $sucursalId = session('cliente_sucursal_id');
             $operadorId = session('operador_id');
 
-            // ✅ Buscar el pedido con filtros de seguridad
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $idPedido)
-                ->where('ActivoInactivo', 0) // Solo borradores
+                ->where('ActivoInactivo', 0)
                 ->first();
 
             if (!$pedido) {
@@ -390,29 +484,73 @@ class PedidoClienteController extends Controller
                 ], 404);
             }
 
-            // ✅ Verificar que tenga productos
-            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->count();
-            if ($totalDetalles === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El pedido no tiene productos. Agregue productos antes de finalizar.'
-                ], 400);
-            }
-
-            // ✅ Generar número de pedido si no tiene
-            if (!$pedido->NumeroPedido || $pedido->NumeroPedido === '0') {
-                $maxNumero = PedidoCliente::where('IdCliente', $clienteId)
-                    ->where('IdSucursal', $sucursalId)
-                    ->max('NumeroPedido') ?? 0;
+            // ✅ Verificar que todos los contenedores estén completos
+            $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->get();
+            $ordenes = $detalles->groupBy('OrdenContenedor');
+            
+            foreach ($ordenes as $orden => $items) {
+                $total = $items->sum('Cantidad');
+                $contenedor = Contenedor::find($items->first()->IdContenedor);
+                $capacidad = $contenedor ? $contenedor->CapacidadTotal : 0;
                 
-                $numeroPedido = intval($maxNumero) + 1;
-                $pedido->NumeroPedido = str_pad($numeroPedido, 6, '0', STR_PAD_LEFT);
+                if ((float) $total != (float) $capacidad) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "El contenedor #{$orden} tiene {$total} unidades, pero debe tener exactamente {$capacidad} unidades"
+                    ], 400);
+                }
             }
 
-            // ✅ Actualizar pedido
+            // ✅ ==========================================
+            // ✅ OBTENER NUEVO NÚMERO DE PEDIDO POR SUCURSAL
+            // ✅ ==========================================
+            
+            // 1. Obtener el máximo número de pedido para esta sucursal
+            $maxNumero = PedidoCliente::where('IdCliente', $request->IdCliente)
+                ->where('IdSucursal', $request->IdSucursal)
+                ->where('NumeroPedido', '!=', '0')
+                ->whereNotNull('NumeroPedido')
+                ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
+
+            // 2. Calcular el siguiente número
+            $nuevoNumero = $maxNumero + 1;
+            $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+
+            // 3. 🔒 VERIFICAR QUE NO EXISTA (por si acaso)
+            $existe = PedidoCliente::where('IdCliente', $request->IdCliente)
+                ->where('IdSucursal', $request->IdSucursal)
+                ->where('NumeroPedido', $numeroPedidoFormateado)
+                ->exists();
+
+            if ($existe) {
+                // Si existe (casi nunca pasa), buscar el siguiente disponible
+                $nuevoNumero = $nuevoNumero + 1;
+                $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+                
+                // Verificar una vez más (por si acaso)
+                $existeNuevamente = PedidoCliente::where('IdCliente', $request->IdCliente)
+                    ->where('IdSucursal', $request->IdSucursal)
+                    ->where('NumeroPedido', $numeroPedidoFormateado)
+                    ->exists();
+                    
+                if ($existeNuevamente) {
+                    // Si sigue existiendo, buscar hasta encontrar uno libre
+                    do {
+                        $nuevoNumero++;
+                        $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+                        $existeNuevamente = PedidoCliente::where('IdCliente', $request->IdCliente)
+                            ->where('IdSucursal', $request->IdSucursal)
+                            ->where('NumeroPedido', $numeroPedidoFormateado)
+                            ->exists();
+                    } while ($existeNuevamente);
+                }
+            }
+
+            // ✅ ACTUALIZAR PEDIDO CON EL NUEVO NÚMERO
             $pedido->update([
                 'IdCliente' => $request->IdCliente,
                 'IdSucursal' => $request->IdSucursal,
+                'NumeroPedido' => $numeroPedidoFormateado,
                 'FechaEntrega' => $request->FechaEntrega,
                 'Observaciones' => $request->Observaciones,
                 'ActivoInactivo' => 1,
@@ -426,10 +564,9 @@ class PedidoClienteController extends Controller
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
                 'NumeroPedido' => $pedido->NumeroPedido,
                 'IdCliente' => $clienteId,
-                'IdSucursal' => $sucursalId
+                'IdSucursal' => $request->IdSucursal,
             ]);
 
-            // ✅ DEVOLVER JSON CON LA URL DEL PDF
             return response()->json([
                 'success' => true,
                 'message' => 'Pedido finalizado correctamente',
@@ -440,13 +577,13 @@ class PedidoClienteController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error al finalizar pedido: ' . $e->getMessage());
-            
             return response()->json([
                 'success' => false,
                 'message' => 'Error al finalizar pedido: ' . $e->getMessage()
             ], 500);
         }
     }
+
     /**
      * ✅ MOSTRAR DETALLE DEL PEDIDO
      */
@@ -454,27 +591,25 @@ class PedidoClienteController extends Controller
     {
         try {
             $clienteId = session('cliente_id');
-            $sucursalId = session('cliente_sucursal_id');
 
-            // ✅ Buscar con filtros de seguridad
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->with(['cliente', 'sucursal', 'operador', 'detalles.producto', 'detalles.contenedor'])
                 ->first();
 
-            // ✅ Si no existe, redirigir
             if (!$pedido) {
                 return redirect()->route('operacion.pedidos-clientes.pedidos.index')
-                    ->with('error', 'El pedido no existe o no tiene acceso a él.');
+                    ->with('error', 'El pedido no existe.');
             }
 
-            // ✅ Agrupar detalles por contenedor
-            $detallesAgrupados = $pedido->detalles->groupBy('IdContenedor')->map(function($items, $contenedorId) {
-                $contenedor = $items->first()->contenedor;
+            $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+                $primerItem = $items->first();
+                $contenedor = $primerItem->contenedor;
+                
                 return [
-                    'IdContenedor' => $contenedorId,
+                    'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                    'Nombre' => $contenedor ? $contenedor->Nombre : '-',
+                    'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
                     'productos' => $items->map(function($item) {
                         return [
@@ -482,13 +617,13 @@ class PedidoClienteController extends Controller
                             'Codigo' => $item->producto ? $item->producto->Codigo : '-',
                             'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
                             'Cantidad' => $item->Cantidad,
+                            'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
                         ];
                     }),
                     'total_unidades' => $items->sum('Cantidad'),
                 ];
             })->values();
 
-            // ✅ Estados para la línea de proceso
             $estados = [
                 ['key' => 'Borrador', 'label' => 'Borrador', 'icon' => 'fa-pencil-alt', 'color' => 'yellow'],
                 ['key' => 'Pendiente', 'label' => 'Pendiente', 'icon' => 'fa-clock', 'color' => 'blue'],
@@ -497,131 +632,20 @@ class PedidoClienteController extends Controller
                 ['key' => 'Cancelado', 'label' => 'Cancelado', 'icon' => 'fa-times-circle', 'color' => 'red'],
             ];
 
-            $estadoActual = $pedido->EstadoPedido;
-
             return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Show', [
                 'pedido' => $pedido,
                 'detallesAgrupados' => $detallesAgrupados,
                 'estados' => $estados,
-                'estadoActual' => $estadoActual,
+                'estadoActual' => $pedido->EstadoPedido,
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error en show de pedido: ' . $e->getMessage());
-            
+            Log::error('Error en show: ' . $e->getMessage());
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', 'Error al cargar el pedido: ' . $e->getMessage());
         }
     }
 
-    /**
-     * ✅ CALCULAR TOTALES DEL PEDIDO
-     */
-    private function calcularTotales($idPedido)
-    {
-        $totalUnidades = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->sum('Cantidad');
-        $totalContenedores = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)
-            ->distinct('IdContenedor')
-            ->count('IdContenedor');
-
-        return [
-            'total_unidades' => $totalUnidades,
-            'total_contenedores' => $totalContenedores,
-        ];
-    }
-
-    /**
-     * ✅ REVISAR PEDIDO (Vista de revisión antes de finalizar)
-     */
-    public function review($id)
-    {
-        try {
-            $clienteId = session('cliente_id');
-            $sucursalId = session('cliente_sucursal_id');
-            $operadorId = session('operador_id');
-            
-            // ✅ Buscar el pedido con filtros de seguridad
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdPedidoCliente', $id)
-                ->where('ActivoInactivo', 0) // Solo borradores
-                ->with(['detalles.producto', 'detalles.contenedor'])
-                ->first();
-
-            // ✅ Si no existe, redirigir al create con mensaje
-            if (!$pedido) {
-                Log::warning('Pedido no encontrado en review', [
-                    'IdPedidoCliente' => $id,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId,
-                    'IdOperador' => $operadorId
-                ]);
-                
-                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
-                    ->with('error', 'El pedido no existe, ya fue finalizado o no tiene acceso a él.');
-            }
-
-            // ✅ Verificar que tenga productos
-            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
-            if ($totalDetalles === 0) {
-                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
-                    ->with('error', 'El pedido no tiene productos. Agregue productos antes de revisar.');
-            }
-
-            // ✅ Obtener nombre del cliente (operador logueado)
-            $cliente = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_cliente')
-                ->where('IdCliente', $clienteId)
-                ->first(['Nombre']);
-            
-            // ✅ Obtener nombre de la sucursal
-            $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_cliente_sucursal')
-                ->where('IdClienteSucursal', $sucursalId)
-                ->first(['Nombre']);
-            
-            // ✅ Obtener nombre del operador
-            $operador = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('todos_operador')
-                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
-                ->where('todos_operador.IdOperador', $operadorId)
-                ->first(['todos_identificador.Nombre as nombre']);
-
-            // ✅ Agrupar detalles por contenedor
-            $detallesAgrupados = $pedido->detalles->groupBy('IdContenedor')->map(function($items, $contenedorId) {
-                $contenedor = $items->first()->contenedor;
-                return [
-                    'IdContenedor' => $contenedorId,
-                    'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                    'Nombre' => $contenedor ? $contenedor->Nombre : '-',
-                    'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
-                    'productos' => $items->map(function($item) {
-                        return [
-                            'IdProducto' => $item->IdProducto,
-                            'Codigo' => $item->producto ? $item->producto->Codigo : '-',
-                            'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
-                            'Cantidad' => $item->Cantidad,
-                        ];
-                    }),
-                    'total_unidades' => $items->sum('Cantidad'),
-                ];
-            })->values();
-
-            return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Review', [
-                'pedido' => $pedido,
-                'detallesAgrupados' => $detallesAgrupados,
-                'clienteNombre' => $cliente->Nombre ?? 'Sin cliente',
-                'sucursalNombre' => $sucursal->Nombre ?? 'Sin sucursal',
-                'operadorNombre' => $operador->nombre ?? 'Sin operador',
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error en review de pedido: ' . $e->getMessage());
-            
-            return redirect()->route('operacion.pedidos-clientes.pedidos.create')
-                ->with('error', 'Error al cargar la revisión del pedido: ' . $e->getMessage());
-        }
-    }
-    
     /**
      * ✅ GENERAR PDF DEL PEDIDO
      */
@@ -630,31 +654,22 @@ class PedidoClienteController extends Controller
         try {
             $clienteId = session('cliente_id');
             $sucursalId = session('cliente_sucursal_id');
-            $operadorId = session('operador_id');
             
-            // ✅ BUSCAR EL PEDIDO CON FILTROS DE SEGURIDAD
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->with(['detalles.producto', 'detalles.contenedor'])
                 ->first();
 
-            // ✅ SI NO EXISTE, REDIRIGIR CON MENSAJE
             if (!$pedido) {
-                Log::warning('Pedido no encontrado para PDF', [
-                    'IdPedidoCliente' => $id,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId
-                ]);
-                
-                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
-                    ->with('error', 'El pedido no existe o no tiene acceso a él.');
+                return redirect()->route('operacion.pedidos-clientes.pedidos.index')
+                    ->with('error', 'El pedido no existe.');
             }
 
             // ✅ VERIFICAR QUE TENGA PRODUCTOS
             $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
             if ($totalDetalles === 0) {
-                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
-                    ->with('error', 'El pedido no tiene productos para generar el PDF.');
+                return redirect()->route('operacion.pedidos-clientes.pedidos.index')
+                    ->with('error', 'El pedido no tiene productos.');
             }
 
             // ✅ OBTENER DATOS DE LA EMPRESA
@@ -663,7 +678,6 @@ class PedidoClienteController extends Controller
                 ->where('IdCliente', $clienteId)
                 ->first(['Nombre', 'NIT', 'Direccion']);
 
-            // ✅ OBTENER DATOS DE LA SUCURSAL
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $sucursalId)
@@ -673,16 +687,18 @@ class PedidoClienteController extends Controller
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
-                ->where('todos_operador.IdOperador', $operadorId)
+                ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
 
-            // ✅ AGRUPAR DETALLES POR CONTENEDOR
-            $detallesAgrupados = $pedido->detalles->groupBy('IdContenedor')->map(function($items, $contenedorId) {
-                $contenedor = $items->first()->contenedor;
+            // ✅ AGRUPAR POR ORDENCONTENEDOR (cada contenedor es independiente)
+            $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+                $primerItem = $items->first();
+                $contenedor = $primerItem->contenedor;
+                
                 return [
-                    'IdContenedor' => $contenedorId,
+                    'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                    'Nombre' => $contenedor ? $contenedor->Nombre : '-',
+                    'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
                     'productos' => $items->map(function($item) {
                         return [
@@ -698,13 +714,11 @@ class PedidoClienteController extends Controller
 
             // ✅ CALCULAR TOTALES
             $totalUnidades = $pedido->detalles->sum('Cantidad');
-            $totalContenedores = $pedido->detalles->groupBy('IdContenedor')->count();
+            $totalContenedores = $pedido->detalles->groupBy('OrdenContenedor')->count();
 
             // =============================================
             // GENERAR PDF
             // =============================================
-            
-            // Configurar PDF (80mm de ancho - ticket térmico)
             $pdf = new \TCPDF('P', 'mm', array(80, 300), true, 'UTF-8', false);
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
@@ -723,7 +737,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 6, $empresa->Nombre ?? 'EMPRESA', 0, 1, 'C');
             $y += 6;
             
-            // Sucursal
             $pdf->SetFont('helvetica', '', 9);
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 4, $sucursal->Nombre ?? '', 0, 1, 'C');
@@ -737,7 +750,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 4, "Tel.: " . ($sucursal->Telefono ?? ''), 0, 1, 'C');
             $y += 4;
             
-            // Línea separadora
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 2, '----------------------------------------', 0, 1, 'C');
             $y += 4;
@@ -748,7 +760,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 5, 'PEDIDO DE PRODUCTOS', 0, 1, 'C');
             $y += 5;
             
-            // Número de pedido
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 4, 'N° ' . ($pedido->NumeroPedido ?? '000000'), 0, 1, 'C');
@@ -759,28 +770,26 @@ class PedidoClienteController extends Controller
             // =============================================
             $pdf->SetFont('helvetica', '', 8);
             
-            // Fecha
             $pdf->SetXY(5, $y);
-            $pdf->Cell(40, 4, 'Fecha:', 0, 0, 'L');
+            $pdf->Cell(40, 4, 'Fecha Pedido:', 0, 0, 'L');
             $pdf->SetXY(45, $y);
             $pdf->Cell(30, 4, Carbon::parse($pedido->FechaPedido)->format('d/m/Y H:i'), 0, 1, 'R');
             $y += 4;
             
-            // Operador
+            if ($pedido->FechaEntrega) {
+                $pdf->SetXY(5, $y);
+                $pdf->Cell(40, 4, 'Fecha Entrega:', 0, 0, 'L');
+                $pdf->SetXY(45, $y);
+                $pdf->Cell(30, 4, Carbon::parse($pedido->FechaEntrega)->format('d/m/Y'), 0, 1, 'R');
+                $y += 4;
+            }
+            
             $pdf->SetXY(5, $y);
             $pdf->Cell(40, 4, 'Operador:', 0, 0, 'L');
             $pdf->SetXY(45, $y);
             $pdf->Cell(30, 4, $operador->nombre ?? 'Sin operador', 0, 1, 'R');
             $y += 4;
             
-            // Sucursal
-            $pdf->SetXY(5, $y);
-            $pdf->Cell(40, 4, 'Sucursal:', 0, 0, 'L');
-            $pdf->SetXY(45, $y);
-            $pdf->Cell(30, 4, $sucursal->Nombre ?? '', 0, 1, 'R');
-            $y += 4;
-            
-            // Estado
             $pdf->SetXY(5, $y);
             $pdf->Cell(40, 4, 'Estado:', 0, 0, 'L');
             $pdf->SetXY(45, $y);
@@ -791,7 +800,6 @@ class PedidoClienteController extends Controller
             // TABLA DE PRODUCTOS
             // =============================================
             
-            // Encabezados
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY(5, $y);
             $pdf->Cell(5, 4, '#', 0, 0, 'C');
@@ -803,13 +811,13 @@ class PedidoClienteController extends Controller
             $y += 4;
 
             $pdf->SetFont('helvetica', '', 7);
-            
             $contador = 0;
+            
             foreach ($detallesAgrupados as $item) {
-                // Mostrar contenedor
+                // ✅ Contenedor (usamos Codigo)
                 $pdf->SetFont('helvetica', 'B', 7);
                 $pdf->SetXY(5, $y);
-                $pdf->Cell(70, 3, $item['Codigo'] . ' - ' . $item['Nombre'], 0, 1, 'L');
+                $pdf->Cell(70, 3, '#' . $item['Orden'] . ' ' . $item['Codigo'] . ' (Cap: ' . $item['CapacidadTotal'] . ' und)', 0, 1, 'L');
                 $y += 3;
                 
                 $pdf->SetFont('helvetica', '', 7);
@@ -820,7 +828,6 @@ class PedidoClienteController extends Controller
                     $pdf->Cell(5, 4, $contador . '.', 0, 0, 'C');
                     
                     $nombreProducto = $producto['Descripcion'] ?? '-';
-                    // ✅ TRUNCAR NOMBRE PARA QUE NO SE SALGA
                     if (strlen($nombreProducto) > 25) {
                         $nombreProducto = substr($nombreProducto, 0, 23) . '...';
                     }
@@ -835,7 +842,6 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // Línea separadora
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 1, '', 'T', 1);
             $y += 3;
@@ -895,12 +901,25 @@ class PedidoClienteController extends Controller
             exit;
 
         } catch (\Exception $e) {
-            Log::error('Error generando PDF del pedido: ' . $e->getMessage());
+            Log::error('Error generando PDF: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
-            
             return redirect()->back()->with('error', 'Error al generar el PDF: ' . $e->getMessage());
         }
     }
 
+    /**
+     * ✅ CALCULAR TOTALES
+     */
+    private function calcularTotales($idPedido)
+    {
+        $totalUnidades = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->sum('Cantidad');
+        $totalContenedores = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)
+            ->distinct('OrdenContenedor')
+            ->count('OrdenContenedor');
 
+        return [
+            'total_unidades' => $totalUnidades,
+            'total_contenedores' => $totalContenedores,
+        ];
+    }
 }
