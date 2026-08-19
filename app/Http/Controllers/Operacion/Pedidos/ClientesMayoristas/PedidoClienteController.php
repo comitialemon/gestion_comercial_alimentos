@@ -18,14 +18,16 @@ use Carbon\Carbon;
 class PedidoClienteController extends Controller
 {
     /**
-     * Lista de pedidos
+     * Lista de pedidos del operador logueado
      */
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
         
         $pedidos = PedidoCliente::porContexto()
+            ->where('IdOperador', $operadorId)  // 🔥 FILTRO POR OPERADOR
             ->with(['cliente', 'sucursal', 'operador'])
             ->orderBy('IdPedidoCliente', 'desc')
             ->paginate(20);
@@ -34,7 +36,6 @@ class PedidoClienteController extends Controller
             'pedidos' => $pedidos,
         ]);
     }
-
     /**
      * ✅ NUEVO PEDIDO - Menú de contenedores (táctil)
      */
