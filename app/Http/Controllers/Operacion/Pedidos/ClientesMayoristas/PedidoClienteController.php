@@ -444,21 +444,15 @@ class PedidoClienteController extends Controller
         }
     }
     /**
-     * ✅ FINALIZAR PEDIDO - CON CONVERSIÓN DE FECHA
+     * ✅ FINALIZAR PEDIDO - CON VALIDACIÓN CORREGIDA
      */
     public function finalizarPedido(Request $request, $idPedido)
     {
-        // ✅ CONVERTIR FECHA ANTES DE VALIDAR
-        $fechaEntrega = $request->FechaEntrega;
-        
-        // Si viene en formato DD/MM/YYYY, convertirlo a YYYY-MM-DD
-        if (!empty($fechaEntrega) && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaEntrega)) {
-            $partes = explode('/', $fechaEntrega);
-            $fechaEntrega = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
-            $request->merge(['FechaEntrega' => $fechaEntrega]);
-        }
-        
-        // ✅ VALIDACIÓN CON FECHA DE ENTREGA MÍNIMO 1 DÍA DESPUÉS DE HOY
+        // ✅ LOG PARA VER QUÉ LLEGA
+        \Log::info('=== 🚀 FINALIZAR PEDIDO ===');
+        \Log::info('📝 Datos recibidos:', $request->all());
+
+        // ✅ Validar campos básicos
         $request->validate([
             'IdCliente' => 'required|exists:todos_cliente,IdCliente',
             'IdSucursal' => [
@@ -473,40 +467,63 @@ class PedidoClienteController extends Controller
                     }
                 }
             ],
-            'FechaEntrega' => [
-                'nullable',
-                'date',
-                'after:today', // ✅ Validación simple de Laravel
-                function ($attribute, $value, $fail) {
-                    if (empty($value)) {
-                        return;
-                    }
-                    
-                    try {
-                        $fechaEntrega = Carbon::parse($value)->startOfDay();
-                        $hoy = Carbon::now('America/La_Paz')->startOfDay();
-                        
-                        $diasDiferencia = $hoy->diffInDays($fechaEntrega, false);
-                        
-                        // ✅ Depuración (puedes eliminar después)
-                        \Log::info('Validación fecha entrega', [
-                            'fecha_entrega' => $value,
-                            'fecha_entrega_parsed' => $fechaEntrega->toDateString(),
-                            'hoy' => $hoy->toDateString(),
-                            'dias_diferencia' => $diasDiferencia
-                        ]);
-                        
-                        if ($diasDiferencia < 1) {
-                            $fail('La fecha de entrega debe ser mínimo 1 día después de hoy.');
-                        }
-                    } catch (\Exception $e) {
-                        \Log::error('Error parseando fecha: ' . $e->getMessage());
-                        $fail('Formato de fecha inválido.');
-                    }
-                }
-            ],
             'Observaciones' => 'nullable|string|max:500',
         ]);
+
+        // ✅ PROCESAR FECHA CON VALIDACIÓN ESTRICTA
+        $fechaEntrega = $request->input('FechaEntrega');
+        $fechaEntregaFormateada = null;
+        
+        if (!empty($fechaEntrega)) {
+            $fechaEntrega = trim($fechaEntrega);
+            
+            // ✅ Verificar formato DD/MM/YYYY
+            if (!preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $fechaEntrega, $matches)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Formato de fecha inválido. Use DD/MM/YYYY.'
+                ], 422);
+            }
+
+            $dia = (int)$matches[1];
+            $mes = (int)$matches[2];
+            $anio = (int)$matches[3];
+            
+            // ✅ Crear timestamp de la fecha entregada
+            $timestampEntrega = mktime(0, 0, 0, $mes, $dia, $anio);
+            
+            // ✅ Obtener fecha de hoy en Bolivia (sin horas)
+            date_default_timezone_set('America/La_Paz');
+            $timestampHoy = mktime(0, 0, 0, date('m'), date('d'), date('Y'));
+            
+            // ✅ Calcular diferencia en días (redondeando hacia abajo)
+            $diferenciaDias = ($timestampEntrega - $timestampHoy) / 86400;
+            $diferenciaDias = floor($diferenciaDias);
+            
+            \Log::info('📅 VALIDACIÓN FECHA:', [
+                'fecha_entrega' => $fechaEntrega,
+                'fecha_hoy' => date('d/m/Y'),
+                'diferencia_dias' => $diferenciaDias
+            ]);
+
+            // ✅ Validar que sea al menos 1 día después
+            if ($diferenciaDias < 1) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'La fecha de entrega debe ser mínimo 1 día después de hoy. Hoy es ' . date('d/m/Y')
+                ], 422);
+            }
+
+            // ✅ Formatear para guardar
+            $fechaEntregaFormateada = date('Y-m-d', $timestampEntrega);
+            \Log::info('✅ Fecha aceptada: ' . $fechaEntregaFormateada);
+        } else {
+            // ✅ Si no se envía fecha de entrega, ERROR
+            return response()->json([
+                'success' => false,
+                'message' => 'La fecha de entrega es obligatoria.'
+            ], 422);
+        }
 
         // ✅ VALIDAR QUE LA SUCURSAL PERTENEZCA AL CLIENTE
         $sucursalValida = ClienteSucursal::where('IdClienteSucursal', $request->IdSucursal)
@@ -553,7 +570,7 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ OBTENER NUEVO NÚMERO DE PEDIDO POR SUCURSAL
+            // ✅ OBTENER NUEVO NÚMERO DE PEDIDO
             $maxNumero = PedidoCliente::where('IdCliente', $request->IdCliente)
                 ->where('IdSucursal', $request->IdSucursal)
                 ->where('NumeroPedido', '!=', '0')
@@ -595,7 +612,7 @@ class PedidoClienteController extends Controller
                 'IdCliente' => $request->IdCliente,
                 'IdSucursal' => $request->IdSucursal,
                 'NumeroPedido' => $numeroPedidoFormateado,
-                'FechaEntrega' => $request->FechaEntrega,
+                'FechaEntrega' => $fechaEntregaFormateada,
                 'Observaciones' => $request->Observaciones,
                 'ActivoInactivo' => 1,
                 'EstadoPedido' => 'Pendiente',
@@ -604,11 +621,10 @@ class PedidoClienteController extends Controller
                 'FechaActualiza' => Carbon::now('America/La_Paz'),
             ]);
 
-            Log::info('Pedido finalizado correctamente', [
+            \Log::info('🎉 Pedido finalizado correctamente', [
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
                 'NumeroPedido' => $pedido->NumeroPedido,
-                'IdCliente' => $clienteId,
-                'IdSucursal' => $request->IdSucursal,
+                'FechaEntrega' => $fechaEntregaFormateada
             ]);
 
             return response()->json([
@@ -620,14 +636,13 @@ class PedidoClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error al finalizar pedido: ' . $e->getMessage());
+            \Log::error('❌ Error al finalizar pedido: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al finalizar pedido: ' . $e->getMessage()
             ], 500);
         }
     }
-
     /**
      * ✅ MOSTRAR DETALLE DEL PEDIDO
      */

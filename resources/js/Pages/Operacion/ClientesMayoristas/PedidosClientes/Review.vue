@@ -43,7 +43,6 @@ const errorFechaEntrega = ref('')
 const fechaMinima = computed(() => {
     const hoy = new Date()
     hoy.setDate(hoy.getDate() + 1)
-    // ✅ Formatear a YYYY-MM-DD para el input date
     const year = hoy.getFullYear()
     const month = String(hoy.getMonth() + 1).padStart(2, '0')
     const day = String(hoy.getDate()).padStart(2, '0')
@@ -103,18 +102,22 @@ const validarFechaEntrega = () => {
         return false
     }
     
+    // ✅ Obtener fecha actual en formato YYYY-MM-DD
     const hoy = new Date()
-    hoy.setHours(0, 0, 0, 0)
+    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
     
-    const fechaSeleccionada = new Date(fechaEntrega.value)
-    fechaSeleccionada.setHours(0, 0, 0, 0)
+    // ✅ La fecha del input ya viene en YYYY-MM-DD
+    const fechaEntregaStr = fechaEntrega.value
     
-    // ✅ Calcular diferencia en días
-    const diferenciaEnMs = fechaSeleccionada.getTime() - hoy.getTime()
-    const diferenciaEnDias = Math.ceil(diferenciaEnMs / (1000 * 60 * 60 * 24))
+    console.log('📅 VALIDACIÓN FRONTEND:', {
+        hoy: hoyStr,
+        fechaEntrega: fechaEntregaStr,
+        fechaEntregaValue: fechaEntrega.value
+    })
     
-    if (diferenciaEnDias < 1) {
-        errorFechaEntrega.value = 'La fecha de entrega debe ser mínimo 1 día después de hoy'
+    // ✅ COMPARAR STRINGS DIRECTAMENTE
+    if (fechaEntregaStr <= hoyStr) {
+        errorFechaEntrega.value = `La fecha de entrega debe ser mínimo 1 día después de hoy (${hoy.toLocaleDateString('es-BO')})`
         return false
     }
     
@@ -141,27 +144,40 @@ const finalizarPedido = async () => {
     loading.value = true
     
     try {
-        // ✅ FORMATO CORRECTO: YYYY-MM-DD
+        console.log('🚀 ===== INICIANDO FINALIZAR PEDIDO =====')
+        console.log('📅 FechaEntrega.value:', fechaEntrega.value)
+        
+        // ✅ Convertir YYYY-MM-DD a DD/MM/YYYY para enviar
         let fechaEntregaFormateada = null
         if (fechaEntrega.value) {
-            const fecha = new Date(fechaEntrega.value)
-            const year = fecha.getFullYear()
-            const month = String(fecha.getMonth() + 1).padStart(2, '0')
-            const day = String(fecha.getDate()).padStart(2, '0')
-            fechaEntregaFormateada = `${year}-${month}-${day}`
+            const partes = fechaEntrega.value.split('-')
+            if (partes.length === 3) {
+                // partes: [año, mes, dia]
+                const dia = partes[2]
+                const mes = partes[1]
+                const anio = partes[0]
+                fechaEntregaFormateada = `${dia}/${mes}/${anio}`
+                console.log('📤 Fecha formateada (DD/MM/YYYY):', fechaEntregaFormateada)
+            }
         }
         
-        const response = await axios.post(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`, {
-            IdCliente: props.pedido.IdCliente,
-            IdSucursal: props.pedido.IdSucursal,
-            FechaEntrega: fechaEntregaFormateada,
-            Observaciones: observaciones.value || null
-        })
+        const response = await axios.post(
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`,
+            {
+                IdCliente: props.pedido.IdCliente,
+                IdSucursal: props.pedido.IdSucursal,
+                FechaEntrega: fechaEntregaFormateada,
+                Observaciones: observaciones.value || null
+            }
+        )
+        
+        console.log('📥 Respuesta del servidor:', response.data)
         
         if (response.data.success) {
             toast?.success('Pedido finalizado', `Pedido N° ${response.data.numero_pedido} creado correctamente`)
             
             if (response.data.pdf_url) {
+                console.log('📄 Abriendo PDF:', response.data.pdf_url)
                 window.open(response.data.pdf_url, '_blank')
             }
             
@@ -172,11 +188,12 @@ const finalizarPedido = async () => {
             toast?.error('Error', response.data.message || 'Error al finalizar el pedido')
         }
     } catch (error) {
-        console.error('Error:', error)
+        console.error('❌ Error:', error)
         const mensaje = error.response?.data?.message || 'Error al finalizar el pedido'
         toast?.error('Error', mensaje)
     } finally {
         loading.value = false
+        console.log('🏁 ===== FINALIZÓ PROCESO =====')
     }
 }
 </script>
