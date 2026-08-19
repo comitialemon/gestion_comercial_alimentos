@@ -183,7 +183,7 @@ class EgresoController extends Controller
             'IdCuentaHaber' => 'required|exists:conta_cuenta,IdCuenta',
             'IdCuentaDebe' => 'required|exists:conta_cuenta,IdCuenta',
             'Glosa' => 'required|string|max:200',
-            'TotalBolivianos' => 'required|numeric|min:0.01',
+            'TotalBolivianos' => 'required|numeric|min:0',
         ]);
 
         $clienteId = session('cliente_id');
@@ -299,7 +299,7 @@ class EgresoController extends Controller
             'IdCuentaHaber' => 'required|exists:conta_cuenta,IdCuenta',
             'IdCuentaDebe' => 'required|exists:conta_cuenta,IdCuenta',
             'Glosa' => 'required|string|max:200',
-            'TotalBolivianos' => 'required|numeric|min:0.01',
+            'TotalBolivianos' => 'required|numeric|min:0',
         ]);
 
         $clienteId = session('cliente_id');

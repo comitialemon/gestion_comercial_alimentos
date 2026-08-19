@@ -112,7 +112,7 @@ const guardarNuevoIdentificador = async () => {
     }
 }
 
-// Validar campos
+// 🔥 VALIDAR CAMPOS - MODIFICADO PARA PERMITIR MONTO 0
 const validarCampos = () => {
     const nuevosErrors = {}
     if (!form.value.IdFecha) nuevosErrors.IdFecha = 'Seleccione fecha'
@@ -120,7 +120,16 @@ const validarCampos = () => {
     if (!form.value.IdCuentaHaber) nuevosErrors.IdCuentaHaber = 'Seleccione cuenta'
     if (!form.value.IdCuentaDebe) nuevosErrors.IdCuentaDebe = 'Seleccione cuenta'
     if (!form.value.Glosa) nuevosErrors.Glosa = 'Ingrese glosa'
-    if (!form.value.TotalBolivianos || form.value.TotalBolivianos <= 0) nuevosErrors.TotalBolivianos = 'Ingrese monto mayor a 0'
+    
+    // 🔥 CAMBIADO: Permitir monto 0, solo validar que no sea negativo
+    if (form.value.TotalBolivianos === '' || 
+        form.value.TotalBolivianos === null || 
+        form.value.TotalBolivianos === undefined) {
+        nuevosErrors.TotalBolivianos = 'Ingrese un monto'
+    } else if (form.value.TotalBolivianos < 0) {
+        nuevosErrors.TotalBolivianos = 'El monto no puede ser negativo'
+    }
+    
     errors.value = nuevosErrors
     return Object.keys(nuevosErrors).length === 0
 }
@@ -277,6 +286,10 @@ onMounted(() => {
                                     placeholder="0.00"
                                 >
                             </div>
+                            <!-- 🔥 MENSAJE INFORMATIVO -->
+                            <p class="text-[10px] text-gray-400 mt-0.5">
+                                <i class="fas fa-info-circle"></i> Puede registrar egresos por Bs. 0.00
+                            </p>
                             <p v-if="errors.TotalBolivianos" class="text-[10px] text-red-500 mt-0.5">{{ errors.TotalBolivianos }}</p>
                         </div>
 
