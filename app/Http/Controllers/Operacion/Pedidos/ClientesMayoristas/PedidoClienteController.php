@@ -443,12 +443,21 @@ class PedidoClienteController extends Controller
                 ->with('error', 'Error al cargar la revisión: ' . $e->getMessage());
         }
     }
-
     /**
-     * ✅ FINALIZAR PEDIDO - VALIDACIÓN CORREGIDA CON diffInDays()
+     * ✅ FINALIZAR PEDIDO - CON CONVERSIÓN DE FECHA
      */
     public function finalizarPedido(Request $request, $idPedido)
     {
+        // ✅ CONVERTIR FECHA ANTES DE VALIDAR
+        $fechaEntrega = $request->FechaEntrega;
+        
+        // Si viene en formato DD/MM/YYYY, convertirlo a YYYY-MM-DD
+        if (!empty($fechaEntrega) && preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $fechaEntrega)) {
+            $partes = explode('/', $fechaEntrega);
+            $fechaEntrega = $partes[2] . '-' . $partes[1] . '-' . $partes[0];
+            $request->merge(['FechaEntrega' => $fechaEntrega]);
+        }
+        
         // ✅ VALIDACIÓN CON FECHA DE ENTREGA MÍNIMO 1 DÍA DESPUÉS DE HOY
         $request->validate([
             'IdCliente' => 'required|exists:todos_cliente,IdCliente',
@@ -467,16 +476,32 @@ class PedidoClienteController extends Controller
             'FechaEntrega' => [
                 'nullable',
                 'date',
+                'after:today', // ✅ Validación simple de Laravel
                 function ($attribute, $value, $fail) {
-                    $fechaEntrega = Carbon::parse($value);
-                    $hoy = Carbon::now('America/La_Paz');
+                    if (empty($value)) {
+                        return;
+                    }
                     
-                    // ✅ Calcular diferencia en días
-                    $diasDiferencia = $hoy->diffInDays($fechaEntrega, false);
-                    
-                    // ✅ Si la diferencia es menor a 1 día (0 o negativa), falla
-                    if ($diasDiferencia < 1) {
-                        $fail('La fecha de entrega debe ser mínimo 1 día después de hoy.');
+                    try {
+                        $fechaEntrega = Carbon::parse($value)->startOfDay();
+                        $hoy = Carbon::now('America/La_Paz')->startOfDay();
+                        
+                        $diasDiferencia = $hoy->diffInDays($fechaEntrega, false);
+                        
+                        // ✅ Depuración (puedes eliminar después)
+                        \Log::info('Validación fecha entrega', [
+                            'fecha_entrega' => $value,
+                            'fecha_entrega_parsed' => $fechaEntrega->toDateString(),
+                            'hoy' => $hoy->toDateString(),
+                            'dias_diferencia' => $diasDiferencia
+                        ]);
+                        
+                        if ($diasDiferencia < 1) {
+                            $fail('La fecha de entrega debe ser mínimo 1 día después de hoy.');
+                        }
+                    } catch (\Exception $e) {
+                        \Log::error('Error parseando fecha: ' . $e->getMessage());
+                        $fail('Formato de fecha inválido.');
                     }
                 }
             ],
@@ -591,7 +616,7 @@ class PedidoClienteController extends Controller
                 'message' => 'Pedido finalizado correctamente',
                 'pedido_id' => $pedido->IdPedidoCliente,
                 'numero_pedido' => $pedido->NumeroPedido,
-                'pdf_url' => route('operacion.pedidos-clientes.pedidos.pdf', $pedido->IdPedidoCliente)
+                'pdf_url' => url("/operacion/pedidos/clientes-mayoristas/pedidos-clientes/{$pedido->IdPedidoCliente}/pdf")
             ]);
 
         } catch (\Exception $e) {
@@ -664,16 +689,20 @@ class PedidoClienteController extends Controller
                 ->with('error', 'Error al cargar el pedido: ' . $e->getMessage());
         }
     }
-
     /**
-     * ✅ GENERAR PDF DEL PEDIDO
+     * ✅ GENERAR PDF DEL PEDIDO - CORREGIDO
      */
     public function generarPdf($id)
     {
         try {
+            // ✅ Limpiar buffer antes de generar PDF
+            if (ob_get_length()) {
+                ob_end_clean();
+            }
+
             $clienteId = session('cliente_id');
-            $sucursalId = session('cliente_sucursal_id');
             
+            // ✅ Obtener el pedido con sus relaciones
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->with(['detalles.producto', 'detalles.contenedor'])
@@ -690,15 +719,17 @@ class PedidoClienteController extends Controller
                     ->with('error', 'El pedido no tiene productos.');
             }
 
+            // ✅ Obtener datos de la empresa
             $empresa = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente')
                 ->where('IdCliente', $clienteId)
                 ->first(['Nombre', 'NIT', 'Direccion']);
 
+            // ✅ Obtener la sucursal DEL PEDIDO - SIN Teléfono
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
-                ->where('IdClienteSucursal', $sucursalId)
-                ->first(['Nombre', 'NumeroSucursal', 'Direccion', 'Telefono']);
+                ->where('IdClienteSucursal', $pedido->IdSucursal)
+                ->first(['Nombre', 'NumeroSucursal', 'Direccion']);
 
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
@@ -730,6 +761,7 @@ class PedidoClienteController extends Controller
             $totalUnidades = $pedido->detalles->sum('Cantidad');
             $totalContenedores = $pedido->detalles->groupBy('OrdenContenedor')->count();
 
+            // ✅ Crear PDF
             $pdf = new \TCPDF('P', 'mm', array(80, 300), true, 'UTF-8', false);
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
@@ -753,9 +785,10 @@ class PedidoClienteController extends Controller
             $pdf->Cell(70, 4, $sucursal->Direccion ?? '', 0, 1, 'C');
             $y += 4;
             
-            $pdf->SetXY(5, $y);
-            $pdf->Cell(70, 4, "Tel.: " . ($sucursal->Telefono ?? ''), 0, 1, 'C');
-            $y += 4;
+            // ✅ LÍNEA DEL TELÉFONO ELIMINADA O COMENTADA
+            // $pdf->SetXY(5, $y);
+            // $pdf->Cell(70, 4, "Tel.: " . ($sucursal->Telefono ?? ''), 0, 1, 'C');
+            // $y += 4;
             
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 2, '----------------------------------------', 0, 1, 'C');
@@ -882,14 +915,27 @@ class PedidoClienteController extends Controller
             $pdf->SetXY(5, $y);
             $pdf->Cell(70, 3, 'Gracias por su pedido', 0, 1, 'C');
 
+            // ✅ Output del PDF
             $nombreArchivo = 'Pedido_' . ($pedido->NumeroPedido ?? '000000') . '.pdf';
+            
+            // ✅ Configurar headers para PDF
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $nombreArchivo . '"');
+            header('Cache-Control: private, max-age=0, must-revalidate');
+            header('Pragma: public');
+            
             $pdf->Output($nombreArchivo, 'I');
             exit;
 
         } catch (\Exception $e) {
             Log::error('Error generando PDF: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
-            return redirect()->back()->with('error', 'Error al generar el PDF: ' . $e->getMessage());
+            
+            // ✅ Si hay error, devolver un mensaje JSON
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar el PDF: ' . $e->getMessage()
+            ], 500);
         }
     }
 

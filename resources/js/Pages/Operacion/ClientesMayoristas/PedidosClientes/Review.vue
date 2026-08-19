@@ -43,7 +43,11 @@ const errorFechaEntrega = ref('')
 const fechaMinima = computed(() => {
     const hoy = new Date()
     hoy.setDate(hoy.getDate() + 1)
-    return hoy.toISOString().split('T')[0]
+    // ✅ Formatear a YYYY-MM-DD para el input date
+    const year = hoy.getFullYear()
+    const month = String(hoy.getMonth() + 1).padStart(2, '0')
+    const day = String(hoy.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
 })
 
 const totalUnidades = computed(() => {
@@ -105,7 +109,11 @@ const validarFechaEntrega = () => {
     const fechaSeleccionada = new Date(fechaEntrega.value)
     fechaSeleccionada.setHours(0, 0, 0, 0)
     
-    if (fechaSeleccionada <= hoy) {
+    // ✅ Calcular diferencia en días
+    const diferenciaEnMs = fechaSeleccionada.getTime() - hoy.getTime()
+    const diferenciaEnDias = Math.ceil(diferenciaEnMs / (1000 * 60 * 60 * 24))
+    
+    if (diferenciaEnDias < 1) {
         errorFechaEntrega.value = 'La fecha de entrega debe ser mínimo 1 día después de hoy'
         return false
     }
@@ -133,10 +141,20 @@ const finalizarPedido = async () => {
     loading.value = true
     
     try {
+        // ✅ FORMATO CORRECTO: YYYY-MM-DD
+        let fechaEntregaFormateada = null
+        if (fechaEntrega.value) {
+            const fecha = new Date(fechaEntrega.value)
+            const year = fecha.getFullYear()
+            const month = String(fecha.getMonth() + 1).padStart(2, '0')
+            const day = String(fecha.getDate()).padStart(2, '0')
+            fechaEntregaFormateada = `${year}-${month}-${day}`
+        }
+        
         const response = await axios.post(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`, {
             IdCliente: props.pedido.IdCliente,
             IdSucursal: props.pedido.IdSucursal,
-            FechaEntrega: fechaEntrega.value,
+            FechaEntrega: fechaEntregaFormateada,
             Observaciones: observaciones.value || null
         })
         
@@ -188,10 +206,14 @@ const finalizarPedido = async () => {
                 <div class="p-6 border-b bg-gray-50">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div>
-                            <h1 class="text-xl font-bold text-gray-800">Pedido de Productos</h1>
+                            <h1 class="text-xl font-bold text-gray-800">Revisión del Pedido</h1>
                             <p class="text-sm text-gray-500 mt-1">
                                 <span class="font-medium">N° Pedido:</span> 
                                 {{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
+                            </p>
+                            <p class="text-sm text-gray-500">
+                                <span class="font-medium">Cliente:</span> 
+                                {{ clienteNombre || props.pedido?.cliente_nombre || 'Sin cliente' }}
                             </p>
                         </div>
                         <div class="text-sm text-gray-500 sm:text-right">
@@ -349,6 +371,7 @@ const finalizarPedido = async () => {
             </div>
         </div>
 
+        <!-- MODAL DE CONFIRMACIÓN -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
             title="Confirmar Pedido"

@@ -96,9 +96,11 @@ const formatearNumero = (valor) => {
     return Number(valor).toFixed(0)
 }
 
-// ✅ FUNCIÓN PARA ABRIR PDF
+// 🔥 FUNCIÓN PARA ABRIR PDF - CORREGIDA
 const abrirPdf = (id) => {
-    window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`, '_blank')
+    // ✅ URL exacta que coincide con la ruta definida en web.php
+    const url = `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`
+    window.open(url, '_blank')
 }
 
 const verDetalle = (pedido) => {
@@ -411,7 +413,7 @@ onMounted(() => {
 
                 <!-- Footer -->
                 <div class="p-4 border-t bg-gray-50 flex justify-end gap-2">
-                    <!-- ✅ PDF con @click y abrirPdf -->
+                    <!-- ✅ PDF con la URL corregida -->
                     <button 
                         v-if="pedidoSeleccionado.ActivoInactivo === 1"
                         @click="abrirPdf(pedidoSeleccionado.IdPedidoCliente)"
