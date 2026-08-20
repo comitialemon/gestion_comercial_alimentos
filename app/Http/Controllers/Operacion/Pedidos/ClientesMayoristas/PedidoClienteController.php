@@ -922,8 +922,8 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ GENERAR PDF DEL PEDIDO
-     */
+    * ✅ GENERAR PDF DEL PEDIDO - CON TOTAL DE UNIDADES POR CONTENEDOR
+    */
     public function generarPdf($id)
     {
         try {
@@ -968,6 +968,7 @@ class PedidoClienteController extends Controller
             $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
+                $totalUnidadesContenedor = $items->sum('Cantidad');
                 $subtotal = $items->sum(function($item) {
                     return $item->Cantidad * $item->Precio;
                 });
@@ -987,7 +988,7 @@ class PedidoClienteController extends Controller
                             'Subtotal' => $item->Cantidad * $item->Precio,
                         ];
                     }),
-                    'total_unidades' => $items->sum('Cantidad'),
+                    'total_unidades' => $totalUnidadesContenedor,
                     'subtotal' => $subtotal,
                 ];
             })->values();
@@ -1079,10 +1080,10 @@ class PedidoClienteController extends Controller
             $pdf->SetFillColor(245, 245, 245);
             $pdf->SetXY(12, $y);
             $pdf->Cell(6, 4, '#', 'TB', 0, 'C', 1);
-            $pdf->Cell(68, 4, 'PRODUCTO', 'TB', 0, 'L', 1);
+            $pdf->Cell(64, 4, 'PRODUCTO', 'TB', 0, 'L', 1);
             $pdf->Cell(22, 4, 'CANTIDAD', 'TB', 0, 'C', 1);
             $pdf->Cell(28, 4, 'PRECIO UNIT.', 'TB', 0, 'C', 1);
-            $pdf->Cell(32, 4, 'SUBTOTAL', 'TB', 1, 'C', 1);
+            $pdf->Cell(36, 4, 'SUBTOTAL', 'TB', 1, 'C', 1);
             $y += 4;
 
             $pdf->SetFont('helvetica', '', 6.5);
@@ -1090,6 +1091,7 @@ class PedidoClienteController extends Controller
             $fill = false;
             
             foreach ($detallesAgrupados as $item) {
+                // Fila del contenedor
                 $pdf->SetFont('helvetica', 'B', 6.5);
                 $pdf->SetFillColor(250, 250, 250);
                 $pdf->SetXY(12, $y);
@@ -1102,25 +1104,35 @@ class PedidoClienteController extends Controller
                 foreach ($item['productos'] as $producto) {
                     $contador++;
                     $nombreProducto = $producto['Descripcion'] ?? '-';
-                    if (strlen($nombreProducto) > 40) {
-                        $nombreProducto = substr($nombreProducto, 0, 37) . '...';
+                    if (strlen($nombreProducto) > 38) {
+                        $nombreProducto = substr($nombreProducto, 0, 35) . '...';
                     }
                     
                     $pdf->SetXY(12, $y);
                     $pdf->Cell(6, 3.5, $contador . '.', 'LR', 0, 'C', $fill);
-                    $pdf->Cell(68, 3.5, $nombreProducto, 'LR', 0, 'L', $fill);
+                    $pdf->Cell(64, 3.5, $nombreProducto, 'LR', 0, 'L', $fill);
                     $pdf->Cell(22, 3.5, number_format($producto['Cantidad'], 0, ',', '.'), 'LR', 0, 'C', $fill);
                     $pdf->Cell(28, 3.5, number_format($producto['Precio'], 2, ',', '.'), 'LR', 0, 'C', $fill);
-                    $pdf->Cell(32, 3.5, number_format($producto['Subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
+                    $pdf->Cell(36, 3.5, number_format($producto['Subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
                     $y += 3.5;
                     $fill = !$fill;
                 }
                 
+                // ✅ FILA DE SUBTOTAL CON TÍTULO
                 $pdf->SetFont('helvetica', 'B', 6.5);
-                $pdf->SetFillColor(250, 250, 250);
+                $pdf->SetFillColor(240, 248, 255);
                 $pdf->SetXY(12, $y);
-                $pdf->Cell(124, 3.5, 'Subtotal contenedor', 'LRB', 0, 'R', 1);
-                $pdf->Cell(32, 3.5, number_format($item['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
+                
+                // Columna # (vacía)
+                $pdf->Cell(6, 3.5, '', 'LRB', 0, 'C', 1);
+                // ✅ Columna PRODUCTO: "TOTAL CONTENEDOR"
+                $pdf->Cell(64, 3.5, 'TOTAL CONTENEDOR', 'LRB', 0, 'R', 1);
+                // ✅ Columna CANTIDAD: Total de unidades
+                $pdf->Cell(22, 3.5, number_format($item['total_unidades'], 0, ',', '.'), 'LRB', 0, 'C', 1);
+                // Columna PRECIO UNIT. (vacía)
+                $pdf->Cell(28, 3.5, '', 'LRB', 0, 'C', 1);
+                // ✅ Columna SUBTOTAL: Total en Bs.
+                $pdf->Cell(36, 3.5, number_format($item['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
                 $y += 3.5;
                 
                 $pdf->SetFont('helvetica', '', 6.5);
@@ -1180,7 +1192,6 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
-
     /**
      * ✅ CALCULAR TOTALES - CORREGIDO
      */
