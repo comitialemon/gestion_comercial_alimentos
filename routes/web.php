@@ -126,7 +126,7 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteContr
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorTipoController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayoristasController;
-
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PrecioProductoController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1361,6 +1361,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Crear nuevo pedido
                     Route::get('/create', [PedidoClienteController::class, 'create'])
                         ->name('operacion.pedidos-clientes.pedidos.create');
+                    // ✅ API: Actualizar contenedor del carrito
+                    Route::put('/carrito/contenedor', [PedidoClienteController::class, 'actualizarContenedor'])
+                        ->name('operacion.pedidos-clientes.api.carrito.actualizar-contenedor');
 
                     // API: Agregar al carrito
                     Route::post('/carrito/agregar', [PedidoClienteController::class, 'agregarAlCarrito'])
@@ -1374,18 +1377,26 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::delete('/carrito/{id}/vaciar', [PedidoClienteController::class, 'vaciarCarrito'])
                         ->name('operacion.pedidos-clientes.api.carrito.vaciar');
 
-                    // API: Obtener productos de un contenedor
+                    // API: Obtener productos de un contenedor (legado)
                     Route::get('/contenedor/{id}/productos', [ContenedorController::class, 'getProductos'])
                         ->name('operacion.pedidos-clientes.api.contenedor-productos');
+
+                    // ✅ NUEVA API: Obtener productos de un contenedor con PRECIOS del operador
+                    Route::get('/contenedor/{id}/productos-precios', [PedidoClienteController::class, 'getProductosContenedorConPrecios'])
+                        ->name('operacion.pedidos-clientes.api.contenedor-productos-precios');
+
+                    // ✅ API: Obtener detalles del pedido para el modal
+                    Route::get('/{id}/detalles', [PedidoClienteController::class, 'getDetalles'])
+                        ->name('operacion.pedidos-clientes.api.detalles');
+
+                    // Ver detalle del pedido (vista completa)
+                    Route::get('/{id}/show', [PedidoClienteController::class, 'show'])
+                        ->name('operacion.pedidos-clientes.pedidos.show');
 
                     // Revisar pedido
                     Route::get('/{id}/review', [PedidoClienteController::class, 'review'])
                         ->name('operacion.pedidos-clientes.pedidos.review');
-                    
-                    // Ver detalle del pedido
-                    Route::get('/{id}', [PedidoClienteController::class, 'show'])
-                        ->name('operacion.pedidos-clientes.pedidos.show');
-                    
+
                     // Finalizar pedido
                     Route::post('/{id}/finalizar', [PedidoClienteController::class, 'finalizarPedido'])
                         ->name('operacion.pedidos-clientes.pedidos.finalizar');
@@ -1393,6 +1404,31 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // PDF del pedido
                     Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
                         ->name('operacion.pedidos-clientes.pedidos.pdf');
+                });
+
+                // ============================================================
+                // PRECIOS - CLIENTES MAYORISTAS
+                // ============================================================
+                Route::prefix('precios')->group(function () {
+                    // Vista para asignar precios (Supervisor)
+                    Route::get('/', [PrecioProductoController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.index');
+                    
+                    // Guardar precio
+                    Route::post('/', [PrecioProductoController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.store');
+                    
+                    // Eliminar precio
+                    Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
+                    
+                    // Obtener precio de un producto (API)
+                    Route::get('/get-precio', [PrecioProductoController::class, 'getPrecio'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.get-precio');
+                    
+                    // ✅ VISTA DE BITÁCORA
+                    Route::get('/bitacora', [PrecioProductoController::class, 'bitacoraIndex'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora');
                 });
             });
 

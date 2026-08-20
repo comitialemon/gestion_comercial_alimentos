@@ -2,6 +2,8 @@
 import { ref, computed, inject, onMounted } from 'vue'
 import { Link, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
+import axios from 'axios'
+import ShowPedido from './ShowPedido.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -15,11 +17,12 @@ const props = defineProps({
 })
 
 // ==================== ESTADO ====================
-const loading = ref(false)
 const buscador = ref('')
 const estadoFiltro = ref('')
-const mostrarDetalle = ref(false)
+const mostrarModal = ref(false)
 const pedidoSeleccionado = ref(null)
+const detallesAgrupados = ref([])
+const cargandoDetalle = ref(false)
 
 // ==================== COMPUTADOS ====================
 const pedidosFiltrados = computed(() => {
@@ -96,21 +99,45 @@ const formatearNumero = (valor) => {
     return Number(valor).toFixed(0)
 }
 
-// 🔥 FUNCIÓN PARA ABRIR PDF - CORREGIDA
+// ✅ FUNCIÓN PARA ABRIR PDF
 const abrirPdf = (id) => {
-    // ✅ URL exacta que coincide con la ruta definida en web.php
     const url = `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`
     window.open(url, '_blank')
 }
 
-const verDetalle = (pedido) => {
+// ✅ FUNCIÓN PARA ABRIR MODAL CON SHOWPEDIDO - CARGANDO DETALLES
+const verDetalle = async (pedido) => {
     pedidoSeleccionado.value = pedido
-    mostrarDetalle.value = true
+    mostrarModal.value = true
+    cargandoDetalle.value = true
+    detallesAgrupados.value = []
+    
+    try {
+        console.log('📡 Cargando detalles del pedido:', pedido.IdPedidoCliente)
+        
+        const response = await axios.get(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${pedido.IdPedidoCliente}/detalles`)
+        
+        console.log('📥 Respuesta:', response.data)
+        
+        if (response.data.success) {
+            detallesAgrupados.value = response.data.detalles || []
+            console.log('✅ Detalles cargados:', detallesAgrupados.value.length, 'contenedores')
+        } else {
+            toast?.error('Error', response.data.message || 'No se pudieron cargar los detalles')
+        }
+    } catch (error) {
+        console.error('❌ Error cargando detalles:', error)
+        toast?.error('Error', 'No se pudieron cargar los detalles del pedido')
+    } finally {
+        cargandoDetalle.value = false
+    }
 }
 
-const cerrarDetalle = () => {
-    mostrarDetalle.value = false
+const cerrarModal = () => {
+    mostrarModal.value = false
     pedidoSeleccionado.value = null
+    detallesAgrupados.value = []
+    cargandoDetalle.value = false
 }
 
 const aplicarFiltros = () => {
@@ -265,7 +292,7 @@ onMounted(() => {
 
                         <!-- Acciones -->
                         <div class="flex items-center gap-2 flex-shrink-0">
-                            <!-- Ver detalle -->
+                            <!-- ✅ Ver detalle - ABRE MODAL CON ShowPedido -->
                             <button 
                                 @click="verDetalle(pedido)"
                                 class="px-3 py-1.5 text-xs bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition flex items-center gap-1"
@@ -327,108 +354,33 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- MODAL DE DETALLE -->
+        <!-- ============================================================ -->
+        <!-- MODAL CON ShowPedido COMPONENT -->
+        <!-- ============================================================ -->
         <div 
-            v-if="mostrarDetalle && pedidoSeleccionado"
+            v-if="mostrarModal && pedidoSeleccionado"
             class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-            @click.self="cerrarDetalle"
+            @click.self="cerrarModal"
         >
-            <div class="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-2xl animate-fade-in-up">
-                <!-- Header -->
-                <div class="p-4 border-b bg-primary-50 flex items-center justify-between">
-                    <div>
-                        <h3 class="font-bold text-gray-800">
-                            Pedido #{{ pedidoSeleccionado.NumeroPedido || 'Nuevo' }}
-                        </h3>
-                        <p class="text-xs text-gray-500">
-                            {{ formatearFechaHora(pedidoSeleccionado.FechaPedido) }}
-                        </p>
-                    </div>
-                    <button 
-                        @click="cerrarDetalle"
-                        class="text-gray-400 hover:text-gray-600 transition"
-                    >
-                        <i class="fas fa-times text-lg"></i>
-                    </button>
-                </div>
-
-                <!-- Body -->
-                <div class="p-4 overflow-y-auto max-h-[60vh]">
-                    <!-- Estado -->
-                    <div class="flex items-center gap-2 mb-3">
-                        <span 
-                            class="px-2 py-0.5 text-xs rounded-full font-medium"
-                            :class="getEstadoBadge(pedidoSeleccionado.EstadoPedido)"
-                        >
-                            <i :class="getEstadoIcono(pedidoSeleccionado.EstadoPedido)" class="mr-1 text-[8px]"></i>
-                            {{ pedidoSeleccionado.EstadoPedido || 'Borrador' }}
-                        </span>
-                        <span class="text-xs text-gray-400">•</span>
-                        <span class="text-xs text-gray-500">
-                            <i class="fas fa-store mr-1"></i>
-                            {{ pedidoSeleccionado.sucursal?.Nombre || 'Sin sucursal' }}
-                        </span>
-                    </div>
-
-                    <!-- Totales -->
-                    <div class="grid grid-cols-3 gap-3 mb-4">
-                        <div class="bg-gray-50 rounded-lg p-3 text-center">
-                            <p class="text-[10px] text-gray-400">Contenedores</p>
-                            <p class="text-lg font-bold text-gray-800">{{ pedidoSeleccionado.TotalContenedores || 0 }}</p>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-center">
-                            <p class="text-[10px] text-gray-400">Unidades</p>
-                            <p class="text-lg font-bold text-primary-600">{{ formatearNumero(pedidoSeleccionado.TotalUnidades) }}</p>
-                        </div>
-                        <div class="bg-gray-50 rounded-lg p-3 text-center">
-                            <p class="text-[10px] text-gray-400">Entrega</p>
-                            <p class="text-sm font-bold text-gray-800">{{ pedidoSeleccionado.FechaEntrega ? formatearFecha(pedidoSeleccionado.FechaEntrega) : '-' }}</p>
-                        </div>
-                    </div>
-
-                    <!-- Observaciones -->
-                    <div v-if="pedidoSeleccionado.Observaciones" class="mb-3 p-3 bg-gray-50 rounded-lg">
-                        <p class="text-[10px] text-gray-400">Observaciones</p>
-                        <p class="text-sm text-gray-600">{{ pedidoSeleccionado.Observaciones }}</p>
-                    </div>
-
-                    <!-- Productos (resumen) -->
-                    <div v-if="pedidoSeleccionado.detalles && pedidoSeleccionado.detalles.length > 0" class="border-t pt-3">
-                        <p class="text-xs font-medium text-gray-500 mb-2">Productos</p>
-                        <div class="space-y-1 max-h-40 overflow-y-auto">
-                            <div 
-                                v-for="detalle in pedidoSeleccionado.detalles.slice(0, 10)" 
-                                :key="detalle.IdPedidoClienteDetalle"
-                                class="flex justify-between text-xs border-b border-gray-100 py-1"
-                            >
-                                <span class="text-gray-600 truncate flex-1">{{ detalle.producto?.Descripcion || 'Producto' }}</span>
-                                <span class="font-bold text-gray-800 ml-2">{{ formatearNumero(detalle.Cantidad) }} und</span>
-                            </div>
-                            <div v-if="pedidoSeleccionado.detalles.length > 10" class="text-[10px] text-gray-400 text-center">
-                                + {{ pedidoSeleccionado.detalles.length - 10 }} más...
-                            </div>
-                        </div>
+            <div class="bg-white rounded-xl w-full max-w-4xl max-h-[95vh] overflow-hidden shadow-2xl animate-fade-in-up">
+                <!-- ✅ Mostrar loading mientras carga -->
+                <div v-if="cargandoDetalle" class="flex items-center justify-center h-64">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin text-3xl text-primary-500"></i>
+                        <p class="text-sm text-gray-400 mt-2">Cargando detalles del pedido...</p>
                     </div>
                 </div>
-
-                <!-- Footer -->
-                <div class="p-4 border-t bg-gray-50 flex justify-end gap-2">
-                    <!-- ✅ PDF con la URL corregida -->
-                    <button 
-                        v-if="pedidoSeleccionado.ActivoInactivo === 1"
-                        @click="abrirPdf(pedidoSeleccionado.IdPedidoCliente)"
-                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm transition flex items-center gap-2"
-                    >
-                        <i class="fas fa-file-pdf"></i>
-                        PDF
-                    </button>
-                    <button 
-                        @click="cerrarDetalle"
-                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm transition"
-                    >
-                        Cerrar
-                    </button>
-                </div>
+                
+                <!-- ✅ Mostrar ShowPedido cuando ya tiene datos -->
+                <ShowPedido 
+                    v-else
+                    :pedido="pedidoSeleccionado"
+                    :detalles-agrupados="detallesAgrupados"
+                    :cliente-nombre="pedidoSeleccionado.cliente?.Nombre || 'Sin cliente'"
+                    :sucursal-nombre="pedidoSeleccionado.sucursal?.Nombre || 'Sin sucursal'"
+                    :operador-nombre="pedidoSeleccionado.operador?.Nombre || 'Sin operador'"
+                    @cerrar="cerrarModal"
+                />
             </div>
         </div>
     </div>

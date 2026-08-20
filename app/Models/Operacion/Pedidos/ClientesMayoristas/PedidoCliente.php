@@ -24,6 +24,7 @@ class PedidoCliente extends Model
         'FechaEntrega',
         'TotalUnidades',
         'TotalContenedores',
+        'TotalGeneral', // ✅ NUEVO
         'ActivoInactivo',
         'EstadoPedido',
         'Observaciones',
@@ -37,6 +38,8 @@ class PedidoCliente extends Model
         'FechaPedido' => 'datetime',
         'FechaEntrega' => 'date',
         'TotalUnidades' => 'decimal:2',
+        'TotalContenedores' => 'integer',
+        'TotalGeneral' => 'decimal:2', // ✅ NUEVO
         'ActivoInactivo' => 'integer',
     ];
 
@@ -147,6 +150,7 @@ class PedidoCliente extends Model
             'FechaEntrega' => null,
             'TotalUnidades' => 0,
             'TotalContenedores' => 0,
+            'TotalGeneral' => 0, // ✅ NUEVO
             'ActivoInactivo' => 0,
             'EstadoPedido' => 'Borrador',
             'Observaciones' => null,
@@ -216,5 +220,31 @@ class PedidoCliente extends Model
     public function getNumeroPedidoFormateadoAttribute()
     {
         return str_pad($this->NumeroPedido, 6, '0', STR_PAD_LEFT);
+    }
+
+    // ==================== ✅ NUEVOS ACCESORS ====================
+
+    /**
+     * ✅ Formatear TotalGeneral
+     */
+    public function getTotalGeneralFormateadoAttribute()
+    {
+        return number_format($this->TotalGeneral, 2, ',', '.');
+    }
+
+    /**
+     * ✅ Obtener TotalGeneral como string con Bs.
+     */
+    public function getTotalGeneralConMonedaAttribute()
+    {
+        return 'Bs. ' . number_format($this->TotalGeneral, 2, ',', '.');
+    }
+
+    /**
+     * ✅ Verificar si el pedido tiene total general
+     */
+    public function getTieneTotalGeneralAttribute()
+    {
+        return $this->TotalGeneral > 0;
     }
 }

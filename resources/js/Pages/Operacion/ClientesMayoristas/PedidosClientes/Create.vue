@@ -41,6 +41,15 @@ const props = defineProps({
     ruta: {
         type: Array,
         default: () => []
+    },
+    // ✅ NUEVO: Identificador del operador logueado
+    idIdentificador: {
+        type: Number,
+        default: null
+    },
+    nombreOperador: {
+        type: String,
+        default: ''
     }
 })
 
@@ -150,17 +159,21 @@ onMounted(() => {
         <div class="max-w-7xl mx-auto px-3 py-3">
             
             <!-- ============================================ -->
-            <!-- HEADER - SOLO EL BOTÓN EN EL HEADER -->
+            <!-- HEADER - CON INFORMACIÓN DEL OPERADOR        -->
             <!-- ============================================ -->
-            <div class="flex items-center justify-between mb-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <div>
                     <h1 class="text-lg font-bold text-gray-800">Nuevo Pedido</h1>
-                    <p class="text-[10px] text-gray-400">Seleccione contenedores y agregue productos</p>
+                    <p class="text-[10px] text-gray-400">
+                        Seleccione contenedores y agregue productos
+                        <span v-if="nombreOperador" class="text-primary-600 font-medium">
+                            • {{ nombreOperador }}
+                        </span>
+                    </p>
                 </div>
                 
-                <!-- 🔥 BOTÓN REVISAR PEDIDO EN EL HEADER -->
+                <!-- Botón Revisar Pedido -->
                 <div class="flex items-center gap-3">
-                    <!-- Indicador de items en el carrito -->
                     <div v-if="hayProductosEnCarrito" class="hidden sm:flex items-center gap-2 text-xs text-gray-500">
                         <i class="fas fa-shopping-cart text-primary-500"></i>
                         <span>{{ carritoItems.length }} contenedor(es)</span>
@@ -182,7 +195,7 @@ onMounted(() => {
             </div>
 
             <!-- ============================================ -->
-            <!-- MENÚ TÁCTIL DE CONTENEDORES -->
+            <!-- MENÚ TÁCTIL DE CONTENEDORES                   -->
             <!-- ============================================ -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-3">
@@ -206,7 +219,7 @@ onMounted(() => {
                             </div>
                         </div>
                         <div class="p-3 text-center">
-                            <h3 class="font-bold text-sm text-gray-800 truncate">{{ contenedor.Nombre }}</h3>
+                            <h3 class="font-bold text-sm text-gray-800 truncate">{{ contenedor.Codigo }}</h3>
                             <p class="text-[10px] font-mono text-gray-400">{{ contenedor.Codigo }}</p>
                             <div class="flex justify-center items-center gap-2 mt-1">
                                 <span class="text-[10px] text-gray-500">
@@ -214,7 +227,7 @@ onMounted(() => {
                                     {{ contenedor.CapacidadTotalFormateada }} und
                                 </span>
                                 <span class="text-[10px] text-gray-400">•</span>
-                                <span class="text-[10px] text-gray-400">{{ contenedor.cantidad_productos }} prod</span>
+                                <span class="text-[10px] text-gray-400">{{ contenedor.total_productos || 0 }} prod</span>
                             </div>
                             <button class="mt-2 w-full py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs transition flex items-center justify-center gap-1">
                                 <i class="fas fa-plus text-[10px]"></i>
@@ -234,11 +247,12 @@ onMounted(() => {
         </div>
 
         <!-- ============================================ -->
-        <!-- MODAL DE PRODUCTOS -->
+        <!-- MODAL DE PRODUCTOS                           -->
         <!-- ============================================ -->
         <CreateModalProductos
             :visible="modalVisible"
             :contenedor="contenedorSeleccionado"
+            :idIdentificador="idIdentificador"
             @close="cerrarModal"
             @agregar="agregarContenedorAlCarrito"
         />
@@ -256,4 +270,3 @@ onMounted(() => {
     }
 }
 </style>
-

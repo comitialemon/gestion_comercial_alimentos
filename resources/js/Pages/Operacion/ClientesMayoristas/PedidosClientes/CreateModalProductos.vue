@@ -10,10 +10,22 @@ const props = defineProps({
     contenedor: {
         type: Object,
         default: null
+    },
+    idIdentificador: {
+        type: Number,
+        default: null
+    },
+    modoEdicion: {
+        type: Boolean,
+        default: false
+    },
+    datosEdicion: {
+        type: Object,
+        default: null
     }
 })
 
-const emit = defineEmits(['close', 'agregar'])
+const emit = defineEmits(['close', 'agregar', 'actualizar'])
 
 // ==================== ESTADO ====================
 const loading = ref(false)
@@ -25,15 +37,9 @@ const contenedorData = ref(null)
 const errorMensaje = ref('')
 const excedeCapacidad = ref(false)
 const errorCarga = ref(false)
+const hayProductosSinPrecio = ref(false)
 
 // ==================== COMPUTADOS ====================
-const mostrar = computed({
-    get: () => props.visible,
-    set: (val) => {
-        if (!val) emit('close')
-    }
-})
-
 const productosFiltrados = computed(() => {
     if (!busquedaProducto.value || busquedaProducto.value.length < 2) {
         return productosSeleccionados.value
@@ -46,7 +52,7 @@ const productosFiltrados = computed(() => {
 })
 
 const productosAgregados = computed(() => {
-    return productosSeleccionados.value.filter(p => p.Cantidad > 0)
+    return productosSeleccionados.value.filter(p => p.Cantidad > 0 && p.tiene_precio)
 })
 
 const totalRestante = computed(() => {
@@ -58,7 +64,11 @@ const estaCompleto = computed(() => {
 })
 
 const puedeAgregar = computed(() => {
-    return !loading.value && productosAgregados.value.length > 0 && !excedeCapacidad.value && totalUnidadesSeleccionadas.value > 0
+    return !loading.value && 
+           productosAgregados.value.length > 0 && 
+           !excedeCapacidad.value && 
+           totalUnidadesSeleccionadas.value > 0 &&
+           !hayProductosSinPrecio.value
 })
 
 const porcentajeCompletado = computed(() => {
@@ -74,13 +84,9 @@ const colorBarra = computed(() => {
 })
 
 const formatearNumero = (valor) => {
-    if (valor === undefined || valor === null || valor === '') {
-        return '0'
-    }
+    if (valor === undefined || valor === null || valor === '') return '0'
     const numero = parseFloat(valor)
-    if (isNaN(numero)) {
-        return '0'
-    }
+    if (isNaN(numero)) return '0'
     return numero.toFixed(0)
 }
 
@@ -97,7 +103,7 @@ const actualizarCantidad = (producto, event) => {
         return
     }
     
-    let cantidad = parseFloat(valor)
+    let cantidad = parseInt(valor)
     
     if (isNaN(cantidad) || cantidad < 0) {
         producto.Cantidad = 0
@@ -118,19 +124,42 @@ const actualizarCantidad = (producto, event) => {
     }
     
     producto.Cantidad = cantidad
-    producto.selected = cantidad > 0
+    producto.selected = cantidad > 0 && producto.tiene_precio
     recalcularTotal()
     validarCapacidad()
 }
 
+const incrementarCantidad = (producto) => {
+    const actual = producto.Cantidad || 0
+    const otrasUnidades = totalUnidadesSeleccionadas.value - actual
+    const disponible = capacidadTotalContenedor.value - otrasUnidades
+    
+    if (actual < disponible) {
+        producto.Cantidad = Math.min(actual + 1, disponible)
+        producto.selected = producto.Cantidad > 0 && producto.tiene_precio
+        recalcularTotal()
+        validarCapacidad()
+    }
+}
+
+const decrementarCantidad = (producto) => {
+    if (producto.Cantidad > 0) {
+        producto.Cantidad--
+        producto.selected = producto.Cantidad > 0 && producto.tiene_precio
+        recalcularTotal()
+        validarCapacidad()
+    }
+}
+
 const recalcularTotal = () => {
     totalUnidadesSeleccionadas.value = productosSeleccionados.value.reduce((sum, p) => sum + (p.Cantidad || 0), 0)
+    hayProductosSinPrecio.value = productosSeleccionados.value.some(p => p.Cantidad > 0 && !p.tiene_precio)
 }
 
 const validarCapacidad = () => {
     if (totalUnidadesSeleccionadas.value > capacidadTotalContenedor.value && capacidadTotalContenedor.value > 0) {
         excedeCapacidad.value = true
-        errorMensaje.value = `⚠️ Has superado la capacidad del contenedor. Máximo permitido: ${formatearNumero(capacidadTotalContenedor.value)} unidades.`
+        errorMensaje.value = `⚠️ Máximo: ${formatearNumero(capacidadTotalContenedor.value)} und`
     } else {
         excedeCapacidad.value = false
         errorMensaje.value = ''
@@ -147,12 +176,14 @@ const limpiarTodo = () => {
     busquedaProducto.value = ''
     errorMensaje.value = ''
     excedeCapacidad.value = false
+    hayProductosSinPrecio.value = false
 }
 
 // ==================== CARGAR PRODUCTOS ====================
 const cargarProductos = async () => {
-    if (!props.contenedor) {
-        console.warn('No hay contenedor seleccionado')
+    if (!props.contenedor) return
+    if (!props.idIdentificador) {
+        errorMensaje.value = '⚠️ Selecciona un cliente'
         return
     }
     
@@ -165,16 +196,16 @@ const cargarProductos = async () => {
     totalUnidadesSeleccionadas.value = 0
     errorMensaje.value = ''
     excedeCapacidad.value = false
+    hayProductosSinPrecio.value = false
 
     try {
-        const response = await axios.get(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos`)
-        
-        console.log('📦 Respuesta del servidor:', response.data)
+        const response = await axios.get(
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos-precios`
+        )
         
         if (response.data.success) {
             let productosRaw = []
             
-            // 🔥 CASO 1: Tiene data.productos_agrupados
             if (response.data.data && response.data.data.productos_agrupados) {
                 const agrupados = response.data.data.productos_agrupados
                 agrupados.forEach(grupo => {
@@ -185,87 +216,91 @@ const cargarProductos = async () => {
                                 Codigo: p.Codigo,
                                 Descripcion: p.Descripcion,
                                 Precio: p.Precio || 0,
+                                PrecioEspecial: p.PrecioEspecial || null,
+                                tiene_precio: p.tiene_precio || false,
                                 IdGrupoAnalisis: p.IdGrupoAnalisis,
                                 GrupoAnalisis: grupo.grupo_nombre || 'Sin grupo'
                             })
                         })
                     }
                 })
-                console.log('✅ Productos extraídos de productos_agrupados:', productosRaw.length)
-            }
-            // 🔥 CASO 2: Tiene productos directamente (tu caso actual)
-            else if (response.data.productos && Array.isArray(response.data.productos)) {
-                productosRaw = response.data.productos.map(p => ({
-                    IdProducto: p.IdProducto,
-                    Codigo: p.Codigo,
-                    Descripcion: p.Descripcion,
-                    Precio: p.Precio || 0,
-                    IdGrupoAnalisis: p.IdGrupoAnalisis || 0,
-                    GrupoAnalisis: p.GrupoAnalisis || 'Sin grupo'
-                }))
-                console.log('✅ Productos extraídos de productos:', productosRaw.length)
-            }
-            // 🔥 CASO 3: Tiene data.productos
-            else if (response.data.data && response.data.data.productos) {
-                productosRaw = response.data.data.productos.map(p => ({
-                    IdProducto: p.IdProducto,
-                    Codigo: p.Codigo,
-                    Descripcion: p.Descripcion,
-                    Precio: p.Precio || 0,
-                    IdGrupoAnalisis: p.IdGrupoAnalisis || 0,
-                    GrupoAnalisis: p.GrupoAnalisis || 'Sin grupo'
-                }))
-                console.log('✅ Productos extraídos de data.productos:', productosRaw.length)
             }
             
-            // ✅ Si no hay productos, mostrar mensaje
             if (!productosRaw || productosRaw.length === 0) {
-                console.warn('⚠️ No se encontraron productos')
                 productosSeleccionados.value = []
                 return
             }
             
-            // ✅ Agregar Cantidad a cada producto
-            productosSeleccionados.value = productosRaw.map(p => ({
-                ...p,
-                Cantidad: 0,
-                selected: false,
-                CantidadMaxima: capacidadTotalContenedor.value
-            }))
+            // ✅ Si es modo edición, cargar las cantidades existentes (convertidas a enteros)
+            productosSeleccionados.value = productosRaw.map(p => {
+                let cantidad = 0
+                let precio = p.PrecioEspecial
+                
+                if (props.modoEdicion && props.datosEdicion) {
+                    const existente = props.datosEdicion.productos.find(
+                        ep => ep.IdProducto === p.IdProducto
+                    )
+                    if (existente) {
+                        // ✅ CONVERTIR A ENTERO
+                        cantidad = parseInt(existente.Cantidad) || 0
+                        precio = existente.Precio || p.PrecioEspecial
+                    }
+                }
+                
+                return {
+                    ...p,
+                    Cantidad: cantidad,
+                    selected: cantidad > 0 && p.tiene_precio,
+                    CantidadMaxima: capacidadTotalContenedor.value
+                }
+            })
             
-            console.log(`✅ ${productosSeleccionados.value.length} productos cargados`)
+            const sinPrecio = productosSeleccionados.value.filter(p => !p.tiene_precio)
+            if (sinPrecio.length > 0) {
+                hayProductosSinPrecio.value = true
+            }
+            
+            recalcularTotal()
+            validarCapacidad()
+            
         } else {
             errorCarga.value = true
-            errorMensaje.value = '❌ Error al cargar los productos: ' + (response.data.message || 'Error desconocido')
+            errorMensaje.value = '❌ Error al cargar'
         }
     } catch (error) {
-        console.error('❌ Error al cargar productos:', error)
+        console.error('Error:', error)
         errorCarga.value = true
-        errorMensaje.value = '❌ Error al cargar los productos. Intenta nuevamente.'
-        
-        if (error.response) {
-            console.error('📡 Respuesta del error:', error.response.data)
-        }
+        errorMensaje.value = '❌ Error al cargar productos'
     } finally {
         loading.value = false
     }
 }
 
-// ==================== AGREGAR AL CARRITO ====================
+// ==================== AGREGAR / ACTUALIZAR ====================
 const agregarAlCarrito = () => {
     if (!puedeAgregar.value) return
 
     const productosAgregar = productosSeleccionados.value
-        .filter(p => p.Cantidad > 0)
+        .filter(p => p.Cantidad > 0 && p.tiene_precio)
         .map(p => ({
             IdProducto: p.IdProducto,
-            Cantidad: p.Cantidad
+            Cantidad: p.Cantidad,
+            Precio: p.PrecioEspecial
         }))
 
-    emit('agregar', {
-        IdContenedor: contenedorData.value.IdContenedor,
-        productos: productosAgregar
-    })
+    if (props.modoEdicion && props.datosEdicion) {
+        emit('actualizar', {
+            IdPedidoCliente: props.datosEdicion.IdPedidoCliente,
+            IdContenedor: contenedorData.value.IdContenedor,
+            OrdenContenedor: props.datosEdicion.OrdenContenedor,
+            productos: productosAgregar
+        })
+    } else {
+        emit('agregar', {
+            IdContenedor: contenedorData.value.IdContenedor,
+            productos: productosAgregar
+        })
+    }
     
     cerrarModal()
 }
@@ -275,251 +310,240 @@ const cerrarModal = () => {
 }
 
 // ==================== WATCH ====================
-watch(
-    () => props.visible,
-    (newVal) => {
-        if (newVal && props.contenedor) {
-            cargarProductos()
-        }
-    },
-    { immediate: true }
-)
-
-watch(
-    () => props.contenedor,
-    (newVal) => {
-        if (newVal && props.visible) {
-            cargarProductos()
-        }
+watch(() => props.visible, (newVal) => {
+    if (newVal && props.contenedor) {
+        cargarProductos()
     }
-)
+}, { immediate: true })
+
+watch(() => props.contenedor, (newVal) => {
+    if (newVal && props.visible) {
+        cargarProductos()
+    }
+})
+
+watch(() => props.idIdentificador, (newVal) => {
+    if (newVal && props.visible && props.contenedor) {
+        cargarProductos()
+    }
+})
 </script>
 
 <template>
     <!-- Modal Overlay -->
     <div 
         v-if="visible"
-        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4"
+        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
         @click.self="cerrarModal"
     >
-        <div class="bg-white rounded-2xl w-full max-w-3xl max-h-[95vh] overflow-hidden shadow-2xl animate-fade-in-up">
+        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up">
             
-            <!-- Header -->
-            <div class="p-4 sm:p-5 border-b bg-gradient-to-r from-primary-50 to-indigo-50">
-                <div class="flex items-center justify-between gap-3">
-                    <div class="min-w-0 flex-1">
-                        <h3 class="font-bold text-gray-800 text-base sm:text-lg truncate">
-                            {{ contenedorData?.Codigo || 'Contenedor' }}
-                            <span class="text-xs font-normal text-gray-500 ml-2">
-                                {{ contenedorData?.TipoContenedor || '' }}
-                            </span>
-                        </h3>
-                        <p class="text-xs text-gray-500">
-                            <span class="font-mono bg-white/50 px-2 py-0.5 rounded">{{ contenedorData?.Codigo }}</span>
-                            <span class="mx-1">•</span>
-                            Capacidad: {{ formatearNumero(contenedorData?.CapacidadTotal || 0) }} und
-                            <span class="mx-1">•</span>
-                            <span class="text-primary-600">{{ productosSeleccionados.length }} productos</span>
-                        </p>
-                    </div>
-                    <button 
-                        @click="cerrarModal"
-                        class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0"
-                    >
-                        <i class="fas fa-times text-lg"></i>
-                    </button>
+            <!-- ========== HEADER COMPACTO ========== -->
+            <div class="px-4 py-3 border-b bg-primary-50 flex items-center justify-between flex-shrink-0">
+                <div class="min-w-0 flex-1">
+                    <h3 class="font-bold text-gray-800 text-sm truncate">
+                        <i class="fas fa-box text-primary-500 mr-2"></i>
+                        {{ modoEdicion ? '✏️ Editando' : '' }} {{ contenedorData?.Codigo || 'Contenedor' }}
+                        <span class="text-xs font-normal text-gray-500 ml-1">
+                            (Cap: {{ formatearNumero(contenedorData?.CapacidadTotal || 0) }} und)
+                        </span>
+                    </h3>
+                    <p class="text-[10px] text-gray-400">
+                        {{ modoEdicion ? 'Modifica las cantidades de los productos' : 'Selecciona las cantidades a pedir' }}
+                    </p>
                 </div>
-                
-                <!-- Barra de progreso -->
-                <div class="mt-3">
-                    <div class="flex justify-between text-xs text-gray-600 mb-1">
-                        <span>
-                            <i class="fas fa-weight-hanging mr-1 text-primary-500"></i>
-                            Usado: <strong class="text-primary-600">{{ totalUnidadesSeleccionadas }}</strong>
-                        </span>
-                        <span>
-                            <span class="text-gray-400">Restante:</span>
-                            <strong :class="totalRestante > 0 ? 'text-green-600' : 'text-red-500'">
-                                {{ totalRestante > 0 ? totalRestante : 0 }}
-                            </strong>
-                        </span>
-                        <span>
-                            <span class="text-gray-400">Total:</span>
-                            <strong>{{ formatearNumero(capacidadTotalContenedor) }}</strong>
-                        </span>
+                <button 
+                    @click="cerrarModal"
+                    class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- ========== BARRA DE PROGRESO ========== -->
+            <div class="px-4 py-2 bg-gray-50 border-b flex items-center gap-3 flex-shrink-0">
+                <div class="flex-1">
+                    <div class="flex justify-between text-[10px] text-gray-500">
+                        <span>Usado: <strong class="text-primary-600">{{ totalUnidadesSeleccionadas }}</strong></span>
+                        <span>Restante: <strong :class="totalRestante > 0 ? 'text-green-600' : 'text-red-500'">{{ totalRestante > 0 ? totalRestante : 0 }}</strong></span>
+                        <span>Total: <strong>{{ formatearNumero(capacidadTotalContenedor) }}</strong></span>
                     </div>
-                    <div class="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
                         <div 
-                            class="h-full transition-all duration-300 ease-in-out rounded-full"
+                            class="h-full transition-all duration-300 rounded-full"
                             :class="colorBarra"
                             :style="{ width: Math.min(porcentajeCompletado, 100) + '%' }"
                         ></div>
                     </div>
-                    <div class="flex justify-between text-[10px] text-gray-400 mt-0.5">
-                        <span>{{ productosAgregados.length }} producto(s) seleccionado(s)</span>
-                        <span v-if="estaCompleto" class="text-green-600 font-medium">
-                            <i class="fas fa-check-circle"></i> ¡Completo!
-                        </span>
-                        <span v-else-if="excedeCapacidad" class="text-red-500 font-medium">
-                            <i class="fas fa-exclamation-circle"></i> Excedido
-                        </span>
-                    </div>
                 </div>
+                <span v-if="estaCompleto" class="text-[10px] text-green-600 font-medium whitespace-nowrap">
+                    <i class="fas fa-check-circle"></i> Completo
+                </span>
             </div>
 
-            <!-- Body -->
-            <div class="p-3 sm:p-5 overflow-y-auto" style="max-height: calc(95vh - 240px);">
+            <!-- ========== CUERPO ========== -->
+            <div class="p-3 overflow-y-auto" style="max-height: calc(90vh - 160px);">
                 
-                <!-- Mensaje de error de carga -->
-                <div v-if="errorCarga" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
-                    <i class="fas fa-exclamation-triangle mt-0.5 text-red-500"></i>
-                    <div>
-                        <p class="font-medium">Error al cargar productos</p>
-                        <p class="text-xs text-red-600">{{ errorMensaje }}</p>
-                        <button 
-                            @click="cargarProductos"
-                            class="mt-2 text-xs bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded transition"
-                        >
-                            <i class="fas fa-sync mr-1"></i> Reintentar
-                        </button>
-                    </div>
+                <!-- Alertas -->
+                <div v-if="!idIdentificador" class="mb-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded text-xs text-yellow-700">
+                    <i class="fas fa-exclamation-triangle mr-1"></i> Selecciona un cliente para ver los precios
                 </div>
 
-                <!-- Mensaje de error de capacidad -->
-                <div v-if="excedeCapacidad && !errorCarga" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2 animate-shake">
-                    <i class="fas fa-exclamation-triangle mt-0.5 text-red-500"></i>
-                    <div>
-                        <p class="font-medium">¡Capacidad excedida!</p>
-                        <p class="text-xs text-red-600">{{ errorMensaje }}</p>
-                    </div>
+                <div v-if="errorCarga" class="mb-3 p-2 bg-red-50 border-l-4 border-red-400 rounded text-xs text-red-700">
+                    <i class="fas fa-exclamation-triangle mr-1"></i> {{ errorMensaje }}
+                    <button @click="cargarProductos" class="ml-2 text-red-600 hover:text-red-800 underline">Reintentar</button>
                 </div>
 
-                <!-- Mensaje de éxito -->
-                <div v-else-if="estaCompleto && !excedeCapacidad && !errorCarga" class="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
-                    <i class="fas fa-check-circle mt-0.5 text-green-500"></i>
-                    <div>
-                        <p class="font-medium">¡Contenedor completo!</p>
-                        <p class="text-xs text-green-600">Has alcanzado la capacidad máxima de {{ formatearNumero(capacidadTotalContenedor) }} unidades.</p>
-                    </div>
+                <div v-if="excedeCapacidad && !errorCarga" class="mb-3 p-2 bg-red-50 border-l-4 border-red-400 rounded text-xs text-red-700 animate-shake">
+                    <i class="fas fa-exclamation-circle mr-1"></i> {{ errorMensaje }}
+                </div>
+
+                <div v-if="hayProductosSinPrecio && !errorCarga && idIdentificador" class="mb-3 p-2 bg-orange-50 border-l-4 border-orange-400 rounded text-xs text-orange-700">
+                    <i class="fas fa-exclamation-triangle mr-1"></i> Productos sin precio asignado
                 </div>
 
                 <!-- Buscador -->
-                <div class="relative mb-4">
-                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                <div class="relative mb-3">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
                     <input 
                         type="text"
                         v-model="busquedaProducto"
-                        placeholder="Buscar producto por código o nombre..."
-                        class="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-2.5 text-sm focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-gray-50 focus:bg-white"
-                        :disabled="loading || errorCarga"
+                        placeholder="Buscar producto..."
+                        class="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-gray-50 focus:bg-white"
+                        :disabled="loading || errorCarga || !idIdentificador"
                     />
-                    <button 
-                        v-if="busquedaProducto"
-                        @click="busquedaProducto = ''"
-                        class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                        <i class="fas fa-times text-xs"></i>
-                    </button>
                 </div>
 
                 <!-- Loading -->
-                <div v-if="loading" class="flex flex-col items-center justify-center py-12">
-                    <div class="w-12 h-12 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
-                    <p class="text-sm text-gray-400 mt-3">Cargando productos...</p>
+                <div v-if="loading" class="flex justify-center items-center py-8">
+                    <div class="w-8 h-8 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
                 </div>
 
                 <!-- Sin productos -->
-                <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-12 text-gray-400">
-                    <div class="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center mb-3">
-                        <i class="fas fa-box-open text-2xl text-gray-300"></i>
-                    </div>
-                    <p class="text-sm font-medium">No hay productos disponibles</p>
-                    <p class="text-xs mt-1">Este contenedor no tiene grupos de análisis asignados</p>
+                <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-8 text-gray-400">
+                    <i class="fas fa-box-open text-2xl block mb-2"></i>
+                    <p class="text-xs">No hay productos disponibles</p>
                 </div>
 
-                <!-- Lista de productos SIMPLE -->
-                <div v-else-if="!errorCarga && productosSeleccionados.length > 0" class="space-y-2">
+                <!-- Lista de productos -->
+                <div v-else-if="!errorCarga && productosSeleccionados.length > 0" class="space-y-1.5">
                     <div 
                         v-for="producto in productosFiltrados" 
                         :key="producto.IdProducto"
-                        class="bg-gray-50 hover:bg-gray-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all duration-200"
-                        :class="{'ring-2 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0}"
+                        class="bg-gray-50 hover:bg-gray-100 rounded-lg p-2 transition-all duration-200 text-xs"
+                        :class="{
+                            'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio,
+                            'ring-1 ring-orange-300 bg-orange-50/50': producto.Cantidad > 0 && !producto.tiene_precio,
+                            'opacity-60': !producto.tiene_precio
+                        }"
                     >
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 flex-wrap">
-                                <span class="text-xs font-mono text-gray-400 bg-white px-2 py-0.5 rounded">{{ producto.Codigo }}</span>
-                                <span class="text-sm font-medium text-gray-800 truncate">{{ producto.Descripcion }}</span>
-                                <span class="text-[10px] text-indigo-500 bg-indigo-50 px-1.5 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
+                        <div class="grid grid-cols-12 gap-1 items-center">
+                            <!-- Producto -->
+                            <div class="col-span-12 sm:col-span-5 min-w-0">
+                                <div class="flex items-center gap-1.5 flex-wrap">
+                                    <span class="text-[9px] font-mono text-gray-400 bg-white px-1.5 py-0.5 rounded">{{ producto.Codigo }}</span>
+                                    <span class="font-medium text-gray-800 text-xs truncate">{{ producto.Descripcion }}</span>
+                                    <span class="text-[8px] text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
+                                </div>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-[9px] text-gray-400">
+                                        <i class="fas fa-arrow-up mr-0.5 text-[8px]"></i>
+                                        Máx: {{ formatearNumero(capacidadTotalContenedor) }}
+                                    </span>
+                                    <span v-if="producto.Cantidad > 0 && producto.tiene_precio" class="text-[9px] text-primary-600 font-medium">
+                                        <i class="fas fa-check-circle text-[8px]"></i> {{ producto.Cantidad }} und
+                                    </span>
+                                </div>
                             </div>
-                            <div class="flex items-center gap-3 mt-0.5">
-                                <span class="text-[10px] text-gray-400">
-                                    <i class="fas fa-arrow-up mr-0.5"></i>
-                                    Máx: {{ formatearNumero(capacidadTotalContenedor) }} und
+
+                            <!-- Precio -->
+                            <div class="col-span-3 sm:col-span-2 text-center">
+                                <span v-if="producto.tiene_precio" class="text-green-600 font-medium text-xs">
+                                    Bs. {{ Number(producto.PrecioEspecial).toFixed(2) }}
                                 </span>
-                                <span v-if="producto.Cantidad > 0" class="text-[10px] text-primary-600 font-medium">
-                                    <i class="fas fa-check-circle"></i> {{ producto.Cantidad }} und
-                                </span>
+                                <span v-else class="text-red-400 text-[9px]">Sin precio</span>
                             </div>
-                        </div>
-                        <div class="flex items-center gap-2 w-full sm:w-auto">
-                            <input 
-                                type="number"
-                                step="any"
-                                min="0"
-                                :max="capacidadTotalContenedor"
-                                :value="producto.Cantidad || 0"
-                                @input="actualizarCantidad(producto, $event)"
-                                @focus="$event.target.select()"
-                                class="w-full sm:w-32 text-right border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
-                                :class="{
-                                    'border-primary-400 bg-primary-50': producto.Cantidad > 0,
-                                    'border-red-300': producto.Cantidad > capacidadTotalContenedor
-                                }"
-                                placeholder="0"
-                            />
-                            <span class="text-xs text-gray-400 w-6 text-center hidden sm:block">und</span>
+
+                            <!-- Cantidad (SOLO ENTEROS) -->
+                            <div class="col-span-6 sm:col-span-3 flex items-center gap-0.5">
+                                <button 
+                                    @click="decrementarCantidad(producto)"
+                                    :disabled="!producto.tiene_precio || producto.Cantidad <= 0"
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition"
+                                >
+                                    <i class="fas fa-minus text-[8px]"></i>
+                                </button>
+                                <input 
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    :max="capacidadTotalContenedor"
+                                    :value="producto.Cantidad || 0"
+                                    @input="actualizarCantidad(producto, $event)"
+                                    @focus="$event.target.select()"
+                                    :disabled="!producto.tiene_precio"
+                                    class="w-full text-center border rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
+                                    :class="{
+                                        'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio,
+                                        'border-orange-300 bg-orange-50': producto.Cantidad > 0 && !producto.tiene_precio,
+                                        'border-red-300': producto.Cantidad > capacidadTotalContenedor,
+                                        'border-gray-200': producto.Cantidad === 0 || !producto.tiene_precio
+                                    }"
+                                    placeholder="0"
+                                />
+                                <button 
+                                    @click="incrementarCantidad(producto)"
+                                    :disabled="!producto.tiene_precio"
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition"
+                                >
+                                    <i class="fas fa-plus text-[8px]"></i>
+                                </button>
+                            </div>
+
+                            <!-- Total -->
+                            <div class="col-span-3 sm:col-span-2 text-right font-bold text-xs">
+                                <span v-if="producto.tiene_precio && producto.Cantidad > 0" class="text-primary-600">
+                                    Bs. {{ (producto.Cantidad * producto.PrecioEspecial).toFixed(2) }}
+                                </span>
+                                <span v-else class="text-gray-300">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Footer -->
-            <div class="p-4 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-3">
-                <div class="text-xs sm:text-sm text-gray-600 text-center sm:text-left">
-                    <span v-if="errorCarga" class="text-red-600 font-medium">
-                        <i class="fas fa-exclamation-circle mr-1"></i>
-                        Error al cargar, reintenta
-                    </span>
-                    <span v-else-if="excedeCapacidad" class="text-red-600 font-medium">
-                        <i class="fas fa-exclamation-circle mr-1"></i>
-                        Reduce las cantidades para continuar
+            <!-- ========== FOOTER ========== -->
+            <div class="px-4 py-2.5 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
+                <div class="text-[10px] text-gray-500 text-center sm:text-left">
+                    <span v-if="!idIdentificador" class="text-yellow-600">
+                        <i class="fas fa-info-circle mr-1"></i> Selecciona un cliente
                     </span>
                     <span v-else-if="productosAgregados.length === 0" class="text-gray-400">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Selecciona productos para agregar
+                        <i class="fas fa-info-circle mr-1"></i> {{ productosAgregados.length }} productos
                     </span>
                     <span v-else class="text-green-600">
-                        <i class="fas fa-check-circle mr-1"></i>
-                        {{ productosAgregados.length }} producto(s) listos
+                        <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s)
                     </span>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
                     <button 
                         @click="limpiarTodo"
-                        class="px-3 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm transition flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
+                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-[10px] transition flex-1 sm:flex-none"
                         :disabled="loading || errorCarga"
                     >
-                        <i class="fas fa-eraser text-xs"></i>
-                        Limpiar
+                        <i class="fas fa-eraser text-[8px] mr-1"></i> Limpiar
                     </button>
                     <button 
                         @click="agregarAlCarrito"
-                        :disabled="!puedeAgregar || errorCarga"
-                        class="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-1 sm:flex-none justify-center"
+                        :disabled="!puedeAgregar || errorCarga || !idIdentificador"
+                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none"
                     >
-                        <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-cart-plus"></i>
-                        {{ loading ? 'Cargando...' : 'Agregar al Carrito' }}
+                        <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
+                        <i v-else class="fas fa-save text-[10px]"></i>
+                        {{ loading ? 'Cargando...' : (modoEdicion ? 'Actualizar' : 'Agregar') }}
+                        <span v-if="productosAgregados.length > 0" class="bg-white/20 rounded-full px-1.5 py-0.5 text-[8px]">
+                            {{ productosAgregados.length }}
+                        </span>
                     </button>
                 </div>
             </div>
@@ -529,28 +553,22 @@ watch(
 
 <style scoped>
 @keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px) scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
+    from { opacity: 0; transform: translateY(10px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @keyframes shake {
     0%, 100% { transform: translateX(0); }
-    25% { transform: translateX(-5px); }
-    75% { transform: translateX(5px); }
+    25% { transform: translateX(-3px); }
+    75% { transform: translateX(3px); }
 }
 
 .animate-fade-in-up {
-    animation: fadeInUp 0.25s ease-out;
+    animation: fadeInUp 0.2s ease-out;
 }
 
 .animate-shake {
-    animation: shake 0.4s ease-in-out;
+    animation: shake 0.3s ease-in-out;
 }
 
 input[type="number"]::-webkit-inner-spin-button,
@@ -563,21 +581,17 @@ input[type="number"] {
 }
 
 .overflow-y-auto::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
 }
 .overflow-y-auto::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 8px;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
+    background: #d1d1d1;
     border-radius: 8px;
 }
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
-}
-
-[v-show] {
-    transition: all 0.2s ease;
 }
 </style>

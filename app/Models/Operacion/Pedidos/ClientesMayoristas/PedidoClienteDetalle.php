@@ -17,11 +17,13 @@ class PedidoClienteDetalle extends Model
         'IdContenedor',
         'IdProducto',
         'Cantidad',
+        'Precio',           // ✅ NUEVO: Precio unitario al momento del pedido
         'OrdenContenedor',
     ];
 
     protected $casts = [
         'Cantidad' => 'decimal:2',
+        'Precio' => 'decimal:2',    // ✅ NUEVO
     ];
 
     // ==================== RELACIONES ====================
@@ -46,6 +48,21 @@ class PedidoClienteDetalle extends Model
     public function getCantidadFormateadaAttribute()
     {
         return number_format($this->Cantidad, 0, ',', '.');
+    }
+
+    public function getPrecioFormateadoAttribute()
+    {
+        return number_format($this->Precio, 2, ',', '.');
+    }
+
+    public function getSubtotalAttribute()
+    {
+        return $this->Cantidad * $this->Precio;
+    }
+
+    public function getSubtotalFormateadoAttribute()
+    {
+        return number_format($this->Cantidad * $this->Precio, 2, ',', '.');
     }
 
     // ==================== SCOPES ====================
