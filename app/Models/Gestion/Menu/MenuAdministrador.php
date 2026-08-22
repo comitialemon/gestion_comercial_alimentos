@@ -13,23 +13,21 @@ class MenuAdministrador extends Model
     protected $primaryKey = 'Id';
     public $timestamps = false;
 
-    // ✅ AGREGAR SuperUsuario AL fillable
+    // ✅ AGREGAR PedidoClientes AL fillable
     protected $fillable = [
         'Description',
         'Link',
         'Parent',
         'Node_Order',
         'Informes',
-        'SuperUsuario',      // ✅ AGREGADO
+        'SuperUsuario',
         'EstadoCuenta',
         'VentaMostrador',
         'Produccion',
         'ControlInterno',
+        'PedidoClientes', // ✅ NUEVO
     ];
 
-    /**
-     * 🔥 EVENTOS: Invalida la caché del menú cuando se modifica la tabla
-     */
     protected static function booted()
     {
         static::saved(function () {

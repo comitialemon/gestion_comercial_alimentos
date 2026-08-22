@@ -7,10 +7,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class MenuController extends Controller
 {
-    private function g() { // conexión Gestión
+    private function g() {
         return DB::connection('mysql_gestion_comercial_alimentos');
     }
 
@@ -24,14 +25,14 @@ class MenuController extends Controller
             return Inertia::render('Menu/Index', ['menu' => [], 'usuario' => $usuario]);
         }
 
-        // 1) Detalle del tipo (p.ej. "Vendedor")
+        // 1) Detalle del tipo
         $detalleTipo = $this->g()
             ->table('todos_operador_tipo')
             ->where('IdOperadorTipo', $tipoId)
             ->value('Detalle');
 
         // 2) Resolver nombre de columna en menu_administrador
-        $colPerm = $this->resolverColumnaPermiso($detalleTipo); // p.ej. "Vendedor"
+        $colPerm = $this->resolverColumnaPermiso($detalleTipo);
 
         // 3) Traer ítems donde esa columna = 1
         $items = $this->itemsPorColumna($colPerm);
@@ -48,41 +49,67 @@ class MenuController extends Controller
         ]);
     }
 
-    /** Convierte el Detalle a nombre de columna, validando contra el schema */
+    /**
+     * 🔥 CORREGIDO: Convierte el Detalle a nombre de columna
+     */
     private function resolverColumnaPermiso(?string $detalleTipo): string
     {
-        if (!$detalleTipo) return 'Administrador';
-
-        $normal = preg_replace('/\s+/', '', $detalleTipo); // quita espacios
-        // Excepciones si el Detalle no coincide con el nombre real de la columna
-        $ex = [
-            'SuperUsuario'         => 'Administrador',
-            'VentaMonitorCocina'   => 'MonitorCocina',
-            'VentaMonitorEntregas' => 'MonitorEntregas', // si creas esa columna
-            'VentaMayoristas'      => 'VentaMayorista',
-        ];
-        $col = $ex[$normal] ?? $normal;
-
-        // Si la columna no existe, fallback seguro
-        if (!Schema::hasColumn('menu_administrador', $col)) {
-            return 'Administrador';
+        if (!$detalleTipo) {
+            Log::warning('MENU.detalle_tipo_vacio', ['tipo_id' => session('operador_tipo_id')]);
+            return 'SuperUsuario';
         }
+
+        $normal = preg_replace('/\s+/', '', $detalleTipo);
+
+        // ✅ MAPEO DE DETALLES A COLUMNAS REALES
+        $mapeo = [
+            'SuperUsuario' => 'SuperUsuario',
+            'Informes' => 'Informes',
+            'VentaMostrador' => 'VentaMostrador',
+            'Produccion' => 'Produccion',
+            'ControlInterno' => 'ControlInterno',
+            'EstadoCuenta' => 'EstadoCuenta',
+            'PedidoClientes' => 'PedidoClientes', // ✅ NUEVO
+            // Mantener compatibilidad con nombres antiguos
+            'Administrador' => 'SuperUsuario',
+            'VentaMonitorCocina' => 'MonitorCocina',
+            'VentaMonitorEntregas' => 'MonitorEntregas',
+            'VentaMayoristas' => 'VentaMayorista',
+        ];
+
+        $col = $mapeo[$normal] ?? $normal;
+
+        // ✅ Verificar que la columna existe
+        if (!Schema::connection('mysql_gestion_comercial_alimentos')->hasColumn('menu_administrador', $col)) {
+            Log::warning('MENU.columna_no_existe', [
+                'detalle' => $detalleTipo,
+                'columna_intentada' => $col,
+                'columna_usada' => 'SuperUsuario'
+            ]);
+            return 'SuperUsuario';
+        }
+
+        Log::info('MENU.columna_resuelta', [
+            'detalle' => $detalleTipo,
+            'columna' => $col
+        ]);
+
         return $col;
     }
 
-    /** Menú por columna booleana (e.g. Vendedor = 1) */
     private function itemsPorColumna(string $colPerm): array
     {
-        return DB::table('menu_administrador')
+        return DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('menu_administrador')
             ->select(['Id','Description as title','Link as href','Parent','Node_Order'])
             ->where($colPerm, 1)
-            ->orderBy('Parent')->orderBy('Node_Order')
+            ->orderBy('Parent')
+            ->orderBy('Node_Order')
             ->get()
             ->map(fn($r) => (array) $r)
             ->toArray();
     }
 
-    /** Agrega padres si sólo vinieron hijos */
     private function conPadres(array $items): array
     {
         $byId = [];
@@ -95,13 +122,13 @@ class MenuController extends Controller
             }
         }
         if ($faltan) {
-            $padres = DB::table('menu_administrador')
+            $padres = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('menu_administrador')
                 ->select(['Id','Description as title','Link as href','Parent','Node_Order'])
                 ->whereIn('Id', array_unique($faltan))
                 ->get()
                 ->map(fn($r) => (array) $r)
                 ->toArray();
-            // unificar por Id
             $todos = array_merge($items, $padres);
             $uniq  = [];
             foreach ($todos as $row) $uniq[$row['Id']] = $row;
@@ -110,7 +137,6 @@ class MenuController extends Controller
         return $items;
     }
 
-    /** Convierte lista plana a árbol, ordenado por Node_Order */
     private function aArbol(array $flat): array
     {
         $map = [];

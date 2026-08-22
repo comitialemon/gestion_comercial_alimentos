@@ -15,11 +15,22 @@ class OperadorTipo extends Model
         'Detalle',
     ];
 
-    /**
-     * Obtiene los operadores de este tipo
-     */
+    // ==================== RELACIONES ====================
+    
     public function operadores()
     {
         return $this->hasMany(Operador::class, 'IdOperadorTipo', 'IdOperadorTipo');
+    }
+
+    /**
+     * ✅ NUEVO: Obtener el tipo PedidoClientes
+     */
+    public static function getPedidoClientesTipo()
+    {
+        $cacheKey = 'operador_tipo_pedido_clientes';
+        
+        return cache()->remember($cacheKey, 3600, function() {
+            return self::where('Detalle', 'PedidoClientes')->first();
+        });
     }
 }

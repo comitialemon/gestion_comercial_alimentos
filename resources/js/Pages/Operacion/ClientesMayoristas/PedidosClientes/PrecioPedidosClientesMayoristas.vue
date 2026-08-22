@@ -51,9 +51,14 @@ const modoEdicion = ref({})
 const precioEditando = ref({})
 
 // ==========================================
-// LISTA DE IDENTIFICADORES
+// LISTA DE IDENTIFICADORES (OPERADORES)
 // ==========================================
 const listaIdentificadores = ref(props.identificadores || [])
+
+// ==========================================
+// ✅ NUEVO: BUSCADOR DE CLIENTES DENTRO DEL PRODUCTO
+// ==========================================
+const busquedaClientePorProducto = ref({}) // { productoId: 'texto de búsqueda' }
 
 // ==========================================
 // DEBOUNCE PARA BÚSQUEDA
@@ -143,15 +148,29 @@ const obtenerNombreIdentificador = (identificadorId) => {
     return 'ID: ' + identificadorId
 }
 
+// ✅ OBTENER CLIENTES DE UN PRODUCTO CON FILTRO DE BÚSQUEDA
 const getClientesProducto = (producto) => {
     if (!producto.precios || Object.keys(producto.precios).length === 0) {
         return []
     }
-    return Object.entries(producto.precios).map(([id, precio]) => ({
+    
+    let clientes = Object.entries(producto.precios).map(([id, precio]) => ({
         IdIdentificador: parseInt(id),
         Precio: precio,
         Nombre: obtenerNombreIdentificador(parseInt(id))
     }))
+    
+    // ✅ FILTRAR POR BÚSQUEDA DE CLIENTE DENTRO DEL PRODUCTO
+    const busquedaCliente = busquedaClientePorProducto.value[producto.IdProducto] || ''
+    if (busquedaCliente.trim()) {
+        const termino = busquedaCliente.toLowerCase().trim()
+        clientes = clientes.filter(c =>
+            c.Nombre?.toLowerCase().includes(termino) ||
+            c.IdIdentificador?.toString().includes(termino)
+        )
+    }
+    
+    return clientes
 }
 
 // ==========================================
@@ -367,22 +386,26 @@ const eliminarCliente = async (productoId, identificadorId) => {
 }
 
 // ==========================================
+// ✅ IR A BITÁCORA
+// ==========================================
+const irABitacora = () => {
+    router.visit('/operacion/pedidos/clientes-mayoristas/precios/bitacora')
+}
+
+// ==========================================
 // LIFECYCLE
 // ==========================================
 onMounted(() => {
     productosCargados.value = true
+    console.log('📋 IDENTIFICADORES RECIBIDOS:', props.identificadores)
 })
-
-// ✅ IR A BITÁCORA
-const irABitacora = () => {
-    router.visit('/operacion/pedidos/clientes-mayoristas/precios/bitacora')
-}
 </script>
 
 <template>
     <div class="min-h-screen bg-gray-100">
         <div class="py-4 px-3 sm:px-5 lg:px-6">
             <div class="max-w-7xl mx-auto">
+                
                 <!-- HEADER -->
                 <div class="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 gap-2">
                     <div class="flex items-center gap-2">
@@ -391,7 +414,9 @@ const irABitacora = () => {
                         </div>
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Asignación de Precios</h1>
-                            <p class="text-[10px] text-gray-500 hidden sm:block">Expande cada producto para asignar precios a los clientes</p>
+                            <p class="text-[10px] text-gray-500 hidden sm:block">
+                                Asigna precios a los operadores de tipo <span class="font-medium text-primary-600">PedidoClientes</span>
+                            </p>
                         </div>
                     </div>
                     <button
@@ -486,7 +511,31 @@ const irABitacora = () => {
                                         <tr v-if="estaExpandido(producto.IdProducto)">
                                             <td colspan="4" class="px-0 py-0 bg-gray-50">
                                                 <div class="pl-8 pr-4 py-2 border-b border-gray-200">
-                                                    <!-- CLIENTES CON PRECIO - CON MODO EDICIÓN (LÁPIZ) -->
+                                                    
+                                                    <!-- ✅ BUSCADOR DE CLIENTES DENTRO DEL PRODUCTO -->
+                                                    <div class="mb-3 flex items-center gap-2">
+                                                        <div class="relative flex-1 max-w-xs">
+                                                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                                                            <input
+                                                                type="text"
+                                                                :placeholder="'Buscar cliente en ' + producto.Codigo + '...'"
+                                                                v-model="busquedaClientePorProducto[producto.IdProducto]"
+                                                                class="w-full border border-gray-200 rounded-md pl-7 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition bg-white"
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            v-if="busquedaClientePorProducto[producto.IdProducto]"
+                                                            @click="busquedaClientePorProducto[producto.IdProducto] = ''"
+                                                            class="text-gray-400 hover:text-gray-600 text-xs"
+                                                        >
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                        <span class="text-[9px] text-gray-400">
+                                                            {{ getClientesProducto(producto).length }} clientes
+                                                        </span>
+                                                    </div>
+
+                                                    <!-- CLIENTES CON PRECIO (FILTRADOS) -->
                                                     <div
                                                         v-for="cliente in getClientesProducto(producto)"
                                                         :key="cliente.IdIdentificador"
@@ -542,10 +591,19 @@ const irABitacora = () => {
                                                         </button>
                                                     </div>
 
+                                                    <!-- MENSAJE CUANDO NO HAY CLIENTES CON LA BÚSQUEDA -->
+                                                    <div 
+                                                        v-if="getClientesProducto(producto).length === 0 && Object.keys(producto.precios || {}).length > 0"
+                                                        class="text-center py-3 text-gray-400 text-xs"
+                                                    >
+                                                        <i class="fas fa-search mr-1"></i>
+                                                        No se encontraron clientes con esa búsqueda
+                                                    </div>
+
                                                     <!-- Formulario para agregar nuevo cliente -->
                                                     <div
                                                         v-if="nuevoClienteForm[producto.IdProducto]"
-                                                        class="flex flex-wrap items-center gap-2 py-2 mt-1 border-t border-primary-200 pt-2"
+                                                        class="flex flex-wrap items-center gap-2 py-2 mt-2 border-t border-primary-200 pt-2"
                                                     >
                                                         <div class="relative" style="width: 280px;">
                                                             <input
@@ -553,7 +611,7 @@ const irABitacora = () => {
                                                                 v-model="nuevoClienteForm[producto.IdProducto].busqueda"
                                                                 class="w-full border rounded-md px-2 py-1 text-xs"
                                                                 :class="{ 'border-red-500': errorNuevo[producto.IdProducto] }"
-                                                                placeholder="Buscar cliente por CI/NIT o nombre..."
+                                                                placeholder="Buscar operador por CI/NIT o nombre..."
                                                                 @focus="nuevoClienteForm[producto.IdProducto].busqueda = ''"
                                                             />
                                                             <div
@@ -608,7 +666,7 @@ const irABitacora = () => {
                                                             class="text-primary-600 hover:text-primary-800 text-[10px] flex items-center gap-1"
                                                         >
                                                             <i class="fas fa-plus-circle"></i>
-                                                            Agregar otro cliente
+                                                            Agregar otro operador
                                                         </button>
                                                     </div>
                                                 </div>
@@ -641,7 +699,7 @@ const irABitacora = () => {
                                             </span>
                                             <button
                                                 @click.stop="iniciarNuevoCliente(producto.IdProducto)"
-                                                class="px-2 py-0.5 bg-primary-600 text-white rounded text-[9px] hover:bg-primary-700 flex items-center gap-1 transition-colors"
+                                                class="px-2 py-0.5 bg-green-600 text-white rounded text-[9px] hover:bg-green-700 flex items-center gap-1"
                                             >
                                                 <i class="fas fa-plus text-[8px]"></i>
                                             </button>
@@ -649,8 +707,24 @@ const irABitacora = () => {
                                     </div>
                                 </div>
 
-                                <!-- Sub-fila expandida (mobile) -->
                                 <div v-if="estaExpandido(producto.IdProducto)" class="bg-gray-50 p-3 border-t border-gray-200">
+                                    
+                                    <!-- ✅ BUSCADOR DE CLIENTES (Mobile) -->
+                                    <div class="mb-3 flex items-center gap-2">
+                                        <div class="relative flex-1">
+                                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]"></i>
+                                            <input
+                                                type="text"
+                                                :placeholder="'Buscar cliente...'"
+                                                v-model="busquedaClientePorProducto[producto.IdProducto]"
+                                                class="w-full border border-gray-200 rounded-md pl-7 pr-3 py-1 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition bg-white"
+                                            />
+                                        </div>
+                                        <span class="text-[8px] text-gray-400 whitespace-nowrap">
+                                            {{ getClientesProducto(producto).length }}
+                                        </span>
+                                    </div>
+
                                     <div
                                         v-for="cliente in getClientesProducto(producto)"
                                         :key="cliente.IdIdentificador"
@@ -658,7 +732,7 @@ const irABitacora = () => {
                                     >
                                         <span 
                                             class="text-gray-600 text-xs truncate"
-                                            style="width: 180px; display: inline-block;"
+                                            style="width: 140px; display: inline-block;"
                                             :title="cliente.Nombre"
                                         >
                                             {{ cliente.Nombre }}
@@ -679,7 +753,7 @@ const irABitacora = () => {
                                             />
                                         </template>
                                         <template v-else>
-                                            <span class="font-medium text-gray-800 w-12 text-center">
+                                            <span class="font-medium text-gray-800 w-12 text-center text-xs">
                                                 {{ Number(cliente.Precio).toFixed(2) }}
                                             </span>
                                             <button
@@ -699,18 +773,26 @@ const irABitacora = () => {
                                         </button>
                                     </div>
 
+                                    <div 
+                                        v-if="getClientesProducto(producto).length === 0 && Object.keys(producto.precios || {}).length > 0"
+                                        class="text-center py-2 text-gray-400 text-[10px]"
+                                    >
+                                        <i class="fas fa-search mr-1"></i>
+                                        No se encontraron clientes
+                                    </div>
+
                                     <!-- Formulario agregar cliente (mobile) -->
                                     <div
                                         v-if="nuevoClienteForm[producto.IdProducto]"
-                                        class="flex flex-wrap items-center gap-2 py-2 mt-1 border-t border-primary-200 pt-2"
+                                        class="flex flex-wrap items-center gap-2 py-2 mt-2 border-t border-primary-200 pt-2"
                                     >
-                                        <div class="relative" style="width: 180px; max-width: 100%;">
+                                        <div class="relative" style="width: 140px; max-width: 100%;">
                                             <input
                                                 type="text"
                                                 v-model="nuevoClienteForm[producto.IdProducto].busqueda"
                                                 class="w-full border rounded-md px-2 py-1 text-xs"
                                                 :class="{ 'border-red-500': errorNuevo[producto.IdProducto] }"
-                                                placeholder="Buscar cliente..."
+                                                placeholder="Buscar operador..."
                                                 @focus="nuevoClienteForm[producto.IdProducto].busqueda = ''"
                                             />
                                             <div
@@ -764,7 +846,7 @@ const irABitacora = () => {
                                             class="text-primary-600 hover:text-primary-800 text-[10px] flex items-center gap-1"
                                         >
                                             <i class="fas fa-plus-circle"></i>
-                                            Agregar cliente
+                                            Agregar operador
                                         </button>
                                     </div>
                                 </div>
@@ -822,5 +904,10 @@ const irABitacora = () => {
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+}
+
+/* Estilos para el scroll del autocomplete */
+.max-h-32 {
+    max-height: 8rem;
 }
 </style>

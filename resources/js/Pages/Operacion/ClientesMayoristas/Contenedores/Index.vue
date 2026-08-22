@@ -4,6 +4,7 @@ import { Link, router } from '@inertiajs/vue3'
 import { ref, watch, onMounted, onUnmounted, computed, inject } from 'vue'
 import axios from 'axios'
 import ShowModal from './ShowModal.vue'
+import AsignarClientesModal from './AsignarClientesModalContenedor.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -22,7 +23,6 @@ const props = defineProps({
 // ESTADO DE FILTROS
 // =============================================
 
-// 🔥 Inicializar desde props para mantener filtros
 const sucursalId = ref(props.sucursalSeleccionada || '')
 const sucursalBusqueda = ref('')
 const mostrarSucursales = ref(false)
@@ -31,7 +31,7 @@ const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
 
 // =============================================
-// MODAL
+// MODAL DE DETALLE
 // =============================================
 const modalVisible = ref(false)
 const contenedorSeleccionado = ref(null)
@@ -44,6 +44,22 @@ const abrirModal = (contenedor) => {
 const cerrarModal = () => {
     modalVisible.value = false
     contenedorSeleccionado.value = null
+}
+
+// =============================================
+// ✅ MODAL DE ASIGNAR CLIENTES
+// =============================================
+const modalClientesVisible = ref(false)
+const contenedorParaClientes = ref(null)
+
+const abrirModalClientes = (contenedor) => {
+    contenedorParaClientes.value = contenedor
+    modalClientesVisible.value = true
+}
+
+const cerrarModalClientes = () => {
+    modalClientesVisible.value = false
+    contenedorParaClientes.value = null
 }
 
 // =============================================
@@ -98,14 +114,19 @@ const contraerTodas = () => {
 }
 
 // =============================================
-// AGRUPACIÓN POR SUCURSAL
+// ✅ DATOS REACTIVOS PARA ACTUALIZACIÓN LOCAL
+// =============================================
+const contenedoresData = ref(props.contenedores)
+
+// =============================================
+// AGRUPACIÓN POR SUCURSAL (USANDO DATOS REACTIVOS)
 // =============================================
 const contenedoresAgrupados = computed(() => {
-    if (!props.contenedores?.data) return {}
+    if (!contenedoresData.value?.data) return {}
     
     const grupos = {}
     
-    props.contenedores.data.forEach(contenedor => {
+    contenedoresData.value.data.forEach(contenedor => {
         const sucursalNombre = contenedor.sucursal?.Nombre || 'Sin sucursal'
         const sucursalId = contenedor.IdSucursal || 0
         
@@ -151,6 +172,31 @@ const actualizarExpandidas = () => {
 }
 
 // =============================================
+// ✅ ACTUALIZAR DATOS LOCALES (SIN RECARGAR)
+// =============================================
+const actualizarDatosLocales = () => {
+    // Recargar los datos desde el servidor sin recargar la página
+    const params = {
+        sucursal_id: sucursalId.value || undefined,
+        estado: estadoFiltro.value || undefined,
+        buscar: buscador.value || undefined
+    }
+    
+    router.get('/operacion/pedidos/clientes-mayoristas/contenedores', params, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        onSuccess: (page) => {
+            contenedoresData.value = page.props.contenedores
+            setTimeout(() => {
+                actualizarExpandidas()
+            }, 100)
+            toast?.success('Éxito', 'Datos actualizados correctamente')
+        }
+    })
+}
+
+// =============================================
 // ACCIONES
 // =============================================
 const aplicarFiltros = () => {
@@ -163,7 +209,8 @@ const aplicarFiltros = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/contenedores', params, {
         preserveState: true,
         replace: true,
-        onSuccess: () => {
+        onSuccess: (page) => {
+            contenedoresData.value = page.props.contenedores
             setTimeout(() => {
                 actualizarExpandidas()
             }, 100)
@@ -207,7 +254,7 @@ const handleClickOutside = (event) => {
 }
 
 // =============================================
-// 🔥 NUEVA FUNCIÓN: Construir URL con filtros para paginación
+// 🔥 FUNCIÓN: Construir URL con filtros para paginación
 // =============================================
 const construirUrlConFiltros = (url) => {
     if (!url) return '#'
@@ -291,7 +338,6 @@ const toggleSwitch = (contenedor) => {
     
     if (cambiando.value[contenedor.IdContenedor]) return
     
-    // Solo permite desactivar (Activo → Inactivo/Borrador)
     abrirModalConfirmacion(contenedor, 0)
 }
 
@@ -321,7 +367,8 @@ const ejecutarCambioEstado = async () => {
         
         if (response.data.success) {
             mostrarToast(response.data.message, 'success')
-            aplicarFiltros()
+            // ✅ ACTUALIZAR LOCALMENTE SIN RECARGAR
+            actualizarDatosLocales()
             cerrarModalConfirmacion()
         } else {
             mostrarToast(response.data.message, 'error')
@@ -350,7 +397,8 @@ const eliminarContenedor = async (id, nombre) => {
         
         if (response.data.success) {
             mostrarToast(response.data.message, 'success')
-            aplicarFiltros()
+            // ✅ ACTUALIZAR LOCALMENTE SIN RECARGAR
+            actualizarDatosLocales()
         } else {
             mostrarToast(response.data.message, 'error')
         }
@@ -358,6 +406,14 @@ const eliminarContenedor = async (id, nombre) => {
         console.error('Error:', error)
         mostrarToast(error.response?.data?.message || 'Error al eliminar', 'error')
     }
+}
+
+// =============================================
+// ✅ MANEJAR ACTUALIZACIÓN DESDE MODAL
+// =============================================
+const handleActualizar = () => {
+    // Actualizar los datos sin recargar la página
+    actualizarDatosLocales()
 }
 
 // =============================================
@@ -411,6 +467,9 @@ onMounted(() => {
         }
     }
     
+    // Inicializar datos
+    contenedoresData.value = props.contenedores
+    
     setTimeout(() => {
         inicializarExpandidas()
     }, 100)
@@ -419,6 +478,14 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     document.removeEventListener('click', handleClickOutside)
+})
+
+// ✅ WATCH para cuando cambian los props (navegación)
+watch(() => props.contenedores, (newVal) => {
+    contenedoresData.value = newVal
+    setTimeout(() => {
+        actualizarExpandidas()
+    }, 100)
 })
 </script>
 
@@ -449,7 +516,7 @@ onUnmounted(() => {
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-center gap-3">
                         
-                        <!-- 🔥 Sucursal - Autocomplete -->
+                        <!-- Sucursal - Autocomplete -->
                         <div class="sucursal-autocomplete flex items-center gap-1">
                             <label class="text-xs font-medium text-gray-700">Sucursal:</label>
                             <div class="relative">
@@ -615,6 +682,7 @@ onUnmounted(() => {
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Asignar Clientes</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
                                             </tr>
                                         </thead>
@@ -627,6 +695,16 @@ onUnmounted(() => {
                                                         <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
+                                                </td>
+                                                <td class="px-3 py-2 text-center">
+                                                    <button 
+                                                        @click="abrirModalClientes(item)" 
+                                                        class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded text-xs" 
+                                                        title="Asignar clientes"
+                                                    >
+                                                        <i class="fas fa-users"></i>
+                                                        <span class="ml-1 text-[10px]">Clientes</span>
+                                                    </button>
                                                 </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <div v-if="puedeDesactivar(item)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(item)">
@@ -647,7 +725,6 @@ onUnmounted(() => {
                                                 </td>
                                                 <td class="px-3 py-2 text-right">
                                                     <div class="flex justify-end gap-2">
-                                                        <!-- BOTÓN EDITAR (solo borrador) -->
                                                         <Link 
                                                             v-if="item.ActivoInactivo === 0" 
                                                             :href="`/operacion/pedidos/clientes-mayoristas/contenedores/${item.IdContenedor}/edit`" 
@@ -656,7 +733,6 @@ onUnmounted(() => {
                                                         >
                                                             <i class="fas fa-edit text-sm"></i>
                                                         </Link>
-                                                        <!-- BOTÓN ELIMINAR (solo borrador) -->
                                                         <button 
                                                             v-if="item.ActivoInactivo === 0" 
                                                             @click="eliminarContenedor(item.IdContenedor, item.Nombre)" 
@@ -696,7 +772,14 @@ onUnmounted(() => {
                                             </div>
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
                                                 <div class="flex gap-2">
-                                                    <!-- 🔥 BOTÓN VER DETALLE (OJO) -->
+                                                    <!-- 🔥 BOTÓN CLIENTES (Móvil) -->
+                                                    <button 
+                                                        @click="abrirModalClientes(item)" 
+                                                        class="text-blue-500 hover:text-blue-700 text-xs" 
+                                                        title="Asignar clientes"
+                                                    >
+                                                        <i class="fas fa-users"></i>
+                                                    </button>
                                                     <button 
                                                         @click="abrirModal(item)" 
                                                         class="text-blue-500 hover:text-blue-700" 
@@ -739,13 +822,13 @@ onUnmounted(() => {
                     </div>
                     
                     <!-- 🔥 PAGINACIÓN CON FILTROS -->
-                    <div v-if="props.contenedores?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
+                    <div v-if="contenedoresData?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <p class="text-[10px] sm:text-xs text-gray-500">
-                            Mostrando {{ props.contenedores.from || 0 }} - {{ props.contenedores.to || 0 }} de {{ props.contenedores.total || 0 }}
+                            Mostrando {{ contenedoresData.from || 0 }} - {{ contenedoresData.to || 0 }} de {{ contenedoresData.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
                             <Link 
-                                v-for="link in props.contenedores.links" 
+                                v-for="link in contenedoresData.links" 
                                 :key="link.label" 
                                 :href="construirUrlConFiltros(link.url)"
                                 class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
@@ -823,6 +906,17 @@ onUnmounted(() => {
             :contenedor="contenedorSeleccionado"
             @close="cerrarModal"
         />
+
+        <!-- ============================================= -->
+        <!-- ✅ MODAL: ASIGNAR CLIENTES A CONTENEDOR -->
+        <!-- ============================================= -->
+        <AsignarClientesModal
+            :visible="modalClientesVisible"
+            :contenedor="contenedorParaClientes"
+            @close="cerrarModalClientes"
+            @actualizar="handleActualizar"
+        />
+
     </div>
 </template>
 

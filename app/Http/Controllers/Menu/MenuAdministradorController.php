@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Gestion\Menu\MenuAdministrador;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\Log;
 
 class MenuAdministradorController extends Controller
 {
@@ -44,9 +45,21 @@ class MenuAdministradorController extends Controller
                 'columna' => 'required|string',
                 'valor' => 'required|boolean'
             ]);
+
+            // ✅ Verificar que la columna existe antes de actualizar
+            $columnas = MenuAdministrador::getPermisoColumns();
+            if (!in_array($request->columna, $columnas)) {
+                return back()->with('error', "Columna '{$request->columna}' no existe");
+            }
             
             $menu->update([
                 $request->columna => $request->valor
+            ]);
+            
+            Log::info('MENU.permiso_actualizado', [
+                'menu_id' => $id,
+                'columna' => $request->columna,
+                'valor' => $request->valor
             ]);
             
             return back()->with('success', "Permiso '{$request->columna}' actualizado");
@@ -73,7 +86,7 @@ class MenuAdministradorController extends Controller
         
         $menu->update([
             'Description' => $request->Description,
-            'Link' => $request->Link ?? ''  // 🔥 Si es null, guardar string vacío
+            'Link' => $request->Link ?? ''
         ]);
         
         return back()->with('success', "Menú '{$menu->Description}' actualizado");
@@ -99,7 +112,7 @@ class MenuAdministradorController extends Controller
             
             $datos = [
                 'Description' => $request->Description,
-                'Link' => $request->Link ?? '',  // 🔥 String vacío en lugar de null
+                'Link' => $request->Link ?? '',
                 'Parent' => $parentId,
                 'Node_Order' => $siguienteOrden,
             ];
@@ -110,10 +123,19 @@ class MenuAdministradorController extends Controller
             
             $menu = MenuAdministrador::create($datos);
             
+            Log::info('MENU.creado', [
+                'menu_id' => $menu->Id,
+                'description' => $menu->Description,
+                'parent' => $parentId
+            ]);
+            
             return back()->with('success', "Menú '{$menu->Description}' creado correctamente");
             
         } catch (\Exception $e) {
-            \Log::error('Error creando menú: ' . $e->getMessage());
+            Log::error('MENU.error_crear', [
+                'error' => $e->getMessage(),
+                'data' => $request->all()
+            ]);
             return back()->with('error', 'Error al crear: ' . $e->getMessage());
         }
     }
@@ -132,6 +154,11 @@ class MenuAdministradorController extends Controller
         
         $nombre = $menu->Description;
         $menu->delete();
+        
+        Log::info('MENU.eliminado', [
+            'menu_id' => $id,
+            'description' => $nombre
+        ]);
         
         return back()->with('success', "Menú '{$nombre}' eliminado correctamente");
     }

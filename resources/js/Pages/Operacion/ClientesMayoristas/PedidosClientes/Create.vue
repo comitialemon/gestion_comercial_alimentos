@@ -42,7 +42,6 @@ const props = defineProps({
         type: Array,
         default: () => []
     },
-    // ✅ NUEVO: Identificador del operador logueado
     idIdentificador: {
         type: Number,
         default: null
@@ -158,9 +157,7 @@ onMounted(() => {
     <div class="min-h-screen bg-gray-100 pb-10">
         <div class="max-w-7xl mx-auto px-3 py-3">
             
-            <!-- ============================================ -->
-            <!-- HEADER - CON INFORMACIÓN DEL OPERADOR        -->
-            <!-- ============================================ -->
+            <!-- HEADER -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <div>
                     <h1 class="text-lg font-bold text-gray-800">Nuevo Pedido</h1>
@@ -194,9 +191,7 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- ============================================ -->
-            <!-- MENÚ TÁCTIL DE CONTENEDORES                   -->
-            <!-- ============================================ -->
+            <!-- MENÚ DE CONTENEDORES -->
             <div class="mb-6">
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-sm font-semibold text-gray-700">
@@ -246,15 +241,16 @@ onMounted(() => {
 
         </div>
 
-        <!-- ============================================ -->
-        <!-- MODAL DE PRODUCTOS                           -->
-        <!-- ============================================ -->
+        <!-- MODAL DE PRODUCTOS -->
         <CreateModalProductos
             :visible="modalVisible"
             :contenedor="contenedorSeleccionado"
             :idIdentificador="idIdentificador"
+            :modoEdicion="false"
+            :datosEdicion="null"
             @close="cerrarModal"
             @agregar="agregarContenedorAlCarrito"
+            @actualizar="agregarContenedorAlCarrito"
         />
     </div>
 </template>

@@ -276,4 +276,30 @@ class Contenedor extends Model
         }
         return $result;
     }
+    // app/Models/Operacion/Pedidos/ClientesMayoristas/Contenedor.php
+
+    public function clientesHabilitados()
+    {
+        return $this->belongsToMany(
+            Identificador::class,
+            'operacion_pedidos_clientes_contenedor_cliente',
+            'IdContenedor',
+            'IdIdentificador'
+        )->withPivot('ActivoInactivo');
+    }
+
+    // Scope para obtener contenedores por cliente
+    public function scopeHabilitadosParaCliente($query, $idIdentificador, $clienteId, $sucursalId)
+    {
+        return $query->where('ActivoInactivo', 1)
+            ->whereExists(function($q) use ($idIdentificador, $clienteId, $sucursalId) {
+                $q->select(DB::raw(1))
+                    ->from('operacion_pedidos_clientes_contenedor_cliente')
+                    ->whereColumn('operacion_pedidos_clientes_contenedor_cliente.IdContenedor', 'operacion_pedidos_clientes_contenedor.IdContenedor')
+                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdIdentificador', $idIdentificador)
+                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdCliente', $clienteId)
+                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdSucursal', $sucursalId)
+                    ->where('operacion_pedidos_clientes_contenedor_cliente.ActivoInactivo', 1);
+            });
+    }
 }

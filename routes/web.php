@@ -127,6 +127,7 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetal
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorTipoController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayoristasController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PrecioProductoController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorClienteController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1293,20 +1294,23 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/', [ContenedorController::class, 'store'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.store');
                     
+                    // ✅ RUTAS FIJAS (sin {id}) - DEBEN IR PRIMERO
+                    Route::get('/clientes-disponibles', [ContenedorClienteController::class, 'getClientesDisponibles'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.clientes-disponibles');
+                    
+                    // ✅ RUTAS CON {id}
                     Route::get('/{id}/edit', [ContenedorController::class, 'edit'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.edit');
                     
                     Route::put('/{id}', [ContenedorController::class, 'update'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.update');
                     
-                    // Ver / Eliminar
                     Route::get('/{id}', [ContenedorController::class, 'show'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.show');
                     
                     Route::delete('/{id}', [ContenedorController::class, 'destroy'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.destroy');
                     
-                    // ACCIONES ESPECIALES
                     Route::post('/{id}/asignar-grupos', [ContenedorController::class, 'asignarGrupos'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-grupos');
                     
@@ -1321,6 +1325,19 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     
                     Route::get('/{id}/productos', [ContenedorController::class, 'getProductos'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.productos');
+                    
+                    // ✅ CLIENTES ASIGNADOS (con {contenedorId})
+                    Route::get('/{contenedorId}/clientes-asignados', [ContenedorClienteController::class, 'getClientesAsignados'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.clientes-asignados');
+                    
+                    Route::post('/{contenedorId}/clientes', [ContenedorClienteController::class, 'asignarCliente'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-cliente');
+                    
+                    Route::put('/clientes/{id}', [ContenedorClienteController::class, 'actualizarMinimo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.actualizar-minimo');
+                    
+                    Route::delete('/clientes/{id}', [ContenedorClienteController::class, 'eliminarCliente'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.eliminar-cliente');
                     
                     // TIPOS DE CONTENEDOR
                     Route::prefix('tipos')->group(function () {
@@ -1361,6 +1378,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Crear nuevo pedido
                     Route::get('/create', [PedidoClienteController::class, 'create'])
                         ->name('operacion.pedidos-clientes.pedidos.create');
+                    
                     // ✅ API: Actualizar contenedor del carrito
                     Route::put('/carrito/contenedor', [PedidoClienteController::class, 'actualizarContenedor'])
                         ->name('operacion.pedidos-clientes.api.carrito.actualizar-contenedor');
@@ -1417,11 +1435,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Guardar precio
                     Route::post('/', [PrecioProductoController::class, 'store'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.store');
-                    
-                    // Eliminar precio
-                    Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
-                    
                     // Obtener precio de un producto (API)
                     Route::get('/get-precio', [PrecioProductoController::class, 'getPrecio'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.get-precio');
@@ -1429,7 +1442,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // ✅ VISTA DE BITÁCORA
                     Route::get('/bitacora', [PrecioProductoController::class, 'bitacoraIndex'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora');
+                    // Eliminar precio
+                    Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
                 });
+
             });
 
             // ============================================================

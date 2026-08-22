@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PrecioProducto;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Contenedor;
 use App\Models\Gestion\Inventario\ProductoDetalle;
-use App\Models\Gestion\Todos\Identificador;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +15,7 @@ use Carbon\Carbon;
 class PrecioProductoController extends Controller
 {
     /**
-     * Vista para asignar precios (Supervisor)
+     * ✅ VISTA PARA ASIGNAR PRECIOS - CONSULTA DIRECTA
      */
     public function index(Request $request)
     {
@@ -24,11 +23,19 @@ class PrecioProductoController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // 1. Obtener todos los identificadores
-        $identificadores = Identificador::orderBy('Nombre')
-            ->get(['IdIdentificador', 'Nombre', 'CI_NIT']);
+        // ✅ CONSULTA DIRECTA (sin caché, sin modelos)
+        $identificadores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_identificador as i')
+            ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
+            ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
+            ->where('ot.Detalle', 'PedidoClientes')
+            ->where('o.ActivoInactivo', 0)  // ✅ 0 = Activo
+            ->select('i.IdIdentificador', 'i.Nombre', 'i.CI_NIT')
+            ->orderBy('i.Nombre')
+            ->distinct()
+            ->get();
 
-        // 2. Obtener los grupos de análisis que están en contenedores activos
+        // ✅ 2. OBTENER LOS GRUPOS DE ANÁLISIS QUE ESTÁN EN CONTENEDORES ACTIVOS
         $gruposIds = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->with('gruposAnalisis')
@@ -38,7 +45,7 @@ class PrecioProductoController extends Controller
             ->unique()
             ->toArray();
 
-        // 3. Obtener los productos de esos grupos
+        // ✅ 3. OBTENER LOS PRODUCTOS DE ESOS GRUPOS
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposIds)
             ->where('ActivoInactivo', 0)
@@ -46,13 +53,14 @@ class PrecioProductoController extends Controller
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Descripcion', 'Codigo', 'Precio']);
 
-        // 4. Obtener todos los precios
+        // ✅ 4. OBTENER TODOS LOS PRECIOS PARA ESTOS IDENTIFICADORES
         $todosLosPrecios = PrecioProducto::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
+            ->whereIn('IdIdentificador', $identificadores->pluck('IdIdentificador'))
             ->where('ActivoInactivo', 1)
             ->get(['IdProducto', 'IdIdentificador', 'Precio']);
 
-        // 5. Agrupar precios por producto
+        // ✅ 5. AGRUPAR PRECIOS POR PRODUCTO
         $preciosPorProducto = [];
         foreach ($todosLosPrecios as $precio) {
             $productoId = $precio->IdProducto;
@@ -62,7 +70,7 @@ class PrecioProductoController extends Controller
             $preciosPorProducto[$productoId][$precio->IdIdentificador] = $precio->Precio;
         }
 
-        // 6. Armar el array final de productos
+        // ✅ 6. ARMAR EL ARRAY FINAL DE PRODUCTOS
         $productosFinal = [];
         foreach ($productos as $producto) {
             $productosFinal[] = [
@@ -74,6 +82,11 @@ class PrecioProductoController extends Controller
             ];
         }
 
+        // ✅ LOG PARA VERIFICAR
+        Log::info('=== IDENTIFICADORES ENCONTRADOS ===');
+        Log::info('Cantidad: ' . $identificadores->count());
+        Log::info('Datos:', $identificadores->toArray());
+
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/PrecioPedidosClientesMayoristas', [
             'identificadores' => $identificadores,
             'productos' => $productosFinal,
@@ -82,7 +95,7 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * Guardar o actualizar un precio
+     * ✅ GUARDAR O ACTUALIZAR UN PRECIO
      */
     public function store(Request $request)
     {
@@ -134,6 +147,8 @@ class PrecioProductoController extends Controller
                 }
             });
 
+            $this->limpiarCachePrecios();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Precio guardado correctamente',
@@ -149,7 +164,7 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * Eliminar un precio (desactivar)
+     * ✅ ELIMINAR UN PRECIO (desactivar)
      */
     public function destroy($productoId, $identificadorId)
     {
@@ -185,6 +200,8 @@ class PrecioProductoController extends Controller
                 ]);
             });
 
+            $this->limpiarCachePrecios();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Precio eliminado correctamente',
@@ -200,7 +217,7 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * Guardar en bitácora
+     * ✅ GUARDAR EN BITÁCORA
      */
     private function guardarBitacora($precio, $precioAnterior, $precioNuevo, $operadorId, $motivo = null)
     {
@@ -221,7 +238,7 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * Obtener el precio de un producto para un identificador (API)
+     * ✅ OBTENER EL PRECIO DE UN PRODUCTO PARA UN IDENTIFICADOR (API)
      */
     public function getPrecio(Request $request)
     {
@@ -251,26 +268,25 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * ✅ VER BITÁCORA DE PRECIOS - CON AUTOSUGGEST
+     * ✅ VER BITÁCORA DE PRECIOS
      */
     public function bitacoraIndex(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        // 1. Obtener SOLO los clientes que tienen precios asignados (para el autocomplete)
-        $clientesConPrecios = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('operacion_pedidos_clientes_precio_productos as p')
-            ->join('todos_identificador as i', 'p.IdIdentificador', '=', 'i.IdIdentificador')
-            ->where('p.IdCliente', $clienteId)
-            ->where('p.IdSucursal', $sucursalId)
-            ->where('p.ActivoInactivo', 1)
+        // ✅ USAR LA MISMA CONSULTA DIRECTA
+        $identificadores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_identificador as i')
+            ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
+            ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
+            ->where('ot.Detalle', 'PedidoClientes')
+            ->where('o.ActivoInactivo', 0)
             ->select('i.IdIdentificador', 'i.Nombre', 'i.CI_NIT')
-            ->distinct()
             ->orderBy('i.Nombre')
+            ->distinct()
             ->get();
 
-        // 2. Obtener SOLO los productos habilitados por contenedor
         $gruposIds = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->with('gruposAnalisis')
@@ -280,13 +296,12 @@ class PrecioProductoController extends Controller
             ->unique()
             ->toArray();
 
-        $productosHabilitados = ProductoDetalle::where('IdCliente', $clienteId)
+        $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposIds)
             ->where('ActivoInactivo', 0)
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Descripcion', 'Codigo']);
 
-        // 3. Consultar bitácora
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_precio_bitacora as b')
             ->join('todos_identificador as i', 'b.IdIdentificador', '=', 'i.IdIdentificador')
@@ -302,9 +317,9 @@ class PrecioProductoController extends Controller
                 'oi.Nombre as OperadorNombre'
             )
             ->where('b.IdCliente', $clienteId)
-            ->where('b.IdSucursal', $sucursalId);
+            ->where('b.IdSucursal', $sucursalId)
+            ->whereIn('b.IdIdentificador', $identificadores->pluck('IdIdentificador'));
 
-        // Aplicar filtros si existen
         if ($request->filled('identificador_id')) {
             $query->where('b.IdIdentificador', $request->identificador_id);
         }
@@ -326,9 +341,26 @@ class PrecioProductoController extends Controller
 
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/BitacoraPrecios', [
             'bitacora' => $bitacora,
-            'clientesConPrecios' => $clientesConPrecios,
-            'productosHabilitados' => $productosHabilitados,
+            'identificadores' => $identificadores,
+            'productos' => $productos,
             'filtros' => $request->only(['identificador_id', 'producto_id', 'fecha_desde', 'fecha_hasta']),
         ]);
+    }
+
+    /**
+     * ✅ LIMPIAR CACHÉ DE PRECIOS
+     */
+    private function limpiarCachePrecios()
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        cache()->forget('identificadores_pedido_clientes');
+        cache()->forget('operador_tipo_pedido_clientes');
+        cache()->forget('operadores_pedido_clientes');
+        cache()->forget("precios_cliente_{$clienteId}_sucursal_{$sucursalId}");
+        cache()->forget("productos_habilitados_{$clienteId}");
+        cache()->forget('operador_identificador_' . session('operador_id'));
+        cache()->forget('operador_nombre_' . session('operador_id'));
     }
 }

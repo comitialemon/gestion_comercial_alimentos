@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, inject } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -39,6 +39,8 @@ const excedeCapacidad = ref(false)
 const errorCarga = ref(false)
 const hayProductosSinPrecio = ref(false)
 
+const toast = inject('toast', null)
+
 // ==================== COMPUTADOS ====================
 const productosFiltrados = computed(() => {
     if (!busquedaProducto.value || busquedaProducto.value.length < 2) {
@@ -63,12 +65,29 @@ const estaCompleto = computed(() => {
     return totalUnidadesSeleccionadas.value === capacidadTotalContenedor.value && capacidadTotalContenedor.value > 0
 })
 
+// ✅ NUEVO: Verificar si algún producto no cumple con el mínimo
+const hayProductosConMinimoIncumplido = computed(() => {
+    return productosSeleccionados.value.some(p => 
+        p.Cantidad > 0 && 
+        p.CantidadMinima > 0 && 
+        p.Cantidad < p.CantidadMinima
+    )
+})
+
+// ✅ NUEVO: Verificar si el total de unidades es menor que la cantidad mínima del contenedor
+const totalMenorQueMinimo = computed(() => {
+    const cantidadMinima = contenedorData.value?.cantidadMinima || 0
+    return cantidadMinima > 0 && totalUnidadesSeleccionadas.value > 0 && totalUnidadesSeleccionadas.value < cantidadMinima
+})
+
 const puedeAgregar = computed(() => {
     return !loading.value && 
            productosAgregados.value.length > 0 && 
            !excedeCapacidad.value && 
            totalUnidadesSeleccionadas.value > 0 &&
-           !hayProductosSinPrecio.value
+           !hayProductosSinPrecio.value &&
+           !hayProductosConMinimoIncumplido.value &&
+           !totalMenorQueMinimo.value
 })
 
 const porcentajeCompletado = computed(() => {
@@ -85,12 +104,18 @@ const colorBarra = computed(() => {
 
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0'
-    const numero = parseFloat(valor)
+    const numero = parseInt(valor)
     if (isNaN(numero)) return '0'
     return numero.toFixed(0)
 }
 
+// ✅ Obtener el total de unidades requerido (mínimo del contenedor)
+const totalRequerido = computed(() => {
+    return contenedorData.value?.cantidadMinima || 0
+})
+
 // ==================== FUNCIONES DE CANTIDAD ====================
+
 const actualizarCantidad = (producto, event) => {
     const input = event.target
     let valor = input.value.replace(/,/g, '.').trim()
@@ -219,7 +244,9 @@ const cargarProductos = async () => {
                                 PrecioEspecial: p.PrecioEspecial || null,
                                 tiene_precio: p.tiene_precio || false,
                                 IdGrupoAnalisis: p.IdGrupoAnalisis,
-                                GrupoAnalisis: grupo.grupo_nombre || 'Sin grupo'
+                                GrupoAnalisis: grupo.grupo_nombre || 'Sin grupo',
+                                CantidadMinima: response.data.data.cantidadMinima || 0,
+                                CapacidadTotal: response.data.data.CapacidadTotal || 0,
                             })
                         })
                     }
@@ -231,7 +258,6 @@ const cargarProductos = async () => {
                 return
             }
             
-            // ✅ Si es modo edición, cargar las cantidades existentes (convertidas a enteros)
             productosSeleccionados.value = productosRaw.map(p => {
                 let cantidad = 0
                 let precio = p.PrecioEspecial
@@ -241,7 +267,6 @@ const cargarProductos = async () => {
                         ep => ep.IdProducto === p.IdProducto
                     )
                     if (existente) {
-                        // ✅ CONVERTIR A ENTERO
                         cantidad = parseInt(existente.Cantidad) || 0
                         precio = existente.Precio || p.PrecioEspecial
                     }
@@ -338,7 +363,7 @@ watch(() => props.idIdentificador, (newVal) => {
     >
         <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up">
             
-            <!-- ========== HEADER COMPACTO ========== -->
+            <!-- HEADER -->
             <div class="px-4 py-3 border-b bg-primary-50 flex items-center justify-between flex-shrink-0">
                 <div class="min-w-0 flex-1">
                     <h3 class="font-bold text-gray-800 text-sm truncate">
@@ -346,6 +371,9 @@ watch(() => props.idIdentificador, (newVal) => {
                         {{ modoEdicion ? '✏️ Editando' : '' }} {{ contenedorData?.Codigo || 'Contenedor' }}
                         <span class="text-xs font-normal text-gray-500 ml-1">
                             (Cap: {{ formatearNumero(contenedorData?.CapacidadTotal || 0) }} und)
+                        </span>
+                        <span v-if="contenedorData?.cantidadMinima > 0" class="text-xs font-normal text-orange-500 ml-1">
+                            | Mínimo requerido: {{ formatearNumero(contenedorData?.cantidadMinima) }} und
                         </span>
                     </h3>
                     <p class="text-[10px] text-gray-400">
@@ -360,7 +388,7 @@ watch(() => props.idIdentificador, (newVal) => {
                 </button>
             </div>
 
-            <!-- ========== BARRA DE PROGRESO ========== -->
+            <!-- BARRA DE PROGRESO -->
             <div class="px-4 py-2 bg-gray-50 border-b flex items-center gap-3 flex-shrink-0">
                 <div class="flex-1">
                     <div class="flex justify-between text-[10px] text-gray-500">
@@ -381,7 +409,7 @@ watch(() => props.idIdentificador, (newVal) => {
                 </span>
             </div>
 
-            <!-- ========== CUERPO ========== -->
+            <!-- CUERPO -->
             <div class="p-3 overflow-y-auto" style="max-height: calc(90vh - 160px);">
                 
                 <!-- Alertas -->
@@ -400,6 +428,16 @@ watch(() => props.idIdentificador, (newVal) => {
 
                 <div v-if="hayProductosSinPrecio && !errorCarga && idIdentificador" class="mb-3 p-2 bg-orange-50 border-l-4 border-orange-400 rounded text-xs text-orange-700">
                     <i class="fas fa-exclamation-triangle mr-1"></i> Productos sin precio asignado
+                </div>
+
+                <!-- ✅ NUEVO: Alerta cuando no se cumple el mínimo -->
+                <div v-if="totalMenorQueMinimo && !errorCarga && idIdentificador" class="mb-3 p-2 bg-orange-50 border-l-4 border-orange-400 rounded text-xs text-orange-700">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    El total de unidades ({{ totalUnidadesSeleccionadas }}) no alcanza el mínimo requerido de {{ formatearNumero(totalRequerido) }} unidades
+                </div>
+
+                <div v-if="!errorCarga && productosSeleccionados.length === 0 && idIdentificador" class="mb-3 p-2 bg-blue-50 border-l-4 border-blue-400 rounded text-xs text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i> No hay productos con precio asignado para este contenedor
                 </div>
 
                 <!-- Buscador -->
@@ -422,7 +460,8 @@ watch(() => props.idIdentificador, (newVal) => {
                 <!-- Sin productos -->
                 <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-8 text-gray-400">
                     <i class="fas fa-box-open text-2xl block mb-2"></i>
-                    <p class="text-xs">No hay productos disponibles</p>
+                    <p class="text-xs">No hay productos disponibles con precio</p>
+                    <p class="text-[10px] text-gray-400 mt-1">Contacta al supervisor para asignar precios a este contenedor</p>
                 </div>
 
                 <!-- Lista de productos -->
@@ -434,6 +473,7 @@ watch(() => props.idIdentificador, (newVal) => {
                         :class="{
                             'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio,
                             'ring-1 ring-orange-300 bg-orange-50/50': producto.Cantidad > 0 && !producto.tiene_precio,
+                            'ring-1 ring-red-300 bg-red-50/50': producto.Cantidad > 0 && producto.CantidadMinima > 0 && producto.Cantidad < producto.CantidadMinima,
                             'opacity-60': !producto.tiene_precio
                         }"
                     >
@@ -445,13 +485,22 @@ watch(() => props.idIdentificador, (newVal) => {
                                     <span class="font-medium text-gray-800 text-xs truncate">{{ producto.Descripcion }}</span>
                                     <span class="text-[8px] text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
                                 </div>
-                                <div class="flex items-center gap-2 mt-0.5">
+                                <div class="flex items-center gap-2 mt-0.5 flex-wrap">
                                     <span class="text-[9px] text-gray-400">
                                         <i class="fas fa-arrow-up mr-0.5 text-[8px]"></i>
                                         Máx: {{ formatearNumero(capacidadTotalContenedor) }}
                                     </span>
+                                    <span v-if="producto.CantidadMinima > 0" class="text-[9px] text-orange-500 font-medium">
+                                        <i class="fas fa-arrow-down mr-0.5 text-[8px]"></i>
+                                        Mín: {{ formatearNumero(producto.CantidadMinima) }}
+                                    </span>
                                     <span v-if="producto.Cantidad > 0 && producto.tiene_precio" class="text-[9px] text-primary-600 font-medium">
-                                        <i class="fas fa-check-circle text-[8px]"></i> {{ producto.Cantidad }} und
+                                        <i class="fas fa-check-circle text-[8px]"></i> {{ formatearNumero(producto.Cantidad) }} und
+                                    </span>
+                                    <!-- ✅ NUEVO: Mensaje de mínimo incumplido -->
+                                    <span v-if="producto.Cantidad > 0 && producto.CantidadMinima > 0 && producto.Cantidad < producto.CantidadMinima" class="text-[9px] text-red-500 font-medium">
+                                        <i class="fas fa-exclamation-circle text-[8px]"></i>
+                                        Mínimo: {{ formatearNumero(producto.CantidadMinima) }} und
                                     </span>
                                 </div>
                             </div>
@@ -464,7 +513,7 @@ watch(() => props.idIdentificador, (newVal) => {
                                 <span v-else class="text-red-400 text-[9px]">Sin precio</span>
                             </div>
 
-                            <!-- Cantidad (SOLO ENTEROS) -->
+                            <!-- Cantidad -->
                             <div class="col-span-6 sm:col-span-3 flex items-center gap-0.5">
                                 <button 
                                     @click="decrementarCantidad(producto)"
@@ -484,9 +533,9 @@ watch(() => props.idIdentificador, (newVal) => {
                                     :disabled="!producto.tiene_precio"
                                     class="w-full text-center border rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
                                     :class="{
-                                        'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio,
+                                        'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio && (!producto.CantidadMinima || producto.Cantidad >= producto.CantidadMinima),
                                         'border-orange-300 bg-orange-50': producto.Cantidad > 0 && !producto.tiene_precio,
-                                        'border-red-300': producto.Cantidad > capacidadTotalContenedor,
+                                        'border-red-300 bg-red-50': producto.Cantidad > 0 && producto.CantidadMinima > 0 && producto.Cantidad < producto.CantidadMinima,
                                         'border-gray-200': producto.Cantidad === 0 || !producto.tiene_precio
                                     }"
                                     placeholder="0"
@@ -512,7 +561,7 @@ watch(() => props.idIdentificador, (newVal) => {
                 </div>
             </div>
 
-            <!-- ========== FOOTER ========== -->
+            <!-- FOOTER -->
             <div class="px-4 py-2.5 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
                 <div class="text-[10px] text-gray-500 text-center sm:text-left">
                     <span v-if="!idIdentificador" class="text-yellow-600">
@@ -521,8 +570,12 @@ watch(() => props.idIdentificador, (newVal) => {
                     <span v-else-if="productosAgregados.length === 0" class="text-gray-400">
                         <i class="fas fa-info-circle mr-1"></i> {{ productosAgregados.length }} productos
                     </span>
+                    <span v-else-if="hayProductosConMinimoIncumplido || totalMenorQueMinimo" class="text-red-500 font-medium">
+                        <i class="fas fa-exclamation-circle mr-1"></i>
+                        No cumple con la cantidad mínima requerida
+                    </span>
                     <span v-else class="text-green-600">
-                        <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s)
+                        <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s) listos
                     </span>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
