@@ -440,11 +440,11 @@ class PagoVentaController extends Controller
 
     /**
      * Registrar salida de inventario
-     * 🔥 CORREGIDO: 
-     * - Acumula correctamente todos los combos antes de descontar
-     * - Usa zona horaria del cliente
-     * - Maneja correctamente personalizaciones con sustitutos
-     * - ✅ Agrega operador en la glosa de la venta
+     * 🔥 CORREGIDO: Maneja TODOS los casos sin usar procesarComboSimple
+     */
+    /**
+     * Registrar salida de inventario
+     * 🔥 CORREGIDO: Misma lógica que el reprocesamiento
      */
     private function registrarSalidaInventario($ventaId, $fechaCorregida = null)
     {
@@ -460,7 +460,7 @@ class PagoVentaController extends Controller
             throw new \Exception('Venta no encontrada');
         }
         
-        // 🔥 OBTENER NOMBRE DEL OPERADOR QUE CREÓ LA VENTA
+        // OBTENER NOMBRE DEL OPERADOR
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -468,7 +468,7 @@ class PagoVentaController extends Controller
             ->first();
         $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
         
-        // 🔥 USAR LA FECHA CORREGIDA O LA FECHA ACTUAL DEL CLIENTE
+        // USAR LA FECHA CORREGIDA O LA FECHA ACTUAL DEL CLIENTE
         if ($fechaCorregida) {
             $fechaVenta = $fechaCorregida;
         } else {
@@ -495,7 +495,7 @@ class PagoVentaController extends Controller
                 ->value('IdAlmacen');
         }
         
-        // 🔥 OBTENER EL ID DE "Ventas" PARA ESTE CLIENTE
+        // OBTENER EL ID DE "Ventas"
         $idTipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_tipooperacion')
             ->where('IdCliente', $clienteId)
@@ -525,11 +525,6 @@ class PagoVentaController extends Controller
             Log::error('❌ No se encontró tipo de operación VENTAS para el cliente ' . $clienteId);
             throw new \Exception('No se encontró el tipo de operación "Ventas" para este cliente');
         }
-
-        Log::info('🔑 Tipo de Operación VENTAS encontrado:', [
-            'cliente' => $clienteId,
-            'id_tipo_operacion' => $idTipoOperacion
-        ]);
         
         // Obtener detalles de la venta
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
@@ -537,100 +532,120 @@ class PagoVentaController extends Controller
             ->where('idventas', $ventaId)
             ->get();
         
-        // ✅ 🔥 CANASTA ACUMULADORA - DECLARADA UNA SOLA VEZ, FUERA DE TODOS LOS LOOPS
+        // CANASTA ACUMULADORA
         $productosADescontar = [];
         
         foreach ($detalles as $detalle) {
-            // 🔥 VERIFICAR SI TIENE PERSONALIZACIÓN
-            if ($detalle->personalizacion && $detalle->personalizacion != 'null') {
-                $personalizaciones = json_decode($detalle->personalizacion, true);
+            $unidadesDetalle = (float) $detalle->unidades;
+            
+            Log::info('📦 Procesando detalle:', [
+                'id_producto' => $detalle->idrelacionventainventario,
+                'unidades' => $unidadesDetalle,
+                'personalizacion' => $detalle->personalizacion
+            ]);
+            
+            // 🔥 OBTENER LA COMPOSICIÓN ORIGINAL
+            $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
+                ->get()
+                ->keyBy('IdProducto');
+            
+            // 🔥 CASO 1: PRODUCTO NORMAL (sin composición)
+            if ($composicionOriginal->isEmpty()) {
+                Log::info('📦 Producto normal (sin composición), descontando directamente');
+                $idProducto = $detalle->idrelacionventainventario;
+                $cantidad = $unidadesDetalle;
                 
-                Log::info('Procesando combo con personalización', [
-                    'id_combo' => $detalle->idrelacionventainventario,
-                    'total_unidades' => $detalle->unidades,
-                    'cantidad_personalizaciones' => count($personalizaciones)
-                ]);
+                if (!isset($productosADescontar[$idProducto])) {
+                    $productosADescontar[$idProducto] = 0;
+                }
+                $productosADescontar[$idProducto] += $cantidad;
+                continue;
+            }
+            
+            // 🔥 DECODIFICAR PERSONALIZACIÓN
+            $personalizacion = null;
+            if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
+                $personalizacion = json_decode($detalle->personalizacion, true);
+            }
+            
+            // 🔥 CASO 2: CON PERSONALIZACIÓN
+            if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
+                Log::info('✅ Detalle con personalización');
                 
-                // OBTENER LA COMPOSICIÓN ORIGINAL DEL COMBO
-                $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('inventario_relacion_ventainventario_detalle')
-                    ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
-                    ->get()
-                    ->keyBy('IdProducto');
-                
-                // Procesar cada combo individual (si hay múltiples)
-                foreach ($personalizaciones as $index => $personalizacion) {
-                    // Obtener los sustitutos seleccionados
-                    $sustitutos = $personalizacion['sustitutos'] ?? [];
+                foreach ($personalizacion as $comboData) {
+                    $sustitutos = $comboData['sustitutos'] ?? [];
                     
-                    Log::info("Procesando combo #" . ($index + 1), [
-                        'sustitutos' => count($sustitutos)
-                    ]);
-                    
-                    // PROCESAR CADA PRODUCTO DE LA COMPOSICIÓN
-                    foreach ($composicionOriginal as $idProductoOriginal => $composicion) {
-                        $cantidadOriginal = (float) $composicion->Porcion;
+                    // 🔥 PASO 2a: PROCESAR ORIGINALES NO REEMPLAZADOS
+                    foreach ($composicionOriginal as $idProductoOriginal => $comp) {
+                        $cantidadPorPack = (float) $comp->Porcion;
                         
-                        // Buscar cuántas unidades de este producto se reemplazan
+                        // Calcular cuántos se reemplazan
                         $totalReemplazado = 0;
-                        foreach ($sustitutos as $sustituto) {
-                            if ($sustituto['id_producto_original'] == $idProductoOriginal) {
-                                $totalReemplazado += $sustituto['cantidad'] ?? 0;
+                        foreach ($sustitutos as $sust) {
+                            if ($sust['id_producto_original'] == $idProductoOriginal) {
+                                $totalReemplazado += (float) ($sust['cantidad'] ?? 0);
                             }
                         }
                         
-                        // CALCULAR CUÁNTAS UNIDADES QUEDAN ORIGINALES
-                        $quedanOriginales = $cantidadOriginal - $totalReemplazado;
+                        // Calcular cuántos quedan originales (NO reemplazados)
+                        $quedanOriginales = $cantidadPorPack - $totalReemplazado;
                         
-                        // ✅ ACUMULAR PRODUCTOS ORIGINALES (los que NO se reemplazaron)
+                        // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
                         if ($quedanOriginales > 0) {
                             if (!isset($productosADescontar[$idProductoOriginal])) {
                                 $productosADescontar[$idProductoOriginal] = 0;
                             }
                             $productosADescontar[$idProductoOriginal] += $quedanOriginales;
-                            
-                            Log::info("Producto original {$idProductoOriginal}: acumulado {$quedanOriginales} (total: {$productosADescontar[$idProductoOriginal]})");
+                            Log::info("  → Original {$idProductoOriginal}: +{$quedanOriginales}");
                         }
+                    }
+                    
+                    // 🔥 PASO 2b: PROCESAR SUSTITUTOS (los nuevos productos)
+                    foreach ($sustitutos as $sust) {
+                        $idSustituto = $sust['id_producto_sustituto'];
+                        // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
+                        $cantidadSustituto = (float) ($sust['cantidad'] ?? 0);
                         
-                        // ✅ ACUMULAR SUSTITUTOS (los que se agregaron)
-                        foreach ($sustitutos as $sustituto) {
-                            if ($sustituto['id_producto_original'] == $idProductoOriginal) {
-                                $idSustituto = $sustituto['id_producto_sustituto'];
-                                $cantidadSustituto = $sustituto['cantidad'] ?? 0;
-                                
-                                if ($cantidadSustituto > 0) {
-                                    if (!isset($productosADescontar[$idSustituto])) {
-                                        $productosADescontar[$idSustituto] = 0;
-                                    }
-                                    $productosADescontar[$idSustituto] += $cantidadSustituto;
-                                    
-                                    Log::info("Sustituto {$idSustituto}: acumulado {$cantidadSustituto} (total: {$productosADescontar[$idSustituto]})");
-                                }
+                        if ($cantidadSustituto > 0) {
+                            if (!isset($productosADescontar[$idSustituto])) {
+                                $productosADescontar[$idSustituto] = 0;
                             }
+                            $productosADescontar[$idSustituto] += $cantidadSustituto;
+                            Log::info("  → Sustituto {$idSustituto}: +{$cantidadSustituto}");
                         }
                     }
                 }
-                
             } else {
-                // 🔥 SIN PERSONALIZACIÓN - usar la composición normal
-                // 🔥 PASAR $nombreOperador como parámetro
-                $this->procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId, $nombreOperador);
+                // 🔥 CASO 3: SIN PERSONALIZACIÓN - usar composición completa
+                Log::info('📦 Producto sin personalización, usando composición original');
+                
+                foreach ($composicionOriginal as $comp) {
+                    $idProducto = $comp->IdProducto;
+                    // 🔥 MULTIPLICAR POR UNIDADES DE VENTA
+                    $cantidad = (float) $comp->Porcion * $unidadesDetalle;
+                    
+                    if (!isset($productosADescontar[$idProducto])) {
+                        $productosADescontar[$idProducto] = 0;
+                    }
+                    $productosADescontar[$idProducto] += $cantidad;
+                    Log::info("  → Producto compuesto {$idProducto}: {$comp->Porcion} x {$unidadesDetalle} = {$cantidad}");
+                }
             }
         }
         
-        // ✅ 🔥 DESPUÉS DE PROCESAR TODOS LOS COMBOS, REGISTRAR TODO DE UNA VEZ
+        // REGISTRAR TODOS LOS PRODUCTOS ACUMULADOS
         Log::info('📦 Total de productos a descontar:', $productosADescontar);
         
         foreach ($productosADescontar as $idProducto => $cantidadTotal) {
             if ($cantidadTotal <= 0) continue;
             
-            // Obtener el nombre del producto para el log
             $nombreProducto = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle')
                 ->where('IdProducto', $idProducto)
                 ->value('Descripcion');
             
-            // Obtener precio costo
             $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle_precio_costo')
                 ->where('IdProducto', $idProducto)
@@ -639,7 +654,6 @@ class PagoVentaController extends Controller
             
             $costoTotal = $cantidadTotal * ($precioCosto ?? 0);
             
-            // 🔥 GLOSA CON OPERADOR
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_propiamente')
                 ->insert([
@@ -661,8 +675,6 @@ class PagoVentaController extends Controller
                 'nombre' => $nombreProducto ?? 'Desconocido',
                 'unidades' => $cantidadTotal,
                 'costo_total' => $costoTotal,
-                'fecha' => $fechaVenta,
-                'operador' => $nombreOperador
             ]);
         }
         
@@ -672,12 +684,12 @@ class PagoVentaController extends Controller
             'operador' => $nombreOperador
         ]);
     }
-
+/*
     /**
      * Procesar combo sin personalización (descuenta todo)
      * 🔥 MÉTODO AUXILIAR
      * 🔥 CORREGIDO: Agrega operador en la glosa
-     */
+     
     private function procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId, $nombreOperador)
     {
         $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
@@ -714,7 +726,7 @@ class PagoVentaController extends Controller
                 ]);
         }
     }
-
+*/
     /**
      * Obtener o crear IdFecha
      */
