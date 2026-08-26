@@ -1,10 +1,14 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, onMounted, watch, computed } from 'vue'
-import { router } from '@inertiajs/vue3'
+import { ref, onMounted, watch, computed, inject } from 'vue'
+import { router, usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
+
+// 🔥 INYECTAR EL TOAST
+const toast = inject('toast')
+const page = usePage()
 
 const props = defineProps({
     operadores: Array,
@@ -73,29 +77,71 @@ const cargarMenusAsignados = async () => {
         expandedFolders.value = {}
     } catch (error) {
         console.error('Error al cargar menús asignados:', error)
+        toast?.error('Error', 'No se pudieron cargar los menús asignados')
     } finally {
         loading.value = false
     }
 }
 
-// Guardar asignación
+// 🔥 GUARDAR ASIGNACIÓN - CON TOAST
 const guardarAsignacion = () => {
     if (!selectedOperador.value) {
-        alert('Selecciona un operador primero')
+        toast?.warning('Advertencia', 'Selecciona un operador primero')
         return
     }
     
     saving.value = true
+    
     router.post('/gestion/menu/asignar', {
         operador_id: selectedOperador.value,
+        cliente_id: props.clienteId,
         menus: menusAsignados.value
     }, {
         preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => {
+            // ✅ El toast se mostrará automáticamente desde el flash message
+            saving.value = false
+        },
+        onError: (errors) => {
+            console.error('Error al guardar:', errors)
+            let errorMsg = 'Error al guardar la asignación'
+            if (errors && typeof errors === 'object') {
+                const firstError = Object.values(errors)[0]
+                if (Array.isArray(firstError)) {
+                    errorMsg = firstError[0] || errorMsg
+                } else if (typeof firstError === 'string') {
+                    errorMsg = firstError
+                }
+            }
+            toast?.error('Error', errorMsg)
+            saving.value = false
+        },
         onFinish: () => {
             saving.value = false
         }
     })
 }
+
+// 🔥 VERIFICAR MENSAJES FLASH AL CARGAR
+onMounted(() => {
+    const flashSuccess = page.props.flash?.success
+    const flashError = page.props.flash?.error
+    
+    if (flashSuccess) {
+        toast?.success('Éxito', flashSuccess)
+        // Limpiar el flash para que no se repita
+        page.props.flash.success = null
+    }
+    if (flashError) {
+        toast?.error('Error', flashError)
+        page.props.flash.error = null
+    }
+    
+    if (selectedOperador.value) {
+        cargarMenusAsignados()
+    }
+})
 
 // Alternar expansión de carpeta
 const toggleFolder = (itemId) => {
@@ -154,7 +200,6 @@ const onCheckboxChange = (item, event) => {
         for (const node of items) {
             if (node.children && node.children.length) {
                 if (node.children.some(child => child.id === childId)) {
-                    // Verificar estado del padre
                     if (allChildrenChecked(node)) {
                         if (!menusAsignados.value.includes(node.id)) {
                             menusAsignados.value.push(node.id)
@@ -219,13 +264,6 @@ watch([() => props.menuCompleto, menusAsignados], () => {
         menuTree.value = renderTree(props.menuCompleto)
     }
 }, { deep: true, immediate: true })
-
-// Cargar menús si ya hay operador seleccionado (por ejemplo, después de recargar)
-onMounted(() => {
-    if (selectedOperador.value) {
-        cargarMenusAsignados()
-    }
-})
 </script>
 
 <template>

@@ -29,40 +29,60 @@ class MenuOperadorService
     public function asignarMenusConPadres(int $operadorId, int $clienteId, array $menuIds): void
     {
         try {
+            Log::info('========== INICIO ASIGNACIÓN DE MENÚS ==========');
+            Log::info('Operador ID: ' . $operadorId);
+            Log::info('Cliente ID: ' . $clienteId);
+            Log::info('Menús recibidos: ' . json_encode($menuIds));
+            Log::info('Total menús recibidos: ' . count($menuIds));
+
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
             // 1. Obtener todos los menús incluyendo padres
             $todosLosMenus = $this->obtenerMenusConPadres($menuIds);
 
+            Log::info('Menús con padres calculados: ' . json_encode($todosLosMenus));
+            Log::info('Total menús a insertar (con padres): ' . count($todosLosMenus));
+
             // 2. Eliminar asignaciones existentes
-            MenuOperador::where('IdOperador', $operadorId)
+            $deleted = MenuOperador::where('IdOperador', $operadorId)
                 ->where('IdCliente', $clienteId)
                 ->delete();
 
+            Log::info('Asignaciones eliminadas: ' . $deleted);
+
             // 3. Insertar nuevas asignaciones
+            $inserted = 0;
             foreach ($todosLosMenus as $menuId) {
-                MenuOperador::create([
-                    'IdMenu' => $menuId,
-                    'IdCliente' => $clienteId,
-                    'IdOperador' => $operadorId,
-                ]);
+                try {
+                    MenuOperador::create([
+                        'IdMenu' => $menuId,
+                        'IdCliente' => $clienteId,
+                        'IdOperador' => $operadorId,
+                    ]);
+                    $inserted++;
+                } catch (\Exception $e) {
+                    Log::warning('Error insertando menú ID ' . $menuId . ': ' . $e->getMessage());
+                    // Continuar con el siguiente
+                }
             }
 
+            Log::info('Menús insertados correctamente: ' . $inserted);
+
             // 4. Invalidar caché
-            MenuOperadorService::invalidarCache();
+            $this->invalidarCache();
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            Log::info('Menús asignados correctamente', [
-                'operador_id' => $operadorId,
-                'cliente_id' => $clienteId,
-                'menus_asignados' => $todosLosMenus,
-                'total' => count($todosLosMenus)
-            ]);
+            Log::info('========== FIN ASIGNACIÓN EXITOSA ==========');
+            Log::info('Total requeridos: ' . count($menuIds));
+            Log::info('Total con padres: ' . count($todosLosMenus));
+            Log::info('Total insertados: ' . $inserted);
 
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-            Log::error('Error al asignar menús: ' . $e->getMessage());
+            Log::error('========== ERROR EN ASIGNACIÓN ==========');
+            Log::error('Mensaje: ' . $e->getMessage());
+            Log::error('Trace: ' . $e->getTraceAsString());
             throw $e;
         }
     }
@@ -73,6 +93,7 @@ class MenuOperadorService
     private function obtenerMenusConPadres(array $menuIds): array
     {
         if (empty($menuIds)) {
+            Log::info('No hay menús para asignar, retornando array vacío');
             return [];
         }
 
@@ -93,6 +114,7 @@ class MenuOperadorService
                 ->first();
             
             if (!$menu) {
+                Log::warning('Menú no encontrado: ' . $actual);
                 continue;
             }
             
@@ -102,6 +124,7 @@ class MenuOperadorService
             // Si tiene padre y no está en la lista, agregarlo para procesar
             if ($menu->Parent > 0 && !in_array($menu->Parent, $resultados)) {
                 $porProcesar[] = $menu->Parent;
+                Log::info('Agregando padre ' . $menu->Parent . ' para el menú ' . $actual);
             }
         }
 
@@ -113,21 +136,40 @@ class MenuOperadorService
      */
     public function obtenerMenusAsignados(int $operadorId, int $clienteId): array
     {
-        return MenuOperador::where('IdOperador', $operadorId)
-            ->where('IdCliente', $clienteId)
-            ->pluck('IdMenu')
-            ->map(fn($id) => (int)$id)
-            ->toArray();
+        try {
+            $menus = MenuOperador::where('IdOperador', $operadorId)
+                ->where('IdCliente', $clienteId)
+                ->pluck('IdMenu')
+                ->map(fn($id) => (int)$id)
+                ->toArray();
+
+            Log::info('Menús asignados obtenidos', [
+                'operador_id' => $operadorId,
+                'cliente_id' => $clienteId,
+                'total' => count($menus),
+                'menus' => $menus
+            ]);
+
+            return $menus;
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener menús asignados: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
      * Invalida la caché del menú globalmente
      */
-    public static function invalidarCache(): void
+    public function invalidarCache(): void
     {
-        $nuevaVersion = time();
-        Cache::forever('menu_global_version', $nuevaVersion);
-        Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
+        try {
+            $nuevaVersion = time();
+            Cache::forever('menu_global_version', $nuevaVersion);
+            Log::info('MENU.cache_invalidada', ['nueva_version' => $nuevaVersion]);
+        } catch (\Exception $e) {
+            Log::error('Error al invalidar caché: ' . $e->getMessage());
+        }
     }
 
     // =============================================
@@ -139,44 +181,50 @@ class MenuOperadorService
      */
     public function obtenerArbol(int $tipoId, int $operadorId, int $clienteId): array
     {
-        // Verificar si tiene menús asignados individualmente
-        $menuOperador = $this->getMenuIdsPorOperador($operadorId, $clienteId);
-        $modo = !empty($menuOperador) ? 'por_operador' : 'por_columna';
+        try {
+            // Verificar si tiene menús asignados individualmente
+            $menuOperador = $this->getMenuIdsPorOperador($operadorId, $clienteId);
+            $modo = !empty($menuOperador) ? 'por_operador' : 'por_columna';
 
-        $columna = $modo === 'por_columna'
-            ? $this->resolverColumnaPorTipo($tipoId)
-            : '__POR_OPERADOR__';
+            $columna = $modo === 'por_columna'
+                ? $this->resolverColumnaPorTipo($tipoId)
+                : '__POR_OPERADOR__';
 
-        if ($columna === '__NONE__') {
-            return [];
-        }
-
-        // CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
-        $version = Cache::rememberForever('menu_global_version', fn() => time());
-        
-        $cacheKey = "menu_v{$version}_{$modo}_" . (
-            $modo === 'por_operador' 
-                ? "op_{$operadorId}_cli_{$clienteId}" 
-                : "tipo_{$tipoId}_{$columna}"
-        );
-
-        // Cache por 24 horas (86400 segundos)
-        return Cache::remember($cacheKey, 86400, function () use ($modo, $menuOperador, $columna) {
-            Log::info('MENU.regenerando_cache', ['modo' => $modo]);
-            
-            if ($modo === 'por_operador') {
-                $items = $this->getItemsPorIds($menuOperador);
-            } else {
-                $items = $this->getItemsPorColumna($columna);
-            }
-
-            if (empty($items)) {
+            if ($columna === '__NONE__') {
                 return [];
             }
 
-            $items = $this->asegurarPadres($items);
-            return $this->buildTree($items);
-        });
+            // CLAVE DE CACHÉ ATÓMICA POR VERSIÓN
+            $version = Cache::rememberForever('menu_global_version', fn() => time());
+            
+            $cacheKey = "menu_v{$version}_{$modo}_" . (
+                $modo === 'por_operador' 
+                    ? "op_{$operadorId}_cli_{$clienteId}" 
+                    : "tipo_{$tipoId}_{$columna}"
+            );
+
+            // Cache por 24 horas (86400 segundos)
+            return Cache::remember($cacheKey, 86400, function () use ($modo, $menuOperador, $columna) {
+                Log::info('MENU.regenerando_cache', ['modo' => $modo]);
+                
+                if ($modo === 'por_operador') {
+                    $items = $this->getItemsPorIds($menuOperador);
+                } else {
+                    $items = $this->getItemsPorColumna($columna);
+                }
+
+                if (empty($items)) {
+                    return [];
+                }
+
+                $items = $this->asegurarPadres($items);
+                return $this->buildTree($items);
+            });
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener árbol de menús: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -184,19 +232,25 @@ class MenuOperadorService
      */
     public function getMenuCompleto(): array
     {
-        $items = MenuAdministrador::select([
-                'Id as id',
-                'Description as title',
-                'Link as href',
-                'Parent as parent',
-                'Node_Order as node_order'
-            ])
-            ->orderBy('Parent')
-            ->orderBy('Node_Order')
-            ->get()
-            ->toArray();
+        try {
+            $items = MenuAdministrador::select([
+                    'Id as id',
+                    'Description as title',
+                    'Link as href',
+                    'Parent as parent',
+                    'Node_Order as node_order'
+                ])
+                ->orderBy('Parent')
+                ->orderBy('Node_Order')
+                ->get()
+                ->toArray();
 
-        return $this->buildTree($items);
+            return $this->buildTree($items);
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener menú completo: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -204,11 +258,17 @@ class MenuOperadorService
      */
     public function getMenuIdsPorOperador(int $operadorId, int $clienteId): array
     {
-        return MenuOperador::where('IdOperador', $operadorId)
-            ->where('IdCliente', $clienteId)
-            ->pluck('IdMenu')
-            ->map(fn($id) => (int)$id)
-            ->toArray();
+        try {
+            return MenuOperador::where('IdOperador', $operadorId)
+                ->where('IdCliente', $clienteId)
+                ->pluck('IdMenu')
+                ->map(fn($id) => (int)$id)
+                ->toArray();
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener IDs de menús por operador: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -216,39 +276,48 @@ class MenuOperadorService
      */
     private function resolverColumnaPorTipo(int $tipoId): string
     {
-        $detalle = OperadorTipo::where('IdOperadorTipo', $tipoId)->value('Detalle');
-        $detalle = is_string($detalle) ? trim($detalle) : '';
+        try {
+            $detalle = OperadorTipo::where('IdOperadorTipo', $tipoId)->value('Detalle');
+            $detalle = is_string($detalle) ? trim($detalle) : '';
 
-        if (empty($detalle)) {
+            if (empty($detalle)) {
+                return 'Administrador';
+            }
+
+            $detalleNorm = $this->normalizar($detalle);
+            
+            $excepciones = [
+                $this->normalizar('SuperUsuario') => 'Administrador',
+                $this->normalizar('VentaMayoristas') => 'VentaMayorista',
+                $this->normalizar('VentaMonitorCocina') => 'MonitorCocina',
+                $this->normalizar('VentaMonitorEntregas') => 'MonitorCocina',
+            ];
+
+            if (isset($excepciones[$detalleNorm])) {
+                return $excepciones[$detalleNorm];
+            }
+
+            $columnas = MenuAdministrador::getPermisoColumns();
+            $columnasNorm = [];
+            foreach ($columnas as $col) {
+                $columnasNorm[$this->normalizar($col)] = $col;
+            }
+
+            if (isset($columnasNorm[$detalleNorm])) {
+                return $columnasNorm[$detalleNorm];
+            }
+
+            return 'Administrador';
+
+        } catch (\Exception $e) {
+            Log::error('Error al resolver columna por tipo: ' . $e->getMessage());
             return 'Administrador';
         }
-
-        $detalleNorm = $this->normalizar($detalle);
-        
-        $excepciones = [
-            $this->normalizar('SuperUsuario') => 'Administrador',
-            $this->normalizar('VentaMayoristas') => 'VentaMayorista',
-            $this->normalizar('VentaMonitorCocina') => 'MonitorCocina',
-            $this->normalizar('VentaMonitorEntregas') => 'MonitorCocina',
-        ];
-
-        if (isset($excepciones[$detalleNorm])) {
-            return $excepciones[$detalleNorm];
-        }
-
-        $columnas = MenuAdministrador::getPermisoColumns();
-        $columnasNorm = [];
-        foreach ($columnas as $col) {
-            $columnasNorm[$this->normalizar($col)] = $col;
-        }
-
-        if (isset($columnasNorm[$detalleNorm])) {
-            return $columnasNorm[$detalleNorm];
-        }
-
-        return 'Administrador';
     }
 
+    /**
+     * Normaliza un texto para comparación
+     */
     private function normalizar(string $texto): string
     {
         return Str::of($texto)
@@ -258,75 +327,109 @@ class MenuOperadorService
             ->value();
     }
 
+    /**
+     * Obtiene items por IDs
+     */
     private function getItemsPorIds(array $ids): array
     {
         if (empty($ids)) {
             return [];
         }
 
-        return MenuAdministrador::select([
-                'Id as id',
-                'Description as title',
-                'Link as href',
-                'Parent as parent',
-                'Node_Order as node_order'
-            ])
-            ->whereIn('Id', $ids)
-            ->orderBy('Parent')
-            ->orderBy('Node_Order')
-            ->get()
-            ->toArray();
-    }
-
-    private function getItemsPorColumna(string $columna): array
-    {
-        return MenuAdministrador::select([
-                'Id as id',
-                'Description as title',
-                'Link as href',
-                'Parent as parent',
-                'Node_Order as node_order'
-            ])
-            ->where($columna, 1)
-            ->orderBy('Parent')
-            ->orderBy('Node_Order')
-            ->get()
-            ->toArray();
-    }
-
-    private function asegurarPadres(array $items): array
-    {
-        $byId = collect($items)->keyBy('id');
-        $parentsToAdd = [];
-
-        foreach ($items as $item) {
-            $parent = $item['parent'];
-            while ($parent > 0 && !$byId->has($parent)) {
-                $parentsToAdd[] = $parent;
-                
-                $abuelo = MenuAdministrador::where('Id', $parent)->value('Parent');
-                $parent = $abuelo ?: 0;
-            }
-        }
-
-        if (!empty($parentsToAdd)) {
-            $parents = MenuAdministrador::select([
+        try {
+            return MenuAdministrador::select([
                     'Id as id',
                     'Description as title',
                     'Link as href',
                     'Parent as parent',
                     'Node_Order as node_order'
                 ])
-                ->whereIn('Id', array_unique($parentsToAdd))
+                ->whereIn('Id', $ids)
+                ->orderBy('Parent')
+                ->orderBy('Node_Order')
                 ->get()
                 ->toArray();
 
-            $items = array_merge($items, $parents);
+        } catch (\Exception $e) {
+            Log::error('Error al obtener items por IDs: ' . $e->getMessage());
+            return [];
         }
-
-        return $items;
     }
 
+    /**
+     * Obtiene items por columna
+     */
+    private function getItemsPorColumna(string $columna): array
+    {
+        try {
+            return MenuAdministrador::select([
+                    'Id as id',
+                    'Description as title',
+                    'Link as href',
+                    'Parent as parent',
+                    'Node_Order as node_order'
+                ])
+                ->where($columna, 1)
+                ->orderBy('Parent')
+                ->orderBy('Node_Order')
+                ->get()
+                ->toArray();
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener items por columna: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    /**
+     * Asegura que los padres estén incluidos
+     */
+    private function asegurarPadres(array $items): array
+    {
+        if (empty($items)) {
+            return [];
+        }
+
+        try {
+            $byId = collect($items)->keyBy('id');
+            $parentsToAdd = [];
+
+            foreach ($items as $item) {
+                $parent = $item['parent'];
+                while ($parent > 0 && !$byId->has($parent)) {
+                    $parentsToAdd[] = $parent;
+                    
+                    $abuelo = MenuAdministrador::where('Id', $parent)->value('Parent');
+                    $parent = $abuelo ?: 0;
+                }
+            }
+
+            if (!empty($parentsToAdd)) {
+                $parents = MenuAdministrador::select([
+                        'Id as id',
+                        'Description as title',
+                        'Link as href',
+                        'Parent as parent',
+                        'Node_Order as node_order'
+                    ])
+                    ->whereIn('Id', array_unique($parentsToAdd))
+                    ->get()
+                    ->toArray();
+
+                $items = array_merge($items, $parents);
+            }
+
+            return $items;
+
+        } catch (\Exception $e) {
+            Log::error('Error al asegurar padres: ' . $e->getMessage());
+            return $items;
+        }
+    }
+
+    /**
+     * Construye el árbol jerárquico
+     */
     private function buildTree(array $items, int $parentId = 0): array
     {
         $tree = [];
@@ -349,6 +452,7 @@ class MenuOperadorService
             }
         }
 
+        // Ordenar por node_order
         usort($tree, function($a, $b) use ($items) {
             $orderA = 0;
             $orderB = 0;

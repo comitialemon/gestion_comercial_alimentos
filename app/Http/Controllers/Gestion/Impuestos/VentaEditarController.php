@@ -442,6 +442,10 @@ class VentaEditarController extends Controller
      * 🔥 REPROCESAR INVENTARIO - CORREGIDO (Solo la glosa)
      * Esto se ejecuta cuando se cambia la fecha de la factura
      */
+    /**
+     * 🔥 REPROCESAR INVENTARIO - CORREGIDO
+     * Esto se ejecuta cuando se cambia la fecha de la factura
+     */
     public function reprocesarInventario($id)
     {
         try {
@@ -592,49 +596,99 @@ class VentaEditarController extends Controller
             foreach ($detalles as $detalle) {
                 $unidadesDetalle = (float) $detalle->unidades;
                 
-                // OBTENER COMPOSICIÓN ORIGINAL
+                \Log::info('📦 Procesando detalle:', [
+                    'id_producto' => $detalle->idrelacionventainventario,
+                    'unidades' => $unidadesDetalle,
+                    'personalizacion' => $detalle->personalizacion
+                ]);
+                
+                // 🔥 OBTENER COMPOSICIÓN ORIGINAL
                 $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_relacion_ventainventario_detalle')
                     ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
-                    ->get();
+                    ->get()
+                    ->keyBy('IdProducto');
                 
+                // 🔥 CASO 1: PRODUCTO NORMAL (sin composición)
                 if ($composicionOriginal->isEmpty()) {
+                    \Log::info('📦 Producto normal (sin composición), descontando directamente');
+                    $idProducto = $detalle->idrelacionventainventario;
+                    $cantidad = $unidadesDetalle;
+                    
+                    if (!isset($productosADescontar[$idProducto])) {
+                        $productosADescontar[$idProducto] = 0;
+                    }
+                    $productosADescontar[$idProducto] += $cantidad;
                     continue;
                 }
                 
-                // DECODIFICAR PERSONALIZACIÓN
+                // 🔥 DECODIFICAR PERSONALIZACIÓN
                 $personalizacion = null;
                 if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
                     $personalizacion = json_decode($detalle->personalizacion, true);
                 }
                 
-                // Si tiene personalización, procesar sustitutos
+                // 🔥 CASO 2: CON PERSONALIZACIÓN
                 if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
+                    \Log::info('✅ Detalle con personalización');
+                    
                     foreach ($personalizacion as $comboData) {
                         $sustitutos = $comboData['sustitutos'] ?? [];
                         
-                        foreach ($sustitutos as $sust) {
-                            $idProducto = $sust['id_producto_sustituto'];
-                            $cantidad = (float) ($sust['cantidad'] ?? 0);
+                        // 🔥 PROCESAR ORIGINALES NO REEMPLAZADOS
+                        foreach ($composicionOriginal as $idProductoOriginal => $comp) {
+                            $cantidadPorPack = (float) $comp->Porcion;
                             
-                            if ($cantidad > 0) {
-                                if (!isset($productosADescontar[$idProducto])) {
-                                    $productosADescontar[$idProducto] = 0;
+                            // Calcular cuántos se reemplazan
+                            $totalReemplazado = 0;
+                            foreach ($sustitutos as $sust) {
+                                if ($sust['id_producto_original'] == $idProductoOriginal) {
+                                    $totalReemplazado += (float) ($sust['cantidad'] ?? 0);
                                 }
-                                $productosADescontar[$idProducto] += $cantidad;
+                            }
+                            
+                            // Calcular cuántos quedan originales (NO reemplazados)
+                            $quedanOriginales = $cantidadPorPack - $totalReemplazado;
+                            
+                            // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
+                            if ($quedanOriginales > 0) {
+                                if (!isset($productosADescontar[$idProductoOriginal])) {
+                                    $productosADescontar[$idProductoOriginal] = 0;
+                                }
+                                $productosADescontar[$idProductoOriginal] += $quedanOriginales;
+                                \Log::info("  → Original {$idProductoOriginal}: +{$quedanOriginales}");
+                            }
+                        }
+                        
+                        // 🔥 PROCESAR SUSTITUTOS (los nuevos productos)
+                        foreach ($sustitutos as $sust) {
+                            $idSustituto = $sust['id_producto_sustituto'];
+                            // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
+                            $cantidadSustituto = (float) ($sust['cantidad'] ?? 0);
+                            
+                            if ($cantidadSustituto > 0) {
+                                if (!isset($productosADescontar[$idSustituto])) {
+                                    $productosADescontar[$idSustituto] = 0;
+                                }
+                                $productosADescontar[$idSustituto] += $cantidadSustituto;
+                                \Log::info("  → Sustituto {$idSustituto}: +{$cantidadSustituto}");
                             }
                         }
                     }
                 } else {
-                    // SIN PERSONALIZACIÓN - usar composición original
+                    // 🔥 CASO 3: SIN PERSONALIZACIÓN - usar composición completa
+                    \Log::info('📦 Producto sin personalización, usando composición original');
+                    
                     foreach ($composicionOriginal as $comp) {
                         $idProducto = $comp->IdProducto;
+                        // 🔥 MULTIPLICAR POR UNIDADES DE VENTA
                         $cantidad = (float) $comp->Porcion * $unidadesDetalle;
                         
                         if (!isset($productosADescontar[$idProducto])) {
                             $productosADescontar[$idProducto] = 0;
                         }
                         $productosADescontar[$idProducto] += $cantidad;
+                        \Log::info("  → Producto compuesto {$idProducto}: {$comp->Porcion} x {$unidadesDetalle} = {$cantidad}");
                     }
                 }
             }
@@ -642,6 +696,8 @@ class VentaEditarController extends Controller
             // =============================================
             // 10. CREAR NUEVOS MOVIMIENTOS CON LA NUEVA FECHA
             // =============================================
+            \Log::info('📦 Productos a descontar:', $productosADescontar);
+            
             foreach ($productosADescontar as $idProducto => $cantidadTotal) {
                 if ($cantidadTotal <= 0) continue;
                 
@@ -661,7 +717,7 @@ class VentaEditarController extends Controller
                 $precioCosto = (float) ($precioCosto ?? 0);
                 $costoTotal = $cantidadTotal * $precioCosto;
                 
-                // 🔥 GLOSA ORIGINAL - SIN "Fecha Actualizada"
+                // 🔥 MOVIMIENTO DE SALIDA
                 DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_propiamente')
                     ->insert([
@@ -720,6 +776,7 @@ class VentaEditarController extends Controller
         } catch (\Exception $e) {
             DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
             \Log::error('❌ Error reprocesando: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
             
             return response()->json([
                 'success' => false,
