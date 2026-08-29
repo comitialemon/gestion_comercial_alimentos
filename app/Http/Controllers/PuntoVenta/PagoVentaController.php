@@ -761,6 +761,9 @@ class PagoVentaController extends Controller
     /**
      * Generar PDF de factura con altura DINÁMICA y DETALLE DE PERSONALIZACIÓN
      */
+    /**
+     * Generar PDF de factura con altura DINÁMICA y DETALLE DE PERSONALIZACIÓN
+     */
     public function facturaPdf($id)
     {
         Log::info('=== facturaPdf (altura dinámica) ===');
@@ -1018,6 +1021,11 @@ class PagoVentaController extends Controller
                 if ($comisionista) $alturaTotal += 4;
             }
             
+            // 🔥 OBSERVACIÓN (altura adicional)
+            if (!empty($venta->Observacion)) {
+                $alturaTotal += 4; // Altura para la observación
+            }
+            
             $alturaTotal += 4 + 4 + 6 + 4 + 10;
             
             $alturaMinima = 80;
@@ -1213,6 +1221,14 @@ class PagoVentaController extends Controller
             $pdf->SetXY($x, $y);
             $pdf->MultiCell($width, 3, "SON: " . $literal, 0, 'L');
             $y = $pdf->GetY() + 2;
+            
+            // 🔥 OBSERVACIÓN (si existe)
+            if (!empty($venta->Observacion)) {
+                $pdf->SetFont('helvetica', '', 6);
+                $pdf->SetXY($x, $y);
+                $pdf->MultiCell($width, 3, "Observacion: " . $venta->Observacion, 0, 'L');
+                $y = $pdf->GetY() + 2;
+            }
             
             // COMISIONISTA
             if ($comisionista) {
