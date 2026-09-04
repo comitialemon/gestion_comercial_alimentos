@@ -679,6 +679,19 @@ class AjusteInventarioController extends Controller
             $ajuste->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
             $ajuste->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
             
+            // 🔥🔥🔥 OBTENER NOMBRE DEL OPERADOR (igual que en Compras)
+            $nombreOperador = null;
+            if ($ajuste->IdOperadorIngresa) {
+                $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador as op')
+                    ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
+                    ->where('op.IdOperador', $ajuste->IdOperadorIngresa)
+                    ->select('i.Nombre as nombre')
+                    ->first();
+                $nombreOperador = $operador?->nombre;
+            }
+            $ajuste->nombre_operador = $nombreOperador;
+            
             return $ajuste;
         });
         
@@ -801,5 +814,31 @@ class AjusteInventarioController extends Controller
             'detalle' => $detalle,
         ]);
     }
-
+    /**
+     * Obtener ajuste en formato JSON para el modal
+     */
+    public function getJson($id)
+    {
+        $ajuste = AjusteInventario::porContexto()
+            ->with([
+                'detalles.producto', 
+                'fecha', 
+                'tipoOperacion', 
+                'almacen', 
+                'realizadoPor', 
+                'autorizadoPor'
+            ])
+            ->findOrFail($id);
+        
+        // Agregar fecha formateada
+        $fechaMostrar = '';
+        if ($ajuste->fecha && $ajuste->fecha->Fecha) {
+            $fechaMostrar = date('d/m/Y', strtotime($ajuste->fecha->Fecha));
+        } else {
+            $fechaMostrar = $ajuste->FechaIngreso ? date('d/m/Y', strtotime($ajuste->FechaIngreso)) : '';
+        }
+        $ajuste->fecha_mostrar = $fechaMostrar;
+        
+        return response()->json($ajuste);
+    }
 }

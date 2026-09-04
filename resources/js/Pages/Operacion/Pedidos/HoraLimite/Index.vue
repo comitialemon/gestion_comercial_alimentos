@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -23,7 +23,17 @@ const props = defineProps({
     }
 })
 
-// Estado del formulario
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
+// ==================== ESTADO ====================
 const editando = ref(false)
 const editId = ref(null)
 const formData = ref({
@@ -33,7 +43,7 @@ const formData = ref({
 const errors = ref({})
 const guardando = ref(false)
 
-// Obtener la hora existente (solo debe haber una)
+// ==================== COMPUTED ====================
 const horaExistente = computed(() => {
     if (props.horas && props.horas.length > 0) {
         return props.horas[0]
@@ -41,12 +51,29 @@ const horaExistente = computed(() => {
     return null
 })
 
-// Saber si ya existe una hora configurada
 const existeHora = computed(() => {
     return horaExistente.value !== null
 })
 
-// Reset formulario
+const horasDisponiblesFiltradas = computed(() => {
+    if (!props.horasDisponibles) return []
+    
+    if (editando.value && horaExistente.value) {
+        return props.horasDisponibles.map(h => ({
+            ...h,
+            disponible: h.value === horaExistente.value.Hora || h.disponible
+        }))
+    }
+    
+    return props.horasDisponibles.filter(h => h.disponible)
+})
+
+const horaActivaTexto = computed(() => {
+    if (!props.horaActiva) return 'No hay hora activa'
+    return props.horaActiva.HoraFormateada || props.horaActiva.Hora + ':00'
+})
+
+// ==================== FUNCIONES ====================
 const resetForm = () => {
     editando.value = false
     editId.value = null
@@ -57,7 +84,6 @@ const resetForm = () => {
     errors.value = {}
 }
 
-// Editar (cargar la hora existente)
 const editar = () => {
     if (!horaExistente.value) return
     
@@ -69,7 +95,6 @@ const editar = () => {
     }
 }
 
-// Guardar
 const guardar = async () => {
     guardando.value = true
     errors.value = {}
@@ -116,75 +141,63 @@ const guardar = async () => {
     }
 }
 
-// Cancelar edición
 const cancelarEdicion = () => {
     resetForm()
 }
 
-// Horas disponibles filtradas
-const horasDisponiblesFiltradas = computed(() => {
-    if (!props.horasDisponibles) return []
-    
-    if (editando.value && horaExistente.value) {
-        return props.horasDisponibles.map(h => ({
-            ...h,
-            disponible: h.value === horaExistente.value.Hora || h.disponible
-        }))
-    }
-    
-    return props.horasDisponibles.filter(h => h.disponible)
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
 })
 
-// Hora activa formateada
-const horaActivaTexto = computed(() => {
-    if (!props.horaActiva) return 'No hay hora activa'
-    return props.horaActiva.HoraFormateada || props.horaActiva.Hora + ':00'
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
 })
-
-onMounted(() => {})
 </script>
 
 <template>
-    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
-        <div class="py-6 px-4 sm:px-6 lg:px-8">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-4xl mx-auto">
-                <!-- Header -->
-                <div class="text-center mb-6">
-                    <div class="inline-flex items-center justify-center w-14 h-14 bg-blue-100 rounded-2xl mb-3">
-                        <i class="fas fa-clock text-xl text-blue-600"></i>
+                <!-- ==================== HEADER ==================== -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-blue-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-clock text-blue-600 text-base"></i>
                     </div>
-                    <h1 class="text-xl font-bold text-gray-900">Hora Límite de Pedidos</h1>
-                    <p class="text-xs text-gray-500">Configure la hora hasta la cual se pueden realizar pedidos</p>
-                    <p class="text-xs text-blue-600 mt-1">
-                        <i class="fas fa-info-circle"></i> Aplica a TODAS las sucursales de la empresa
-                    </p>
+                    <div>
+                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Hora Límite de Pedidos</h1>
+                        <p class="text-xs text-gray-500">Configure la hora hasta la cual se pueden realizar pedidos</p>
+                    </div>
                 </div>
 
-                <!-- Indicador de hora activa actual -->
-                <div class="mb-5 p-3 rounded-lg" :class="props.horaActiva ? 'bg-green-50 border border-green-200' : 'bg-yellow-50 border border-yellow-200'">
-                    <div class="flex items-center gap-2">
-                        <i class="fas" :class="props.horaActiva ? 'fa-check-circle text-green-600' : 'fa-exclamation-triangle text-yellow-600'"></i>
-                        <span class="text-sm font-medium">
+                <!-- ==================== INDICADOR DE HORA ACTIVA ==================== -->
+                <div class="mb-4 p-3 rounded-xl border" :class="props.horaActiva ? 'bg-emerald-50 border-emerald-200' : 'bg-yellow-50 border-yellow-200'">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <i class="fas" :class="props.horaActiva ? 'fa-check-circle text-emerald-600' : 'fa-exclamation-triangle text-yellow-600'"></i>
+                        <span class="text-xs font-medium">
                             Hora límite activa: 
-                            <strong class="text-lg">{{ horaActivaTexto }}</strong>
+                            <strong class="text-base">{{ horaActivaTexto }}</strong>
                         </span>
-                        <span v-if="!props.horaActiva" class="text-xs text-yellow-700 ml-2">
+                        <span v-if="!props.horaActiva" class="text-xs text-yellow-700">
                             (No hay hora activa. Los pedidos no tendrán restricción)
                         </span>
                     </div>
-                    <p v-if="props.horaActiva" class="text-xs text-gray-500 mt-1">
+                    <p v-if="props.horaActiva" class="text-[10px] text-gray-500 mt-1">
+                        <i class="fas fa-info-circle mr-1"></i>
                         Solo puede existir UNA hora límite. Para cambiarla, edita la hora existente.
                     </p>
                 </div>
 
-                <!-- Caso 1: No existe hora - Mostrar formulario de creación -->
-                <div v-if="!existeHora" class="bg-white rounded-xl shadow-sm p-5 mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Hora Límite *</label>
+                <!-- ==================== FORMULARIO ==================== -->
+                <!-- Caso 1: No existe hora - Creación -->
+                <div v-if="!existeHora" class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-gray-200">
+                    <div class="flex flex-wrap items-end gap-2">
+                        <div class="flex-1 min-w-[140px] max-w-[220px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Hora Límite *</label>
                             <select 
                                 v-model="formData.Hora"
-                                class="w-full border rounded-lg px-3 py-2 text-sm"
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.Hora }"
                             >
                                 <option value="">Seleccione una hora</option>
@@ -196,38 +209,38 @@ onMounted(() => {})
                                     {{ hora.label }}
                                 </option>
                             </select>
-                            <p v-if="errors.Hora" class="text-xs text-red-500 mt-1">{{ errors.Hora }}</p>
+                            <p v-if="errors.Hora" class="text-[8px] text-red-500 mt-0.5">{{ errors.Hora }}</p>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                            <select v-model.number="formData.ActivaControlDia" class="w-full border rounded-lg px-3 py-2 text-sm">
-                                <option :value="0">✓ Activo</option>
-                                <option :value="1">✗ Inactivo</option>
+                        <div class="w-28">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Estado</label>
+                            <select v-model.number="formData.ActivaControlDia" class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
+                                <option :value="0">Activo</option>
+                                <option :value="1">Inactivo</option>
                             </select>
-                            <p class="text-xs text-gray-400 mt-1">Activo = Permite pedidos hasta esta hora</p>
                         </div>
-                        <div class="flex gap-2">
+                        <div class="flex gap-1.5">
                             <button 
                                 @click="guardar" 
                                 :disabled="guardando || !formData.Hora"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                                class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1.5"
                             >
-                                <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
-                                <i v-else class="fas fa-save"></i>
+                                <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-save text-[10px]"></i>
                                 {{ guardando ? 'Guardando...' : 'Guardar' }}
                             </button>
                         </div>
                     </div>
+                    <p class="mt-1 text-[8px] text-gray-400">Activo = Permite pedidos hasta esta hora</p>
                 </div>
 
-                <!-- Caso 2: Existe hora Y estamos editando - Mostrar formulario de edición -->
-                <div v-else-if="existeHora && editando" class="bg-white rounded-xl shadow-sm p-5 mb-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Hora Límite *</label>
+                <!-- Caso 2: Existe hora Y estamos editando -->
+                <div v-else-if="existeHora && editando" class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-amber-200">
+                    <div class="flex flex-wrap items-end gap-2">
+                        <div class="flex-1 min-w-[140px] max-w-[220px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Hora Límite *</label>
                             <select 
                                 v-model="formData.Hora"
-                                class="w-full border rounded-lg px-3 py-2 text-sm"
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.Hora }"
                             >
                                 <option value="">Seleccione una hora</option>
@@ -238,58 +251,58 @@ onMounted(() => {})
                                     :disabled="!hora.disponible && hora.value !== horaExistente?.Hora"
                                 >
                                     {{ hora.label }}
-                                    <span v-if="!hora.disponible && hora.value !== horaExistente?.Hora" class="text-xs">(no disponible)</span>
+                                    <span v-if="!hora.disponible && hora.value !== horaExistente?.Hora" class="text-[8px] text-gray-400">(no disponible)</span>
                                 </option>
                             </select>
-                            <p v-if="errors.Hora" class="text-xs text-red-500 mt-1">{{ errors.Hora }}</p>
+                            <p v-if="errors.Hora" class="text-[8px] text-red-500 mt-0.5">{{ errors.Hora }}</p>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                            <select v-model.number="formData.ActivaControlDia" class="w-full border rounded-lg px-3 py-2 text-sm">
-                                <option :value="0">✓ Activo</option>
-                                <option :value="1">✗ Inactivo</option>
+                        <div class="w-28">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Estado</label>
+                            <select v-model.number="formData.ActivaControlDia" class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
+                                <option :value="0">Activo</option>
+                                <option :value="1">Inactivo</option>
                             </select>
-                            <p class="text-xs text-gray-400 mt-1">Activo = Permite pedidos hasta esta hora</p>
                         </div>
-                        <div class="flex gap-2">
+                        <div class="flex gap-1.5">
                             <button 
                                 @click="guardar" 
                                 :disabled="guardando || !formData.Hora"
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                                class="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 transition disabled:opacity-50 flex items-center gap-1.5"
                             >
-                                <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
-                                <i v-else class="fas fa-pencil-alt"></i>
+                                <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-pencil-alt text-[10px]"></i>
                                 {{ guardando ? 'Guardando...' : 'Actualizar' }}
                             </button>
                             <button 
                                 @click="cancelarEdicion" 
-                                class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                                class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1.5"
                                 :disabled="guardando"
                             >
-                                <i class="fas fa-times"></i> Cancelar
+                                <i class="fas fa-times text-[10px]"></i> Cancelar
                             </button>
                         </div>
                     </div>
+                    <p class="mt-1 text-[8px] text-gray-400">Activo = Permite pedidos hasta esta hora</p>
                 </div>
 
-                <!-- Caso 3: Existe hora Y NO estamos editando - Mostrar vista de solo lectura -->
-                <div v-else class="bg-white rounded-xl shadow-sm p-5 mb-6">
-                    <div class="flex items-center justify-between flex-wrap gap-4">
+                <!-- Caso 3: Existe hora Y NO estamos editando - Vista de solo lectura -->
+                <div v-else class="bg-white rounded-xl shadow-sm p-4 mb-4 border border-gray-200">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
                         <div class="flex items-center gap-4">
                             <div class="text-center">
-                                <div class="text-2xl font-mono font-bold text-gray-800">
+                                <div class="text-xl font-mono font-bold text-gray-800">
                                     {{ horaExistente.HoraFormateada || horaExistente.Hora + ':00' }}
                                 </div>
-                                <div class="text-xs text-gray-500">Hora configurada</div>
+                                <div class="text-[8px] text-gray-500">Hora configurada</div>
                             </div>
-                            <div class="w-px h-10 bg-gray-200"></div>
+                            <div class="w-px h-8 bg-gray-200"></div>
                             <div>
                                 <span 
-                                    class="px-3 py-1 text-xs rounded-full"
-                                    :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
+                                    class="px-2 py-0.5 text-[10px] rounded-full"
+                                    :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
                                 >
-                                    <i v-if="!horaExistente.ActivaControlDia" class="fas fa-check-circle mr-1"></i>
-                                    <i v-else class="fas fa-ban mr-1"></i>
+                                    <i v-if="!horaExistente.ActivaControlDia" class="fas fa-check-circle mr-1 text-[8px]"></i>
+                                    <i v-else class="fas fa-ban mr-1 text-[8px]"></i>
                                     {{ horaExistente.ActivaControlDia ? 'Inactivo' : 'Activo' }}
                                 </span>
                             </div>
@@ -297,20 +310,20 @@ onMounted(() => {})
                         <div>
                             <button 
                                 @click="editar" 
-                                class="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm hover:bg-amber-700 transition flex items-center gap-2"
+                                class="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 transition flex items-center gap-1.5"
                             >
-                                <i class="fas fa-edit"></i>
+                                <i class="fas fa-edit text-[10px]"></i>
                                 Editar Hora
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Tabla informativa -->
+                <!-- ==================== TABLA INFORMATIVA ==================== -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                    <div class="px-4 py-3 bg-gray-50 border-b">
-                        <h3 class="text-sm font-semibold text-gray-700">
-                            <i class="fas fa-info-circle text-blue-500 mr-2"></i>
+                    <div class="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                        <h3 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                            <i class="fas fa-info-circle text-blue-500 text-[10px]"></i>
                             Configuración actual
                         </h3>
                     </div>
@@ -318,34 +331,34 @@ onMounted(() => {})
                         <table class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hora</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Aplica a</th>
+                                    <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Hora</th>
+                                    <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Estado</th>
+                                    <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Aplica a</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-if="horaExistente" class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 text-sm font-mono font-bold text-gray-800">
-                                        <i class="fas fa-hourglass-half text-blue-400 mr-2"></i>
+                                <tr v-if="horaExistente" class="hover:bg-gray-50 transition">
+                                    <td class="px-4 py-2 text-sm font-mono font-bold text-gray-800">
+                                        <i class="fas fa-hourglass-half text-blue-400 mr-2 text-[10px]"></i>
                                         {{ horaExistente.HoraFormateada || horaExistente.Hora + ':00' }}
                                     </td>
-                                    <td class="px-6 py-4">
+                                    <td class="px-4 py-2">
                                         <span 
-                                            class="px-2 py-1 text-xs rounded-full"
-                                            :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'"
+                                            class="px-2 py-0.5 text-[9px] rounded-full"
+                                            :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
                                         >
-                                            <i v-if="!horaExistente.ActivaControlDia" class="fas fa-check-circle mr-1"></i>
-                                            <i v-else class="fas fa-ban mr-1"></i>
+                                            <i v-if="!horaExistente.ActivaControlDia" class="fas fa-check-circle mr-1 text-[7px]"></i>
+                                            <i v-else class="fas fa-ban mr-1 text-[7px]"></i>
                                             {{ horaExistente.ActivaControlDia ? 'Inactivo' : 'Activo' }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-sm text-gray-500">
-                                        <i class="fas fa-building mr-1"></i>
+                                    <td class="px-4 py-2 text-sm text-gray-500">
+                                        <i class="fas fa-building mr-1 text-[10px]"></i>
                                         Todas las sucursales
                                     </td>
                                 </tr>
                                 <tr v-else>
-                                    <td colspan="3" class="px-6 py-8 text-center text-gray-400">
+                                    <td colspan="3" class="px-4 py-8 text-center text-gray-400 text-sm">
                                         <i class="fas fa-clock text-2xl mb-2 block"></i>
                                         No hay hora límite configurada.
                                     </td>
@@ -355,18 +368,46 @@ onMounted(() => {})
                     </div>
                 </div>
 
-                <!-- Información adicional -->
-                <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    <strong>Nota:</strong> 
-                    <ul class="list-disc list-inside mt-1 space-y-0.5">
-                        <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> configurada por cliente</li>
-                        <li>La configuración aplica a <strong>TODAS las sucursales</strong> de la empresa</li>
-                        <li>Si la hora está <strong class="text-green-700">Activa</strong>, los pedidos después de esa hora no serán permitidos</li>
-                        <li>Si la hora está <strong class="text-red-700">Inactiva</strong>, no hay restricción de horario</li>
-                    </ul>
+                <!-- ==================== INFORMACIÓN ADICIONAL ==================== -->
+                <div class="mt-3 p-3 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-700 flex items-start gap-2">
+                    <i class="fas fa-info-circle mt-0.5 text-blue-500 text-[10px]"></i>
+                    <div>
+                        <span class="font-medium">Nota:</span>
+                        <ul class="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
+                            <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> configurada por cliente</li>
+                            <li>La configuración aplica a <strong>TODAS las sucursales</strong> de la empresa</li>
+                            <li>Si la hora está <strong class="text-emerald-700">Activa</strong>, los pedidos después de esa hora no serán permitidos</li>
+                            <li>Si la hora está <strong class="text-red-700">Inactiva</strong>, no hay restricción de horario</li>
+                        </ul>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+</style>

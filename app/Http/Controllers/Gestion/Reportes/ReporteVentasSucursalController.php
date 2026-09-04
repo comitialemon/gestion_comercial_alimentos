@@ -223,4 +223,28 @@ class ReporteVentasSucursalController extends Controller
             'totalBolivianos' => $totalBolivianos,
         ]);
     }
+    /**
+     * Obtener nombre de vendedor por ID
+     */
+    public function getVendedor($id)
+    {
+        try {
+            $vendedor = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as op')
+                ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('op.IdOperador', $id)
+                ->select('i.Nombre as nombre')
+                ->first();
+
+            return response()->json([
+                'success' => true,
+                'nombre' => $vendedor?->nombre ?? 'Vendedor #' . $id,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener vendedor'
+            ], 500);
+        }
+    }
 }

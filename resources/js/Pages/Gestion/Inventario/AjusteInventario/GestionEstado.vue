@@ -567,6 +567,8 @@ onUnmounted(() => {
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Concepto</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Tipo Operación</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Almacén</th>
+                                                <!-- 🔥 NUEVA COLUMNA: OPERADOR -->
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ingreso por Operador</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
                                                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">PDF</th>
@@ -583,6 +585,13 @@ onUnmounted(() => {
                                                 </td>
                                                 <td class="px-3 py-2 text-xs text-gray-700">{{ ajuste.tipo_operacion?.Detalle || '-' }}</td>
                                                 <td class="px-3 py-2 text-xs text-gray-700">{{ ajuste.almacen?.Almacen || '-' }}</td>
+                                                <!-- 🔥 OPERADOR -->
+                                                <td class="px-3 py-2 text-xs text-gray-700">
+                                                    <span class="flex items-center gap-1">
+                                                        <i class="fas fa-user text-primary-400 text-[10px]"></i>
+                                                        {{ ajuste.nombre_operador || ajuste.IdOperadorIngresa || '-' }}
+                                                    </span>
+                                                </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full whitespace-nowrap" :class="getEstadoColor(ajuste.ActivoInactivo)">
                                                         <i :class="getEstadoIcono(ajuste.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
@@ -635,6 +644,11 @@ onUnmounted(() => {
                                                 </div>
                                                 <div class="text-xs text-gray-600 mt-0.5">
                                                     <span class="text-gray-400">Almacén:</span> {{ ajuste.almacen?.Almacen || '-' }}
+                                                </div>
+                                                <!-- 🔥 OPERADOR en móvil -->
+                                                <div class="text-xs text-gray-600 mt-0.5">
+                                                    <span class="text-gray-400">Operador:</span> 
+                                                    <span class="text-gray-700">{{ ajuste.nombre_operador || ajuste.IdOperadorIngresa || '-' }}</span>
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-1">
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoColor(ajuste.ActivoInactivo)">

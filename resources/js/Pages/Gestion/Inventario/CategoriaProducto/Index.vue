@@ -12,6 +12,16 @@ const props = defineProps({
     categoriasPadre: Array
 })
 
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
 // ==================== ESTADO ====================
 const editando = ref(false)
 const editId = ref(null)
@@ -27,27 +37,10 @@ const imagenFile = ref(null)
 const eliminarImagen = ref(false)
 const errors = ref({})
 const imgInput = ref(null)
-const calculandoOrden = ref(false)
 
-// Responsive
-const isMobile = ref(false)
-const isTablet = ref(false)
-const filtrosAbiertos = ref(false)
-
-// ==================== DETECTAR RESPONSIVE ====================
-const handleResize = () => {
-    isMobile.value = window.innerWidth < 640
-    isTablet.value = window.innerWidth >= 640 && window.innerWidth < 1024
-}
-
-onMounted(() => {
-    handleResize()
-    window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-    window.removeEventListener('resize', handleResize)
-})
+// ==================== AUTOCOMPLETADO PARA PADRE ====================
+const padreBusqueda = ref('')
+const mostrarListaPadres = ref(false)
 
 // ==================== FUNCIONES ====================
 const calcularSiguienteOrden = () => {
@@ -81,6 +74,7 @@ const resetForm = () => {
         activo: 1,
         preview_url: null
     }
+    padreBusqueda.value = ''
     imagenFile.value = null
     eliminarImagen.value = false
     if (imgInput.value) imgInput.value.value = ''
@@ -96,6 +90,14 @@ const editar = (cat) => {
         orden: cat.orden,
         activo: cat.activo,
         preview_url: cat.imagen_url
+    }
+    if (cat.id_padre) {
+        const padre = categoriasParaSelect.value.find(c => c.id === cat.id_padre)
+        if (padre) {
+            padreBusqueda.value = padre.nombre
+        }
+    } else {
+        padreBusqueda.value = ''
     }
     imagenFile.value = null
     eliminarImagen.value = false
@@ -233,6 +235,46 @@ const categoriasParaSelect = computed(() => {
     return construirArbolParaSelect(raices)
 })
 
+const padresFiltrados = computed(() => {
+    if (!padreBusqueda.value) return categoriasParaSelect.value
+    
+    const termino = padreBusqueda.value.toLowerCase()
+    return categoriasParaSelect.value.filter(cat => 
+        cat.nombre.toLowerCase().includes(termino)
+    )
+})
+
+const categoriaPadreNombre = computed(() => {
+    if (!formData.value.id_padre) return ''
+    const cat = categoriasParaSelect.value.find(c => c.id == formData.value.id_padre)
+    return cat?.nombre || ''
+})
+
+const seleccionarPadre = (cat) => {
+    formData.value.id_padre = cat.id
+    padreBusqueda.value = cat.nombre
+    mostrarListaPadres.value = false
+    if (!editando.value) {
+        calcularSiguienteOrden()
+    }
+}
+
+const limpiarPadre = () => {
+    formData.value.id_padre = ''
+    padreBusqueda.value = ''
+    mostrarListaPadres.value = false
+    if (!editando.value) {
+        calcularSiguienteOrden()
+    }
+}
+
+const handleClickOutside = (event) => {
+    const container = document.querySelector('.padre-autocomplete')
+    if (container && !container.contains(event.target)) {
+        mostrarListaPadres.value = false
+    }
+}
+
 const mostrarArbol = (items, nivel = 0, parentId = null) => {
     let resultado = []
     const hijos = props.categorias.filter(c => c.id_padre === parentId)
@@ -254,232 +296,268 @@ const categoriasArbol = computed(() => {
     return mostrarArbol(props.categorias, 0, null)
 })
 
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
+    document.removeEventListener('click', handleClickOutside)
+})
+
 resetForm()
 </script>
 
 <template>
-    <div class="min-h-screen" :style="{ backgroundColor: `var(--color-primary-50)` }">
-        <div class="py-2 px-2 sm:py-3 sm:px-3 lg:py-4 lg:px-6">
-            <div class="max-w-6xl mx-auto">
-                <!-- Header Responsive -->
-                <div class="text-center mb-3 sm:mb-6">
-                    <div class="inline-flex items-center justify-center w-10 h-10 sm:w-14 sm:h-14 rounded-2xl mb-2 sm:mb-3"
-                         :style="{ backgroundColor: `var(--color-primary-100)` }">
-                        <i class="fas fa-tree text-primary-600 text-base sm:text-xl"
-                           :style="{ color: `var(--color-primary-600)` }"></i>
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
+            <div class="max-w-full mx-auto">
+                <!-- ==================== HEADER COMPACTO ==================== -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-tree text-primary-600 text-base"></i>
                     </div>
-                    <h1 class="text-base sm:text-xl font-bold text-gray-900">Categorías de Productos</h1>
-                    <p class="text-[10px] sm:text-xs text-gray-500 px-2">
-                        Menú táctil con imágenes - Organización jerárquica (compartido por todas las sucursales)
-                    </p>
+                    <div>
+                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Categorías de Productos</h1>
+                        <p class="text-[10px] text-gray-500">Organización jerárquica compartida por todas las sucursales</p>
+                    </div>
                 </div>
 
-                <!-- Formulario Responsive -->
-                <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                <!-- ==================== FORMULARIO COMPACTO ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-end gap-2">
+                        
                         <!-- Nombre -->
-                        <div>
-                            <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Nombre *</label>
+                        <div class="flex-1 min-w-[120px] max-w-[180px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Nombre *</label>
                             <input type="text" v-model="formData.nombre" @input="convertirMayusculas"
-                                class="w-full border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-sm uppercase focus:ring-2 focus:outline-none"
+                                class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm uppercase focus:ring-primary-500 focus:border-primary-500"
                                 :class="{ 'border-red-500': errors.nombre }"
-                                :style="{ borderColor: errors.nombre ? '#ef4444' : `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }"
-                                placeholder="Ej: SOLIDOS, SALTEÑAS">
-                            <p v-if="errors.nombre" class="text-[10px] sm:text-xs text-red-500 mt-0.5">{{ errors.nombre }}</p>
+                                placeholder="EJ: SOLIDOS">
+                            <p v-if="errors.nombre" class="text-[8px] text-red-500 mt-0.5">{{ errors.nombre }}</p>
                         </div>
                         
-                        <!-- Categoría Padre -->
-                        <div>
-                            <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Categoría Padre</label>
-                            <select v-model="formData.id_padre" 
-                                    class="w-full border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-sm focus:ring-2 focus:outline-none"
-                                    :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
-                                <option value="">[NINGUNA - ES RAÍZ]</option>
-                                <option v-for="cat in categoriasParaSelect" :key="cat.id" :value="cat.id">
-                                    {{ cat.nombre }}
-                                </option>
-                            </select>
-                        </div>
-                        
-                        <!-- Orden -->
-                        <div>
-                            <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Orden (automático)</label>
-                            <input type="number" v-model.number="formData.orden" 
-                                readonly
-                                class="w-full border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-sm bg-gray-100 text-gray-600 focus:ring-2 focus:outline-none"
-                                :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
-                            <p class="text-[8px] sm:text-[10px] text-gray-400 mt-0.5">* Calculado automáticamente</p>
-                        </div>
-                        
-                        <!-- Activo -->
-                        <div>
-                            <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Activo</label>
-                            <select v-model.number="formData.activo" 
-                                    class="w-full border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-[11px] sm:text-sm focus:ring-2 focus:outline-none"
-                                    :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
-                                <option :value="1">✓ Activo</option>
-                                <option :value="0">✗ Inactivo</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Imagen -->
-                        <div class="sm:col-span-2 lg:col-span-4">
-                            <label class="block text-[10px] sm:text-xs font-medium text-gray-700 mb-0.5 sm:mb-1">Imagen</label>
-                            <div class="flex flex-wrap gap-2 sm:gap-3 items-center">
-                                <input type="file" ref="imgInput" @change="onImageChange" 
-                                    accept="image/jpeg,image/png,image/jpg,image/webp"
-                                    class="flex-1 border rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-[10px] sm:text-sm file:mr-2 file:py-0.5 sm:file:py-1 file:px-2 sm:file:px-3 file:rounded-md file:border-0 file:text-[10px] sm:file:text-xs file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100 focus:ring-2 focus:outline-none"
-                                    :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
+                        <!-- Padre con autocompletado -->
+                        <div class="padre-autocomplete flex items-center gap-1 min-w-[140px] max-w-[200px]">
+                            <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Padre:</label>
+                            <div class="relative w-full">
+                                <input 
+                                    type="text"
+                                    v-model="padreBusqueda"
+                                    @focus="mostrarListaPadres = true"
+                                    @input="mostrarListaPadres = true"
+                                    class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                    placeholder="Buscar..."
+                                    autocomplete="off"
+                                />
+                                <button 
+                                    v-if="formData.id_padre"
+                                    @click="limpiarPadre"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    type="button"
+                                >
+                                    <i class="fas fa-times text-[10px]"></i>
+                                </button>
                                 
-                                <!-- Previsualización -->
-                                <div v-if="formData.preview_url" class="relative w-10 h-10 sm:w-12 sm:h-12 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0"
-                                     :style="{ borderColor: `var(--color-primary-200)` }">
-                                    <img :src="formData.preview_url" class="w-full h-full object-cover">
-                                    <button 
-                                        @click="marcarEliminarImagen"
-                                        class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[8px] flex items-center justify-center hover:bg-red-600"
-                                        title="Eliminar imagen">
-                                        <i class="fas fa-times"></i>
-                                    </button>
+                                <div v-if="mostrarListaPadres && padresFiltrados.length > 0" 
+                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto min-w-[180px]">
+                                    <div 
+                                        v-for="cat in padresFiltrados" 
+                                        :key="cat.id"
+                                        @click="seleccionarPadre(cat)"
+                                        class="px-2 py-1.5 cursor-pointer hover:bg-primary-50 text-xs flex justify-between items-center border-b border-gray-100 last:border-0"
+                                        :class="formData.id_padre == cat.id ? 'bg-primary-50' : ''"
+                                    >
+                                        <span class="truncate" :style="{ paddingLeft: (cat.nivel * 12) + 'px' }">
+                                            <span v-if="cat.nivel > 0" class="text-gray-400">— </span>
+                                            {{ cat.nombre }}
+                                        </span>
+                                        <span v-if="formData.id_padre == cat.id" class="text-primary-600 flex-shrink-0 ml-2">
+                                            <i class="fas fa-check-circle text-[10px]"></i>
+                                        </span>
+                                    </div>
                                 </div>
                                 
-                                <!-- Indicadores -->
-                                <span v-if="imagenFile" class="text-[8px] sm:text-[10px] text-green-600">
-                                    <i class="fas fa-check-circle"></i> Nueva imagen
-                                </span>
-                                <span v-if="eliminarImagen" class="text-[8px] sm:text-[10px] text-red-600">
-                                    <i class="fas fa-trash"></i> Será eliminada
-                                </span>
+                                <div v-else-if="mostrarListaPadres && padresFiltrados.length === 0 && padreBusqueda" 
+                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-500 text-[10px]">
+                                    <i class="fas fa-search mr-1"></i> No se encontraron categorías
+                                </div>
                             </div>
-                            <p class="text-[8px] sm:text-[9px] text-gray-400 mt-0.5 sm:mt-1">
-                                <i class="fas fa-info-circle"></i> 
-                                Formatos: JPG, PNG, WEBP. Máx: 512KB
-                            </p>
                         </div>
                         
+                        <!-- Estado -->
+                        <div class="flex items-center gap-1">
+                            <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Estado:</label>
+                            <select v-model.number="formData.activo" 
+                                class="w-20 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500">
+                                <option :value="1">Activo</option>
+                                <option :value="0">Inactivo</option>
+                            </select>
+                        </div>
+
+                        <!-- Orden -->
+                        <div class="flex items-center gap-1">
+                            <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Orden:</label>
+                            <input type="number" v-model.number="formData.orden" readonly
+                                class="w-12 border border-gray-300 rounded-md px-1 py-1 text-sm bg-gray-100 text-gray-600 text-center">
+                        </div>
+
+                        <!-- Imagen -->
+                        <div class="flex items-center gap-1 flex-1 min-w-[120px] max-w-[180px]">
+                            <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Imagen:</label>
+                            <input type="file" ref="imgInput" @change="onImageChange" 
+                                accept="image/jpeg,image/png,image/jpg,image/webp"
+                                class="flex-1 border border-gray-300 rounded-md px-2 py-1 text-[10px] file:mr-1 file:py-0.5 file:px-2 file:rounded file:border-0 file:text-[9px] file:bg-primary-50 file:text-primary-700 hover:file:bg-primary-100">
+                            
+                            <div v-if="formData.preview_url" class="relative w-8 h-8 rounded-lg overflow-hidden bg-gray-100 border flex-shrink-0 border-gray-200">
+                                <img :src="formData.preview_url" class="w-full h-full object-cover">
+                                <button @click="marcarEliminarImagen"
+                                    class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[6px] flex items-center justify-center hover:bg-red-600">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <span v-if="formData.id_padre && categoriaPadreNombre" class="text-[10px] text-primary-600 font-medium ml-1 whitespace-nowrap">
+                            <i class="fas fa-check-circle"></i> {{ categoriaPadreNombre }}
+                        </span>
+
                         <!-- Botones -->
-                        <div class="flex flex-wrap gap-2 items-end sm:col-span-2 lg:col-span-4">
+                        <div class="flex gap-1.5 ml-auto">
                             <button @click="guardar" 
-                                class="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 text-white rounded-lg text-[11px] sm:text-sm font-medium transition"
+                                class="px-3 py-1.5 text-white rounded-md text-xs font-medium transition flex items-center gap-1"
                                 :style="{ backgroundColor: `var(--color-primary-600)` }">
                                 <i class="fas" :class="editando ? 'fa-pencil-alt' : 'fa-plus'"></i>
                                 {{ editando ? 'Actualizar' : 'Guardar' }}
                             </button>
                             <button v-if="editando" @click="resetForm" 
-                                class="flex-1 sm:flex-none px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded-lg text-[11px] sm:text-sm hover:bg-gray-300 transition">
+                                class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1">
                                 <i class="fas fa-times"></i> Cancelar
                             </button>
                         </div>
                     </div>
+                    <div class="mt-1 text-[8px] text-gray-400">
+                        <i class="fas fa-info-circle"></i> El orden se calcula automáticamente según el padre seleccionado
+                    </div>
                 </div>
 
-                <!-- Tabla de categorías Responsive -->
-                <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-                    <!-- Desktop: Tabla completa -->
-                    <div class="hidden md:block overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-primary-50" :style="{ backgroundColor: `var(--color-primary-50)` }">
+                <!-- ==================== TABLA CON STICKY HEADER ==================== -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <!-- 🔥 CONTENEDOR CON SCROLL -->
+                    <div class="overflow-x-auto" style="max-height: 65vh; overflow-y: auto;">
+                        
+                        <!-- 🔥 VISTA TABLET Y ESCRITORIO - con STICKY HEADER -->
+                        <table v-if="!isMobile" class="min-w-full divide-y divide-gray-200">
+                            <!-- 🔥 THEAD STICKY - SIEMPRE VISIBLE AL HACER SCROLL -->
+                            <thead class="bg-primary-50 sticky top-0 z-10 shadow-sm" style="position: sticky; top: 0; z-index: 10;">
                                 <tr>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Imagen</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">ID</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Categoría</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-left text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Padre</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Orden</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Estado</th>
-                                    <th class="px-3 sm:px-4 py-2 sm:py-3 text-right text-[10px] sm:text-xs font-medium" :style="{ color: `var(--color-primary-700)` }">Acciones</th>
+                                    <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Imagen</th>
+                                    <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">ID</th>
+                                    <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Categoría</th>
+                                    <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Padre</th>
+                                    <th class="px-3 py-2 text-center text-[10px] font-medium text-primary-700 uppercase w-16">Orden</th>
+                                    <th class="px-3 py-2 text-center text-[10px] font-medium text-primary-700 uppercase w-24">Estado</th>
+                                    <th class="px-3 py-2 text-center text-[10px] font-medium text-primary-700 uppercase w-16">Acción</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="cat in categoriasArbol" :key="cat.id_categoria" class="hover:bg-gray-50 transition">
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3">
-                                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-gray-100 overflow-hidden">
+                                    <td class="px-3 py-2">
+                                        <div class="w-8 h-8 rounded-lg overflow-hidden bg-gray-100">
                                             <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
-                                            <i v-else class="fas fa-image text-gray-300 text-base sm:text-2xl flex items-center justify-center h-full"></i>
+                                            <div v-else class="w-full h-full flex items-center justify-center">
+                                                <i class="fas fa-tree text-gray-400 text-sm"></i>
+                                            </div>
                                         </div>
                                     </td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-sm text-gray-500">{{ cat.id_categoria }}</td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-sm text-gray-700">
-                                        <span :style="{ marginLeft: (cat.nivel * 16) + 'px' }">{{ cat.nombre_con_indent }}</span>
+                                    <td class="px-3 py-2 text-xs text-gray-500">{{ cat.id_categoria }}</td>
+                                    <td class="px-3 py-2 text-xs text-gray-700">
+                                        <span :style="{ marginLeft: (cat.nivel * 14) + 'px' }">{{ cat.nombre_con_indent }}</span>
                                     </td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-[10px] sm:text-sm text-gray-500">{{ cat.padre?.nombre || '-' }}</td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-center text-[10px] sm:text-sm text-gray-500">{{ cat.orden }}</td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-center">
-                                        <span class="px-1.5 sm:px-2 py-0.5 sm:py-1 text-[8px] sm:text-xs rounded-full"
-                                            :class="cat.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
+                                    <td class="px-3 py-2 text-xs text-gray-500">{{ cat.padre?.nombre || '-' }}</td>
+                                    <td class="px-3 py-2 text-center text-xs text-gray-500">{{ cat.orden }}</td>
+                                    <td class="px-3 py-2 text-center">
+                                        <span class="px-1.5 py-0.5 text-[8px] rounded-full"
+                                            :class="cat.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
                                             {{ cat.activo ? 'Activo' : 'Inactivo' }}
                                         </span>
                                     </td>
-                                    <td class="px-3 sm:px-4 py-2 sm:py-3 text-right text-[10px] sm:text-sm font-medium">
-                                        <button @click="editar(cat)" class="transition mr-2 sm:mr-3" :style="{ color: `var(--color-primary-600)` }">
+                                    <td class="px-3 py-2 text-center">
+                                        <button @click="editar(cat)" class="text-primary-600 hover:text-primary-800 transition text-xs mr-2" title="Editar">
                                             <i class="fas fa-edit"></i>
                                         </button>
-                                        <button @click="eliminar(cat.id_categoria, cat.nombre)" class="text-red-600 hover:text-red-800 transition">
+                                        <button @click="eliminar(cat.id_categoria, cat.nombre)" class="text-red-600 hover:text-red-800 transition text-xs" title="Eliminar">
                                             <i class="fas fa-trash"></i>
                                         </button>
                                     </td>
                                 </tr>
                                 <tr v-if="categoriasArbol.length === 0">
-                                    <td colspan="7" class="px-3 sm:px-4 py-8 text-center text-gray-400 text-[10px] sm:text-sm">
-                                        <i class="fas fa-tree text-2xl sm:text-3xl mb-2 block text-gray-300"></i>
+                                    <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                        <i class="fas fa-tree text-2xl mb-1 block"></i>
                                         No hay categorías registradas
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
 
-                    <!-- Mobile: Tarjetas -->
-                    <div class="md:hidden divide-y divide-gray-100">
-                        <div v-for="cat in categoriasArbol" :key="cat.id_categoria" class="p-3 hover:bg-gray-50 transition">
-                            <div class="flex items-start gap-3">
-                                <!-- Imagen -->
-                                <div class="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden flex-shrink-0">
-                                    <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
-                                    <i v-else class="fas fa-image text-gray-300 text-xl flex items-center justify-center h-full"></i>
-                                </div>
-                                
-                                <!-- Info -->
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-start justify-between gap-2">
-                                        <div>
-                                            <div class="text-sm font-medium text-gray-800 truncate" 
-                                                 :style="{ marginLeft: (cat.nivel * 12) + 'px' }">
-                                                {{ cat.nombre }}
-                                            </div>
-                                            <div class="text-[10px] text-gray-400 mt-0.5">
-                                                ID: {{ cat.id_categoria }} | Padre: {{ cat.padre?.nombre || '-' }}
-                                            </div>
+                        <!-- VISTA MÓVIL (tarjetas) - sin sticky -->
+                        <div v-else class="p-2 space-y-2">
+                            <div v-for="cat in categoriasArbol" :key="cat.id_categoria" 
+                                class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                                <div class="flex gap-2.5">
+                                    <div class="w-10 h-10 flex-shrink-0 rounded-lg overflow-hidden bg-gray-200">
+                                        <img v-if="cat.imagen_url" :src="cat.imagen_url" class="w-full h-full object-cover">
+                                        <div v-else class="w-full h-full flex items-center justify-center">
+                                            <i class="fas fa-tree text-gray-400 text-sm"></i>
                                         </div>
-                                        <span class="px-1.5 py-0.5 text-[8px] rounded-full flex-shrink-0"
-                                            :class="cat.activo ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'">
-                                            {{ cat.activo ? 'Activo' : 'Inactivo' }}
-                                        </span>
                                     </div>
-                                    <div class="flex items-center justify-between mt-2 pt-2 border-t" :style="{ borderColor: `var(--color-primary-100)` }">
-                                        <span class="text-[10px] text-gray-400">Orden: {{ cat.orden }}</span>
-                                        <div class="flex gap-2">
-                                            <button @click="editar(cat)" class="px-2 py-1 rounded-lg text-[10px] transition"
-                                                    :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-600)` }">
-                                                <i class="fas fa-edit mr-1"></i> Editar
-                                            </button>
-                                            <button @click="eliminar(cat.id_categoria, cat.nombre)" 
-                                                    class="px-2 py-1 rounded-lg text-[10px] transition bg-red-50 text-red-600">
-                                                <i class="fas fa-trash mr-1"></i> Eliminar
-                                            </button>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="flex justify-between items-start gap-1">
+                                            <div class="min-w-0">
+                                                <p class="text-xs font-medium text-gray-800 truncate" 
+                                                   :style="{ marginLeft: (cat.nivel * 10) + 'px' }">
+                                                    {{ cat.nombre }}
+                                                </p>
+                                                <p class="text-[9px] text-gray-400">ID: {{ cat.id_categoria }}</p>
+                                            </div>
+                                            <span class="px-1.5 py-0.5 text-[8px] rounded-full whitespace-nowrap"
+                                                :class="cat.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'">
+                                                {{ cat.activo ? 'Activo' : 'Inactivo' }}
+                                            </span>
+                                        </div>
+                                        <div class="flex flex-wrap items-center justify-between gap-1 mt-1.5 pt-1.5 border-t border-gray-200">
+                                            <span class="text-[9px] text-gray-400">
+                                                Padre: {{ cat.padre?.nombre || 'RAÍZ' }}
+                                            </span>
+                                            <span class="text-[9px] text-gray-400">Orden: {{ cat.orden }}</span>
+                                            <div class="flex gap-1">
+                                                <button @click="editar(cat)" 
+                                                    class="px-2 py-0.5 text-[9px] rounded bg-primary-50 text-primary-600 hover:bg-primary-100 transition">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button @click="eliminar(cat.id_categoria, cat.nombre)" 
+                                                    class="px-2 py-0.5 text-[9px] rounded bg-red-50 text-red-600 hover:bg-red-100 transition">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        <div v-if="categoriasArbol.length === 0" class="p-6 text-center text-gray-400 text-sm">
-                            <i class="fas fa-tree text-2xl mb-2 block text-gray-300"></i>
-                            No hay categorías registradas
+                            <div v-if="categoriasArbol.length === 0" class="text-center text-gray-400 py-8">
+                                <i class="fas fa-tree text-2xl mb-1 block"></i>
+                                <span class="text-xs">No hay categorías registradas</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="mt-3 sm:mt-4 text-[8px] sm:text-xs text-gray-400 text-center">
-                    <i class="fas fa-info-circle"></i> Las categorías se ordenan automáticamente según el padre seleccionado.
+                <!-- ==================== FOOTER ==================== -->
+                <div class="mt-3 text-[8px] text-gray-400 text-center">
+                    <i class="fas fa-info-circle"></i> Las categorías se ordenan automáticamente según el padre seleccionado
                 </div>
             </div>
         </div>
@@ -487,19 +565,39 @@ resetForm()
 </template>
 
 <style scoped>
-/* Transiciones suaves */
-input:focus, select:focus {
-    --tw-ring-offset-width: 0px;
-    --tw-ring-offset-color: #fff;
-    --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-    --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-    box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
-    outline: 2px solid transparent;
-    outline-offset: 2px;
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
 }
 
-/* Scroll suave */
-* {
-    scroll-behavior: smooth;
+/* Autocomplete */
+.padre-autocomplete {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 4px;
+}
+
+.padre-autocomplete .relative {
+    flex: 1;
+    min-width: 100px;
+}
+
+/* 🔥 STICKY HEADER - Fijo al hacer scroll */
+.sticky {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 10 !important;
+}
+
+/* Sombra para separar visualmente */
+.shadow-sm {
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08) !important;
+}
+
+/* Contenedor con scroll */
+.overflow-x-auto {
+    overflow-y: auto !important;
 }
 </style>

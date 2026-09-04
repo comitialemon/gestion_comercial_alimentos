@@ -54,6 +54,16 @@ class OperadorController extends Controller
 
     public function store(Request $request)
     {
+        // 🔥 CONVERTIR TELÉFONOS A STRING antes de validar
+        $request->merge([
+            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== '' 
+                ? (string) $request->TelefonoDomicilio 
+                : null,
+            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== '' 
+                ? (string) $request->NumeroCelular 
+                : null,
+        ]);
+
         $request->validate([
             'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
             'Iniciales' => 'required|string|max:5',
@@ -97,6 +107,16 @@ class OperadorController extends Controller
     public function update(Request $request, $id)
     {
         $operador = Operador::findOrFail($id);
+
+        // 🔥 CONVERTIR TELÉFONOS A STRING antes de validar
+        $request->merge([
+            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== '' 
+                ? (string) $request->TelefonoDomicilio 
+                : null,
+            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== '' 
+                ? (string) $request->NumeroCelular 
+                : null,
+        ]);
 
         $request->validate([
             'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',

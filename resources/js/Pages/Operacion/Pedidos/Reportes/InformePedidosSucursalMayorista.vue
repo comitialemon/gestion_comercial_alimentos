@@ -41,28 +41,33 @@ const props = defineProps({
     }
 })
 
-const theme = computed(() => usePage().props?.theme || { primary: '#1f2937' })
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
 
-// Estado de filtros
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
+// ==================== ESTADO ====================
 const fechaInicio = ref(props.filtros.fecha_inicio || '')
 const fechaFin = ref(props.filtros.fecha_fin || '')
 const search = ref(props.filtros.search || '')
-
-// Estados
 const exportandoExcel = ref(false)
-const isMobile = ref(false)
 
-const checkScreenSize = () => {
-    isMobile.value = window.innerWidth < 640
-}
+// ==================== COMPUTED ====================
+const theme = computed(() => usePage().props?.theme || { primary: '#1f2937' })
 
-// Formatear números
+const hayDatos = computed(() => props.pedidos && props.pedidos.length > 0)
+
+// ==================== FUNCIONES ====================
 const formatNumber = (num) => {
     if (num === undefined || num === null) return '0'
     return Number(num).toLocaleString('es-BO')
 }
 
-// Formatear fecha
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
     return new Date(fecha + 'T00:00:00').toLocaleDateString('es-BO')
@@ -73,7 +78,6 @@ const formatearFechaHora = (fecha) => {
     return new Date(fecha).toLocaleString('es-BO')
 }
 
-// Aplicar filtros
 const aplicarFiltros = () => {
     router.get('/operacion/pedidos/reportes/informe-sucursal-mayorista', {
         fecha_inicio: fechaInicio.value,
@@ -82,7 +86,6 @@ const aplicarFiltros = () => {
     }, { preserveState: true, replace: true })
 }
 
-// Limpiar filtros
 const limpiarFiltros = () => {
     const hoy = new Date().toISOString().split('T')[0]
     fechaInicio.value = hoy
@@ -93,7 +96,6 @@ const limpiarFiltros = () => {
     aplicarFiltros()
 }
 
-// Exportar Excel
 const exportarExcel = () => {
     exportandoExcel.value = true
     try {
@@ -120,209 +122,191 @@ watch(search, () => {
     }, 500)
 })
 
+// ==================== LIFECYCLE ====================
 onMounted(() => {
-    checkScreenSize()
-    window.addEventListener('resize', checkScreenSize)
+    handleResize()
+    window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
-    window.removeEventListener('resize', checkScreenSize)
+    window.removeEventListener('resize', handleResize)
     if (timeout) clearTimeout(timeout)
 })
 </script>
 
 <template>
-    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100">
-        <div class="py-3 px-2 sm:py-4 sm:px-4 lg:py-6 lg:px-8">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
-                <!-- Header -->
-                <div class="flex flex-col items-center text-center mb-4 sm:mb-6">
-                    <div class="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 bg-purple-100 rounded-xl sm:rounded-2xl mb-1 sm:mb-2">
-                        <i class="fas fa-store text-base sm:text-lg lg:text-xl text-purple-600"></i>
+                <!-- ==================== HEADER ==================== -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-purple-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-store text-purple-600 text-base"></i>
                     </div>
-                    <h1 class="text-base sm:text-lg lg:text-xl font-bold text-gray-900">Pedidos - Sucursal Mayorista</h1>
-                    <p class="text-[10px] sm:text-xs text-gray-500">Listado de pedidos de la sucursal y operador actual</p>
+                    <div>
+                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Pedidos - Sucursal Mayorista</h1>
+                        <p class="text-xs text-gray-500">Listado de pedidos de la sucursal y operador actual</p>
+                    </div>
                 </div>
 
-                <!-- Filtros -->
-                <div class="bg-white rounded-lg sm:rounded-xl shadow-sm p-3 sm:p-4 mb-4 sm:mb-6">
-                    <div class="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-end gap-3 sm:gap-4">
+                <!-- ==================== FILTROS ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-end gap-2">
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Fecha Inicio</label>
-                            <input 
-                                type="date" 
-                                v-model="fechaInicio" 
-                                @change="aplicarFiltros"
-                                class="w-full sm:w-40 border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:ring-purple-500 focus:border-purple-500"
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Fecha Inicio</label>
+                            <input type="date" v-model="fechaInicio" @change="aplicarFiltros"
+                                class="w-36 border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
                         <div>
-                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Fecha Fin</label>
-                            <input 
-                                type="date" 
-                                v-model="fechaFin" 
-                                @change="aplicarFiltros"
-                                class="w-full sm:w-40 border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:ring-purple-500 focus:border-purple-500"
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Fecha Fin</label>
+                            <input type="date" v-model="fechaFin" @change="aplicarFiltros"
+                                class="w-36 border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
-                        <div class="flex-1 min-w-[120px]">
-                            <label class="block text-xs sm:text-sm font-medium text-gray-700 mb-1">Buscar Producto</label>
-                            <input 
-                                type="text" 
-                                v-model="search" 
-                                placeholder="Código o descripción..."
-                                class="w-full border border-gray-300 rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm focus:ring-purple-500 focus:border-purple-500"
+                        <div class="flex-1 min-w-[120px] max-w-[200px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Buscar Producto</label>
+                            <input type="text" v-model="search" placeholder="Código o descripción..."
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
-                        <div class="flex gap-2">
-                            <button 
-                                @click="aplicarFiltros"
-                                class="px-3 sm:px-4 py-1.5 sm:py-2 bg-purple-600 text-white rounded-lg text-xs sm:text-sm hover:bg-purple-700 transition flex items-center gap-1 sm:gap-2"
+                        <div class="flex gap-1.5">
+                            <button @click="aplicarFiltros"
+                                class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1.5"
                             >
-                                <i class="fas fa-search text-[10px] sm:text-xs"></i>
-                                <span>Buscar</span>
+                                <i class="fas fa-search text-[10px]"></i> Buscar
                             </button>
-                            <button 
-                                @click="limpiarFiltros"
-                                class="px-3 sm:px-4 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded-lg text-xs sm:text-sm hover:bg-gray-300 transition flex items-center gap-1 sm:gap-2"
+                            <button @click="limpiarFiltros"
+                                class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1.5"
                             >
-                                <i class="fas fa-eraser text-[10px] sm:text-xs"></i>
-                                <span>Limpiar</span>
+                                <i class="fas fa-eraser text-[10px]"></i> Limpiar
                             </button>
-                            <button 
-                                @click="exportarExcel"
-                                :disabled="exportandoExcel || pedidos.length === 0"
-                                class="px-3 sm:px-4 py-1.5 sm:py-2 bg-green-600 text-white rounded-lg text-xs sm:text-sm hover:bg-green-700 transition flex items-center gap-1 sm:gap-2 disabled:opacity-50"
+                            <button @click="exportarExcel" :disabled="exportandoExcel || !hayDatos"
+                                class="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-medium hover:bg-emerald-700 transition flex items-center gap-1.5 disabled:opacity-50"
                             >
-                                <i v-if="exportandoExcel" class="fas fa-spinner fa-spin text-[10px] sm:text-xs"></i>
-                                <i v-else class="fas fa-file-excel text-[10px] sm:text-xs"></i>
-                                <span>{{ exportandoExcel ? '...' : 'Excel' }}</span>
+                                <i v-if="exportandoExcel" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-file-excel text-[10px]"></i>
+                                Excel
                             </button>
                         </div>
                     </div>
-                    
+
                     <!-- Información de cabecera -->
-                    <div v-if="pedidos.length > 0" class="mt-3 pt-3 border-t grid grid-cols-1 xs:grid-cols-3 gap-1 text-[10px] sm:text-xs text-gray-600">
-                        <div>
-                            <span class="font-medium">Sucursal:</span> {{ sucursal?.Nombre || '-' }}
-                        </div>
-                        <div>
-                            <span class="font-medium">Operador:</span> {{ operador?.nombre || '-' }}
-                        </div>
-                        <div>
-                            <span class="font-medium">Total pedidos:</span> {{ formatNumber(totales.total_pedidos) }}
-                        </div>
+                    <div v-if="hayDatos" class="mt-2 pt-2 border-t border-gray-200 flex flex-wrap gap-3 text-[10px] text-gray-600">
+                        <span><span class="font-medium">Sucursal:</span> {{ sucursal?.Nombre || '-' }}</span>
+                        <span><span class="font-medium">Operador:</span> {{ operador?.nombre || '-' }}</span>
+                        <span><span class="font-medium">Total pedidos:</span> {{ formatNumber(totales.total_pedidos) }}</span>
                     </div>
                 </div>
 
-                <!-- Tarjetas de resumen -->
-                <div v-if="pedidos.length > 0" class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-4 sm:mb-6">
-                    <div class="bg-white rounded-lg shadow-sm p-2 sm:p-3">
+                <!-- ==================== RESÚMENES ==================== -->
+                <div v-if="hayDatos" class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                    <div class="bg-white rounded-xl shadow-sm p-2.5 border border-gray-200">
                         <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                                <i class="fas fa-shopping-cart text-purple-600 text-[10px] sm:text-xs"></i>
+                            <div class="w-7 h-7 bg-purple-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-shopping-cart text-purple-600 text-[10px]"></i>
                             </div>
                             <div>
-                                <p class="text-[8px] sm:text-[10px] text-gray-500">Pedidos</p>
-                                <p class="text-sm sm:text-base font-bold text-gray-800">{{ formatNumber(totales.total_pedidos) }}</p>
+                                <p class="text-[8px] text-gray-400 uppercase tracking-wide">Pedidos</p>
+                                <p class="text-base font-bold text-gray-800">{{ formatNumber(totales.total_pedidos) }}</p>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm p-2 sm:p-3">
+                    <div class="bg-white rounded-xl shadow-sm p-2.5 border border-gray-200">
                         <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                                <i class="fas fa-boxes text-green-600 text-[10px] sm:text-xs"></i>
+                            <div class="w-7 h-7 bg-emerald-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-boxes text-emerald-600 text-[10px]"></i>
                             </div>
                             <div>
-                                <p class="text-[8px] sm:text-[10px] text-gray-500">Unidades</p>
-                                <p class="text-sm sm:text-base font-bold text-gray-800">{{ formatNumber(totales.total_unidades) }}</p>
+                                <p class="text-[8px] text-gray-400 uppercase tracking-wide">Unidades</p>
+                                <p class="text-base font-bold text-gray-800">{{ formatNumber(totales.total_unidades) }}</p>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm p-2 sm:p-3">
+                    <div class="bg-white rounded-xl shadow-sm p-2.5 border border-gray-200">
                         <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                                <i class="fas fa-box text-blue-600 text-[10px] sm:text-xs"></i>
+                            <div class="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-box text-blue-600 text-[10px]"></i>
                             </div>
                             <div>
-                                <p class="text-[8px] sm:text-[10px] text-gray-500">Productos</p>
-                                <p class="text-sm sm:text-base font-bold text-gray-800">{{ formatNumber(totales.total_productos) }}</p>
+                                <p class="text-[8px] text-gray-400 uppercase tracking-wide">Productos</p>
+                                <p class="text-base font-bold text-gray-800">{{ formatNumber(totales.total_productos) }}</p>
                             </div>
                         </div>
                     </div>
-                    <div class="bg-white rounded-lg shadow-sm p-2 sm:p-3">
+                    <div class="bg-white rounded-xl shadow-sm p-2.5 border border-gray-200">
                         <div class="flex items-center gap-2">
-                            <div class="w-6 h-6 sm:w-8 sm:h-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                                <i class="fas fa-calendar-day text-yellow-600 text-[10px] sm:text-xs"></i>
+                            <div class="w-7 h-7 bg-yellow-100 rounded-lg flex items-center justify-center">
+                                <i class="fas fa-calendar-day text-yellow-600 text-[10px]"></i>
                             </div>
                             <div>
-                                <p class="text-[8px] sm:text-[10px] text-gray-500">Días</p>
-                                <p class="text-sm sm:text-base font-bold text-gray-800">{{ resumenPorFecha.length }}</p>
+                                <p class="text-[8px] text-gray-400 uppercase tracking-wide">Días</p>
+                                <p class="text-base font-bold text-gray-800">{{ resumenPorFecha.length }}</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Tabla de pedidos -->
-                <div v-if="pedidos.length > 0" class="bg-white rounded-lg sm:rounded-xl shadow-sm overflow-hidden">
-                    <div class="px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border-b flex items-center justify-between">
-                        <h3 class="text-xs sm:text-sm font-semibold text-gray-700">
-                            <i class="fas fa-list text-purple-500 mr-1 sm:mr-2"></i>
+                <!-- ==================== TABLA ==================== -->
+                <div v-if="hayDatos" class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+                        <h3 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                            <i class="fas fa-list text-purple-500 text-[10px]"></i>
                             Lista de Pedidos
                         </h3>
-                        <span class="text-[10px] sm:text-xs text-gray-500">{{ pedidos.length }} registro(s)</span>
+                        <span class="text-[10px] text-gray-500">{{ pedidos.length }} registro(s)</span>
                     </div>
 
-                    <div class="overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+                    <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
                         <!-- VISTA MÓVIL (tarjetas) -->
                         <div v-if="isMobile" class="p-2 space-y-2">
-                            <div v-for="pedido in pedidos" :key="pedido.IdPedidos" class="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                            <div v-for="pedido in pedidos" :key="pedido.IdPedidos" class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
                                 <div class="flex justify-between items-start mb-1">
                                     <span class="text-xs font-medium text-purple-600">#{{ pedido.IdPedidos }}</span>
                                     <span class="text-[10px] text-gray-400">{{ formatearFecha(pedido.FechaDelPedido) }}</span>
                                 </div>
-                                <p class="text-xs font-medium text-gray-800">{{ pedido.DestalleProducto || '-' }}</p>
-                                <p class="text-[10px] text-gray-500">Código: {{ pedido.CodigoProducto || '-' }}</p>
-                                <div class="flex justify-between items-center mt-1 pt-1 border-t border-gray-200">
-                                    <span class="text-[10px] text-gray-500">{{ pedido.NombreSucursal || '-' }}</span>
+                                <p class="text-xs font-medium text-gray-800 truncate">{{ pedido.DestalleProducto || '-' }}</p>
+                                <p class="text-[9px] text-gray-500">Código: {{ pedido.CodigoProducto || '-' }}</p>
+                                <div class="flex justify-between items-center mt-1.5 pt-1.5 border-t border-gray-200">
+                                    <span class="text-[10px] text-gray-500 truncate">{{ pedido.NombreSucursal || '-' }}</span>
                                     <span class="text-sm font-bold text-purple-600">{{ formatNumber(pedido.Unidades) }}</span>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- VISTA ESCRITORIO (tabla) -->
+                        <!-- VISTA TABLET Y ESCRITORIO -->
                         <table v-else class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-gray-50 sticky top-0 z-10">
                                 <tr>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">#</th>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Fecha Realiza</th>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Fecha Pedido</th>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Producto</th>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Código</th>
-                                    <th class="px-3 py-2 text-center text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Unidades</th>
-                                    <th class="px-3 py-2 text-left text-[10px] sm:text-xs font-medium text-gray-500 uppercase">Sucursal</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">#</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Fecha Realiza</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Fecha Pedido</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Producto</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Código</th>
+                                    <th class="px-3 py-1.5 text-center text-[8px] font-medium text-gray-500 uppercase w-20">Unidades</th>
+                                    <th class="px-3 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Sucursal</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="(pedido, idx) in pedidos" :key="pedido.IdPedidos" class="hover:bg-gray-50">
-                                    <td class="px-3 py-2 text-xs text-gray-500">{{ idx + 1 }}</td>
-                                    <td class="px-3 py-2 text-xs">{{ formatearFechaHora(pedido.FechaRealiza) }}</td>
-                                    <td class="px-3 py-2 text-xs font-medium">{{ formatearFecha(pedido.FechaDelPedido) }}</td>
-                                    <td class="px-3 py-2 text-xs">
+                                <tr v-for="(pedido, idx) in pedidos" :key="pedido.IdPedidos" class="hover:bg-gray-50 transition">
+                                    <td class="px-3 py-1.5 text-xs text-gray-500">{{ idx + 1 }}</td>
+                                    <td class="px-3 py-1.5 text-xs">{{ formatearFechaHora(pedido.FechaRealiza) }}</td>
+                                    <td class="px-3 py-1.5 text-xs font-medium">{{ formatearFecha(pedido.FechaDelPedido) }}</td>
+                                    <td class="px-3 py-1.5 text-xs max-w-[150px] truncate" :title="pedido.DestalleProducto">
                                         <span class="font-medium text-gray-800">{{ pedido.DestalleProducto || '-' }}</span>
                                     </td>
-                                    <td class="px-3 py-2 text-xs font-mono text-gray-500">{{ pedido.CodigoProducto || '-' }}</td>
-                                    <td class="px-3 py-2 text-center text-xs font-mono font-bold">{{ formatNumber(pedido.Unidades) }}</td>
-                                    <td class="px-3 py-2 text-xs">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700">
-                                            <i class="fas fa-store mr-1 text-[8px]"></i>
+                                    <td class="px-3 py-1.5 text-xs font-mono text-gray-500">{{ pedido.CodigoProducto || '-' }}</td>
+                                    <td class="px-3 py-1.5 text-center text-xs font-mono font-bold">{{ formatNumber(pedido.Unidades) }}</td>
+                                    <td class="px-3 py-1.5 text-xs">
+                                        <span class="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] bg-purple-50 text-purple-700">
+                                            <i class="fas fa-store mr-1 text-[7px]"></i>
                                             {{ pedido.NombreSucursal || '-' }}
                                         </span>
                                     </td>
                                 </tr>
                                 <tr v-if="pedidos.length === 0">
-                                    <td colspan="7" class="px-4 py-12 text-center text-gray-400">
-                                        <i class="fas fa-inbox text-3xl mb-2 block"></i>
+                                    <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                        <i class="fas fa-inbox text-2xl mb-1 block"></i>
                                         No hay pedidos para los filtros seleccionados
                                     </td>
                                 </tr>
@@ -331,15 +315,15 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Sin datos -->
-                <div v-else class="bg-white rounded-lg sm:rounded-xl shadow-sm p-8 sm:p-12 text-center text-gray-400">
-                    <i class="fas fa-inbox text-3xl sm:text-4xl mb-2 sm:mb-3 block"></i>
-                    <p class="text-sm sm:text-base lg:text-lg font-medium">No hay pedidos registrados</p>
-                    <p class="text-xs sm:text-sm mt-1">Ajusta los filtros para ver más resultados</p>
+                <!-- ==================== SIN DATOS ==================== -->
+                <div v-else class="bg-white rounded-xl shadow-sm p-10 text-center text-gray-400">
+                    <i class="fas fa-inbox text-3xl mb-2 block"></i>
+                    <p class="text-sm font-medium">No hay pedidos registrados</p>
+                    <p class="text-xs mt-1">Ajusta los filtros para ver más resultados</p>
                 </div>
 
-                <!-- Footer -->
-                <div v-if="pedidos.length > 0" class="mt-4 text-center text-[9px] sm:text-xs text-gray-400">
+                <!-- ==================== FOOTER ==================== -->
+                <div v-if="hayDatos" class="mt-3 text-center text-[8px] text-gray-400">
                     <i class="fas fa-info-circle mr-1"></i>
                     Reporte generado el {{ new Date().toLocaleString('es-BO') }}
                 </div>
@@ -349,9 +333,9 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-@media (max-width: 480px) {
-    .xs\:grid-cols-3 {
-        grid-template-columns: repeat(3, 1fr);
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
     }
 }
 
@@ -371,5 +355,23 @@ onUnmounted(() => {
 
 .overflow-x-auto::-webkit-scrollbar-track {
     background: #f1f5f9;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
 </style>

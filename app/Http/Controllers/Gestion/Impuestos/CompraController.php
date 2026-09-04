@@ -911,8 +911,11 @@ class CompraController extends Controller
         // 🔥🔥🔥 IMPORTANTE: MANTENER LOS FILTROS EN LA PAGINACIÓN 🔥🔥🔥
         $compras->appends($request->all());
         
-        // Enriquecer datos
+        // =============================================
+        // 🔥 ENRIQUECER DATOS - INCLUYENDO OPERADOR
+        // =============================================
         $compras->getCollection()->transform(function ($compra) {
+            // Obtener nombre de la sucursal
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $compra->IdSucursal)
@@ -921,6 +924,20 @@ class CompraController extends Controller
             $compra->sucursal_nombre = $sucursal ? $sucursal->Nombre : 'Sin sucursal';
             $compra->sucursal_numero = $sucursal ? $sucursal->NumeroSucursal : null;
             
+            // 🔥 OBTENER NOMBRE DEL OPERADOR QUE INGRESÓ LA COMPRA
+            $nombreOperador = null;
+            if ($compra->IdOperadorIngresa) {
+                $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador as op')
+                    ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
+                    ->where('op.IdOperador', $compra->IdOperadorIngresa)
+                    ->select('i.Nombre as nombre')
+                    ->first();
+                $nombreOperador = $operador?->nombre;
+            }
+            $compra->nombre_operador = $nombreOperador;
+            
+            // Formatear fecha
             $fechaMostrar = '';
             if ($compra->fecha) {
                 $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
@@ -1009,6 +1026,47 @@ class CompraController extends Controller
             'detalle' => $detalle,
             'total_compra' => $nuevoTotal
         ]);
+    }
+    /**
+     * Obtener compra en formato JSON para el modal
+     */
+    public function getJson($id)
+    {
+        $compra = Compra::porContexto()
+            ->with([
+                'detalles.producto', 
+                'almacen', 
+                'proveedor', 
+                'fecha',
+                'diario'
+            ])
+            ->findOrFail($id);
+        
+        // 🔥 Obtener nombre del operador que ingresó
+        $nombreOperador = null;
+        if ($compra->IdOperadorIngresa) {
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as op')
+                ->join('todos_identificador as i', 'op.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('op.IdOperador', $compra->IdOperadorIngresa)
+                ->select('i.Nombre as nombre')
+                ->first();
+            $nombreOperador = $operador?->nombre;
+        }
+        
+        // Agregar el nombre del operador a la respuesta
+        $compra->nombre_operador = $nombreOperador;
+        
+        // Agregar fecha formateada
+        $fechaMostrar = '';
+        if ($compra->fecha) {
+            $fechaMostrar = date('d/m/Y', strtotime($compra->fecha->Fecha));
+        } else {
+            $fechaMostrar = $compra->FechaIngreso ? date('d/m/Y', strtotime($compra->FechaIngreso)) : '';
+        }
+        $compra->fecha_mostrar = $fechaMostrar;
+        
+        return response()->json($compra);
     }
     
 }

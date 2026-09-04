@@ -11,6 +11,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
 {
     /**
      * Muestra el reporte agrupado por Año -> Fecha -> Vendedor -> Producto
+     * 🔥 CON FORMATO VISUAL UNIFICADO
      */
     public function index(Request $request)
     {
@@ -60,7 +61,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
         $operadorId = $request->get('operador_id');
         $anio = $request->get('anio');
 
-        // Construir query base - 🔥 SIMPLIFICADA
+        // Construir query base
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('impuestos_ventas')
             ->join('impuestos_ventas_detalle', 'impuestos_ventas.IdVentas', '=', 'impuestos_ventas_detalle.idventas')
@@ -83,7 +84,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
             $query->whereYear('impuestos_ventas.FechaVenta', $anio);
         }
 
-        // 🔥 SELECT SIMPLIFICADO - sin campos que ya no existen
+        // SELECT simplificado
         $ventas = $query->orderBy('impuestos_ventas.FechaVenta', 'desc')
             ->orderBy('impuestos_ventas.NumeroFactura', 'desc')
             ->get([
@@ -100,7 +101,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
                 'impuestos_ventas_detalle.totalbolivianos'
             ]);
 
-        // Pre-cargar nombres de operadores (evitar consultas dentro del loop)
+        // Pre-cargar nombres de operadores
         $nombresOperadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
             ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -147,7 +148,7 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
                 ];
             }
             
-            // 🔥 Agrupar por producto (usando el nombre del producto como clave)
+            // Agrupar por producto
             $productoKey = $venta->producto;
             
             if (!isset($reportePorAnio[$anioVenta]['fechas'][$fecha]['operadores'][$operadorIdVenta]['productos'][$productoKey])) {
@@ -171,17 +172,25 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
         }
         
         // Ordenar fechas dentro de cada año (descendente)
-        foreach ($reportePorAnio as $anio => $data) {
+        foreach ($reportePorAnio as $anioKey => $data) {
             $fechas = $data['fechas'];
             uasort($fechas, function($a, $b) {
                 return strtotime($b['fecha_original']) - strtotime($a['fecha_original']);
             });
-            $reportePorAnio[$anio]['fechas'] = array_values($fechas);
+            $reportePorAnio[$anioKey]['fechas'] = array_values($fechas);
         }
         
         // Ordenar años (descendente)
         krsort($reportePorAnio);
         $reporteFinal = array_values($reportePorAnio);
+
+        // 🔥 CALCULAR TOTALES GENERALES
+        $totalGeneralVentas = 0;
+        $totalGeneralUnidades = 0;
+        foreach ($reporteFinal as $anioData) {
+            $totalGeneralVentas += $anioData['total_anio'];
+            $totalGeneralUnidades += $anioData['total_unidades_anio'];
+        }
 
         return Inertia::render('Gestion/Reportes/ReporteVentasSupervisorPorOperador', [
             'empresa' => $empresa,
@@ -195,6 +204,127 @@ class ReporteVentasSupervisorPorOperadorController extends Controller
                 'operador_id' => $operadorId,
                 'anio' => $anio,
             ],
+            'totales' => [
+                'ventas' => $totalGeneralVentas,
+                'unidades' => $totalGeneralUnidades,
+            ],
         ]);
+    }
+
+    /**
+     * 🔥 OBTENER VENTAS DETALLADAS DE UN OPERADOR PARA EL MODAL
+     */
+    public function getVentasPorOperador(Request $request)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            $sucursalId = session('cliente_sucursal_id');
+            
+            $request->validate([
+                'operador_id' => 'required|integer',
+                'fecha_inicio' => 'nullable|date',
+                'fecha_fin' => 'nullable|date',
+            ]);
+
+            $query = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas as v')
+                ->join('impuestos_ventas_detalle as d', 'v.IdVentas', '=', 'd.idventas')
+                ->join('inventario_relacion_ventainventario as r', 'd.idrelacionventainventario', '=', 'r.IdDetalleProducto')
+                ->join('todos_operador as o', 'v.IdOperadorIngresa', '=', 'o.IdOperador')
+                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                ->leftJoin('todos_identificador as cli', 'v.IdNIT', '=', 'cli.IdIdentificador')
+                ->where('v.IdCliente', $clienteId)
+                ->where('v.IdClienteSucursal', $sucursalId)
+                ->where('v.IdEstado', 1)
+                ->where('v.IdOperadorIngresa', $request->operador_id);
+
+            if ($request->fecha_inicio) {
+                $query->where('v.FechaVenta', '>=', $request->fecha_inicio);
+            }
+            if ($request->fecha_fin) {
+                $query->where('v.FechaVenta', '<=', $request->fecha_fin . ' 23:59:59');
+            }
+
+            $ventas = $query->orderBy('v.FechaVenta', 'desc')
+                ->orderBy('v.NumeroFactura', 'desc')
+                ->get([
+                    'v.NumeroFactura',
+                    'v.FechaVenta',
+                    'v.TicketDia',
+                    'v.ImporteVenta',
+                    'v.Observacion',
+                    'd.unidades',
+                    'd.preciounidades',
+                    'd.totalbolivianos',
+                    'r.Detalle as producto',
+                    'r.Codigo as producto_codigo',
+                    'i.Nombre as operador_nombre',
+                    'cli.Nombre as cliente_nombre',
+                    'cli.CI_NIT as cliente_nit',
+                    DB::raw("DATE_FORMAT(v.FechaVenta, '%d/%m/%Y') as fecha")
+                ]);
+
+            // Agrupar por factura
+            $facturas = [];
+            foreach ($ventas as $venta) {
+                $key = $venta->NumeroFactura . '_' . $venta->FechaVenta;
+                if (!isset($facturas[$key])) {
+                    $facturas[$key] = [
+                        'numero_factura' => $venta->NumeroFactura,
+                        'fecha' => $venta->fecha,
+                        'fecha_original' => $venta->FechaVenta,
+                        'ticket_dia' => $venta->TicketDia,
+                        'importe_total' => (float) $venta->ImporteVenta,
+                        'operador_nombre' => $venta->operador_nombre,
+                        'cliente_nombre' => $venta->cliente_nombre ?? 'CONSUMIDOR FINAL',
+                        'cliente_nit' => $venta->cliente_nit ?? '0',
+                        'observacion' => $venta->Observacion,
+                        'productos' => [],
+                        'total_productos' => 0
+                    ];
+                }
+                $facturas[$key]['productos'][] = [
+                    'producto' => $venta->producto,
+                    'codigo' => $venta->producto_codigo,
+                    'unidades' => (float) $venta->unidades,
+                    'precio_unitario' => (float) $venta->preciounidades,
+                    'total' => (float) $venta->totalbolivianos
+                ];
+                $facturas[$key]['total_productos'] += 1;
+            }
+
+            // Calcular totales
+            $totalVentas = 0;
+            $totalUnidades = 0;
+            foreach ($facturas as &$factura) {
+                $totalVentas += $factura['importe_total'];
+                foreach ($factura['productos'] as $prod) {
+                    $totalUnidades += $prod['unidades'];
+                }
+            }
+
+            // Obtener nombre del operador
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as o')
+                ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
+                ->where('o.IdOperador', $request->operador_id)
+                ->first(['i.Nombre']);
+
+            return response()->json([
+                'success' => true,
+                'operador_nombre' => $operador->Nombre ?? 'Desconocido',
+                'facturas' => array_values($facturas),
+                'total_ventas' => $totalVentas,
+                'total_unidades' => $totalUnidades,
+                'total_facturas' => count($facturas)
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error en getVentasPorOperador: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener las ventas: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -128,6 +128,7 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorTipoCont
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayoristasController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PrecioProductoController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorClienteController;
+use App\Http\Controllers\Gestion\Inventario\ReporteProductosBaseController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -499,23 +500,37 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 // 🔥 IMPORTANTE: Agregar esta ruta para ver detalle de movimiento
                 Route::get('/movimiento/{id}', [ReporteInventarioController::class, 'showMovimiento'])->name('gestion.inventario.reporte-inventario.movimiento.show');
             });
+            // REPORTE INVENTARIO BASE - CON MODAL PARA REPORTE DE LAS VENTAS   
+            Route::get('reporte-productos-base', [ReporteProductosBaseController::class, 'index'])->name('gestion.inventario.reporte-productos-base');
 
             // Ajustes de Inventario
             Route::prefix('ajustes')->group(function () {
+                // === LISTADO Y GESTIÓN ===
                 Route::get('/', [AjusteInventarioController::class, 'index'])->name('ajustes-inventario.index');
+                Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
+                
+                // === CREACIÓN Y EDICIÓN ===
                 Route::get('/create', [AjusteInventarioController::class, 'create'])->name('ajustes-inventario.create');
                 Route::post('/crear', [AjusteInventarioController::class, 'crearAjuste'])->name('ajustes-inventario.crear');
-                Route::get('/gestion-estado', [AjusteInventarioController::class, 'gestionEstado'])->name('ajustes-inventario.gestion-estado');
-                Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
+                Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
+                Route::put('/{id}', [AjusteInventarioController::class, 'update'])->name('ajustes-inventario.update');
+                
+                // === CABECERA Y DETALLES ===
                 Route::put('/cabecera/{id}', [AjusteInventarioController::class, 'guardarCabecera'])->name('ajustes-inventario.cabecera');
-                Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
                 Route::post('/detalle', [AjusteInventarioController::class, 'agregarDetalle'])->name('ajustes-inventario.agregar-detalle');
                 Route::put('/detalle/{id}', [AjusteInventarioController::class, 'actualizarDetalle'])->name('ajustes-inventario.detalle.update');
                 Route::delete('/detalle/{id}', [AjusteInventarioController::class, 'eliminarDetalle'])->name('ajustes-inventario.eliminar-detalle');
+                
+                // === CONTABILIZACIÓN Y ESTADOS ===
+                Route::post('/contabilizar/{id}', [AjusteInventarioController::class, 'contabilizar'])->name('ajustes-inventario.contabilizar');
+                Route::post('/{id}/cambiar-estado', [AjusteInventarioController::class, 'cambiarEstado'])->name('ajustes-inventario.cambiar-estado');
+                
+                // === VISUALIZACIÓN ===
                 Route::get('/{id}', [AjusteInventarioController::class, 'show'])->name('ajustes-inventario.show');
-                Route::get('/{id}/edit', [AjusteInventarioController::class, 'edit'])->name('ajustes-inventario.edit');
                 Route::get('/{id}/pdf', [AjusteInventarioController::class, 'pdf'])->name('ajustes-inventario.pdf');
-                Route::put('/{id}', [AjusteInventarioController::class, 'update'])->name('ajustes-inventario.update');
+                
+                // 🔥 NUEVA RUTA: Obtener JSON para el modal
+                Route::get('/{id}/json', [AjusteInventarioController::class, 'getJson'])->name('ajustes-inventario.json');
             });
 
             // Precio Costo
@@ -737,6 +752,10 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::delete('/eliminar-detalle/{id}', [CompraController::class, 'eliminarDetalle'])->name('compras.eliminar-detalle');
             Route::post('/contabilizar/{id}', [CompraController::class, 'contabilizar'])->name('compras.contabilizar');
             Route::post('/{id}/cambiar-estado', [CompraController::class, 'cambiarEstado'])->name('compras.cambiar-estado');
+            
+            // 🔥 NUEVA RUTA PARA OBTENER JSON (para el modal)
+            Route::get('/{id}/json', [CompraController::class, 'getJson'])->name('compras.json');
+            
             Route::get('/{id}', [CompraController::class, 'show'])->name('compras.show');
             Route::get('/{id}/pdf', [CompraController::class, 'pdf'])->name('compras.pdf');
             Route::get('/{id}/edit', [CompraController::class, 'edit'])->name('compras.edit');
@@ -784,8 +803,18 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/export', [ReporteVentasVendedorController::class, 'export'])->name('reporte-ventas-vendedor.export');
             });
 
-            // Ventas por Operador (Supervisor)
-            Route::get('/ventas-por-operador', [ReporteVentasSupervisorPorOperadorController::class, 'index'])->name('gestion.reportes.ventas-por-operador');
+            // ============================================================
+            // 🔥 VENTAS POR OPERADOR (SUPERVISOR) - CORREGIDO
+            // ============================================================
+            Route::prefix('ventas-por-operador')->group(function () {
+                // 📋 Reporte principal
+                Route::get('/', [ReporteVentasSupervisorPorOperadorController::class, 'index'])
+                    ->name('gestion.reportes.ventas-por-operador');
+                
+                // 🔥 Detalle para el modal
+                Route::get('/detalle', [ReporteVentasSupervisorPorOperadorController::class, 'getVentasPorOperador'])
+                    ->name('gestion.reportes.ventas-por-operador.detalle');
+            });
 
             // Unidades Vendidas
             Route::prefix('unidades-ventas')->group(function () {
@@ -797,6 +826,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::prefix('ventas-sucursal')->group(function () {
                 Route::get('/', [ReporteVentasSucursalController::class, 'index'])->name('gestion.reporte-ventas-sucursal.index');
                 Route::get('/detalle-producto', [ReporteVentasSucursalController::class, 'getDetalleProducto'])->name('gestion.reporte-ventas-sucursal.detalle-producto');
+                Route::get('/vendedor/{id}', [ReporteVentasSucursalController::class, 'getVendedor'])->name('gestion.reporte-ventas-sucursal.vendedor');
             });
 
             // Listado de Facturas
@@ -817,9 +847,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             Route::prefix('mayor-cuenta')->group(function () {
                 Route::get('/', [MayorCuentaController::class, 'index'])->name('gestion.reportes.mayor-cuenta.index');
                 Route::get('/por-sucursal', [MayorCuentaController::class, 'porSucursal'])->name('gestion.reportes.mayor-cuenta.por-sucursal');
-                // ✅ GET para compatibilidad con la vista original
                 Route::get('/exportar', [MayorCuentaController::class, 'exportar'])->name('gestion.reportes.mayor-cuenta.exportar');
-                // ✅ POST para la vista con selector de sucursal
                 Route::post('/exportar-por-sucursal', [MayorCuentaController::class, 'exportarPorSucursal'])->name('gestion.reportes.mayor-cuenta.exportar-por-sucursal');
             });
 
@@ -832,16 +860,13 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             // ============================================================
             // DETALLE VENTAS SUPERVISOR - INFORME PUNTO DE VENTA
             // ============================================================
-            Route::prefix('/informe-ventas')->group(function () {
-                // 📋 Grid
+            Route::prefix('informe-ventas')->group(function () {
                 Route::get('/', [InformeVentasController::class, 'index'])
                     ->name('gestion.reportes.informe-ventas.index');
                 
-                // 🔥 Reimprimir factura - Redirige al PDF de PagoVentaController
                 Route::get('/{id}/reimprimir', [InformeVentasController::class, 'reimprimir'])
                     ->name('gestion.reportes.informe-ventas.reimprimir');
             });
-
 
             // ---------- CONTROL INTERNO ----------
             Route::prefix('control-interno')->group(function () {
@@ -864,7 +889,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/{id}/edit', [VentaController::class, 'edit'])->name('gestion.ventas.edit');
                     // 💾 Actualizar productos
                     Route::put('/{id}', [VentaController::class, 'update'])->name('gestion.ventas.update');
-                    // 🔥🔥🔥 AGREGAR ESTA RUTA 🔥🔥🔥
                     // Cambiar estado (Activar/Desactivar)
                     Route::post('/{id}/cambiar-estado', [VentaController::class, 'cambiarEstado'])->name('gestion.ventas.cambiar-estado');
                     // 🖨️ Reimprimir
@@ -892,12 +916,13 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         // 🖨️ Reimprimir mi factura
                         Route::get('/{id}/reimprimir', [VentaController::class, 'reimprimir'])
                             ->name('gestion.mis-facturas.reimprimir');
-                             // 👁️ VER DETALLE (NUEVO)
+                        
+                        // 👁️ VER DETALLE (NUEVO)
                         Route::get('/{id}/show', [VentaController::class, 'showMisFacturas'])
                             ->name('gestion.mis-facturas.show');
                     });
-
                 });
+
                 // Informe Sucursal
                 Route::prefix('informe-sucursal')->group(function () {
                     Route::get('/', [InformeSucursalController::class, 'index'])->name('gestion.reportes.control-interno.informe-sucursal');
@@ -949,9 +974,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/pdf', [InventarioFisicoReimprimeController::class, 'generarPdf'])->name('gestion.reportes.control-interno.inventario-fisico-reimprime.pdf');
                 });
 
-                // ═══════════════════════════════════════════════════════════════
                 // 🆕 LISTA DE PRODUCTOS PARA INVENTARIO FÍSICO
-                // ═══════════════════════════════════════════════════════════════
                 Route::prefix('inventario-fisico-lista-productos')->group(function () {
                     Route::get('/', [InventarioFisicoListaProductosController::class, 'index'])
                         ->name('gestion.reportes.control-interno.inventario-fisico-lista-productos');
@@ -959,10 +982,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         ->name('gestion.reportes.control-interno.inventario-fisico-lista-productos.excel');
                 });
             });
-
-
         });
-
     });
 
     // ============================================================

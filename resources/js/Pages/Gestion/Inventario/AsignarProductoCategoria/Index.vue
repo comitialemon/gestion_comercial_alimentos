@@ -17,31 +17,25 @@ const props = defineProps({
     totalHabilitados: Number,
 })
 
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
 // ==================== ESTADO ====================
 const productosSeleccionados = ref([...(props.asignaciones || [])])
 const buscando = ref('')
 const guardando = ref(false)
 const mostrarSoloHabilitados = ref(false)
-const isMobile = ref(false)
-const isTablet = ref(false)
-const filtrosAbiertos = ref(false)
 
-// ==================== DETECTAR RESPONSIVE ====================
-const handleResize = () => {
-    isMobile.value = window.innerWidth < 640
-    isTablet.value = window.innerWidth >= 640 && window.innerWidth < 1024
-}
+// ==================== COMPUTED ====================
+const totalSeleccionados = computed(() => productosSeleccionados.value.length)
 
-onMounted(() => {
-    handleResize()
-    window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-    window.removeEventListener('resize', handleResize)
-})
-
-// ==================== FUNCIONES ====================
 const productoCoincideConBusqueda = (producto) => {
     if (!buscando.value) return true
     const termino = buscando.value.toLowerCase()
@@ -74,6 +68,7 @@ const categoriasFiltradas = computed(() => {
         .filter(categoria => categoria !== null)
 })
 
+// ==================== FUNCIONES ====================
 const seleccionarTodos = () => {
     const todosIds = []
     categoriasFiltradas.value.forEach(categoria => {
@@ -121,210 +116,169 @@ const guardarAsignaciones = () => {
     })
 }
 
-const toggleFiltros = () => {
-    filtrosAbiertos.value = !filtrosAbiertos.value
-}
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
+})
 
-// Contador de seleccionados
-const totalSeleccionados = computed(() => productosSeleccionados.value.length)
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <template>
-    <div class="min-h-screen" :style="{ backgroundColor: `var(--color-primary-50)` }">
-        <div class="py-2 px-2 sm:py-3 sm:px-3 lg:py-4 lg:px-6">
-            <div class="max-w-6xl mx-auto">
-                <!-- Header Responsive -->
-                <div class="text-center mb-4 sm:mb-6">
-                    <div class="inline-flex items-center justify-center w-10 h-10 sm:w-14 sm:h-14 rounded-2xl mb-2 sm:mb-3"
-                         :style="{ backgroundColor: `var(--color-primary-100)` }">
-                        <i class="fas fa-store text-primary-600 text-base sm:text-xl"
-                           :style="{ color: `var(--color-primary-600)` }"></i>
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
+            <div class="max-w-full mx-auto">
+                <!-- ==================== HEADER COMPACTO ==================== -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-store text-primary-600 text-base"></i>
                     </div>
-                    <h1 class="text-base sm:text-xl font-bold text-gray-900">Habilitar Productos para Sucursal</h1>
-                    <p class="text-[10px] sm:text-xs text-gray-500 px-2">
-                        Selecciona qué productos estarán disponibles en el menú táctil para esta sucursal
-                    </p>
-                    <p class="text-[10px] sm:text-xs text-primary-600 font-medium mt-1">
-                        📍 Sucursal actual: <strong>{{ sucursalNombre }} (ID: {{ sucursalId }})</strong>
-                    </p>
-                    <div class="flex flex-wrap justify-center gap-2 sm:gap-4 mt-2 text-[10px] sm:text-xs">
-                        <span class="text-gray-500">Total: <strong>{{ totalProductos }}</strong></span>
-                        <span class="text-primary-600">Habilitados: <strong>{{ totalSeleccionados }}</strong></span>
+                    <div>
+                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Habilitar Productos para Sucursal</h1>
+                        <p class="text-[10px] text-gray-500">Selecciona qué productos estarán disponibles en el menú táctil</p>
                     </div>
                 </div>
 
-                <div class="bg-white rounded-lg shadow-sm p-3 sm:p-4">
-                    <!-- Barra de búsqueda y filtros -->
-                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3 sm:mb-4 pb-3 border-b"
-                         :style="{ borderColor: `var(--color-primary-200)` }">
-                        
-                        <!-- Búsqueda -->
-                        <div class="relative w-full sm:w-80">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px] sm:text-sm"></i>
+                <!-- ==================== INFO SUCURSAL ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <div class="bg-primary-50 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+                                <i class="fas fa-map-marker-alt text-primary-600 text-[10px]"></i>
+                                <span class="text-xs font-medium text-primary-700">{{ sucursalNombre }}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3 text-[10px]">
+                            <span class="text-gray-500">Total: <strong class="text-gray-800">{{ totalProductos }}</strong></span>
+                            <span class="text-gray-500">|</span>
+                            <span class="text-gray-500">Habilitados: <strong class="text-primary-600">{{ totalSeleccionados }}</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ==================== FILTROS COMPACTOS ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <!-- Buscador -->
+                        <div class="relative flex-1 min-w-[120px] max-w-[280px]">
+                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
                             <input 
                                 type="text" 
                                 v-model="buscando" 
                                 placeholder="Buscar producto..."
-                                class="w-full border rounded-lg pl-8 sm:pl-10 pr-8 sm:pr-10 py-1.5 sm:py-2 text-[11px] sm:text-sm focus:ring-2 focus:outline-none"
-                                :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }"
+                                class="w-full border border-gray-300 rounded-md pl-7 pr-6 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
                             <button 
                                 v-if="buscando"
                                 @click="buscando = ''"
-                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                             >
-                                <i class="fas fa-times text-[10px] sm:text-sm"></i>
+                                <i class="fas fa-times text-[10px]"></i>
                             </button>
                         </div>
-                        
-                        <!-- Botones de acción móvil -->
-                        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                            <!-- Botón toggle filtros móvil -->
-                            <button 
-                                @click="toggleFiltros"
-                                class="sm:hidden flex-1 px-3 py-1.5 bg-white border rounded-lg text-[10px] flex items-center justify-center gap-1.5 transition"
-                                :style="{ borderColor: `var(--color-primary-300)` }"
+
+                        <!-- Checkbox -->
+                        <label class="flex items-center gap-1.5 text-[10px] text-gray-600 cursor-pointer whitespace-nowrap">
+                            <input type="checkbox" v-model="mostrarSoloHabilitados" 
+                                class="w-3.5 h-3.5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer">
+                            <span>Solo habilitados</span>
+                        </label>
+
+                        <!-- Botones de selección -->
+                        <div class="flex gap-1">
+                            <button @click="seleccionarTodos" 
+                                class="px-2.5 py-1 text-[10px] text-primary-600 hover:bg-primary-50 rounded transition flex items-center gap-1">
+                                <i class="fas fa-check-square text-[9px]"></i> Seleccionar
+                            </button>
+                            <button @click="deseleccionarTodos" 
+                                class="px-2.5 py-1 text-[10px] text-gray-500 hover:bg-gray-100 rounded transition flex items-center gap-1">
+                                <i class="fas fa-square text-[9px]"></i> Deseleccionar
+                            </button>
+                        </div>
+
+                        <!-- Botón guardar -->
+                        <button @click="guardarAsignaciones" :disabled="guardando"
+                            class="ml-auto px-3 py-1.5 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5 disabled:opacity-50"
+                            :style="{ backgroundColor: `var(--color-primary-600)` }">
+                            <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else class="fas fa-save text-[10px]"></i>
+                            {{ guardando ? 'Guardando...' : 'Guardar' }}
+                            <span class="bg-white/20 rounded-full px-1.5 py-0.5 text-[9px]">{{ totalSeleccionados }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ==================== LISTA DE CATEGORÍAS ==================== -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="relative overflow-y-auto" style="max-height: 65vh;">
+                        <div class="p-3 space-y-3">
+                            <div 
+                                v-for="categoria in categoriasFiltradas" 
+                                :key="categoria.id"
+                                class="border border-gray-200 rounded-lg overflow-hidden"
                             >
-                                <i class="fas fa-sliders-h text-[10px]" :style="{ color: `var(--color-primary-600)` }"></i>
-                                <span class="text-gray-700">{{ filtrosAbiertos ? 'Ocultar' : 'Filtros' }}</span>
-                            </button>
-                            
-                            <!-- Botones desktop -->
-                            <div class="hidden sm:flex gap-2">
-                                <label class="flex items-center gap-1.5 text-[10px] sm:text-xs cursor-pointer">
-                                    <input type="checkbox" v-model="mostrarSoloHabilitados" 
-                                           class="rounded border-gray-300 focus:ring-0 cursor-pointer"
-                                           :style="{ accentColor: `var(--color-primary-600)` }">
-                                    Solo habilitados
-                                </label>
-                                <button @click="seleccionarTodos" 
-                                        class="text-[10px] sm:text-xs transition"
-                                        :style="{ color: `var(--color-primary-600)` }">
-                                    <i class="fas fa-check-square mr-1"></i> Seleccionar
-                                </button>
-                                <button @click="deseleccionarTodos" 
-                                        class="text-[10px] sm:text-xs text-gray-500 hover:text-gray-700 transition">
-                                    <i class="fas fa-square mr-1"></i> Deseleccionar
-                                </button>
-                            </div>
-                            
-                            <!-- Botón guardar (móvil) -->
-                            <button @click="guardarAsignaciones" :disabled="guardando"
-                                    class="flex-1 sm:flex-none px-3 sm:px-5 py-1.5 sm:py-2 text-white rounded-lg text-[10px] sm:text-sm font-medium transition disabled:opacity-50 flex items-center justify-center gap-1.5"
-                                    :style="{ backgroundColor: `var(--color-primary-600)` }">
-                                <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px] sm:text-sm"></i>
-                                <i v-else class="fas fa-save text-[10px] sm:text-sm"></i>
-                                {{ guardando ? 'Guardando...' : (isMobile ? 'Guardar' : 'Guardar Habilitaciones') }}
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Filtros móvil (colapsable) -->
-                    <div v-if="isMobile" 
-                         class="transition-all duration-300 overflow-hidden"
-                         :class="filtrosAbiertos ? 'max-h-40 opacity-100 mb-3' : 'max-h-0 opacity-0'">
-                        <div class="bg-gray-50 rounded-lg p-3 border" :style="{ borderColor: `var(--color-primary-200)` }">
-                            <div class="flex flex-col gap-2">
-                                <label class="flex items-center gap-2 text-[11px] cursor-pointer">
-                                    <input type="checkbox" v-model="mostrarSoloHabilitados" 
-                                           class="rounded border-gray-300 focus:ring-0 cursor-pointer"
-                                           :style="{ accentColor: `var(--color-primary-600)` }">
-                                    Mostrar solo habilitados
-                                </label>
-                                <div class="flex gap-2">
-                                    <button @click="seleccionarTodos" 
-                                            class="flex-1 px-3 py-1.5 rounded-md text-[10px] transition"
-                                            :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-600)` }">
-                                        <i class="fas fa-check-square mr-1"></i> Seleccionar visibles
-                                    </button>
-                                    <button @click="deseleccionarTodos" 
-                                            class="flex-1 px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-[10px] hover:bg-gray-300 transition">
-                                        <i class="fas fa-square mr-1"></i> Deseleccionar
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Contador de seleccionados (móvil) -->
-                    <div v-if="isMobile" class="text-[10px] text-gray-500 mb-2">
-                        <span class="text-primary-600 font-medium">{{ totalSeleccionados }}</span> de {{ totalProductos }} productos habilitados
-                    </div>
-
-                    <!-- Lista de categorías con productos -->
-                    <div class="max-h-[450px] sm:max-h-[550px] overflow-y-auto space-y-3 sm:space-y-4">
-                        <div 
-                            v-for="categoria in categoriasFiltradas" 
-                            :key="categoria.id"
-                            class="border rounded-lg overflow-hidden"
-                            :style="{ borderColor: `var(--color-primary-200)` }"
-                        >
-                            <!-- Header de categoría -->
-                            <div class="px-2 sm:px-3 py-1.5 sm:py-2 border-b flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1 sm:gap-2"
-                                 :style="{ backgroundColor: `var(--color-primary-50)`, borderColor: `var(--color-primary-200)` }">
-                                <div class="flex items-center gap-1.5 sm:gap-2">
-                                    <i class="fas fa-folder-open text-primary-600 text-[10px] sm:text-sm"
-                                       :style="{ color: `var(--color-primary-600)` }"></i>
-                                    <span class="text-[11px] sm:text-sm font-semibold" :style="{ color: `var(--color-primary-700)` }">
-                                        {{ categoria.nombre }}
+                                <!-- Header de categoría -->
+                                <div class="flex flex-wrap justify-between items-center px-3 py-1.5 bg-primary-50 border-b border-primary-100">
+                                    <div class="flex items-center gap-1.5">
+                                        <i class="fas fa-folder-open text-primary-600 text-[10px]"></i>
+                                        <span class="text-xs font-semibold text-primary-700">{{ categoria.nombre }}</span>
+                                    </div>
+                                    <span class="text-[9px] text-gray-500">
+                                        {{ categoria.productos.filter(p => productosSeleccionados.includes(p.id)).length }}/{{ categoria.productos.length }} habilitados
                                     </span>
                                 </div>
-                                <span class="text-[9px] sm:text-xs text-gray-500">
-                                    {{ categoria.productos.filter(p => productosSeleccionados.includes(p.id)).length }}/{{ categoria.productos.length }} habilitados
-                                </span>
-                            </div>
-                            
-                            <!-- Grid de productos de la categoría -->
-                            <div class="p-2 sm:p-3">
-                                <div class="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-3 gap-1.5 sm:gap-2">
-                                    <div 
-                                        v-for="producto in categoria.productos"
-                                        :key="producto.id"
-                                        :class="[
-                                            'flex items-center gap-1.5 sm:gap-3 p-1.5 sm:p-2 rounded-lg border cursor-pointer transition-all',
-                                            estaSeleccionado(producto.id) 
-                                                ? 'border-primary-400 bg-primary-50' 
-                                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                        ]"
-                                        @click="toggleProducto(producto.id)"
-                                    >
-                                        <div class="w-4 h-4 sm:w-5 sm:h-5 rounded border flex items-center justify-center flex-shrink-0"
-                                            :class="estaSeleccionado(producto.id) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 bg-white'">
-                                            <i v-if="estaSeleccionado(producto.id)" class="fas fa-check text-white text-[8px] sm:text-xs"></i>
-                                        </div>
-                                        <div class="flex-1 min-w-0">
-                                            <div class="text-[10px] sm:text-sm font-medium text-gray-800 truncate" :title="producto.nombre">
-                                                {{ producto.nombre }}
+                                
+                                <!-- Grid de productos -->
+                                <div class="p-2">
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                                        <div 
+                                            v-for="producto in categoria.productos"
+                                            :key="producto.id"
+                                            :class="[
+                                                'flex items-center gap-2 p-1.5 rounded-md border cursor-pointer transition-all',
+                                                estaSeleccionado(producto.id) 
+                                                    ? 'border-primary-400 bg-primary-50' 
+                                                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                            ]"
+                                            @click="toggleProducto(producto.id)"
+                                        >
+                                            <!-- Checkbox -->
+                                            <div class="w-4 h-4 rounded border flex items-center justify-center flex-shrink-0"
+                                                :class="estaSeleccionado(producto.id) ? 'bg-primary-500 border-primary-500' : 'border-gray-300 bg-white'">
+                                                <i v-if="estaSeleccionado(producto.id)" class="fas fa-check text-white text-[8px]"></i>
                                             </div>
-                                            <div class="text-[9px] sm:text-xs font-semibold" :style="{ color: `var(--color-primary-600)` }">
-                                                {{ Number(producto.PrecioVenta).toFixed(2) }} Bs
+                                            
+                                            <!-- Info -->
+                                            <div class="flex-1 min-w-0">
+                                                <div class="text-[11px] font-medium text-gray-800 truncate" :title="producto.nombre">
+                                                    {{ producto.nombre }}
+                                                </div>
+                                                <div class="text-[10px] font-semibold text-primary-600">
+                                                    {{ Number(producto.PrecioVenta).toFixed(2) }} Bs
+                                                </div>
                                             </div>
+                                            <div class="text-[8px] text-gray-400 font-mono flex-shrink-0 hidden sm:block">#{{ producto.id }}</div>
                                         </div>
-                                        <div class="text-[8px] sm:text-xs text-gray-400 font-mono flex-shrink-0 hidden xs:block">#{{ producto.id }}</div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                        
-                        <!-- Mensaje sin resultados -->
-                        <div v-if="categoriasFiltradas.length === 0" class="text-center text-gray-400 py-8 sm:py-12">
-                            <i class="fas fa-box-open text-2xl sm:text-3xl mb-2 block"></i>
-                            <p class="text-[10px] sm:text-sm" v-if="buscando">No hay productos que coincidan con "{{ buscando }}"</p>
-                            <p class="text-[10px] sm:text-sm" v-else>No hay productos disponibles</p>
+                            
+                            <!-- Mensaje sin resultados -->
+                            <div v-if="categoriasFiltradas.length === 0" class="text-center text-gray-400 py-10">
+                                <i class="fas fa-box-open text-2xl mb-2 block"></i>
+                                <p class="text-xs" v-if="buscando">No hay productos que coincidan con "{{ buscando }}"</p>
+                                <p class="text-xs" v-else>No hay productos disponibles</p>
+                            </div>
                         </div>
                     </div>
+                </div>
 
-                    <!-- Botón guardar (mobile fixed) -->
-                    <div v-if="isMobile" class="mt-3 pt-3 border-t flex justify-end sticky bottom-0 bg-white pb-2"
-                         :style="{ borderColor: `var(--color-primary-200)` }">
-                        <button @click="guardarAsignaciones" :disabled="guardando"
-                                class="w-full px-4 py-2 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 flex items-center justify-center gap-2"
-                                :style="{ backgroundColor: `var(--color-primary-600)` }">
-                            <i v-if="guardando" class="fas fa-spinner fa-spin"></i>
-                            <i v-else class="fas fa-save"></i>
-                            {{ guardando ? 'Guardando...' : `Guardar (${totalSeleccionados} habilitados)` }}
-                        </button>
-                    </div>
+                <!-- ==================== FOOTER ==================== -->
+                <div class="mt-3 text-[8px] text-gray-400 text-center">
+                    <i class="fas fa-info-circle"></i> Selecciona los productos que estarán disponibles en el menú táctil de esta sucursal
                 </div>
             </div>
         </div>
@@ -332,67 +286,28 @@ const totalSeleccionados = computed(() => productosSeleccionados.value.length)
 </template>
 
 <style scoped>
-/* Transiciones suaves */
-.transition-all {
-    transition-property: all;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 300ms;
-}
-
-input:focus {
-    --tw-ring-offset-width: 0px;
-    --tw-ring-offset-color: #fff;
-    --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-    --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-    box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
-    outline: 2px solid transparent;
-    outline-offset: 2px;
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
 }
 
 /* Scrollbar personalizada */
-.max-h-\[450px\]::-webkit-scrollbar,
-.max-h-\[550px\]::-webkit-scrollbar {
+.overflow-y-auto::-webkit-scrollbar {
     width: 4px;
 }
 
-.max-h-\[450px\]::-webkit-scrollbar-track,
-.max-h-\[550px\]::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 4px;
 }
 
-.max-h-\[450px\]::-webkit-scrollbar-thumb,
-.max-h-\[550px\]::-webkit-scrollbar-thumb {
+.overflow-y-auto::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
 
-.max-h-\[450px\]::-webkit-scrollbar-thumb:hover,
-.max-h-\[550px\]::-webkit-scrollbar-thumb:hover {
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
-}
-
-/* Estilos para pantallas muy pequeñas */
-@media (min-width: 480px) {
-    .xs\:grid-cols-2 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .xs\:block {
-        display: block;
-    }
-}
-
-@media (max-width: 479px) {
-    .xs\:grid-cols-2 {
-        grid-template-columns: 1fr;
-    }
-    .xs\:block {
-        display: none;
-    }
-}
-
-/* Scroll suave */
-* {
-    scroll-behavior: smooth;
 }
 </style>

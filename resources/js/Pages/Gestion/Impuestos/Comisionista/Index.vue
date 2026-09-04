@@ -24,7 +24,17 @@ const props = defineProps({
     }
 })
 
-// Estado
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
+// ==================== ESTADO ====================
 const search = ref(props.filtros?.search || '')
 const editando = ref(false)
 const editId = ref(null)
@@ -42,26 +52,7 @@ const mostrarResultados = ref(false)
 const buscandoIdentificador = ref(false)
 const identificadorSeleccionado = ref(null)
 
-// Verificar mensajes flash al cargar
-onMounted(() => {
-    const flashSuccess = page.props.flash?.success
-    const flashError = page.props.flash?.error
-    
-    if (flashSuccess && !sessionStorage.getItem('last_flash_success')) {
-        toast?.success('Éxito', flashSuccess)
-        sessionStorage.setItem('last_flash_success', flashSuccess)
-        setTimeout(() => sessionStorage.removeItem('last_flash_success'), 500)
-    }
-    if (flashError && !sessionStorage.getItem('last_flash_error')) {
-        toast?.error('Error', flashError)
-        sessionStorage.setItem('last_flash_error', flashError)
-        setTimeout(() => sessionStorage.removeItem('last_flash_error'), 500)
-    }
-    
-    resetForm()
-})
-
-// Buscar identificadores
+// ==================== FUNCIONES ====================
 const buscarIdentificador = async () => {
     const termino = busquedaIdentificador.value?.trim()
     
@@ -86,7 +77,6 @@ const buscarIdentificador = async () => {
     }
 }
 
-// Seleccionar identificador
 const seleccionarIdentificador = (id, ci, nombre) => {
     formData.value.IdIdentificador = id
     identificadorSeleccionado.value = { id, ci, nombre }
@@ -95,7 +85,6 @@ const seleccionarIdentificador = (id, ci, nombre) => {
     mostrarResultados.value = false
 }
 
-// Limpiar selección
 const limpiarSeleccion = () => {
     if (editando.value) return
     formData.value.IdIdentificador = ''
@@ -105,7 +94,6 @@ const limpiarSeleccion = () => {
     mostrarResultados.value = false
 }
 
-// Ocultar resultados
 const ocultarResultados = () => {
     setTimeout(() => {
         if (!formData.value.IdIdentificador) {
@@ -151,7 +139,6 @@ watch(busquedaIdentificador, (newVal) => {
     }, 400)
 })
 
-// Resetear formulario
 const resetForm = () => {
     editando.value = false
     editId.value = null
@@ -166,7 +153,6 @@ const resetForm = () => {
     errors.value = {}
 }
 
-// Editar
 const editar = (item) => {
     editando.value = true
     editId.value = item.IdComisionista
@@ -186,7 +172,6 @@ const editar = (item) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-// Guardar
 const guardar = async () => {
     if (!formData.value.IdIdentificador) {
         toast?.error('Validación', 'Debes seleccionar una persona')
@@ -240,49 +225,71 @@ watch(search, (newVal) => {
         })
     }, 500)
 })
+
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    
+    const flashSuccess = page.props.flash?.success
+    const flashError = page.props.flash?.error
+    
+    if (flashSuccess && !sessionStorage.getItem('last_flash_success')) {
+        toast?.success('Éxito', flashSuccess)
+        sessionStorage.setItem('last_flash_success', flashSuccess)
+        setTimeout(() => sessionStorage.removeItem('last_flash_success'), 500)
+    }
+    if (flashError && !sessionStorage.getItem('last_flash_error')) {
+        toast?.error('Error', flashError)
+        sessionStorage.setItem('last_flash_error', flashError)
+        setTimeout(() => sessionStorage.removeItem('last_flash_error'), 500)
+    }
+    
+    resetForm()
+})
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100 pb-20">
-        <div class="py-3 px-3 sm:px-5 lg:px-6">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
-                <!-- Header -->
-                <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
-                    <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-user-tie text-emerald-600 text-sm"></i>
+                <!-- ==================== HEADER COMPACTO ==================== -->
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-user-tie text-primary-600 text-base"></i>
                         </div>
                         <div>
-                            <h1 class="text-base font-bold text-gray-800">Comisionistas</h1>
+                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Comisionistas</h1>
                             <p class="text-[10px] text-gray-500">Administra los vendedores o comisionistas</p>
-                            <p v-if="contexto_actual?.cliente_nombre" class="text-[10px] text-emerald-600">
+                            <p v-if="contexto_actual?.cliente_nombre" class="text-[9px] text-primary-600">
                                 <i class="fas fa-building mr-1"></i> {{ contexto_actual.cliente_nombre }}
                             </p>
                         </div>
                     </div>
                 </div>
 
-                <!-- Filtro de búsqueda -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-6">
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <div class="flex-1">
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Buscar</label>
+                <!-- ==================== FILTRO DE BÚSQUEDA ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="flex-1 min-w-[140px] max-w-[280px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Buscar</label>
                             <input 
                                 type="text" 
                                 v-model="search" 
-                                placeholder="Buscar por nombre o CI..." 
-                                class="w-full border rounded-md px-3 py-2 text-sm"
+                                placeholder="Nombre o CI..." 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
                     </div>
                 </div>
 
-                <!-- Formulario inline -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-6 sticky top-2 z-10 border border-emerald-200">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <!-- ==================== FORMULARIO INLINE COMPACTO ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4 border border-primary-200">
+                    <div class="flex flex-wrap items-end gap-2">
                         <!-- Identificador -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Persona *</label>
+                        <div class="flex-1 min-w-[160px] max-w-[280px]">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Persona *</label>
                             <div class="relative">
                                 <input 
                                     type="text" 
@@ -290,8 +297,8 @@ watch(search, (newVal) => {
                                     @focus="mostrarResultados = !!identificadoresList.length"
                                     @blur="ocultarResultados"
                                     :disabled="editando"
-                                    placeholder="Escribe para buscar por CI o nombre..." 
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-8"
+                                    placeholder="Buscar por CI o nombre..." 
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm pr-7 focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     :class="{ 'border-red-500': errors.IdIdentificador }"
                                 />
                                 <button 
@@ -300,49 +307,48 @@ watch(search, (newVal) => {
                                     class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                                     type="button"
                                 >
-                                    <i class="fas fa-times text-xs"></i>
+                                    <i class="fas fa-times text-[10px]"></i>
                                 </button>
                                 
                                 <!-- Lista de resultados -->
                                 <div 
                                     v-if="mostrarResultados && identificadoresList.length > 0 && !formData.IdIdentificador"
-                                    class="absolute z-20 mt-1 w-full border rounded-md max-h-48 overflow-y-auto bg-white shadow-lg"
+                                    class="absolute z-20 mt-1 w-full border border-gray-200 rounded-md max-h-40 overflow-y-auto bg-white shadow-lg"
                                 >
                                     <div 
                                         v-for="item in identificadoresList" 
                                         :key="item.id"
                                         @click="seleccionarIdentificador(item.id, item.ci, item.nombre)"
-                                        class="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 text-sm"
+                                        class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer border-b last:border-b-0 text-sm flex items-center gap-2"
                                     >
-                                        <div class="flex items-center gap-2">
-                                            <span class="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded-full">{{ item.ci }}</span>
-                                            <span class="text-gray-700">{{ item.nombre }}</span>
-                                        </div>
+                                        <span class="font-mono text-[10px] bg-gray-100 px-1.5 py-0.5 rounded">{{ item.ci }}</span>
+                                        <span class="text-xs text-gray-700">{{ item.nombre }}</span>
                                     </div>
                                 </div>
                                 
                                 <!-- Indicador de búsqueda -->
-                                <div v-if="buscandoIdentificador" class="text-xs text-gray-400 mt-1">
+                                <div v-if="buscandoIdentificador" class="text-[10px] text-gray-400 mt-0.5">
                                     <i class="fas fa-spinner fa-spin mr-1"></i> Buscando...
                                 </div>
                                 
-                                <!-- Mensaje sin resultados -->
-                                <div v-if="mostrarResultados && !buscandoIdentificador && busquedaIdentificador && busquedaIdentificador.length >= 2 && identificadoresList.length === 0 && !formData.IdIdentificador" class="text-xs text-gray-400 mt-1">
+                                <!-- Sin resultados -->
+                                <div v-if="mostrarResultados && !buscandoIdentificador && busquedaIdentificador && busquedaIdentificador.length >= 2 && identificadoresList.length === 0 && !formData.IdIdentificador" 
+                                    class="text-[10px] text-gray-400 mt-0.5">
                                     <i class="fas fa-search mr-1"></i> No se encontraron resultados
                                 </div>
                                 
-                                <!-- Identificador seleccionado -->
-                                <div v-if="formData.IdIdentificador" class="text-xs text-emerald-600 mt-1 flex items-center gap-1">
+                                <!-- Seleccionado -->
+                                <div v-if="formData.IdIdentificador" class="text-[10px] text-primary-600 mt-0.5 flex items-center gap-1">
                                     <i class="fas fa-check-circle"></i>
-                                    Seleccionado: <span class="font-medium">{{ identificadorSeleccionado?.ci }} - {{ identificadorSeleccionado?.nombre }}</span>
+                                    <span class="font-medium">{{ identificadorSeleccionado?.ci }} - {{ identificadorSeleccionado?.nombre }}</span>
                                 </div>
                             </div>
-                            <p v-if="errors.IdIdentificador" class="text-xs text-red-500 mt-1">{{ errors.IdIdentificador }}</p>
+                            <p v-if="errors.IdIdentificador" class="text-[8px] text-red-500 mt-0.5">{{ errors.IdIdentificador }}</p>
                         </div>
 
                         <!-- Comisión -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Comisión (%) *</label>
+                        <div class="w-28">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Comisión (%) *</label>
                             <div class="relative">
                                 <input 
                                     type="number" 
@@ -350,118 +356,148 @@ watch(search, (newVal) => {
                                     min="0" 
                                     max="100" 
                                     step="0.01"
-                                    class="w-full border rounded-md px-3 py-2 text-sm pr-12"
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm pr-7 focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     :class="{ 'border-red-500': errors.Comision }"
                                 />
-                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">%</span>
+                                <span class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]">%</span>
                             </div>
-                            <p v-if="errors.Comision" class="text-xs text-red-500 mt-1">{{ errors.Comision }}</p>
+                            <p v-if="errors.Comision" class="text-[8px] text-red-500 mt-0.5">{{ errors.Comision }}</p>
                         </div>
 
                         <!-- Botones -->
-                        <div class="flex gap-2">
+                        <div class="flex gap-1.5 ml-auto">
                             <button 
                                 @click="guardar" 
                                 :disabled="processing || !formData.IdIdentificador"
-                                class="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-md text-sm hover:bg-emerald-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1"
+                                class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1.5"
                             >
-                                <i v-if="processing" class="fas fa-spinner fa-spin text-xs"></i>
-                                <i v-else :class="editando ? 'fas fa-pencil-alt' : 'fas fa-plus'" class="text-xs"></i>
-                                {{ processing ? 'Procesando...' : (editando ? 'Actualizar' : 'Guardar') }}
+                                <i v-if="processing" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else :class="editando ? 'fas fa-pencil-alt' : 'fas fa-plus'" class="text-[10px]"></i>
+                                {{ processing ? 'Guardando...' : (editando ? 'Actualizar' : 'Guardar') }}
                             </button>
                             <button 
                                 v-if="editando" 
                                 @click="resetForm" 
-                                class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md text-sm hover:bg-gray-300 transition"
+                                class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1.5"
                             >
-                                <i class="fas fa-times text-xs"></i> Cancelar
+                                <i class="fas fa-times text-[10px]"></i> Cancelar
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- CARDS PARA MÓVIL -->
-                <div class="block sm:hidden space-y-3">
-                    <div 
-                        v-for="item in comisionistas.data" 
-                        :key="item.IdComisionista" 
-                        class="bg-white rounded-lg shadow-sm p-4 border border-gray-100"
-                    >
-                        <div class="flex justify-between items-start mb-2">
-                            <div>
-                                <div class="flex items-center gap-2 mb-1">
-                                    <span class="font-semibold text-gray-800 text-sm">{{ item.identificador?.Nombre || '-' }}</span>
-                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800">
+                <!-- ==================== TABLA DE COMISIONISTAS ==================== -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="relative overflow-x-auto" style="max-height: 65vh; overflow-y: auto;">
+                        
+                        <!-- VISTA MÓVIL (tarjetas) -->
+                        <div v-if="isMobile" class="p-2 space-y-2">
+                            <div v-for="item in comisionistas.data" :key="item.IdComisionista" 
+                                class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
+                                <div class="flex justify-between items-start">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-xs font-medium text-gray-800 truncate">{{ item.identificador?.Nombre || '-' }}</p>
+                                        <p class="text-[10px] font-mono text-gray-500">{{ item.identificador?.CI_NIT || '-' }}</p>
+                                    </div>
+                                    <span class="px-1.5 py-0.5 text-[9px] font-semibold rounded-full bg-blue-100 text-blue-700 flex-shrink-0 ml-2">
                                         {{ item.Comision }}%
                                     </span>
                                 </div>
-                                <p class="text-[11px] text-gray-500 font-mono">
-                                    <i class="fas fa-id-card mr-1"></i> {{ item.identificador?.CI_NIT || '-' }}
-                                </p>
+                                <div class="flex justify-end pt-2 mt-1.5 border-t border-gray-200">
+                                    <button @click="editar(item)" 
+                                        class="px-2.5 py-1 text-[9px] rounded bg-primary-50 text-primary-600 hover:bg-primary-100 transition flex items-center gap-1">
+                                        <i class="fas fa-edit text-[8px]"></i> Editar
+                                    </button>
+                                </div>
+                            </div>
+                            <div v-if="!comisionistas.data || comisionistas.data.length === 0" class="text-center text-gray-400 py-8">
+                                <i class="fas fa-user-tie text-2xl mb-1 block"></i>
+                                <span class="text-xs">No hay comisionistas registrados</span>
                             </div>
                         </div>
-                        
-                        <div class="flex justify-end pt-3 border-t border-gray-100 mt-2">
-                            <button 
-                                @click="editar(item)" 
-                                class="text-emerald-600 hover:text-emerald-800 text-xs flex items-center gap-1 px-3 py-1 hover:bg-emerald-50 rounded transition"
-                            >
-                                <i class="fas fa-edit"></i> Editar
-                            </button>
+
+                        <!-- VISTA TABLET (tabla compacta) -->
+                        <div v-else-if="isTablet" class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">CI/NIT</th>
+                                        <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Nombre</th>
+                                        <th class="px-3 py-1.5 text-center text-[9px] font-medium text-primary-700 uppercase w-24">Comisión</th>
+                                        <th class="px-3 py-1.5 text-right text-[9px] font-medium text-primary-700 uppercase w-16">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="item in comisionistas.data" :key="item.IdComisionista" class="hover:bg-gray-50">
+                                        <td class="px-3 py-1.5 text-[10px] font-mono text-gray-600">{{ item.identificador?.CI_NIT || '-' }}</td>
+                                        <td class="px-3 py-1.5 text-[10px] text-gray-700">
+                                            <i class="fas fa-user text-primary-400 mr-1 text-[8px]"></i>
+                                            {{ item.identificador?.Nombre || '-' }}
+                                        </td>
+                                        <td class="px-3 py-1.5 text-center">
+                                            <span class="px-1.5 py-0.5 text-[8px] font-semibold rounded-full bg-blue-100 text-blue-700">
+                                                {{ item.Comision }}%
+                                            </span>
+                                        </td>
+                                        <td class="px-3 py-1.5 text-right">
+                                            <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 transition text-[10px] p-1" title="Editar">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="!comisionistas.data || comisionistas.data.length === 0">
+                                        <td colspan="4" class="px-4 py-8 text-center text-gray-400 text-xs">
+                                            <i class="fas fa-user-tie text-2xl mb-1 block"></i>
+                                            No hay comisionistas registrados
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- VISTA ESCRITORIO (tabla completa) -->
+                        <div v-else class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-primary-50 sticky top-0 z-10">
+                                    <tr>
+                                        <th class="px-4 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">CI/NIT</th>
+                                        <th class="px-4 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Nombre</th>
+                                        <th class="px-4 py-2 text-center text-[10px] font-medium text-primary-700 uppercase w-24">Comisión</th>
+                                        <th class="px-4 py-2 text-right text-[10px] font-medium text-primary-700 uppercase w-16">Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="item in comisionistas.data" :key="item.IdComisionista" class="hover:bg-gray-50 transition">
+                                        <td class="px-4 py-2 text-xs font-mono text-gray-600">{{ item.identificador?.CI_NIT || '-' }}</td>
+                                        <td class="px-4 py-2 text-xs text-gray-700">
+                                            <i class="fas fa-user text-primary-400 mr-1 text-[10px]"></i>
+                                            {{ item.identificador?.Nombre || '-' }}
+                                        </td>
+                                        <td class="px-4 py-2 text-center">
+                                            <span class="px-2 py-0.5 text-[9px] font-semibold rounded-full bg-blue-100 text-blue-700">
+                                                {{ item.Comision }}%
+                                            </span>
+                                        </td>
+                                        <td class="px-4 py-2 text-right">
+                                            <button @click="editar(item)" class="text-primary-600 hover:text-primary-800 transition text-xs p-1 rounded hover:bg-primary-50" title="Editar">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    <tr v-if="!comisionistas.data || comisionistas.data.length === 0">
+                                        <td colspan="4" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                            <i class="fas fa-user-tie text-2xl mb-1 block"></i>
+                                            No hay comisionistas registrados
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                    
-                    <div v-if="!comisionistas.data || comisionistas.data.length === 0" class="bg-white rounded-lg shadow-sm p-8 text-center">
-                        <i class="fas fa-user-tie text-3xl mb-2 block text-gray-300"></i>
-                        <p class="text-sm text-gray-400">No hay comisionistas registrados</p>
-                    </div>
                 </div>
 
-                <!-- TABLA PARA DESKTOP -->
-                <div class="hidden sm:block bg-white rounded-lg shadow-sm overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-emerald-50">
-                                <tr>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-emerald-700 uppercase">CI/NIT</th>
-                                    <th class="px-3 py-2 text-left text-[10px] font-semibold text-emerald-700 uppercase">Nombre</th>
-                                    <th class="px-3 py-2 text-center text-[10px] font-semibold text-emerald-700 uppercase">Comisión</th>
-                                    <th class="px-3 py-2 text-right text-[10px] font-semibold text-emerald-700 uppercase">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody class="bg-white divide-y divide-gray-200">
-                                <tr v-for="item in comisionistas.data" :key="item.IdComisionista" class="hover:bg-gray-50 transition">
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs font-mono text-gray-900">
-                                        {{ item.identificador?.CI_NIT || '-' }}
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-xs text-gray-700">
-                                        <i class="fas fa-user text-emerald-400 mr-1 text-[10px]"></i>
-                                        {{ item.identificador?.Nombre || '-' }}
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-center">
-                                        <span class="inline-flex items-center px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-100 text-blue-800">
-                                            {{ item.Comision }}%
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 whitespace-nowrap text-right">
-                                        <button @click="editar(item)" class="text-emerald-600 hover:text-emerald-800 transition p-1 hover:bg-emerald-50 rounded" title="Editar">
-                                            <i class="fas fa-edit text-xs"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr v-if="!comisionistas.data || comisionistas.data.length === 0">
-                                    <td colspan="4" class="px-3 py-8 text-center text-gray-400 text-xs">
-                                        <i class="fas fa-user-tie text-2xl mb-1 block text-gray-300"></i>
-                                        No hay comisionistas registrados
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Paginación -->
-                <div v-if="comisionistas.links && comisionistas.links.length > 1" class="mt-4 px-3 py-2 bg-white rounded-lg shadow-sm">
+                <!-- ==================== PAGINACIÓN ==================== -->
+                <div v-if="comisionistas.links && comisionistas.links.length > 1" class="mt-4 px-3 py-2 bg-white rounded-xl shadow-sm">
                     <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
                         <div class="text-[10px] text-gray-500">
                             Mostrando {{ comisionistas.from || 0 }} a {{ comisionistas.to || 0 }} de {{ comisionistas.total || 0 }}
@@ -471,16 +507,21 @@ watch(search, (newVal) => {
                                 v-for="link in comisionistas.links" 
                                 :key="link.label" 
                                 :href="link.url || '#'" 
-                                class="px-2 py-0.5 rounded border text-[10px] transition"
+                                class="px-2.5 py-1 rounded-lg border text-[10px] transition"
                                 :class="{ 
-                                    'bg-emerald-600 text-white border-emerald-600': link.active, 
-                                    'bg-white text-gray-700 hover:bg-gray-50': !link.active && link.url, 
-                                    'opacity-50 cursor-not-allowed': !link.url 
+                                    'bg-primary-600 text-white border-primary-600': link.active, 
+                                    'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url, 
+                                    'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url 
                                 }" 
                                 v-html="link.label" 
                             />
                         </div>
                     </div>
+                </div>
+
+                <!-- ==================== FOOTER ==================== -->
+                <div class="mt-3 text-[8px] text-gray-400 text-center">
+                    <i class="fas fa-info-circle"></i> Los comisionistas reciben un porcentaje de las ventas que realizan
                 </div>
             </div>
         </div>
@@ -488,18 +529,28 @@ watch(search, (newVal) => {
 </template>
 
 <style scoped>
-@keyframes fade-in-up {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
     }
 }
 
-.animate-fade-in-up {
-    animation: fade-in-up 0.2s ease-out;
+/* Scrollbar personalizada */
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
 }
 </style>

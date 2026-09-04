@@ -191,11 +191,9 @@ const construirUrlConFiltros = (url) => {
     if (!url) return '#'
     
     try {
-        // Crear objeto URL
         const urlObj = new URL(url, window.location.origin)
         const params = new URLSearchParams(urlObj.search)
         
-        // Mantener los filtros actuales
         if (sucursalId.value) {
             params.set('sucursal_id', sucursalId.value)
         }
@@ -360,7 +358,6 @@ onMounted(() => {
     window.addEventListener('resize', handleResize)
     document.addEventListener('click', handleClickOutside)
     
-    // 🔥 Si hay sucursal seleccionada desde props, mostrarla
     if (sucursalId.value) {
         const sucursal = props.sucursales?.find(s => s.id == sucursalId.value)
         if (sucursal) {
@@ -567,6 +564,8 @@ onUnmounted(() => {
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">N° Correlativo</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Proveedor</th>
+                                                <!-- 🔥 NUEVA COLUMNA: OPERADOR -->
+                                                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Ingreso por Operador</th>
                                                 <th class="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Monto</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
@@ -579,6 +578,13 @@ onUnmounted(() => {
                                                 <td class="px-3 py-2 text-xs text-gray-500">{{ compra.fecha_mostrar || '-' }}</td>
                                                 <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="compra.proveedor?.Nombre">
                                                     {{ compra.proveedor?.Nombre || '-' }}
+                                                </td>
+                                                <!-- 🔥 OPERADOR -->
+                                                <td class="px-3 py-2 text-xs text-gray-700">
+                                                    <span class="flex items-center gap-1">
+                                                        <i class="fas fa-user text-primary-400 text-[10px]"></i>
+                                                        {{ compra.nombre_operador || compra.IdOperadorIngresa || '-' }}
+                                                    </span>
                                                 </td>
                                                 <td class="px-3 py-2 text-xs text-right font-semibold text-primary-600">{{ formatearMonto(compra.ImporteFactura) }} Bs</td>
                                                 <td class="px-3 py-2 text-center">
@@ -626,6 +632,11 @@ onUnmounted(() => {
                                                 </div>
                                                 <div class="text-xs text-gray-600 mt-1">
                                                     <span class="text-gray-400">Proveedor:</span> {{ compra.proveedor?.Nombre || '-' }}
+                                                </div>
+                                                <!-- 🔥 OPERADOR en móvil -->
+                                                <div class="text-xs text-gray-600 mt-0.5">
+                                                    <span class="text-gray-400">Operador:</span> 
+                                                    <span class="text-gray-700">{{ compra.nombre_operador || compra.IdOperadorIngresa || '-' }}</span>
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-1">
                                                     <span class="text-sm font-bold text-primary-700">{{ formatearMonto(compra.ImporteFactura) }} Bs</span>
