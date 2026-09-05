@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use App\Models\Gestion\Impuestos\VentaLiquidacionConcepto;
 
@@ -35,29 +36,49 @@ class PagoVentaController extends Controller
     }
 
     /**
-     * 🔥 GENERAR TICKET DEL DÍA (se ejecuta al finalizar el pago)
+     * 🔥 OBTENER FECHA ACTUAL DEL CLIENTE
+     */
+    private function getFechaCliente()
+    {
+        return $this->timezoneService->getFechaActual();
+    }
+
+    /**
+     * 🔥 GENERAR TICKET DEL DÍA CON CACHÉ
      * Reinicia en 1 cada día por sucursal
      */
     private function generarTicketDia($clienteId, $sucursalId, $fechaVenta)
     {
-        // 🔥 Usar la fecha correcta del cliente
         $fechaStr = $this->getFechaCliente();
+        $cacheKey = "ticket_max_{$clienteId}_{$sucursalId}_{$fechaStr}";
         
-        $maxTicket = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('impuestos_ventas')
-            ->where('IdCliente', $clienteId)
-            ->where('IdClienteSucursal', $sucursalId)
-            ->whereDate('FechaVenta', $fechaStr)
-            ->where('ActivoInactivo', 1)
-            ->max('TicketDia');
+        // 🔥 Intentar obtener del caché (5 minutos)
+        $maxTicket = Cache::get($cacheKey);
         
-        $nuevoTicket = ($maxTicket ?? 0) + 1;
+        if ($maxTicket === null) {
+            // 🔥 Si no está en caché, consultar BD
+            $maxTicket = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->where('IdCliente', $clienteId)
+                ->where('IdClienteSucursal', $sucursalId)
+                ->whereDate('FechaVenta', $fechaStr)
+                ->where('ActivoInactivo', 1)
+                ->max('TicketDia') ?? 0;
+            
+            // Guardar en caché por 5 minutos
+            Cache::put($cacheKey, $maxTicket, 300);
+        }
         
-        Log::info('🎫 TicketDia generado al finalizar pago', [
+        $nuevoTicket = $maxTicket + 1;
+        
+        // 🔥 Actualizar caché con el nuevo valor
+        Cache::put($cacheKey, $nuevoTicket, 300);
+        
+        Log::info('🎫 TicketDia generado', [
             'cliente' => $clienteId,
             'sucursal' => $sucursalId,
             'fecha' => $fechaStr,
-            'maximo_anterior' => $maxTicket ?? 0,
+            'maximo_anterior' => $maxTicket,
             'nuevo_ticket' => $nuevoTicket
         ]);
         
@@ -257,12 +278,12 @@ class PagoVentaController extends Controller
     }
 
     /**
-     * Procesar pago SIN facturación (completo con inventario)
-     * 🔥 SE GENERA EL TICKETDIA AQUÍ AL FINALIZAR EL PAGO
-     * 🔥 CORREGIDO: Usa zona horaria del cliente
+     * 🔥 PROCESAR PAGO SIN FACTURACIÓN - OPTIMIZADO PARA CONCURRENCIA
      */
     public function procesarPagoSinFacturacion(Request $request)
     {
+        $inicio = microtime(true);
+        
         try {
             $request->validate([
                 'venta_id' => 'required|exists:impuestos_ventas,IdVentas',
@@ -281,18 +302,37 @@ class PagoVentaController extends Controller
             $idIdentificadorClienteComprador = $request->id_identificador_cliente;
             $identificadoresPorConcepto = $request->identificadores_por_concepto ?? [];
             
+            // 🔥 OBTENER OPERADOR DIRECTAMENTE DE SESIÓN
+            $operadorId = session('operador_id');
+            
             // 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
             $fechaHoraCliente = $this->getFechaHoraCliente();
             $fechaCliente = $this->getFechaCliente();
             
-            // Obtener la venta
+            // 🔥 OBTENER LA VENTA CON BLOQUEO PESIMISTA
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
+                ->lockForUpdate()
                 ->first();
             
             if (!$venta) {
                 throw new \Exception('Venta no encontrada');
+            }
+            
+            // 🔥 PROTECCIÓN 1: Verificar si ya fue procesada
+            if ($venta->ActivoInactivo == 1) {
+                throw new \Exception('Esta venta ya fue procesada anteriormente');
+            }
+            
+            // 🔥 PROTECCIÓN 2: Verificar liquidaciones existentes
+            $existenLiquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas_liquidacion')
+                ->where('IdVentas', $ventaId)
+                ->exists();
+            
+            if ($existenLiquidaciones) {
+                throw new \Exception('Esta venta ya tiene pagos registrados');
             }
             
             // 🔥 CORREGIR FECHA DE VENTA SI ES NECESARIO
@@ -318,9 +358,12 @@ class PagoVentaController extends Controller
                 ->get()
                 ->keyBy('IdConceptoLiquidacion');
             
-            Log::info('=== PROCESANDO PAGO ===');
-            Log::info('Venta ID: ' . $ventaId);
-            Log::info('Fecha cliente: ' . $fechaHoraCliente);
+            Log::info('=== PROCESANDO PAGO ===', [
+                'venta_id' => $ventaId,
+                'operador_id' => $operadorId,
+                'fecha_cliente' => $fechaHoraCliente,
+                'ip' => $request->ip()
+            ]);
             
             // =============================================
             // 1. INSERTAR LIQUIDACIONES
@@ -331,8 +374,7 @@ class PagoVentaController extends Controller
                 
                 $concepto = $conceptos->get($conceptoId);
                 if (!$concepto) {
-                    Log::warning('Concepto no encontrado: ' . $conceptoId);
-                    continue;
+                    throw new \Exception("Concepto no encontrado: {$conceptoId}");
                 }
                 
                 $idIdentificadorUsar = null;
@@ -362,29 +404,32 @@ class PagoVentaController extends Controller
             }
 
             // =============================================
-            // 2. GENERAR TICKET DIA
+            // 2. GENERAR TICKET DIA Y NUMERO FACTURA
             // =============================================
+            
+            // 🔥 Generar TicketDia (con caché)
             $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $fechaCliente);
 
-            // =============================================
-            // 3. ACTUALIZAR VENTA
-            // =============================================
+            // 🔥 Generar NumeroFactura con lock
             $ultimoNumeroFactura = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
                 ->where('IdClienteSucursal', $sucursalId)
+                ->lockForUpdate()
                 ->max('NumeroFactura');
 
             $nuevoNumeroFactura = ($ultimoNumeroFactura ?? 0) + 1;
-            $operadorId = session('operador_id');
 
+            // =============================================
+            // 3. ACTUALIZAR VENTA
+            // =============================================
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->update([
                     'ActivoInactivo' => 1,
-                    'FechaUltimaActualizcion' => $fechaHoraCliente,  // ✅ FECHA CORRECTA
-                    'FechaVenta' => $fechaVentaFinal,                // ✅ FECHA CORREGIDA
+                    'FechaUltimaActualizcion' => $fechaHoraCliente,
+                    'FechaVenta' => $fechaVentaFinal,
                     'NumeroFactura' => $nuevoNumeroFactura,
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
@@ -397,6 +442,19 @@ class PagoVentaController extends Controller
             $this->registrarSalidaInventario($ventaId, $fechaCliente);
 
             DB::commit();
+
+            // 🔥 LOG DE AUDITORÍA
+            $tiempo = round((microtime(true) - $inicio) * 1000, 2);
+            Log::info('✅ Venta procesada exitosamente', [
+                'venta_id' => $ventaId,
+                'ticket_dia' => $ticketDia,
+                'numero_factura' => $nuevoNumeroFactura,
+                'operador_id' => $operadorId,
+                'cliente_comprador' => $idIdentificadorClienteComprador,
+                'ip' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'tiempo_ms' => $tiempo
+            ]);
 
             // Limpiar sesión
             if ($request->tipo_venta === 'tactil') {
@@ -412,14 +470,21 @@ class PagoVentaController extends Controller
                 'success' => true, 
                 'message' => 'Venta completada',
                 'ticket_dia' => $ticketDia,
+                'numero_factura' => $nuevoNumeroFactura,
                 'pdf_url' => route('ventas.factura-pdf', $ventaId),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error procesando pago: ' . $e->getMessage());
-            Log::error('Stack trace: ' . $e->getTraceAsString());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            Log::error('❌ Error procesando pago', [
+                'venta_id' => $request->venta_id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'success' => false, 
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -440,11 +505,6 @@ class PagoVentaController extends Controller
 
     /**
      * Registrar salida de inventario
-     * 🔥 CORREGIDO: Maneja TODOS los casos sin usar procesarComboSimple
-     */
-    /**
-     * Registrar salida de inventario
-     * 🔥 CORREGIDO: Misma lógica que el reprocesamiento
      */
     private function registrarSalidaInventario($ventaId, $fechaCorregida = null)
     {
@@ -592,7 +652,6 @@ class PagoVentaController extends Controller
                         // Calcular cuántos quedan originales (NO reemplazados)
                         $quedanOriginales = $cantidadPorPack - $totalReemplazado;
                         
-                        // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
                         if ($quedanOriginales > 0) {
                             if (!isset($productosADescontar[$idProductoOriginal])) {
                                 $productosADescontar[$idProductoOriginal] = 0;
@@ -602,10 +661,9 @@ class PagoVentaController extends Controller
                         }
                     }
                     
-                    // 🔥 PASO 2b: PROCESAR SUSTITUTOS (los nuevos productos)
+                    // 🔥 PASO 2b: PROCESAR SUSTITUTOS
                     foreach ($sustitutos as $sust) {
                         $idSustituto = $sust['id_producto_sustituto'];
-                        // 🔥 NO multiplicar por unidadesDetalle (ya hay un elemento por cada pack)
                         $cantidadSustituto = (float) ($sust['cantidad'] ?? 0);
                         
                         if ($cantidadSustituto > 0) {
@@ -618,12 +676,11 @@ class PagoVentaController extends Controller
                     }
                 }
             } else {
-                // 🔥 CASO 3: SIN PERSONALIZACIÓN - usar composición completa
+                // 🔥 CASO 3: SIN PERSONALIZACIÓN
                 Log::info('📦 Producto sin personalización, usando composición original');
                 
                 foreach ($composicionOriginal as $comp) {
                     $idProducto = $comp->IdProducto;
-                    // 🔥 MULTIPLICAR POR UNIDADES DE VENTA
                     $cantidad = (float) $comp->Porcion * $unidadesDetalle;
                     
                     if (!isset($productosADescontar[$idProducto])) {
@@ -684,49 +741,7 @@ class PagoVentaController extends Controller
             'operador' => $nombreOperador
         ]);
     }
-/*
-    /**
-     * Procesar combo sin personalización (descuenta todo)
-     * 🔥 MÉTODO AUXILIAR
-     * 🔥 CORREGIDO: Agrega operador en la glosa
-     
-    private function procesarComboSimple($detalle, $ventaId, $idFecha, $idAlmacen, $idTipoOperacion, $venta, $clienteId, $sucursalId, $nombreOperador)
-    {
-        $productosPorcion = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_relacion_ventainventario_detalle')
-            ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
-            ->get();
-        
-        foreach ($productosPorcion as $porcion) {
-            $cantidad = $porcion->Porcion * $detalle->unidades;
-            
-            $precioCosto = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_productodetalle_precio_costo')
-                ->where('IdProducto', $porcion->IdProducto)
-                ->orderBy('IdPrecioCosto', 'DESC')
-                ->value('PrecioCosto');
-            
-            $costoTotal = $cantidad * ($precioCosto ?? 0);
-            
-            // 🔥 GLOSA CON OPERADOR
-            DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_propiamente')
-                ->insert([
-                    'IdTipoDeOperacion' => $idTipoOperacion,
-                    'IdDocumento' => $ventaId,
-                    'IdFecha' => $idFecha,
-                    'IdAlmacen' => $idAlmacen,
-                    'IdProducto' => $porcion->IdProducto,
-                    'Glosa' => "Venta Factura No {$venta->NumeroFactura}; Op.{$nombreOperador}",
-                    'D_H' => 'H',
-                    'Unidades' => $cantidad,
-                    'Bolivianos' => $costoTotal,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId,
-                ]);
-        }
-    }
-*/
+
     /**
      * Obtener o crear IdFecha
      */
@@ -751,16 +766,6 @@ class PagoVentaController extends Controller
             ]);
     }
 
-    /**
-     * 🔥 OBTENER FECHA ACTUAL DEL CLIENTE
-     */
-    private function getFechaCliente()
-    {
-        return $this->timezoneService->getFechaActual();
-    }
-    /**
-     * Generar PDF de factura con altura DINÁMICA y DETALLE DE PERSONALIZACIÓN
-     */
     /**
      * Generar PDF de factura con altura DINÁMICA y DETALLE DE PERSONALIZACIÓN
      */
@@ -799,7 +804,6 @@ class PagoVentaController extends Controller
             $nombreCliente = $cliente ? $cliente->Nombre : 'CONSUMIDOR FINAL';
             $nitCliente = $cliente ? $cliente->CI_NIT : '0';
             
-            // 🔥 OBTENER DETALLES CON PERSONALIZACIÓN
             $detalles = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_detalle as d')
                 ->leftJoin('inventario_relacion_ventainventario as r', 'd.idrelacionventainventario', '=', 'r.IdDetalleProducto')
@@ -811,7 +815,6 @@ class PagoVentaController extends Controller
                     'r.PrecioVenta as producto_precio'
                 ]);
             
-            // 🔥 PROCESAR DETALLES CON PERSONALIZACIÓN
             $detallesProcesados = [];
             $totalGeneral = 0;
             
@@ -831,20 +834,17 @@ class PagoVentaController extends Controller
                     'productos_detalle' => []
                 ];
                 
-                // 🔥 DECODIFICAR PERSONALIZACIÓN
                 if ($detalle->personalizacion && $detalle->personalizacion != 'null' && $detalle->personalizacion != '[]') {
                     $personalizacion = json_decode($detalle->personalizacion, true);
                     
                     if (!empty($personalizacion) && is_array($personalizacion)) {
                         $productoData['tiene_personalizacion'] = true;
                         
-                        // 🔥 OBTENER COMPOSICIÓN ORIGINAL
                         $composicionOriginal = DB::connection('mysql_gestion_comercial_alimentos')
                             ->table('inventario_relacion_ventainventario_detalle')
                             ->where('IdDetalleProducto', $detalle->idrelacionventainventario)
                             ->get();
                         
-                        // 🔥 MAPA DE PRODUCTOS ORIGINALES
                         $originales = [];
                         foreach ($composicionOriginal as $comp) {
                             $producto = DB::connection('mysql_gestion_comercial_alimentos')
@@ -859,7 +859,6 @@ class PagoVentaController extends Controller
                             ];
                         }
                         
-                        // 🔥 MAPA DE SUSTITUTOS (los que se cambiaron)
                         $sustitutosMap = [];
                         foreach ($personalizacion as $comboIndex => $combo) {
                             if (isset($combo['sustitutos']) && is_array($combo['sustitutos'])) {
@@ -869,7 +868,6 @@ class PagoVentaController extends Controller
                                     $cantidad = (float) ($sustituto['cantidad'] ?? 0);
                                     
                                     if ($idOriginal && $idSustituto && $cantidad > 0) {
-                                        // Si el sustituto es DIFERENTE al original, se reemplazó
                                         if ($idSustituto != $idOriginal) {
                                             $nombreSustituto = DB::connection('mysql_gestion_comercial_alimentos')
                                                 ->table('inventario_productodetalle')
@@ -893,15 +891,12 @@ class PagoVentaController extends Controller
                             }
                         }
                         
-                        // 🔥 CONSTRUIR LISTA DE PRODUCTOS DETALLE (FORMATO COMPACTO)
                         $productosDetalle = [];
                         
-                        // RECORRER TODOS LOS PRODUCTOS ORIGINALES
                         foreach ($originales as $idOriginal => $original) {
                             $cantidadSustituto = 0;
                             $nombreSustituto = null;
                             
-                            // Buscar si este original fue reemplazado
                             foreach ($sustitutosMap as $sust) {
                                 if ($sust['id_original'] == $idOriginal) {
                                     $cantidadSustituto += $sust['cantidad'];
@@ -909,10 +904,8 @@ class PagoVentaController extends Controller
                                 }
                             }
                             
-                            // 🔥 CALCULAR CUÁNTOS QUEDARON ORIGINALES
                             $cantidadOriginalQueQueda = $original['cantidad_total'] - $cantidadSustituto;
                             
-                            // 🔥 SI QUEDARON ORIGINALES, MOSTRARLOS
                             if ($cantidadOriginalQueQueda > 0) {
                                 $productosDetalle[] = [
                                     'nombre' => $original['nombre'],
@@ -921,7 +914,6 @@ class PagoVentaController extends Controller
                                 ];
                             }
                             
-                            // 🔥 SI HAY SUSTITUTOS, MOSTRARLOS
                             foreach ($sustitutosMap as $sust) {
                                 if ($sust['id_original'] == $idOriginal) {
                                     $productosDetalle[] = [
@@ -933,7 +925,6 @@ class PagoVentaController extends Controller
                             }
                         }
                         
-                        // Si no se encontraron originales, mostrar solo sustitutos
                         if (empty($productosDetalle) && !empty($sustitutosMap)) {
                             foreach ($sustitutosMap as $sust) {
                                 $productosDetalle[] = [
@@ -951,10 +942,7 @@ class PagoVentaController extends Controller
                 $detallesProcesados[] = $productoData;
             }
             
-            // =============================================
             // CALCULAR ALTURA DINÁMICA
-            // =============================================
-            
             $x = 4;
             $y = 4;
             $width = 64;
@@ -970,10 +958,8 @@ class PagoVentaController extends Controller
             
             $alturaTotal = 0;
             
-            // CABECERA
             $alturaTotal += 5 + 4 + 4 + 4 + 4 + 6 + 5 + 4 + 6 + 4 + 4 + 4 + 6;
             
-            // TABLA DE PRODUCTOS CON DETALLE
             $pdfCalc->SetFont('helvetica', 'B', 7);
             $alturaTotal += 4 + 2;
             
@@ -993,7 +979,6 @@ class PagoVentaController extends Controller
             
             $alturaTotal += 3 + 6;
             
-            // PAGOS
             $pagos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas_liquidacion as l')
                 ->join('impuestos_ventas_liquidacion_concepto as c', 'l.IdCuenta', '=', 'c.IdCuenta')
@@ -1021,9 +1006,8 @@ class PagoVentaController extends Controller
                 if ($comisionista) $alturaTotal += 4;
             }
             
-            // 🔥 OBSERVACIÓN (altura adicional)
             if (!empty($venta->Observacion)) {
-                $alturaTotal += 4; // Altura para la observación
+                $alturaTotal += 4;
             }
             
             $alturaTotal += 4 + 4 + 6 + 4 + 10;
@@ -1033,10 +1017,7 @@ class PagoVentaController extends Controller
             
             Log::info('Altura calculada: ' . $alturaFinal . ' mm');
             
-            // =============================================
             // GENERAR PDF REAL
-            // =============================================
-            
             $pdf = new \TCPDF('P', 'mm', array(72, $alturaFinal));
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
@@ -1044,7 +1025,6 @@ class PagoVentaController extends Controller
             $pdf->SetAutoPageBreak(true, 5);
             $pdf->AddPage();
             
-            // Marca de agua si está anulado
             if ($venta->IdEstado == 2) {
                 $pdf->SetAlpha(0.3);
                 $pdf->SetFont('helvetica', 'B', 38);
@@ -1067,7 +1047,6 @@ class PagoVentaController extends Controller
             $y = 4;
             $width = 64;
             
-            // CABECERA
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 5, $empresa->Nombre ?? '', 0, 1, 'C');
@@ -1100,7 +1079,6 @@ class PagoVentaController extends Controller
             $pdf->Cell($width, 4, "N° " . ($venta->NumeroFactura ?? '0'), 0, 1, 'C');
             $y += 6;
             
-            // DATOS DEL CLIENTE
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "FECHA: " . date('d/m/Y H:i:s', strtotime($venta->FechaVenta)), 0, 1, 'L');
             $y += 4;
@@ -1127,7 +1105,6 @@ class PagoVentaController extends Controller
             
             $y += 1;
             
-            // TABLA DE PRODUCTOS CON DETALLE DE PERSONALIZACIÓN
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetXY($x, $y);
             $pdf->Cell(8, 4, "CANT", 0, 0, 'L');
@@ -1164,7 +1141,6 @@ class PagoVentaController extends Controller
                 
                 $y = $pdf->GetY();
                 
-                // 🔥 DETALLE DE PERSONALIZACIÓN (FORMATO COMPACTO)
                 if ($detalle['tiene_personalizacion'] && !empty($detalle['productos_detalle'])) {
                     $pdf->SetFont('helvetica', '', 6);
                     $pdf->SetTextColor(80, 80, 80);
@@ -1191,7 +1167,6 @@ class PagoVentaController extends Controller
             $pdf->Cell(11, 5, number_format($totalGeneral, 2, '.', ','), 0, 1, 'R');
             $y += 6;
             
-            // MÉTODOS DE PAGO
             $totalPagos = 0;
             foreach ($pagos as $pago) {
                 $pdf->SetFont('helvetica', 'B', 7);
@@ -1215,14 +1190,12 @@ class PagoVentaController extends Controller
             $pdf->Cell(11, 5, number_format($totalPagos, 2, '.', ','), 0, 1, 'R');
             $y += 6;
             
-            // LITERAL
             $pdf->SetFont('helvetica', '', 6);
             $literal = $this->convertirNumeroALetras(round($totalGeneral, 2));
             $pdf->SetXY($x, $y);
             $pdf->MultiCell($width, 3, "SON: " . $literal, 0, 'L');
             $y = $pdf->GetY() + 2;
             
-            // 🔥 OBSERVACIÓN (si existe)
             if (!empty($venta->Observacion)) {
                 $pdf->SetFont('helvetica', '', 6);
                 $pdf->SetXY($x, $y);
@@ -1230,14 +1203,12 @@ class PagoVentaController extends Controller
                 $y = $pdf->GetY() + 2;
             }
             
-            // COMISIONISTA
             if ($comisionista) {
                 $pdf->SetXY($x, $y);
                 $pdf->Cell($width, 4, "COMISIONISTA: " . ($comisionista->Nombre ?? ''), 0, 1, 'L');
                 $y += 4;
             }
             
-            // OPERADOR
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador as o')
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -1248,7 +1219,6 @@ class PagoVentaController extends Controller
             $pdf->Cell($width, 4, "VENDEDOR: " . ($operador->Nombre ?? ''), 0, 1, 'L');
             $y += 4;
             
-            // TICKET DIA
             $pdf->SetXY($x, $y);
             $pdf->Cell($width, 4, "TICKET: " . ($venta->TicketDia ?? '0'), 0, 1, 'L');
             $y += 3;
@@ -1268,11 +1238,11 @@ class PagoVentaController extends Controller
 
     /**
      * Procesar el pago para venta con facturación
-     * 🔥 TAMBIÉN SE GENERA EL TICKETDIA AQUÍ
-     * 🔥 CORREGIDO: Usa zona horaria del cliente
      */
     public function store(Request $request)
     {
+        $inicio = microtime(true);
+        
         $request->validate([
             'venta_id' => 'required|exists:impuestos_ventas,IdVentas',
             'nit' => 'required|string',
@@ -1288,21 +1258,38 @@ class PagoVentaController extends Controller
             $sucursalId = session('cliente_sucursal_id');
             $ventaId = $request->venta_id;
             
-            // 🔥 OBTENER FECHA Y HORA CORRECTA DEL CLIENTE
+            // 🔥 OBTENER OPERADOR DIRECTAMENTE DE SESIÓN
+            $operadorId = session('operador_id');
+            
             $fechaHoraCliente = $this->getFechaHoraCliente();
             $fechaCliente = $this->getFechaCliente();
             
-            // Obtener la venta para tener la fecha
+            // 🔥 OBTENER VENTA CON BLOQUEO
             $venta = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
+                ->lockForUpdate()
                 ->first();
             
             if (!$venta) {
                 throw new \Exception('Venta no encontrada');
             }
             
-            // 🔥 CORREGIR FECHA DE VENTA SI ES NECESARIO
+            // 🔥 PROTECCIÓN: Verificar si ya fue procesada
+            if ($venta->ActivoInactivo == 1) {
+                throw new \Exception('Esta venta ya fue procesada anteriormente');
+            }
+            
+            // 🔥 PROTECCIÓN: Verificar liquidaciones existentes
+            $existenLiquidaciones = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas_liquidacion')
+                ->where('IdVentas', $ventaId)
+                ->exists();
+            
+            if ($existenLiquidaciones) {
+                throw new \Exception('Esta venta ya tiene pagos registrados');
+            }
+            
             $fechaVentaActual = $venta->FechaVenta;
             $fechaVentaDate = date('Y-m-d', strtotime($fechaVentaActual));
             $fechaHoy = $fechaCliente;
@@ -1319,30 +1306,34 @@ class PagoVentaController extends Controller
                 ]);
             }
             
-            // 🔥 Generar TicketDia con fecha correcta
+            // 🔥 Generar TicketDia con caché
             $ticketDia = $this->generarTicketDia($clienteId, $sucursalId, $fechaCliente);
             
-            $operadorId = session('operador_id');
-            
-            // ✅ Actualizar venta con fechas correctas
+            // ✅ Actualizar venta
             DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdVentas', $ventaId)
                 ->update([
                     'ActivoInactivo' => 1,
-                    'FechaUltimaActualizcion' => $fechaHoraCliente,  // ✅ FECHA CORRECTA
-                    'FechaVenta' => $fechaVentaFinal,                // ✅ FECHA CORREGIDA
+                    'FechaUltimaActualizcion' => $fechaHoraCliente,
+                    'FechaVenta' => $fechaVentaFinal,
                     'IdEstado' => 1,
                     'IdOperadorActualiza' => $operadorId,
                     'TicketDia' => $ticketDia,
                     'Observacion' => $request->observacion ?? '',
                 ]);
             
-            // Registrar salida de inventario con fecha correcta
             $this->registrarSalidaInventario($ventaId, $fechaCliente);
             
-            // Limpiar sesión
             session()->forget('venta_actual_id');
+            
+            $tiempo = round((microtime(true) - $inicio) * 1000, 2);
+            Log::info('✅ Venta con facturación procesada', [
+                'venta_id' => $ventaId,
+                'ticket_dia' => $ticketDia,
+                'operador_id' => $operadorId,
+                'tiempo_ms' => $tiempo
+            ]);
             
             return redirect()->route('oficial.index')->with('success', '✅ Venta procesada exitosamente. Ticket #' . $ticketDia);
             

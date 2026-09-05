@@ -33,24 +33,28 @@ const montosPorConcepto = ref({})
 const procesando = ref(false)
 const loadingConceptos = ref(true)
 
-// 🔥 Estado para el NIT del cliente COMPRADOR
+// 🔥 NUEVO: Control de clic para evitar duplicados
+const clicProcesado = ref(false)
+const ultimoClickTimestamp = ref(0)
+
+// Estado para el NIT del cliente COMPRADOR
 const nitClienteComprador = ref('')
 const clienteCompradorSeleccionado = ref(null)
 const clientesLista = ref([])
 const mostrandoListaComprador = ref(false)
 const buscandoComprador = ref(false)
 
-// 🔥 Estado para identificadores por método de pago
+// Estado para identificadores por método de pago
 const identificadoresPorConcepto = ref({})
 const busquedaIdentificadorPorConcepto = ref({})
 const mostrandoListaIdentificador = ref({})
 const buscandoIdentificador = ref({})
 const resultadosIdentificador = ref({})
 
-// 🔥 Estado para observación
+// Estado para observación
 const observacion = ref('')
 
-// 🔥 Modal de confirmación para volver
+// Modal de confirmación para volver
 const mostrarModalVolver = ref(false)
 
 let searchTimeout = null
@@ -100,12 +104,23 @@ const todosIdentificadoresCompletos = computed(() => {
     return true
 })
 
+// 🔥 MEJORADO: Botón deshabilitado con más controles
 const botonDeshabilitado = computed(() => {
     return !pagoCorrecto.value || 
            procesando.value || 
+           clicProcesado.value ||
            loadingConceptos.value || 
            !clienteCompradorSeleccionado.value ||
            !todosIdentificadoresCompletos.value
+})
+
+// 🔥 NUEVO: Texto de ayuda contextual para el botón
+const textoBoton = computed(() => {
+    if (procesando.value || clicProcesado.value) return 'Procesando...'
+    if (!clienteCompradorSeleccionado.value) return 'Selecciona el cliente comprador'
+    if (!pagoCorrecto.value) return 'El monto debe igualar la deuda'
+    if (faltanIdentificadores.value > 0) return `Faltan ${faltanIdentificadores.value} cliente(s)`
+    return 'Completar Venta'
 })
 
 // Cargar conceptos de pago
@@ -245,8 +260,23 @@ const handleClickOutside = (event) => {
     })
 }
 
-// 🔥 Procesar pago
+// 🔥 MEJORADO: Procesar pago con protección contra duplicados
 const procesarPago = async () => {
+    // 🔥 PROTECCIÓN 1: Evitar clics múltiples
+    const ahora = Date.now()
+    if (procesando.value || clicProcesado.value) {
+        toast?.warning('Procesando', 'La venta ya se está procesando, por favor espera')
+        return
+    }
+    
+    // 🔥 PROTECCIÓN 2: Prevenir clics muy rápidos (menos de 500ms)
+    if (ahora - ultimoClickTimestamp.value < 500) {
+        console.warn('⏱️ Clic demasiado rápido, ignorando')
+        return
+    }
+    ultimoClickTimestamp.value = ahora
+
+    // 🔥 PROTECCIÓN 3: Validaciones completas
     if (!pagoCorrecto.value) {
         toast?.error('Error', 'El monto total debe ser igual a la deuda')
         return
@@ -271,7 +301,9 @@ const procesarPago = async () => {
         }
     }
     
+    // 🔥 ACTIVAR BLOQUEO ANTES DE CUALQUIER PETICIÓN
     procesando.value = true
+    clicProcesado.value = true
     
     const montosFiltrados = {}
     const identificadoresPorConceptoEnvio = {}
@@ -292,7 +324,7 @@ const procesarPago = async () => {
         tipo_venta: props.tipoVenta,
         id_identificador_cliente: clienteCompradorSeleccionado.value.id,
         identificadores_por_concepto: identificadoresPorConceptoEnvio,
-        observacion: observacion.value.trim() // 🔥 Enviar observación
+        observacion: observacion.value.trim()
     }
     
     try {
@@ -303,22 +335,38 @@ const procesarPago = async () => {
                 window.open(response.data.pdf_url, '_blank')
             }
             toast?.success('Venta completada', 'Pago registrado correctamente')
+            
             setTimeout(() => {
                 router.get(props.tipoVenta === 'tactil' ? '/venta-tactil/nueva' : '/venta-factura/crear')
             }, 1500)
         } else {
             toast?.error('Error', response.data.message || 'Error al procesar pago')
+            clicProcesado.value = false
+            procesando.value = false
         }
     } catch (error) {
         console.error('Error:', error.response?.data)
-        toast?.error('Error', error.response?.data?.message || 'No se pudo procesar el pago')
-    } finally {
+        
+        if (error.response?.data?.message?.includes('ya fue procesada')) {
+            toast?.error('Venta ya procesada', 'Esta venta ya fue completada anteriormente')
+            setTimeout(() => {
+                router.get(props.tipoVenta === 'tactil' ? '/venta-tactil/nueva' : '/venta-factura/crear')
+            }, 2000)
+        } else {
+            toast?.error('Error', error.response?.data?.message || 'No se pudo procesar el pago')
+        }
+        
+        clicProcesado.value = false
         procesando.value = false
     }
 }
 
-// 🔥 Modal de confirmación para volver
+// Modal de confirmación para volver
 const abrirModalVolver = () => {
+    if (procesando.value || clicProcesado.value) {
+        toast?.warning('Procesando', 'Espera a que termine el proceso')
+        return
+    }
     mostrarModalVolver.value = true
 }
 
@@ -365,14 +413,33 @@ const faltanIdentificadores = computed(() => {
     return count
 })
 
+// Proteger contra cierre de página mientras se procesa
+const handleBeforeUnload = (event) => {
+    if (procesando.value || clicProcesado.value) {
+        event.preventDefault()
+        event.returnValue = 'Hay un proceso en curso. ¿Estás seguro de salir?'
+    }
+}
+
+const handleVisibilityChange = () => {
+    if (document.hidden) {
+        // La página se ocultó, posiblemente el usuario cambió de pestaña
+        // No hacemos nada, solo prevenimos
+    }
+}
+
 onMounted(() => {
     cargarConceptos()
     cargarNitPredefinido()
     document.addEventListener('click', handleClickOutside)
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 })
 
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside)
+    window.removeEventListener('beforeunload', handleBeforeUnload)
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
     if (searchTimeout) clearTimeout(searchTimeout)
     Object.values(searchTimeoutIdentificador).forEach(t => clearTimeout(t))
 })
@@ -382,10 +449,9 @@ onUnmounted(() => {
     <div class="min-h-screen bg-gray-100">
         <div class="py-4 px-3 sm:px-4">
             <div class="max-w-4xl mx-auto">
-                <!-- 🔥 HEADER MEJORADO -->
+                <!-- HEADER -->
                 <div class="bg-gradient-to-r from-primary-700 to-primary-800 rounded-lg shadow-md p-3 mb-4 text-white">
                     <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
-                        <!-- Izquierda: Título -->
                         <div class="flex items-center gap-3 w-full sm:w-auto">
                             <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                                 <i class="fas fa-cash-register text-sm"></i>
@@ -396,17 +462,16 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Centro: Total -->
                         <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-1 flex-shrink-0">
                             <span class="text-[10px] opacity-75 hidden xs:inline">Total:</span>
                             <span class="text-lg font-bold tabular-nums">{{ Number(deuda).toFixed(2) }}</span>
                             <span class="text-[10px] font-light">Bs</span>
                         </div>
 
-                        <!-- Derecha: Botón Volver MEJORADO -->
                         <button 
                             @click="abrirModalVolver" 
-                            class="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md text-xs transition flex-shrink-0"
+                            :disabled="procesando || clicProcesado"
+                            class="flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-md text-xs transition flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             <i class="fas fa-arrow-left text-[10px]"></i>
                             <span class="hidden xs:inline">Volver a la venta</span>
@@ -439,6 +504,7 @@ onUnmounted(() => {
                                                 placeholder="Buscar por CI/NIT o nombre..."
                                                 class="w-full border border-gray-200 rounded-md pl-8 pr-3 py-1.5 text-xs"
                                                 :class="{ 'border-red-300 bg-red-50': !clienteCompradorSeleccionado && nitClienteComprador }"
+                                                :disabled="procesando || clicProcesado"
                                             />
                                         </div>
                                         
@@ -464,6 +530,7 @@ onUnmounted(() => {
                                         @click="limpiarComprador"
                                         class="px-2 py-1 bg-red-50 text-red-500 rounded-md text-[10px] hover:bg-red-100 flex-shrink-0"
                                         type="button"
+                                        :disabled="procesando || clicProcesado"
                                     >
                                         <i class="fas fa-times text-[9px]"></i>
                                     </button>
@@ -511,9 +578,13 @@ onUnmounted(() => {
                                                     type="number" 
                                                     step="0.01" 
                                                     min="0" 
+                                                    @wheel.prevent
+                                                    @keydown.up.prevent
+                                                    @keydown.down.prevent
                                                     class="no-spinner w-full border border-gray-200 rounded-md pl-5 pr-1 py-1 text-[10px] font-mono focus:border-primary-400 focus:ring-1 focus:ring-primary-200 transition-all"
                                                     :class="{ 'border-primary-300 bg-white': tieneMonto(concepto.id) }"
                                                     placeholder="0.00"
+                                                    :disabled="procesando || clicProcesado"
                                                 />
                                             </div>
                                         </div>
@@ -557,9 +628,13 @@ onUnmounted(() => {
                                                         type="number" 
                                                         step="0.01" 
                                                         min="0" 
+                                                        @wheel.prevent
+                                                        @keydown.up.prevent
+                                                        @keydown.down.prevent
                                                         class="no-spinner w-full border border-amber-200 rounded-md pl-5 pr-1 py-1 text-[10px] font-mono focus:border-amber-400 focus:ring-1 focus:ring-amber-200 transition-all"
                                                         :class="{ 'border-red-300 bg-red-50': conceptoRequeridoActivo(concepto) && !tieneIdentificadorSeleccionado(concepto.id) }"
                                                         placeholder="0.00"
+                                                        :disabled="procesando || clicProcesado"
                                                     />
                                                 </div>
                                             </div>
@@ -579,6 +654,7 @@ onUnmounted(() => {
                                                                     'border-red-300 bg-red-50': conceptoRequeridoActivo(concepto) && !tieneIdentificadorSeleccionado(concepto.id),
                                                                     'border-green-300 bg-green-50': tieneIdentificadorSeleccionado(concepto.id)
                                                                 }"
+                                                                :disabled="procesando || clicProcesado"
                                                             />
                                                             <div v-if="mostrandoListaIdentificador[concepto.id] && getResultadosIdentificador(concepto.id).length > 0" 
                                                                 class="absolute z-50 w-full max-h-32 overflow-y-auto bg-white border border-gray-200 rounded-md shadow-lg mt-0.5">
@@ -601,6 +677,7 @@ onUnmounted(() => {
                                                             @click="limpiarIdentificadorParaConcepto(concepto.id)"
                                                             class="px-2 py-1 bg-red-50 text-red-500 rounded-md text-[9px] hover:bg-red-100 whitespace-nowrap"
                                                             type="button"
+                                                            :disabled="procesando || clicProcesado"
                                                         >
                                                             <i class="fas fa-times"></i>
                                                         </button>
@@ -622,7 +699,7 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- 🔥 OBSERVACIÓN (opcional) -->
+                        <!-- OBSERVACIÓN -->
                         <div class="border-t pt-3 mt-3 border-gray-200">
                             <div class="flex items-start gap-2">
                                 <div class="flex-shrink-0 mt-0.5">
@@ -638,6 +715,7 @@ onUnmounted(() => {
                                         placeholder="Agregar una observación a esta venta..."
                                         class="w-full border border-gray-200 rounded-md px-3 py-2 text-xs focus:border-primary-400 focus:ring-1 focus:ring-primary-200 transition resize-none"
                                         maxlength="200"
+                                        :disabled="procesando || clicProcesado"
                                     ></textarea>
                                     <div class="flex justify-between text-[8px] text-gray-400 mt-0.5">
                                         <span>Máximo 200 caracteres</span>
@@ -684,31 +762,47 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Botones -->
+                    <!-- BOTONES -->
                     <div class="px-4 py-3 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-2">
                         <button 
                             @click="abrirModalVolver" 
-                            class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-100 transition order-2 sm:order-1"
+                            :disabled="procesando || clicProcesado"
+                            class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-100 transition order-2 sm:order-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Cancelar
                         </button>
                         <button 
                             @click="procesarPago" 
-                            :disabled="botonDeshabilitado" 
-                            class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 order-1 sm:order-2"
+                            :disabled="botonDeshabilitado"
+                            class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 order-1 sm:order-2 min-w-[140px]"
+                            :class="{ 
+                                'bg-green-600 hover:bg-green-700': pagoCorrecto && clienteCompradorSeleccionado && faltanIdentificadores === 0 && !procesando && !clicProcesado,
+                                'bg-gray-400 hover:bg-gray-400': botonDeshabilitado && !procesando && !clicProcesado,
+                                'bg-primary-600 hover:bg-primary-700': !botonDeshabilitado && !pagoCorrecto
+                            }"
                         >
-                            <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
-                            <i v-else class="fas fa-check text-[10px]"></i>
-                            {{ procesando ? 'Procesando...' : 'Completar Venta' }}
+                            <i v-if="procesando || clicProcesado" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else-if="pagoCorrecto && clienteCompradorSeleccionado && faltanIdentificadores === 0" class="fas fa-check text-[10px]"></i>
+                            <i v-else class="fas fa-lock text-[10px]"></i>
+                            {{ textoBoton }}
                         </button>
                     </div>
 
-                    <div v-if="botonDeshabilitado && !procesando && !loadingConceptos" class="px-4 pb-3 text-[9px] text-gray-400 text-center border-t pt-2 border-gray-100">
+                    <!-- MENSAJE DE ESTADO -->
+                    <div v-if="botonDeshabilitado && !procesando && !loadingConceptos && !clicProcesado" class="px-4 pb-3 text-[9px] text-gray-400 text-center border-t pt-2 border-gray-100">
                         <i class="fas fa-info-circle mr-1"></i>
                         <span v-if="!clienteCompradorSeleccionado">Selecciona el cliente comprador</span>
                         <span v-else-if="faltanIdentificadores > 0">Selecciona los clientes requeridos para los métodos de pago</span>
                         <span v-else-if="!pagoCorrecto">El monto total debe igualar la deuda</span>
                         <span v-else>Completa todos los campos requeridos</span>
+                    </div>
+
+                    <!-- INDICADOR DE PROCESO -->
+                    <div v-if="procesando || clicProcesado" class="px-4 pb-3 text-center border-t pt-2 border-gray-100">
+                        <div class="flex items-center justify-center gap-2 text-primary-600">
+                            <i class="fas fa-spinner fa-spin text-sm"></i>
+                            <span class="text-[10px] font-medium">Procesando pago... No cierres esta ventana</span>
+                        </div>
                     </div>
                 </div>
 
@@ -718,10 +812,9 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- 🔥 MODAL DE CONFIRMACIÓN PARA VOLVER -->
+        <!-- MODAL DE CONFIRMACIÓN -->
         <div v-if="mostrarModalVolver" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-all">
             <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden transform transition-all scale-100">
-                <!-- Header del modal -->
                 <div class="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -734,7 +827,6 @@ onUnmounted(() => {
                     </div>
                 </div>
                 
-                <!-- Cuerpo del modal -->
                 <div class="px-6 py-4">
                     <p class="text-sm text-gray-600">
                         Si vuelves a la venta, <span class="font-semibold text-amber-600">perderás todo el progreso</span> del pago actual.
@@ -747,7 +839,6 @@ onUnmounted(() => {
                     </div>
                 </div>
                 
-                <!-- Footer del modal -->
                 <div class="px-6 py-4 bg-gray-50 border-t flex justify-end gap-3">
                     <button 
                         @click="cerrarModalVolver"
