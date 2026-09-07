@@ -12,7 +12,7 @@ use App\Models\Gestion\Todos\Fecha;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Inertia\Inertia;  // 👈 Importa la clase
+use Inertia\Inertia;
 
 class InventarioFisicoDiarioController extends Controller
 {
@@ -25,12 +25,10 @@ class InventarioFisicoDiarioController extends Controller
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        // 🔥 QUERY PRINCIPAL - SOLO DE LA SUCURSAL LOGUEADA
         $query = InventarioFisicoDiarioCabecera::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->with(['operador', 'sucursal', 'fecha']);
 
-        // 🔥 FILTRAR POR ESTADO
         if ($request->filled('estado')) {
             if ($request->estado === 'completados') {
                 $query->where('ActivoInactivo', 1);
@@ -41,19 +39,15 @@ class InventarioFisicoDiarioController extends Controller
             }
         }
 
-        // 🔥 BUSCADOR POR NÚMERO CORRELATIVO
         if ($request->filled('buscar')) {
             $query->where('NumeroCorrelativo', 'LIKE', '%' . $request->buscar . '%');
         }
 
-        // 🔥 PAGINACIÓN
         $inventarios = $query->orderBy('IdFisicoDiario', 'desc')
             ->paginate(20)
             ->appends($request->all());
 
-        // 🔥 ENRIQUECER DATOS
         $inventarios->getCollection()->transform(function ($item) {
-            // Fecha formateada
             if ($item->fecha && $item->fecha->Fecha) {
                 $item->fecha_formateada = date('d/m/Y', strtotime($item->fecha->Fecha));
             } else {
@@ -69,16 +63,12 @@ class InventarioFisicoDiarioController extends Controller
                 }
             }
             
-            // Nombre del operador
             $item->nombre_operador = $item->operador?->identificador?->Nombre ?? 'N/A';
-            
-            // Nombre de la sucursal
             $item->sucursal_nombre = $item->sucursal?->Nombre ?? 'N/A';
             
             return $item;
         });
 
-        // 🔥 OBTENER SUCURSALES PARA EL FILTRO (SOLO LA SUCURSAL LOGUEADA)
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
@@ -94,6 +84,7 @@ class InventarioFisicoDiarioController extends Controller
             'buscar' => $request->buscar,
         ]);
     }
+
     /**
      * Listado administrativo de inventarios físicos diarios (con agrupación por sucursal)
      */
@@ -102,7 +93,6 @@ class InventarioFisicoDiarioController extends Controller
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         
-        // Obtener sucursales del cliente
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
@@ -110,18 +100,15 @@ class InventarioFisicoDiarioController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
-        // Query principal
         $query = InventarioFisicoDiarioCabecera::where('IdCliente', $clienteId)
             ->with(['operador', 'sucursal', 'fecha']);
         
-        // Filtro por sucursal
         if ($request->filled('sucursal_id')) {
             $query->where('IdSucursal', $request->sucursal_id);
         } else {
             $query->where('IdSucursal', $sucursalId);
         }
         
-        // Filtro por estado
         if ($request->filled('estado')) {
             if ($request->estado === 'completados') {
                 $query->where('ActivoInactivo', 1);
@@ -132,7 +119,6 @@ class InventarioFisicoDiarioController extends Controller
             }
         }
         
-        // Buscador
         if ($request->filled('buscar')) {
             $query->where('NumeroCorrelativo', 'LIKE', '%' . $request->buscar . '%');
         }
@@ -141,9 +127,7 @@ class InventarioFisicoDiarioController extends Controller
             ->paginate(20)
             ->appends($request->all());
         
-        // Enriquecer datos
         $inventarios->getCollection()->transform(function ($item) {
-            // Fecha formateada
             if ($item->fecha && $item->fecha->Fecha) {
                 $item->fecha_formateada = date('d/m/Y', strtotime($item->fecha->Fecha));
             } else {
@@ -159,10 +143,7 @@ class InventarioFisicoDiarioController extends Controller
                 }
             }
             
-            // Nombre del operador
             $item->nombre_operador = $item->operador?->identificador?->Nombre ?? 'N/A';
-            
-            // Nombre de la sucursal
             $item->sucursal_nombre = $item->sucursal?->Nombre ?? 'N/A';
             
             return $item;
@@ -177,6 +158,7 @@ class InventarioFisicoDiarioController extends Controller
             'sucursalSeleccionada' => $request->sucursal_id,
         ]);
     }
+
     /**
      * Generar PDF del inventario físico diario
      */
@@ -215,7 +197,6 @@ class InventarioFisicoDiarioController extends Controller
             $fecha = Fecha::find($cabecera->IdFecha);
             $fechaFormateada = $fecha ? date('d/m/Y', strtotime($fecha->Fecha)) : '-';
             
-            // Crear PDF
             $pdf = new \TCPDF('P', 'mm', 'A4');
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
@@ -224,14 +205,12 @@ class InventarioFisicoDiarioController extends Controller
             $pdf->AddPage();
             $pdf->SetFont('helvetica', '', 10);
             
-            // Título
             $pdf->SetFont('helvetica', 'B', 14);
             $pdf->Cell(0, 8, 'INVENTARIO FÍSICO DIARIO', 0, 1, 'C');
             $pdf->SetFont('helvetica', '', 10);
             $pdf->Cell(0, 6, 'N° ' . ($cabecera->NumeroCorrelativo ?? 'SIN NÚMERO'), 0, 1, 'C');
             $pdf->Ln(4);
             
-            // Datos
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->Cell(0, 5, 'DATOS DEL INVENTARIO', 0, 1, 'L');
             $pdf->SetFont('helvetica', '', 9);
@@ -241,7 +220,6 @@ class InventarioFisicoDiarioController extends Controller
             $pdf->Cell(0, 5, 'Operador: ' . ($operador->Nombre ?? 'N/A'), 0, 1, 'L');
             $pdf->Ln(4);
             
-            // Tabla
             $w = [10, 65, 25, 25, 25];
             $header = ['#', 'Producto', 'Sistema', 'Contado', 'Diferencia'];
             
@@ -285,7 +263,6 @@ class InventarioFisicoDiarioController extends Controller
                 $pdf->Ln();
             }
             
-            // Resumen
             $pdf->Ln(5);
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->Cell(0, 5, 'Resumen:', 0, 1, 'L');
@@ -301,17 +278,13 @@ class InventarioFisicoDiarioController extends Controller
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
+
     /**
      * Obtener el IdTipoOperacion para "Inventario Fisico Diario" del cliente logueado
      */
     private function getTipoOperacionInventarioFisicoDiario()
     {
         $clienteId = session('cliente_id');
-        
-        Log::info('🔍 BUSCANDO TIPO DE OPERACIÓN', [
-            'cliente_id' => $clienteId,
-            'detalle_buscar' => 'Inventario Fisico Diario'
-        ]);
         
         $tipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_tipooperacion')
@@ -320,11 +293,6 @@ class InventarioFisicoDiarioController extends Controller
             ->where('ActivoInactivo', 0)
             ->first();
         
-        Log::info('📊 RESULTADO BÚSQUEDA POR DETALLE', [
-            'encontrado' => $tipoOperacion ? 'SI' : 'NO',
-            'id' => $tipoOperacion ? $tipoOperacion->IdTipoOperacion : null
-        ]);
-        
         if (!$tipoOperacion) {
             $tipoOperacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_tipooperacion')
@@ -332,25 +300,11 @@ class InventarioFisicoDiarioController extends Controller
                 ->where('Concepto', 'InventarioFisico')
                 ->where('ActivoInactivo', 0)
                 ->first();
-            
-            Log::info('📊 RESULTADO BÚSQUEDA POR CONCEPTO', [
-                'encontrado' => $tipoOperacion ? 'SI' : 'NO',
-                'id' => $tipoOperacion ? $tipoOperacion->IdTipoOperacion : null
-            ]);
         }
         
         if (!$tipoOperacion) {
-            Log::error('❌ TIPO DE OPERACIÓN NO ENCONTRADO', [
-                'cliente_id' => $clienteId
-            ]);
             throw new \Exception('No se encontró el tipo de operación "Inventario Fisico Diario" para el cliente ' . $clienteId);
         }
-        
-        Log::info('✅ TIPO DE OPERACIÓN ENCONTRADO', [
-            'id_tipo_operacion' => $tipoOperacion->IdTipoOperacion,
-            'detalle' => $tipoOperacion->Detalle,
-            'concepto' => $tipoOperacion->Concepto
-        ]);
         
         return $tipoOperacion->IdTipoOperacion;
     }
@@ -414,6 +368,83 @@ class InventarioFisicoDiarioController extends Controller
     }
 
     /**
+     * 🔥 OBTENER PRODUCTOS BASE PARA EL INVENTARIO FÍSICO
+     * 1. Obtiene productos de venta habilitados en la sucursal
+     * 2. Obtiene los productos base (ingredientes) de esos productos de venta
+     * 3. Solo muestra productos base únicos
+     */
+    private function obtenerProductosParaInventario($clienteId, $sucursalId)
+    {
+        // 🔥 PASO 1: Obtener productos de venta habilitados en la sucursal
+        $productosVentaHabilitados = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_relacion_ventainventario as rv')
+            ->join('inventario_producto_categoria as pc', 'rv.IdDetalleProducto', '=', 'pc.id_detalle_producto')
+            ->where('rv.IdCliente', $clienteId)
+            ->where('rv.IdSucursal', $sucursalId)
+            ->where('rv.ActivoInactivo', 0)
+            ->where('pc.id_sucursal', $sucursalId)
+            ->select('rv.IdDetalleProducto')
+            ->pluck('IdDetalleProducto')
+            ->toArray();
+
+        if (empty($productosVentaHabilitados)) {
+            Log::warning('⚠️ No hay productos de venta habilitados en la sucursal', [
+                'cliente' => $clienteId,
+                'sucursal' => $sucursalId
+            ]);
+            return collect();
+        }
+
+        // 🔥 PASO 2: Obtener los productos base (ingredientes) de esos productos de venta
+        $productosBase = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_productodetalle as p')
+            ->join('inventario_relacion_ventainventario_detalle as det', 'p.IdProducto', '=', 'det.IdProducto')
+            ->where('p.IdCliente', $clienteId)
+            ->where('p.ActivoInactivo', 0)
+            ->whereIn('det.IdDetalleProducto', $productosVentaHabilitados)
+            ->select('p.IdProducto', 'p.Codigo', 'p.Descripcion')
+            ->distinct()
+            ->inRandomOrder()
+            ->get();
+
+        // 🔥 FALLBACK: Si no hay ingredientes, usar productos de venta como base
+        if ($productosBase->isEmpty()) {
+            Log::warning('⚠️ No hay productos base (ingredientes) asociados, usando productos de venta', [
+                'cliente' => $clienteId,
+                'sucursal' => $sucursalId
+            ]);
+
+            $productosBase = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_relacion_ventainventario as rv')
+                ->where('rv.IdCliente', $clienteId)
+                ->where('rv.IdSucursal', $sucursalId)
+                ->where('rv.ActivoInactivo', 0)
+                ->whereIn('rv.IdDetalleProducto', $productosVentaHabilitados)
+                ->select('rv.IdDetalleProducto as IdProducto', 'rv.Codigo', 'rv.Detalle as Descripcion')
+                ->inRandomOrder()
+                ->get();
+        }
+
+        // 🔥 FALLBACK 2: Si no hay nada, usar todos los productos de la sucursal
+        if ($productosBase->isEmpty()) {
+            Log::warning('⚠️ No hay productos, usando todos los productos de la sucursal', [
+                'cliente' => $clienteId,
+                'sucursal' => $sucursalId
+            ]);
+
+            $productosBase = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle')
+                ->where('IdCliente', $clienteId)
+                ->where('ActivoInactivo', 0)
+                ->select('IdProducto', 'Codigo', 'Descripcion')
+                ->inRandomOrder()
+                ->get();
+        }
+
+        return $productosBase;
+    }
+
+    /**
      * Crear nuevo borrador con productos aleatorios
      */
     private function crearNuevoBorrador($fechaId, $fecha, $clienteId, $sucursalId, $operadorId)
@@ -427,7 +458,7 @@ class InventarioFisicoDiarioController extends Controller
         if (!$config) {
             return response()->json([
                 'success' => false,
-                'message' => 'No hay configuración activa para esta sucursal'
+                'message' => 'No hay configuración activa para esta sucursal. Por favor, configure la cantidad de productos.'
             ], 404);
         }
 
@@ -439,99 +470,39 @@ class InventarioFisicoDiarioController extends Controller
             ->where('ActivoInactivo', 0)
             ->delete();
 
-        // 3. 🔥 OBTENER TODOS LOS PRODUCTOS DISPONIBLES (SIN LÍMITE)
-        $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_productodetalle as p')
-            ->join('inventario_relacion_ventainventario_detalle as d', 'p.IdProducto', '=', 'd.IdProducto')
-            ->join('inventario_relacion_ventainventario as rv', 'd.IdDetalleProducto', '=', 'rv.IdDetalleProducto')
-            ->join('inventario_producto_categoria as pc', 'rv.IdDetalleProducto', '=', 'pc.id_detalle_producto')
-            ->where('rv.IdCliente', $clienteId)
-            ->where('rv.ActivoInactivo', 0)
-            ->where('pc.id_sucursal', $sucursalId)
-            ->where('p.ActivoInactivo', 0)
-            ->select('p.IdProducto', 'p.Codigo', 'p.Descripcion')
-            ->distinct()
-            ->inRandomOrder()
-            ->get();  // 👈 SIN LIMITE - TODOS LOS PRODUCTOS DISPONIBLES
+        // 3. Obtener productos base de la sucursal
+        $productosDisponibles = $this->obtenerProductosParaInventario($clienteId, $sucursalId);
 
-        // 🔥 FALLBACK 1: Si no hay ingredientes, buscar productos BASE
-        if ($productosQuery->isEmpty()) {
-            Log::warning('⚠️ No hay ingredientes en la sucursal, buscando productos BASE', [
-                'cliente' => $clienteId,
-                'sucursal' => $sucursalId
-            ]);
-
-            $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_relacion_ventainventario as rv')
-                ->leftJoin('inventario_relacion_ventainventario_detalle as d', 'rv.IdDetalleProducto', '=', 'd.IdDetalleProducto')
-                ->join('inventario_producto_categoria as pc', 'rv.IdDetalleProducto', '=', 'pc.id_detalle_producto')
-                ->where('rv.IdCliente', $clienteId)
-                ->where('rv.ActivoInactivo', 0)
-                ->where('pc.id_sucursal', $sucursalId)
-                ->whereNull('d.IdDetalleProducto')  // 👈 SOLO BASE (NO COMBOS)
-                ->select('rv.IdDetalleProducto as IdProducto', 'rv.Codigo', 'rv.Detalle as Descripcion')
-                ->inRandomOrder()
-                ->get();
-        }
-
-        // 🔥 FALLBACK 2: Si no hay BASE, usar productos de venta
-        if ($productosQuery->isEmpty()) {
-            Log::warning('⚠️ No hay productos BASE, usando productos de venta', [
-                'cliente' => $clienteId,
-                'sucursal' => $sucursalId
-            ]);
-
-            $productosQuery = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_relacion_ventainventario')
-                ->where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('ActivoInactivo', 0)
-                ->select('IdDetalleProducto as IdProducto', 'Codigo', 'Detalle as Descripcion')
-                ->inRandomOrder()
-                ->get();
-        }
-
-        if ($productosQuery->isEmpty()) {
+        if ($productosDisponibles->isEmpty()) {
             return response()->json([
                 'success' => false,
-                'message' => 'No hay productos disponibles para contar en esta sucursal.'
+                'message' => 'No hay productos base disponibles para contar en esta sucursal. 
+                              Por favor, asegúrese de que los productos de venta tengan ingredientes asociados.'
             ], 404);
         }
 
-        // 🔥 CALCULAR LA CANTIDAD REAL DE PRODUCTOS
-        $cantidadReal = $productosQuery->count();
+        // 4. 🔥 LIMITAR A LA CANTIDAD CONFIGURADA
         $cantidadConfigurada = $config->CantidadProductos;
+        $cantidadReal = $productosDisponibles->count();
+        $cantidadSeleccionada = min($cantidadConfigurada, $cantidadReal);
 
-        // 🔥 LOG PARA SABER SI HAY DIFERENCIA
         if ($cantidadReal < $cantidadConfigurada) {
-            Log::info('⚠️ Hay menos productos disponibles que los configurados', [
+            Log::info('⚠️ Hay menos productos base disponibles que los configurados', [
                 'configurados' => $cantidadConfigurada,
                 'disponibles' => $cantidadReal,
+                'seleccionados' => $cantidadSeleccionada,
                 'sucursal' => $sucursalId,
                 'cliente' => $clienteId
             ]);
         }
 
-        // 4. Calcular saldos
+        // 5. Seleccionar los primeros N productos
+        $productosSeleccionados = $productosDisponibles->take($cantidadSeleccionada);
+
+        // 6. Calcular saldos
         $productos = [];
-        foreach ($productosQuery as $producto) {
-            $saldo = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_propiamente')
-                ->where('IdProducto', $producto->IdProducto)
-                ->where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('IdFecha', '<=', $fechaId)
-                ->selectRaw("
-                    COALESCE(
-                        SUM(CASE 
-                            WHEN D_H = 'D' THEN Unidades 
-                            WHEN D_H = 'H' THEN -Unidades 
-                            ELSE 0 
-                        END), 
-                        0
-                    ) as saldo
-                ")
-                ->value('saldo') ?? 0;
+        foreach ($productosSeleccionados as $producto) {
+            $saldo = $this->calcularSaldoProducto($producto->IdProducto, $clienteId, $sucursalId, $fechaId);
 
             $productos[] = (object) [
                 'IdProducto' => $producto->IdProducto,
@@ -542,19 +513,19 @@ class InventarioFisicoDiarioController extends Controller
             ];
         }
 
-        // 5. Obtener tipo de operación
+        // 7. Obtener tipo de operación
         $idTipoOperacion = $this->getTipoOperacionInventarioFisicoDiario();
 
-        // 6. Generar número correlativo
+        // 8. Generar número correlativo
         $numeroCorrelativo = $this->generarNumeroCorrelativo($sucursalId);
 
-        // 7. 🔥 CREAR CABECERA BORRADOR - CON LA CANTIDAD REAL DE PRODUCTOS
+        // 9. Crear cabecera
         $cabecera = InventarioFisicoDiarioCabecera::create([
             'IdFecha' => $fechaId,
             'IdCliente' => $clienteId,
             'IdSucursal' => $sucursalId,
             'IdOperador' => $operadorId,
-            'CantidadTotalProductos' => $cantidadReal,  // 👈 CANTIDAD REAL
+            'CantidadTotalProductos' => $cantidadSeleccionada,
             'CantidadContados' => 0,
             'FechaRegistro' => now(),
             'ActivoInactivo' => 0,
@@ -566,11 +537,12 @@ class InventarioFisicoDiarioController extends Controller
             'id_cabecera' => $cabecera->IdFisicoDiario,
             'productos_disponibles' => $cantidadReal,
             'productos_configurados' => $cantidadConfigurada,
+            'productos_seleccionados' => $cantidadSeleccionada,
             'operador' => $operadorId,
             'sucursal' => $sucursalId
         ]);
 
-        // 8. CREAR DETALLES
+        // 10. Crear detalles
         foreach ($productos as $producto) {
             InventarioFisicoDiarioDetalle::create([
                 'IdFisicoDiario' => $cabecera->IdFisicoDiario,
@@ -588,11 +560,12 @@ class InventarioFisicoDiarioController extends Controller
             'es_borrador' => false,
             'id_cabecera' => $cabecera->IdFisicoDiario,
             'productos' => $productos,
-            'cantidad_requerida' => $cantidadReal,  // 👈 CANTIDAD REAL
+            'cantidad_requerida' => $cantidadSeleccionada,
             'fecha_str' => date('d/m/Y', strtotime($fecha->Fecha)),
             'fecha_id' => $fechaId,
             'numero_correlativo' => null,
-            'cantidad_configurada' => $cantidadConfigurada,  // 👈 PARA INFO (OPCIONAL)
+            'cantidad_configurada' => $cantidadConfigurada,
+            'total_disponibles' => $cantidadReal,
         ]);
     }
 
@@ -627,6 +600,22 @@ class InventarioFisicoDiarioController extends Controller
                 ->where('ActivoInactivo', 0)
                 ->exists();
 
+            $tieneCompletado = InventarioFisicoDiarioCabecera::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdOperador', $operadorId)
+                ->where('IdFecha', $fechaId)
+                ->where('ActivoInactivo', 1)
+                ->exists();
+
+            if ($tieneCompletado) {
+                return response()->json([
+                    'success' => true,
+                    'requiereMiniInventario' => false,
+                    'motivo' => 'ya_completado',
+                    'message' => 'Ya has completado el inventario físico para esta fecha'
+                ]);
+            }
+
             return response()->json([
                 'success' => true,
                 'requiereMiniInventario' => true,
@@ -654,6 +643,18 @@ class InventarioFisicoDiarioController extends Controller
             $clienteId = session('cliente_id');
             $sucursalId = session('cliente_sucursal_id');
             $operadorId = session('operador_id');
+
+            $config = InventarioFisicoDiarioConfig::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('ActivoInactivo', 1)
+                ->first();
+
+            if (!$config) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No hay configuración activa para esta sucursal'
+                ], 404);
+            }
 
             $borrador = InventarioFisicoDiarioCabecera::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
@@ -715,6 +716,7 @@ class InventarioFisicoDiarioController extends Controller
                     'fecha_str' => date('d/m/Y', strtotime($fecha->Fecha)),
                     'fecha_id' => $fechaId,
                     'numero_correlativo' => $borrador->NumeroCorrelativo,
+                    'cantidad_configurada' => $config->CantidadProductos,
                 ]);
             }
 
@@ -867,7 +869,6 @@ class InventarioFisicoDiarioController extends Controller
         try {
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-            // Buscar cabecera (borrador)
             $cabecera = InventarioFisicoDiarioCabecera::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('IdOperador', $operadorId)
@@ -901,7 +902,6 @@ class InventarioFisicoDiarioController extends Controller
 
             $idAlmacen = $this->getAlmacenPrincipal($clienteId, $sucursalId);
 
-            // 🔥 OBTENER NOMBRE DEL OPERADOR
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador as o')
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
@@ -909,11 +909,8 @@ class InventarioFisicoDiarioController extends Controller
                 ->first();
 
             $nombreOperador = $operador ? $operador->Nombre : 'Desconocido';
-
-            // 🔥 GENERAR NÚMERO CORRELATIVO (se usa para la glosa)
             $numeroCorrelativo = $this->generarNumeroCorrelativo($sucursalId);
 
-            // Actualizar detalles y registrar en inventario_propiamente
             foreach ($request->productos as $productoData) {
                 $cantidadContada = (float) ($productoData['CantidadContada'] ?? 0);
                 $cantidadSistema = (float) ($productoData['CantidadSistema'] ?? 0);
@@ -941,11 +938,8 @@ class InventarioFisicoDiarioController extends Controller
                     ]);
                 }
 
-                // Registrar en inventario_propiamente SOLO si hay diferencia
                 if ($diferencia != 0) {
                     $d_h = $diferencia > 0 ? 'D' : 'H';
-                    
-                    // 🔥 GLOSA COMPLETA CON NÚMERO Y OPERADOR
                     $glosa = "Inventario Fisico Diario N° {$numeroCorrelativo}; Op.{$nombreOperador}";
                     
                     InventarioPropiamente::create([
@@ -974,7 +968,6 @@ class InventarioFisicoDiarioController extends Controller
                 }
             }
 
-            // COMPLETAR
             $cabecera->update([
                 'CantidadContados' => count($request->productos),
                 'ActivoInactivo' => 1,
