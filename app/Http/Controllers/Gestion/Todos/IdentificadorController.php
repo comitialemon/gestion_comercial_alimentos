@@ -27,6 +27,12 @@ class IdentificadorController extends Controller
             });
         }
 
+        // 🔥 SI ES UNA PETICIÓN AJAX, DEVOLVER JSON
+        if ($request->wantsJson() || $request->ajax()) {
+            $identificadores = $query->orderBy('IdIdentificador', 'desc')->get();
+            return response()->json($identificadores);
+        }
+
         $identificadores = $query->orderBy('IdIdentificador', 'desc')
             ->paginate(20)
             ->withQueryString();
@@ -60,13 +66,35 @@ class IdentificadorController extends Controller
                 'FechaEdita' => now(),
             ]);
 
-            // ✅ RETORNAR REDIRECT CON MENSAJE DE ÉXITO
+            // 🔥 SI ES PETICIÓN AJAX, DEVOLVER JSON
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Identificador creado correctamente',
+                    'identificador' => $identificador
+                ]);
+            }
+
             return redirect()->back()->with('success', 'Identificador creado correctamente');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $e->errors(),
+                    'message' => 'Error de validación'
+                ], 422);
+            }
             return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (\Exception $e) {
             Log::error('Error al crear identificador: ' . $e->getMessage());
+            
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al crear: ' . $e->getMessage()
+                ], 500);
+            }
             return redirect()->back()->with('error', 'Error al crear: ' . $e->getMessage());
         }
     }
@@ -91,12 +119,34 @@ class IdentificadorController extends Controller
                 'FechaEdita' => now(),
             ]);
 
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Identificador actualizado correctamente',
+                    'identificador' => $identificador
+                ]);
+            }
+
             return redirect()->back()->with('success', 'Identificador actualizado correctamente');
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'errors' => $e->errors(),
+                    'message' => 'Error de validación'
+                ], 422);
+            }
             return redirect()->back()->withErrors($e->errors())->withInput();
         } catch (\Exception $e) {
             Log::error('Error al actualizar identificador: ' . $e->getMessage());
+            
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al actualizar: ' . $e->getMessage()
+                ], 500);
+            }
             return redirect()->back()->with('error', 'Error al actualizar: ' . $e->getMessage());
         }
     }
@@ -104,22 +154,30 @@ class IdentificadorController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         try {
             $identificador = Identificador::findOrFail($id);
-            
-            // Verificar si está siendo usado (opcional)
-            // if ($identificador->operador()->exists()) {
-            //     return redirect()->back()->with('error', 'No se puede eliminar porque tiene operadores asociados');
-            // }
-            
             $identificador->delete();
+
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Identificador eliminado correctamente'
+                ]);
+            }
 
             return redirect()->back()->with('success', 'Identificador eliminado correctamente');
 
         } catch (\Exception $e) {
             Log::error('Error al eliminar identificador: ' . $e->getMessage());
+            
+            if ($request->wantsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al eliminar: ' . $e->getMessage()
+                ], 500);
+            }
             return redirect()->back()->with('error', 'Error al eliminar: ' . $e->getMessage());
         }
     }

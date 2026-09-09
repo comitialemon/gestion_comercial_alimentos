@@ -129,6 +129,7 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayori
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PrecioProductoController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorClienteController;
 use App\Http\Controllers\Gestion\Inventario\ReporteProductosBaseController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoClientesController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1466,6 +1467,49 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
                 });
+                
+                // ============================================================
+                // OPERADORES PEDIDOCLIENTES
+                // ============================================================
+                Route::prefix('operadores-pedidoclientes')->group(function () {
+                    // Vista principal (listado)
+                    Route::get('/', [OperadorPedidoClientesController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.index');
+                    
+                    // Formulario de creación
+                    Route::get('/create', [OperadorPedidoClientesController::class, 'create'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.create');
+                    
+                    // Guardar nuevo operador
+                    Route::post('/', [OperadorPedidoClientesController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.store');
+                    
+                    // Editar operador
+                    Route::get('/{id}/edit', [OperadorPedidoClientesController::class, 'edit'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.edit');
+                    
+                    // Actualizar operador
+                    Route::put('/{id}', [OperadorPedidoClientesController::class, 'update'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.update');
+                    
+                    // Activar/Desactivar operador
+                    Route::post('/{id}/toggle', [OperadorPedidoClientesController::class, 'toggle'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.toggle');
+                    
+                    // Eliminar (desactivar lógicamente)
+                    Route::delete('/{id}', [OperadorPedidoClientesController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.destroy');
+                    
+                    // API: Obtener datos para el formulario
+                    Route::get('/create-data', [OperadorPedidoClientesController::class, 'createData'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.create-data');
+                    
+                    // API: Obtener operadores disponibles para asignación
+                    Route::get('/disponibles', [OperadorPedidoClientesController::class, 'getDisponibles'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.disponibles');
+                });
+
+
 
             });
 
@@ -1530,6 +1574,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 });
 
             });
+            
 
         });
 
