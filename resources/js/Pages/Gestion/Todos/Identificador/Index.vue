@@ -3,7 +3,7 @@
 import { ref, watch, onMounted, inject } from 'vue'
 import { router, Link, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
-
+import axios from 'axios'
 defineOptions({ layout: AppLayout })
 
 const toast = inject('toast')
@@ -53,54 +53,54 @@ const editar = (item) => {
 }
 
 // Guardar
-const guardar = () => {
+// Guardar (con axios, porque el controller responde JSON)
+const guardar = async () => {
     if (formData.value.CI_NIT && !/^\d+$/.test(formData.value.CI_NIT)) {
         errors.value = { CI_NIT: 'El CI/NIT solo puede contener números' }
         return
     }
-    
+
     processing.value = true
-    
-    if (editando.value) {
-        router.put(`/gestion/todos/identificador/${editId.value}`, formData.value, {
-            preserveScroll: true,
-            onSuccess: () => {
-                toast?.success('Éxito', 'Identificador actualizado correctamente')
-                resetForm()
-                if (search.value) {
-                    router.get('/gestion/todos/identificador', { search: search.value }, {
-                        preserveState: true,
-                        replace: true
-                    })
-                }
-                processing.value = false
-            },
-            onError: (err) => { 
-                errors.value = err
-                toast?.error('Error', Object.values(err)[0]?.[0] || 'Error al actualizar')
-                processing.value = false
-            }
+    errors.value = {}
+
+    try {
+        const url = editando.value
+            ? `/gestion/todos/identificador/${editId.value}`
+            : '/gestion/todos/identificador'
+        const method = editando.value ? 'put' : 'post'
+
+        const { data } = await axios[method](url, formData.value, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         })
-    } else {
-        router.post('/gestion/todos/identificador', formData.value, {
-            preserveScroll: true,
-            onSuccess: () => {
-                toast?.success('Éxito', 'Identificador creado correctamente')
-                resetForm()
-                if (search.value) {
-                    router.get('/gestion/todos/identificador', { search: search.value }, {
-                        preserveState: true,
-                        replace: true
-                    })
-                }
-                processing.value = false
-            },
-            onError: (err) => { 
-                errors.value = err
-                toast?.error('Error', Object.values(err)[0]?.[0] || 'Error al guardar')
-                processing.value = false
-            }
-        })
+
+        if (data.success === false) {
+            if (data.errors) errors.value = data.errors
+            toast?.error('Error', data.message || 'Error al guardar')
+            return
+        }
+
+        toast?.success('Éxito', data.message || 'Guardado correctamente')
+        resetForm()
+
+        // Recargar la lista manteniendo la búsqueda actual
+        if (search.value) {
+            router.get('/gestion/todos/identificador', { search: search.value }, {
+                preserveState: true,
+                replace: true
+            })
+        } else {
+            router.reload({ only: ['items'] })
+        }
+    } catch (e) {
+        const err = e.response?.data
+        if (err?.errors) {
+            errors.value = err.errors
+            toast?.error('Error', Object.values(err.errors)[0]?.[0] || 'Error de validación')
+        } else {
+            toast?.error('Error', err?.message || 'Error al guardar')
+        }
+    } finally {
+        processing.value = false
     }
 }
 

@@ -18,19 +18,12 @@ class IdentificadorController extends Controller
     {
         $query = Identificador::query();
 
-        // Búsqueda
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('CI_NIT', 'like', "%{$search}%")
-                  ->orWhere('Nombre', 'like', "%{$search}%");
+                ->orWhere('Nombre', 'like', "%{$search}%");
             });
-        }
-
-        // 🔥 SI ES UNA PETICIÓN AJAX, DEVOLVER JSON
-        if ($request->wantsJson() || $request->ajax()) {
-            $identificadores = $query->orderBy('IdIdentificador', 'desc')->get();
-            return response()->json($identificadores);
         }
 
         $identificadores = $query->orderBy('IdIdentificador', 'desc')
@@ -180,5 +173,24 @@ class IdentificadorController extends Controller
             }
             return redirect()->back()->with('error', 'Error al eliminar: ' . $e->getMessage());
         }
+    }
+    /**
+     * Listado JSON para la vista Vue (axios)
+     */
+    public function listar(Request $request)
+    {
+        $query = Identificador::query();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('CI_NIT', 'like', "%{$search}%")
+                ->orWhere('Nombre', 'like', "%{$search}%");
+            });
+        }
+
+        $identificadores = $query->orderBy('IdIdentificador', 'desc')->get();
+
+        return response()->json($identificadores);
     }
 }

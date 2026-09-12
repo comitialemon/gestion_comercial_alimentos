@@ -225,6 +225,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
         Route::prefix('todos')->group(function () {
             Route::prefix('identificador')->group(function () {
                 Route::get('/', [IdentificadorController::class, 'index'])->name('gestion.todos.identificador.index');
+                Route::get('/listar', [IdentificadorController::class, 'listar'])->name('gestion.todos.identificador.listar'); // ← NUEVA
                 Route::post('/', [IdentificadorController::class, 'store'])->name('gestion.todos.identificador.store');
                 Route::put('/{id}', [IdentificadorController::class, 'update'])->name('gestion.todos.identificador.update');
                 Route::delete('/{id}', [IdentificadorController::class, 'destroy'])->name('gestion.todos.identificador.destroy');
