@@ -15,21 +15,20 @@ use Illuminate\Support\Facades\Log;
 
 class ImprimirDiarioController extends Controller
 {
-/**
- * Mostrar formulario de selección de diario
- * Ahora muestra TODOS los diarios de la sucursal logueada
- */
+    /**
+     * Mostrar formulario de selección de diario
+     * Ahora muestra TODOS los diarios de la sucursal logueada
+     */
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        $sucursalNombre = session('cliente_sucursal_nombre'); // 🔥 OBTENER NOMBRE
+        $sucursalNombre = session('cliente_sucursal_nombre');
         $operadorId = session('operador_id');
         $tipoOperador = session('operador_tipo_id');
         
         $esSupervisor = in_array($tipoOperador, [1, 2, 11]);
         
-        // Obtener sucursales (para supervisores)
         $sucursales = [];
         if ($esSupervisor) {
             $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
@@ -37,22 +36,21 @@ class ImprimirDiarioController extends Controller
                 ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         }
         
-        // 🔥 Si no hay nombre de sucursal en sesión, obtenerlo de la BD
         if (!$sucursalNombre && $sucursalId) {
             $sucursal = ClienteSucursal::find($sucursalId);
             $sucursalNombre = $sucursal->Nombre ?? null;
         }
         
-        // Obtener TODOS los diarios de la sucursal actual (contabilizados)
+        // 🔥 PAGINACIÓN: 20 por página
         $diariosRecientes = Diario::porContexto()
             ->with(['tipoDiario', 'sucursal'])
             ->where('Contabilizado', 1)
             ->where('NumeroDiario', '>', 0)
             ->where('IdSucursal', $sucursalId)
             ->orderBy('NumeroDiario', 'desc')
-            ->limit(50)
-            ->get()
-            ->map(function($diario) {
+            ->paginate(20)
+            ->withQueryString()
+            ->through(function($diario) {
                 return [
                     'id' => $diario->IdDiario,
                     'numero' => $diario->NumeroDiario,
@@ -65,9 +63,9 @@ class ImprimirDiarioController extends Controller
         return Inertia::render('Gestion/Contabilidad/ImprimirDiario/Index', [
             'sucursales' => $sucursales,
             'sucursalId' => $sucursalId,
-            'sucursalNombre' => $sucursalNombre,  // 🔥 NUEVO: pasar nombre de sucursal
+            'sucursalNombre' => $sucursalNombre,
             'esSupervisor' => $esSupervisor,
-            'diariosRecientes' => $diariosRecientes,
+            'diariosRecientes' => $diariosRecientes, // 🔥 Ahora es un paginador
         ]);
     }
 
@@ -190,7 +188,7 @@ class ImprimirDiarioController extends Controller
     /**
      * Buscar diarios por número (autocompletado) - MODIFICADO
      * Ahora muestra TODOS los diarios de la sucursal (sin filtrar por operador)
-     */
+    */
     public function buscar(Request $request)
     {
         $request->validate([
@@ -199,49 +197,51 @@ class ImprimirDiarioController extends Controller
         
         $q = $request->get('q', '');
         $sucursalId = $request->sucursal_id ?? session('cliente_sucursal_id');
+        $clienteId = session('cliente_id');
         
-        // Si no hay término de búsqueda, devolver vacío
-        if (empty($q)) {
+        if (empty($q) || !is_numeric($q)) {
             return response()->json([
                 'success' => true,
                 'diarios' => []
             ]);
         }
         
-        $clienteId = session('cliente_id');
-        $tipoOperador = session('operador_tipo_id');
-        $esSupervisor = in_array($tipoOperador, [1, 2, 11]);
-        
-        $query = Diario::porContexto()
-            ->with('tipoDiario')
-            ->where('Contabilizado', 1)
-            ->where('NumeroDiario', '>', 0)
-            ->where('IdSucursal', $sucursalId);  // 🔥 SOLO por sucursal actual
-        
-        // Buscar por número
-        $query->where('NumeroDiario', 'LIKE', $q . '%');
-        
-        // 🔥 ELIMINADO el filtro por operador - ahora muestra TODOS de la sucursal
-        
-        $diarios = $query
-            ->orderBy('NumeroDiario', 'desc')
-            ->limit(10)
-            ->get(['IdDiario', 'NumeroDiario', 'IdTipoDiario', 'IdFecha']);
-        
-        // Formatear resultado
-        $resultados = $diarios->map(function($diario) {
-            return [
-                'id' => $diario->IdDiario,
-                'numero' => $diario->NumeroDiario,
-                'tipo' => $diario->tipoDiario->TipoDiario ?? 'Diario',
-                'fecha' => $diario->fecha ? date('d/m/Y', strtotime($diario->fecha->Fecha)) : null,
-            ];
-        });
-        
-        return response()->json([
-            'success' => true,
-            'diarios' => $resultados
-        ]);
+        try {
+            $diarios = Diario::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('Contabilizado', 1)
+                ->where('NumeroDiario', (int) $q)
+                ->with('tipoDiario')
+                ->limit(10)
+                ->get(['IdDiario', 'NumeroDiario', 'IdTipoDiario', 'IdFecha']);
+            
+            $resultados = $diarios->map(function($diario) {
+                $fecha = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_fecha')
+                    ->where('IdFecha', $diario->IdFecha)
+                    ->value('Fecha');
+                
+                return [
+                    'id' => $diario->IdDiario,
+                    'numero' => $diario->NumeroDiario,
+                    'tipo' => $diario->tipoDiario->TipoDiario ?? 'Diario',
+                    'fecha' => $fecha ? date('d/m/Y', strtotime($fecha)) : null,
+                ];
+            });
+            
+            return response()->json([
+                'success' => true,
+                'diarios' => $resultados
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error en buscar: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'diarios' => []
+            ], 500);
+        }
     }
     
     /**
@@ -272,8 +272,19 @@ class ImprimirDiarioController extends Controller
      */
     public function pdf($id)
     {
+        // 🔥 CARGAR DIARIO CON TODAS LAS RELACIONES
         $diario = Diario::porContexto()
-            ->with(['asientos.cuenta', 'asientos.identificador', 'fecha', 'sucursal', 'tipoDiario'])
+            ->with([
+                'fecha', 
+                'sucursal', 
+                'tipoDiario',
+                'asientos' => function($query) {
+                    // 🔥 ORDEN EXACTO DEL SCRIPT: solo por IdContaPropiamente
+                    $query->orderBy('IdContaPropiamente', 'asc');
+                },
+                'asientos.cuenta', 
+                'asientos.identificador'
+            ])
             ->findOrFail($id);
         
         // Datos de la empresa
@@ -318,252 +329,308 @@ class ImprimirDiarioController extends Controller
             $cargoAprueba = $firmaAprueba->Cargo;
         }
         
-        // Calcular totales
-        $totalDebe = $diario->asientos->where('D_H', 'D')->sum('MontoBolivianos');
-        $totalHaber = $diario->asientos->where('D_H', 'H')->sum('MontoBolivianos');
+        // Totales
+        $totalDebe = 0;
+        $totalHaber = 0;
         
-        // Crear PDF
+        // ==================== CREAR PDF ====================
         $pdf = new \TCPDF('P', 'mm', 'A4', true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
-        $pdf->SetMargins(10, 15, 10);
-        $pdf->SetAutoPageBreak(true, 20);
+        $pdf->SetMargins(14, 20, 60); // 🔥 IGUAL QUE SCRIPTCASE
+        $pdf->SetAutoPageBreak(false); // 🔥 DESACTIVAR AUTO PAGE BREAK (lo manejamos manual)
         $pdf->AddPage();
         $pdf->SetFont('courier', '', 8);
         
         // ==================== ENCABEZADO ====================
-        $y = 10;
+        $nombreEmpresa = $empresa->Nombre ?? '';
+        $sucursalCabecera = $diario->sucursal->Nombre ?? '';
+        $numeroDiario = $diario->NumeroDiario ?? '';
+        $fechaDiario = $diario->fecha ? date('d/m/Y', strtotime($diario->fecha->Fecha)) : '';
+        $tipoDiario = $diario->tipoDiario->TipoDiario ?? '';
+        $operadorIngreso = $operador->Iniciales ?? ($operador->Nombre ?? '');
         
-        // Empresa
-        $pdf->SetXY(10, $y);
-        $pdf->SetFont('courier', 'B', 10);
-        $pdf->Cell(0, 4, $empresa->Nombre ?? '', 0, 1, 'L');
+        // Logo (espacio vacío en script original)
+        $pdf->SetFont('Courier', '', 8);
+        $pdf->SetXY(80, 5);
+        $pdf->Cell(30, 5, '', 0, 1, 'C');
         
-        $y = $pdf->GetY();
-        $pdf->SetXY(10, $y-1);
-        $pdf->SetFont('courier', '', 9);
-        $pdf->Cell(0, 4, $diario->sucursal->Nombre ?? '', 0, 1, 'L');
+        // Nombre empresa
+        $pdf->SetXY(6, 5);
+        $pdf->Cell(10, 3, $nombreEmpresa, 0, 1, 'L');
+        
+        // Sucursal
+        $pdf->SetXY(6, 8);
+        $pdf->Cell(10, 3, $sucursalCabecera, 0, 1, 'L');
+        
+        // Número diario
+        $pdf->SetXY(6, 11);
+        $pdf->Cell(18, 3, 'NUMERO DIARIO:', 0, 1, 'L');
+        $pdf->SetXY(30, 11);
+        $pdf->Cell(15, 3, $numeroDiario, 0, 1, 'L');
+        
+        // Fecha diario
+        $pdf->SetXY(6, 15);
+        $pdf->Cell(15, 3, 'FECHA DIARIO:', 0, 1, 'L');
+        $pdf->SetXY(30, 15);
+        $pdf->Cell(15, 3, $fechaDiario, 0, 1, 'L');
         
         // Número de página
-        $pdf->SetXY(170, 10);
-        $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(30, 4, 'Pag. ' . $pdf->PageNo(), 0, 0, 'R');
+        $pdf->SetXY(195, 5);
+        $pdf->Cell(10, 3, 'Pg. ' . $pdf->PageNo(), 0, 0, 'L');
         
-        // Número y fecha de diario
-        $y = $pdf->GetY() + 6;
-        $pdf->SetXY(10, $y);
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->Cell(25, 5, 'NUMERO DIARIO:', 0, 0, 'L');
-        $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(30, 5, $diario->NumeroDiario, 0, 0, 'L');
+        // Tipo diario
+        $pdf->SetXY(170, 11);
+        $pdf->Cell(15, 3, 'TIPO DIARIO:', 0, 1, 'C');
+        $pdf->SetXY(190, 11);
+        $pdf->Cell(15, 3, $tipoDiario, 0, 1, 'C');
         
-        $pdf->SetXY(120, $y);
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->Cell(20, 4, 'TIPO DIARIO: ', 0, 0, 'L');
-        $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(40, 4, $diario->tipoDiario->TipoDiario ?? '', 0, 1, 'L');
+        // Origen diario
+        $pdf->SetXY(80, 11);
+        $pdf->Cell(15, 3, 'Origen Diario:', 0, 1, 'C');
+        $pdf->SetXY(100, 11);
+        $pdf->Cell(15, 3, $operadorIngreso, 0, 1, 'C');
         
-        $y = $pdf->GetY();
-        $pdf->SetXY(10, $y);
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->Cell(25, 4, 'FECHA DIARIO:', 0, 0, 'L');
-        $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(30, 4, date('d/m/Y', strtotime($diario->fecha->Fecha ?? '')), 0, 0, 'L');
-        
-        $pdf->SetXY(120, $y);
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->Cell(20, 4, 'ORIGEN:', 0, 0, 'L');
-        $pdf->SetFont('courier', '', 8);
-        $pdf->Cell(40, 4, $operador->Iniciales ?? ($operador->Nombre ?? ''), 0, 1, 'L');
-        
-        // ==================== CABECERA DE TABLA ====================
-        $y = $pdf->GetY() + 8;
-        
-        $pdf->SetDrawColor(0, 0, 0);
-        $pdf->SetLineWidth(0.2);
-        $pdf->Line(10, $y, 200, $y);
-        
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->SetXY(10, $y);
-        $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
-        $pdf->SetXY(47, $y);
-        $pdf->Cell(70, 5, 'Glosa', 0, 0, 'L');
-        $pdf->SetXY(119, $y);
-        $pdf->Cell(20, 5, 'Tipo Cambio', 0, 0, 'R');
-        $pdf->SetXY(145, $y);
-        $pdf->Cell(25, 5, 'Debe (Bs.)', 0, 0, 'R');
-        $pdf->SetXY(175, $y);
-        $pdf->Cell(25, 5, 'Haber (Bs.)', 0, 1, 'R');
-        
-        $y += 5;
-        $pdf->SetXY(10, $y);
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->Cell(35, 2, 'Identificador', 0, 1, 'L');
-        
-        $y += 3;
-        $pdf->Line(10, $y, 200, $y);
-        $y += 4;
+        // 🔥 LÍNEAS PUNTEADAS DIVISORAS INICIALES
+        $lineaPunteada = '----------------------------------------------------------------------------------------------------------------------------------------------------------------';
+        $pdf->SetXY(5, 17);
+        $pdf->Cell(15, 3, $lineaPunteada, 0, 1, 'L');
+        $pdf->SetXY(8, 20);
+        $pdf->Cell(15, 3, 'Cuenta', 0, 1, 'L');
+        $pdf->SetXY(10, 22);
+        $pdf->Cell(15, 3, 'Glosa', 0, 1, 'L');
+        $pdf->SetXY(105, 22);
+        $pdf->Cell(15, 3, 'Tipo Cambio', 0, 1, 'L');
+        $pdf->SetXY(160, 22);
+        $pdf->Cell(15, 3, 'Debe', 0, 1, 'L');
+        $pdf->SetXY(190, 22);
+        $pdf->Cell(15, 3, 'Haber', 0, 1, 'L');
+        $pdf->SetXY(12, 24);
+        $pdf->Cell(15, 3, 'Identificador', 0, 1, 'L');
+        $pdf->SetXY(5, 26);
+        $pdf->Cell(15, 3, $lineaPunteada, 0, 1, 'L');
         
         // ==================== ASIENTOS ====================
-        $pdf->SetFont('courier', '', 8);
-
+        // Posición Y inicial (después del encabezado)
+        $y = 28;
+        
         foreach ($diario->asientos as $asiento) {
-            // Verificar espacio en página
-            if ($y > 250) {
-                $pdf->AddPage();
-                $y = 20;
-                
-                // Reimprimir cabecera
-                $pdf->SetDrawColor(0, 0, 0);
-                $pdf->Line(10, $y, 200, $y);
-                $y += 3;
-                $pdf->SetFont('courier', 'B', 8);
-                $pdf->SetXY(10, $y);
-                $pdf->Cell(35, 5, 'Cuenta', 0, 0, 'L');
-                $pdf->SetXY(25, $y);
-                $pdf->Cell(80, 5, 'Glosa', 0, 0, 'L');
-                $pdf->SetXY(119, $y);
-                $pdf->Cell(20, 5, 'Tipo Cambio', 0, 0, 'R');
-                $pdf->SetXY(145, $y);
-                $pdf->Cell(25, 5, 'Debe (Bs.)', 0, 0, 'R');
-                $pdf->SetXY(175, $y);
-                $pdf->Cell(25, 5, 'Haber (Bs.)', 0, 1, 'R');
-                $y += 5;
-                $pdf->SetXY(10, $y);
-                $pdf->SetFont('courier', 'B', 8);
-                $pdf->Cell(35, 5, 'Identificador', 0, 1, 'L');
-                $y += 3;
-                $pdf->Line(10, $y, 200, $y);
-                $y += 4;
-                $pdf->SetFont('courier', '', 8);
-            }
-            
-            // 🔥 CORREGIDO: Obtener el identificador correctamente
+            // Datos del asiento
+            $cuentaNumero = $asiento->cuenta->Cuenta ?? '';
+            $cuentaDescripcion = $asiento->cuenta->Descripcion ?? '';
             $glosa = $asiento->Glosa ?? '';
+            $d_h = $asiento->D_H ?? '';
+            $montoBolivianos = $asiento->MontoBolivianos ?? 0;
+            $tipoCambio = $asiento->TipoCambio ?? 0;
+            $montoOtraMoneda = $asiento->MontoOtraMoneda ?? 0;
+            $deducible = $asiento->Deducible ?? '';
             
-            // 🔥 Manejar correctamente el identificador (puede ser NULL)
-            $identificadorTexto = '';
+            // Identificador
+            $identificadorCI = '';
+            $identificadorNombre = '';
             if ($asiento->IdIdentificador && $asiento->IdIdentificador > 0) {
-                // Si ya tenemos la relación cargada, usarla
                 if ($asiento->identificador) {
-                    $identificadorTexto = ($asiento->identificador->CI_NIT ?? '') . ' - ' . ($asiento->identificador->Nombre ?? '');
+                    $identificadorCI = $asiento->identificador->CI_NIT ?? '';
+                    $identificadorNombre = $asiento->identificador->Nombre ?? '';
                 } else {
-                    // Buscar manualmente
-                    $identificadorDB = DB::connection('mysql_gestion_comercial_alimentos')
+                    $idDB = DB::connection('mysql_gestion_comercial_alimentos')
                         ->table('todos_identificador')
                         ->where('IdIdentificador', $asiento->IdIdentificador)
                         ->first();
-                    if ($identificadorDB) {
-                        $identificadorTexto = ($identificadorDB->CI_NIT ?? '') . ' - ' . ($identificadorDB->Nombre ?? '');
-                    } else {
-                        $identificadorTexto = 'ID: ' . $asiento->IdIdentificador . ' (No encontrado)';
+                    if ($idDB) {
+                        $identificadorCI = $idDB->CI_NIT ?? '';
+                        $identificadorNombre = $idDB->Nombre ?? '';
                     }
                 }
-            } else {
-                $identificadorTexto = 'SIN IDENTIFICADOR';
             }
             
-            // Altura de glosa (MultiCell)
-            $glosaHeight = $pdf->getStringHeight(55, $glosa);
-            $identHeight = $pdf->getStringHeight(150, $identificadorTexto);
+            // 🔥 CALCULAR ALTO DE LA GLOSA (multicell)
+            $largo = $pdf->GetStringWidth($glosa);
             
-            // Guardar posición Y actual
-            $currentY = $y;
-            
-            // ===== LÍNEA 1: Cuenta, Tipo Cambio, Debe/Haber =====
-            $cuentaStr = ($asiento->cuenta->Cuenta ?? '') . ' - ' . ($asiento->cuenta->Descripcion ?? '');
-            
+            // ===== FILA 1: Cuenta + Descripción =====
             $pdf->SetXY(10, $y);
-            $pdf->Cell(35, 4, $cuentaStr, 0, 0, 'L');
+            $pdf->Cell(14, 2, $cuentaNumero, 0, 0, 'L');
+            $pdf->Cell(14, 2, $cuentaDescripcion, 0, 0, 'L');
             
-            $pdf->SetXY(119, $y);
-            $pdf->Cell(20, 4, number_format($asiento->TipoCambio, 4, ',', '.'), 0, 0, 'R');
+            // Guardar Y actual para posicionar Debe/Haber
+            $yAuxiliar = $y;
             
-            if ($asiento->D_H == 'D') {
-                $pdf->SetXY(145, $y);
-                $pdf->Cell(25, 4, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
-                $pdf->SetXY(175, $y);
-                $pdf->Cell(25, 4, '', 0, 0, 'R');
+            // ===== FILA 2: Glosa (multicell) =====
+            $pdf->SetXY(20, $y + 3);
+            $pdf->MultiCell(120, 2, $glosa, 0, 'L');
+            $yGlosa = $pdf->GetY();
+            
+            // ===== FILA 3: Identificador =====
+            $pdf->SetXY(20, $yGlosa + 1);
+            $pdf->Cell(18, 2, $identificadorCI, 0, 0, 'L');
+            $pdf->Cell(78, 2, $identificadorNombre, 0, 0, 'L');
+            $pdf->Cell(4, 2, $deducible, 0, 0, 'R');
+            
+            // Y final después de glosa + identificador
+            $yFinal = $pdf->GetY();
+            
+            // ===== TIPO DE CAMBIO (alineado con primera fila) =====
+            $pdf->SetXY(105, $yAuxiliar);
+            $pdf->Cell(14, 2, number_format($tipoCambio, 4), 0, 0, 'R');
+            
+            // ===== DEBE / HABER =====
+            $xDebe = $pdf->GetX();
+            $yDebe = $pdf->GetY();
+            
+            if ($d_h == 'D') {
+                // DEBE
+                $pdf->SetXY($xDebe + 40, $yDebe);
+                $pdf->Cell(14, 2, number_format($montoBolivianos, 2), 0, 0, 'R');
+                
+                // Monto otra moneda (debajo)
+                $xOtraMoneda = $pdf->GetX();
+                $yOtraMoneda = $pdf->GetY();
+                $pdf->SetXY($xOtraMoneda - 18, $yOtraMoneda + 4);
+                $pdf->Cell(14, 2, number_format($montoOtraMoneda, 2), 0, 1, 'R');
+                
+                $totalDebe += $montoBolivianos;
             } else {
-                $pdf->SetXY(145, $y);
-                $pdf->Cell(25, 4, '', 0, 0, 'R');
-                $pdf->SetXY(175, $y);
-                $pdf->Cell(25, 4, number_format($asiento->MontoBolivianos, 2, ',', '.'), 0, 0, 'R');
+                // HABER
+                $pdf->SetXY($xDebe + 65, $yDebe);
+                $pdf->Cell(14, 2, number_format($montoBolivianos, 2), 0, 1, 'R');
+                
+                // Monto otra moneda
+                $xOtraMoneda = $pdf->GetX();
+                $yOtraMoneda = $pdf->GetY();
+                $pdf->SetXY($xOtraMoneda - 44, $yOtraMoneda + 2);
+                $pdf->Cell(14, 2, number_format($montoOtraMoneda, 2), 0, 1, 'R');
+                
+                $totalHaber += $montoBolivianos;
             }
             
-            // ===== LÍNEA 2: Glosa (MultiLine) =====
-            $y += 5;
-            $pdf->SetXY(25, $y);
-            $pdf->MultiCell(55, 4, $glosa, 0, 'L');
-            $newY = $pdf->GetY();
+            // ===== AVANZAR Y =====
+            $y = $yFinal + 4;
             
-            // ===== LÍNEA 3: Identificador (MultiLine) =====
-            $pdf->SetXY(25, $newY);
-            $pdf->MultiCell(150, 4, $identificadorTexto, 0, 'L');
-            $newY2 = $pdf->GetY();
-            
-            // Avanzar Y según la línea más alta
-            $y = max($newY, $newY2) + 2;
-            
-            // Línea separadora entre asientos
-            $pdf->SetDrawColor(200, 200, 200);
-            $pdf->Line(10, $y, 200, $y);
-            $y += 3;
+            // ===== SALTO DE PÁGINA =====
+            if ($largo > 0 && $y > 245) {
+                // Pie de página con totales
+                $pdf->SetFont('courier', '', 8);
+                $pdf->SetXY(112, 262);
+                $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+                $pdf->SetXY(115, 264);
+                $pdf->Cell(15, 3, 'TOTALES EN BOLIVIANOS ', 0, 1, 'L');
+                $pdf->SetXY(128, 264);
+                $pdf->MultiCell(45, 3, number_format($totalDebe, 2, '.', ''), 0, 'R');
+                $pdf->SetXY(153, 264);
+                $pdf->MultiCell(45, 3, number_format($totalHaber, 2, '.', ''), 0, 'R');
+                $pdf->SetXY(112, 266);
+                $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+                $pdf->SetXY(112, 267);
+                $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+                
+                // Nueva página
+                $pdf->AddPage();
+                
+                // Reimprimir encabezado
+                $pdf->SetFont('Courier', '', 8);
+                $pdf->SetXY(80, 5);
+                $pdf->Cell(30, 5, '', 0, 1, 'C');
+                
+                $pdf->SetXY(6, 5);
+                $pdf->Cell(10, 3, $nombreEmpresa, 0, 1, 'L');
+                $pdf->SetXY(6, 8);
+                $pdf->Cell(10, 3, $sucursalCabecera, 0, 1, 'L');
+                $pdf->SetXY(6, 11);
+                $pdf->Cell(18, 3, 'NUMERO DIARIO:', 0, 1, 'L');
+                $pdf->SetXY(30, 11);
+                $pdf->Cell(15, 3, $numeroDiario, 0, 1, 'L');
+                $pdf->SetXY(6, 15);
+                $pdf->Cell(15, 3, 'FECHA DIARIO:', 0, 1, 'L');
+                $pdf->SetXY(30, 15);
+                $pdf->Cell(15, 3, $fechaDiario, 0, 1, 'L');
+                
+                $pdf->SetXY(195, 5);
+                $pdf->Cell(10, 3, 'Pg. ' . $pdf->PageNo(), 0, 0, 'L');
+                
+                $pdf->SetXY(170, 11);
+                $pdf->Cell(15, 3, 'TIPO DIARIO:', 0, 1, 'C');
+                $pdf->SetXY(190, 11);
+                $pdf->Cell(15, 3, $tipoDiario, 0, 1, 'C');
+                
+                $pdf->SetXY(80, 11);
+                $pdf->Cell(15, 3, 'Origen Diario:', 0, 1, 'C');
+                $pdf->SetXY(100, 11);
+                $pdf->Cell(15, 3, $operadorIngreso, 0, 1, 'C');
+                
+                $pdf->SetXY(5, 17);
+                $pdf->Cell(15, 3, $lineaPunteada, 0, 1, 'L');
+                $pdf->SetXY(8, 20);
+                $pdf->Cell(15, 3, 'Cuenta', 0, 1, 'L');
+                $pdf->SetXY(10, 22);
+                $pdf->Cell(15, 3, 'Glosa', 0, 1, 'L');
+                $pdf->SetXY(105, 22);
+                $pdf->Cell(15, 3, 'Tipo Cambio', 0, 1, 'L');
+                $pdf->SetXY(160, 22);
+                $pdf->Cell(15, 3, 'Debe', 0, 1, 'L');
+                $pdf->SetXY(190, 22);
+                $pdf->Cell(15, 3, 'Haber', 0, 1, 'L');
+                $pdf->SetXY(12, 24);
+                $pdf->Cell(15, 3, 'Identificador', 0, 1, 'L');
+                $pdf->SetXY(5, 26);
+                $pdf->Cell(15, 3, $lineaPunteada, 0, 1, 'L');
+                
+                $y = 28; // Reiniciar Y
+            }
         }
         
-        // ==================== TOTALES ====================
-        $y += 6;
-        
-        $pdf->SetDrawColor(0, 0, 0);
-        $pdf->SetLineWidth(0.2);
-        $pdf->Line(10, $y, 200, $y);
-        $y += 4;
-        
-        $pdf->SetFont('courier', 'B', 8);
-        $pdf->SetXY(110, $y);
-        $pdf->Cell(35, 5, 'TOTALES EN BOLIVIANOS:', 0, 0, 'R');
-        $pdf->SetXY(145, $y);
-        $pdf->Cell(25, 5, number_format($totalDebe, 2, ',', '.'), 0, 0, 'R');
-        $pdf->SetXY(175, $y);
-        $pdf->Cell(25, 5, number_format($totalHaber, 2, ',', '.'), 0, 1, 'R');
-        
-        $y += 6;
-        $pdf->Line(10, $y, 200, $y);
-        $y += 4;
-        $pdf->Line(10, $y, 200, $y);
-        
-        // ==================== FIRMAS ====================
-        $y = $y + 20;
+        // ==================== TOTALES FINALES ====================
+        $YTotalesFinales = $y;
         
         $pdf->SetFont('courier', '', 8);
+        $pdf->SetXY(112, $YTotalesFinales + 4);
+        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->SetXY(115, $YTotalesFinales + 6);
+        $pdf->Cell(15, 3, 'TOTALES EN BOLIVIANOS ', 0, 1, 'L');
+        $pdf->SetXY(128, $YTotalesFinales + 6);
+        $pdf->MultiCell(45, 3, number_format($totalDebe, 2, '.', ''), 0, 'R');
+        $pdf->SetXY(153, $YTotalesFinales + 6);
+        $pdf->MultiCell(45, 3, number_format($totalHaber, 2, '.', ''), 0, 'R');
+        $pdf->SetXY(112, $YTotalesFinales + 8);
+        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
+        $pdf->SetXY(112, $YTotalesFinales + 9);
+        $pdf->Cell(15, 3, '----------------------------------------------------------------------------', 0, 1, 'L');
         
-        // Realizado por
-        $pdf->SetXY(25, $y);
-        $pdf->Cell(60, 4, $operador->Nombre ?? '', 0, 1, 'C');
-        $pdf->SetXY(25, $y + 5);
-        $pdf->Cell(60, 4, 'Realizado', 0, 1, 'C');
+        // ==================== FIRMAS ====================
+        // Si las firmas no caben, nueva página
+        if (($YTotalesFinales + 9) > 245) {
+            $pdf->AddPage();
+            $YTotalesFinales = 0;
+        }
         
-        // Revisado por
+        // Nombre operador
+        $nombreOperador = $operador->Nombre ?? '';
+        $pdf->SetXY(40, $YTotalesFinales + 30);
+        $pdf->Cell(15, 3, $nombreOperador, 0, 1, 'C');
+        $pdf->SetXY(40, $YTotalesFinales + 33);
+        $pdf->Cell(15, 3, 'Realizado', 0, 1, 'C');
+        
+        // Revisado
         if ($nombreRevisa) {
-            $pdf->SetXY(95, $y);
-            $pdf->Cell(60, 4, $nombreRevisa, 0, 1, 'C');
-            $pdf->SetXY(95, $y + 5);
-            $pdf->Cell(60, 4, $cargoRevisa ?? 'Revisado', 0, 1, 'C');
-            $pdf->SetXY(95, $y + 10);
-            $pdf->Cell(60, 4, 'Revisado', 0, 1, 'C');
+            $pdf->SetXY(100, $YTotalesFinales + 30);
+            $pdf->Cell(15, 3, $nombreRevisa, 0, 1, 'C');
+            $pdf->SetXY(100, $YTotalesFinales + 33);
+            $pdf->Cell(15, 3, $cargoRevisa ?? 'Revisado', 0, 1, 'C');
+            $pdf->SetXY(100, $YTotalesFinales + 36);
+            $pdf->Cell(15, 3, 'Revisado', 0, 1, 'C');
         }
         
-        // Aprobado por
+        // Aprobado
         if ($nombreAprueba) {
-            $pdf->SetXY(165, $y);
-            $pdf->Cell(40, 4, $nombreAprueba, 0, 1, 'C');
-            $pdf->SetXY(165, $y + 5);
-            $pdf->Cell(40, 4, $cargoAprueba ?? 'Aprobado', 0, 1, 'C');
-            $pdf->SetXY(165, $y + 10);
-            $pdf->Cell(40, 4, 'Aprobado', 0, 1, 'C');
+            $pdf->SetXY(160, $YTotalesFinales + 30);
+            $pdf->Cell(15, 3, $nombreAprueba, 0, 1, 'C');
+            $pdf->SetXY(160, $YTotalesFinales + 33);
+            $pdf->Cell(15, 3, $cargoAprueba ?? 'Aprobado', 0, 1, 'C');
+            $pdf->SetXY(160, $YTotalesFinales + 36);
+            $pdf->Cell(15, 3, 'Aprobado', 0, 1, 'C');
         }
         
-        $pdf->Output("diario_{$diario->NumeroDiario}.pdf", 'I');
+        // Salida
+        $pdf->Output("diario_{$numeroDiario}.pdf", 'I');
         exit;
     }
 }

@@ -268,14 +268,19 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * ✅ VER BITÁCORA DE PRECIOS
+     * ✅ VER BITÁCORA DE PRECIOS (paginada por CLIENTES)
      */
     public function bitacoraIndex(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        
+        // ✅ Cuántos CLIENTES por página
+        $clientesPorPagina = 5;
 
-        // ✅ USAR LA MISMA CONSULTA DIRECTA
+        // ============================================================
+        // 1. IDENTIFICADORES
+        // ============================================================
         $identificadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_identificador as i')
             ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
@@ -287,6 +292,9 @@ class PrecioProductoController extends Controller
             ->distinct()
             ->get();
 
+        // ============================================================
+        // 2. GRUPOS
+        // ============================================================
         $gruposIds = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->with('gruposAnalisis')
@@ -296,55 +304,169 @@ class PrecioProductoController extends Controller
             ->unique()
             ->toArray();
 
+        // ============================================================
+        // 3. PRODUCTOS
+        // ============================================================
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposIds)
             ->where('ActivoInactivo', 0)
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Descripcion', 'Codigo']);
 
-        $query = DB::connection('mysql_gestion_comercial_alimentos')
+        // ============================================================
+        // 4. QUERY BASE (para contar y obtener clientes únicos)
+        // ============================================================
+        $queryBase = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_precio_bitacora as b')
-            ->join('todos_identificador as i', 'b.IdIdentificador', '=', 'i.IdIdentificador')
-            ->join('inventario_productodetalle as p', 'b.IdProducto', '=', 'p.IdProducto')
-            ->join('todos_operador as o', 'b.IdOperador', '=', 'o.IdOperador')
-            ->join('todos_identificador as oi', 'o.IdIdentificador', '=', 'oi.IdIdentificador')
-            ->select(
-                'b.*',
-                'i.Nombre as IdentificadorNombre',
-                'i.CI_NIT',
-                'p.Descripcion as ProductoNombre',
-                'p.Codigo as ProductoCodigo',
-                'oi.Nombre as OperadorNombre'
-            )
             ->where('b.IdCliente', $clienteId)
             ->where('b.IdSucursal', $sucursalId)
             ->whereIn('b.IdIdentificador', $identificadores->pluck('IdIdentificador'));
 
+        // Filtros
         if ($request->filled('identificador_id')) {
-            $query->where('b.IdIdentificador', $request->identificador_id);
+            $queryBase->where('b.IdIdentificador', $request->identificador_id);
         }
-
         if ($request->filled('producto_id')) {
-            $query->where('b.IdProducto', $request->producto_id);
+            $queryBase->where('b.IdProducto', $request->producto_id);
         }
-
         if ($request->filled('fecha_desde')) {
-            $query->whereDate('b.FechaCambio', '>=', $request->fecha_desde);
+            $queryBase->whereDate('b.FechaCambio', '>=', $request->fecha_desde);
         }
-
         if ($request->filled('fecha_hasta')) {
-            $query->whereDate('b.FechaCambio', '<=', $request->fecha_hasta);
+            $queryBase->whereDate('b.FechaCambio', '<=', $request->fecha_hasta);
         }
 
-        $bitacora = $query->orderBy('b.FechaCambio', 'desc')
-            ->paginate(20);
+        // ============================================================
+        // 5. OBTENER IDs DE CLIENTES PAGINADOS
+        // ============================================================
+        $page = (int) $request->get('page', 1);
+        $page = max(1, $page); // Asegurar >= 1
+        $offset = ($page - 1) * $clientesPorPagina;
 
+        // Clientes de esta página (ordenados por última fecha descendente)
+        $clientesPaginadosIds = (clone $queryBase)
+            ->select('b.IdIdentificador')
+            ->selectRaw('MAX(b.FechaCambio) as ultima_fecha')
+            ->groupBy('b.IdIdentificador')
+            ->orderByDesc('ultima_fecha')
+            ->offset($offset)
+            ->limit($clientesPorPagina)
+            ->pluck('b.IdIdentificador')
+            ->toArray();
+
+        // Total de clientes únicos
+        $totalClientes = (clone $queryBase)
+            ->distinct()
+            ->count('b.IdIdentificador');
+
+        // ============================================================
+        // 6. OBTENER REGISTROS DE ESOS CLIENTES
+        // ============================================================
+        $bitacora = collect();
+        
+        if (!empty($clientesPaginadosIds)) {
+            $query = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_clientes_precio_bitacora as b')
+                ->join('todos_identificador as i', 'b.IdIdentificador', '=', 'i.IdIdentificador')
+                ->join('inventario_productodetalle as p', 'b.IdProducto', '=', 'p.IdProducto')
+                ->join('todos_operador as o', 'b.IdOperador', '=', 'o.IdOperador')
+                ->join('todos_identificador as oi', 'o.IdIdentificador', '=', 'oi.IdIdentificador')
+                ->select(
+                    'b.*',
+                    'i.Nombre as IdentificadorNombre',
+                    'i.CI_NIT',
+                    'p.Descripcion as ProductoNombre',
+                    'p.Codigo as ProductoCodigo',
+                    'o.IdIdentificador as OperadorIdIdentificador',
+                    'o.NombreAcceso as OperadorNombreAcceso',
+                    'o.Iniciales as OperadorIniciales',
+                    'oi.Nombre as OperadorNombre',
+                    'oi.CI_NIT as OperadorCI_NIT'
+                )
+                ->where('b.IdCliente', $clienteId)
+                ->where('b.IdSucursal', $sucursalId)
+                ->whereIn('b.IdIdentificador', $clientesPaginadosIds);
+
+            // ✅ MISMOS filtros que la query base
+            if ($request->filled('producto_id')) {
+                $query->where('b.IdProducto', $request->producto_id);
+            }
+            if ($request->filled('fecha_desde')) {
+                $query->whereDate('b.FechaCambio', '>=', $request->fecha_desde);
+            }
+            if ($request->filled('fecha_hasta')) {
+                $query->whereDate('b.FechaCambio', '<=', $request->fecha_hasta);
+            }
+
+            $bitacora = $query->orderBy('b.FechaCambio', 'desc')->get();
+        }
+
+        // ============================================================
+        // 7. ✅ CONSTRUIR PAGINACIÓN MANUAL (sin usar LengthAwarePaginator)
+        // ============================================================
+        $totalPaginas = $totalClientes > 0 
+            ? (int) ceil($totalClientes / $clientesPorPagina) 
+            : 1;
+
+        $paginacion = [
+            'current_page' => $page,
+            'last_page' => $totalPaginas,
+            'per_page' => $clientesPorPagina,
+            'total' => $totalClientes,
+            'from' => $totalClientes > 0 ? ($offset + 1) : 0,
+            'to' => min($offset + $clientesPorPagina, $totalClientes),
+            'links' => $this->generarLinksPaginacion($page, $totalPaginas, $request),
+        ];
+
+        // ============================================================
+        // 8. RETORNAR A INERTIA
+        // ============================================================
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/BitacoraPrecios', [
-            'bitacora' => $bitacora,
-            'identificadores' => $identificadores,
-            'productos' => $productos,
-            'filtros' => $request->only(['identificador_id', 'producto_id', 'fecha_desde', 'fecha_hasta']),
+            'bitacora'            => $bitacora,           // ✅ Es un array plano (no paginador)
+            'paginacion'          => $paginacion,         // ✅ Info de paginación separada
+            'identificadores'     => $identificadores,
+            'productos'           => $productos,
+            'clientesPorPagina'   => $clientesPorPagina,
+            'filtros'             => $request->only(['identificador_id', 'producto_id', 'fecha_desde', 'fecha_hasta']),
         ]);
+    }
+
+    /**
+     * ✅ Generar links de paginación al estilo Laravel
+     */
+    private function generarLinksPaginacion($currentPage, $lastPage, $request)
+    {
+        $links = [];
+        $queryParams = $request->query();
+        
+        // Anterior
+        $links[] = [
+            'url' => $currentPage > 1 
+                ? $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $currentPage - 1]))
+                : null,
+            'label' => '&laquo; Anterior',
+            'active' => false,
+        ];
+        
+        // Números
+        for ($i = 1; $i <= $lastPage; $i++) {
+            $links[] = [
+                'url' => $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $i])),
+                'label' => (string) $i,
+                'active' => $i === $currentPage,
+            ];
+        }
+        
+        // Siguiente
+        $links[] = [
+            'url' => $currentPage < $lastPage 
+                ? $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $currentPage + 1]))
+                : null,
+            'label' => 'Siguiente &raquo;',
+            'active' => false,
+        ];
+        
+        return $links;
     }
 
     /**

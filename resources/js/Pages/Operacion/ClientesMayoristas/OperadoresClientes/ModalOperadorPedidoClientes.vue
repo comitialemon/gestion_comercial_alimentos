@@ -1,4 +1,3 @@
-<!-- resources/js/Pages/Operacion/ClientesMayoristas/OperadoresClientes/ModalOperadorPedidoClientes.vue -->
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted, nextTick, inject } from 'vue'
 import axios from 'axios'
@@ -33,6 +32,9 @@ const form = ref({
     TelefonoDomicilio: '',
     NumeroCelular: '',
     IdSucursal: '',
+    Ciudad: 0,
+    Provincia: 0,
+    Destino: '',
 })
 
 // ==================== BUSCADOR IDENTIFICADOR ====================
@@ -45,6 +47,27 @@ const identificadorSeleccionado = ref(null)
 
 // ==================== MODAL IDENTIFICADOR ANIDADO ====================
 const mostrarModalIdentificador = ref(false)
+
+// ==================== COMPUTED ====================
+const alMenosUnoMarcado = computed(() => {
+    return form.value.Ciudad === 1 || form.value.Provincia === 1
+})
+
+const soloUnoMarcado = computed(() => {
+    return !(form.value.Ciudad === 1 && form.value.Provincia === 1)
+})
+
+// ==================== SELECCIÓN TIPO UBICACIÓN ====================
+const seleccionarTipoUbicacion = (tipo) => {
+    if (tipo === 'Ciudad') {
+        form.value.Ciudad = 1
+        form.value.Provincia = 0
+    } else if (tipo === 'Provincia') {
+        form.value.Ciudad = 0
+        form.value.Provincia = 1
+    }
+    errors.value.Ciudad = null
+}
 
 // ==================== BUSCAR IDENTIFICADORES ====================
 const buscarIdentificadores = async (q) => {
@@ -129,14 +152,11 @@ const seleccionarIdentificador = (item) => {
 
 // ==================== ABRIR MODAL IDENTIFICADOR ====================
 const abrirModalIdentificador = () => {
-    console.log('Abriendo modal de identificador')
     mostrarModalIdentificador.value = true
 }
 
 // ==================== CUANDO SE GUARDA IDENTIFICADOR ====================
 const onIdentificadorGuardado = (nuevoIdentificador) => {
-    console.log('📥 IDENTIFICADOR RECIBIDO EN PADRE:', nuevoIdentificador)
-    
     mostrarModalIdentificador.value = false
     
     if (nuevoIdentificador && nuevoIdentificador.id) {
@@ -169,11 +189,15 @@ const onIdentificadorGuardado = (nuevoIdentificador) => {
         
         toast?.success('Éxito', 'Identificador seleccionado automáticamente')
     } else {
-        console.error('❌ Identificador inválido:', nuevoIdentificador)
         toast?.error('Error', 'No se pudo seleccionar el identificador creado')
     }
 }
-
+// ==================== CONVERTIR A MAYÚSCULAS ====================
+const convertirMayusculas = (campo) => {
+    if (form.value[campo]) {
+        form.value[campo] = form.value[campo].toUpperCase()
+    }
+}
 // ==================== SUBMIT PRINCIPAL ====================
 const submitForm = async () => {
     errors.value = {}
@@ -195,6 +219,20 @@ const submitForm = async () => {
         return
     }
 
+    if (!alMenosUnoMarcado.value) {
+        errors.value = { Ciudad: 'Debe seleccionar Ciudad o Provincia' }
+        mensajeError.value = '❌ Debe seleccionar Ciudad o Provincia'
+        loading.value = false
+        return
+    }
+
+    if (!soloUnoMarcado.value) {
+        errors.value = { Ciudad: 'Solo puede seleccionar Ciudad o Provincia, no ambos' }
+        mensajeError.value = '❌ Solo puede seleccionar Ciudad o Provincia, no ambos'
+        loading.value = false
+        return
+    }
+
     try {
         let url, method
         
@@ -210,6 +248,9 @@ const submitForm = async () => {
             ...form.value,
             TelefonoDomicilio: parseInt(form.value.TelefonoDomicilio) || 0,
             NumeroCelular: parseInt(form.value.NumeroCelular) || 0,
+            Ciudad: form.value.Ciudad ? 1 : 0,
+            Provincia: form.value.Provincia ? 1 : 0,
+            Destino: form.value.Destino || null,
         }
 
         const response = await axios[method](url, dataToSend)
@@ -255,6 +296,9 @@ const cerrarModal = () => {
         TelefonoDomicilio: '',
         NumeroCelular: '',
         IdSucursal: '',
+        Ciudad: 0,
+        Provincia: 0,
+        Destino: '',
     }
     textoBusqueda.value = ''
     sugerencias.value = []
@@ -262,14 +306,10 @@ const cerrarModal = () => {
     identificadorSeleccionado.value = null
 }
 
-// ==================== FUNCIÓN PARA CARGAR DATOS DEL OPERADOR ====================
+// ==================== CARGAR DATOS DEL OPERADOR ====================
 const cargarDatosOperador = () => {
     if (!props.operador) return
     
-    console.log('📝 Cargando operador:', props.operador)
-    console.log('📝 Asignación recibida:', props.asignacion)
-    
-    // ✅ Cargar datos del operador
     form.value.IdIdentificador = props.operador.IdIdentificador || ''
     form.value.Iniciales = props.operador.Iniciales || ''
     form.value.NombreAcceso = props.operador.NombreAcceso || ''
@@ -278,23 +318,21 @@ const cargarDatosOperador = () => {
     form.value.NumeroCelular = props.operador.NumeroCelular ? String(props.operador.NumeroCelular) : ''
     form.value.Clave = ''
     
-    // ✅ Cargar la sucursal de la asignación
+    const config = props.operador.pedido_cliente_config || {}
+    form.value.Ciudad = config.Ciudad ? 1 : 0
+    form.value.Provincia = config.Provincia ? 1 : 0
+    form.value.Destino = config.Destino || ''
+    
     if (props.asignacion && props.asignacion.IdSucursal) {
         form.value.IdSucursal = props.asignacion.IdSucursal
-        console.log('✅ Sucursal cargada:', props.asignacion.IdSucursal)
     } else if (props.sucursales && props.sucursales.length === 1) {
         form.value.IdSucursal = props.sucursales[0].id
-        console.log('✅ Sucursal única seleccionada:', props.sucursales[0].id)
     } else {
-        console.log('❌ No se encontró asignación para el operador')
-        // ✅ Si no hay asignación, seleccionar la primera sucursal por defecto
         if (props.sucursales && props.sucursales.length > 0) {
             form.value.IdSucursal = props.sucursales[0].id
-            console.log('⚠️ Seleccionando primera sucursal por defecto:', props.sucursales[0].id)
         }
     }
     
-    // ✅ Cargar el identificador
     if (props.operador.IdIdentificador) {
         const ident = (props.identificadores || []).find(i => i.id === props.operador.IdIdentificador)
         if (ident) {
@@ -315,17 +353,14 @@ watch(() => props.modelValue, (nuevoValor) => {
     }
 })
 
-// ✅ WATCH PARA CUANDO CAMBIA EL OPERADOR
 watch(() => props.operador, (nuevoOperador) => {
     if (nuevoOperador) {
         cargarDatosOperador()
     }
 }, { immediate: true })
 
-// ✅ WATCH PARA CUANDO CAMBIA LA ASIGNACIÓN
 watch(() => props.asignacion, (nuevaAsignacion) => {
     if (nuevaAsignacion && props.operador) {
-        console.log('🔄 Asignación actualizada:', nuevaAsignacion)
         cargarDatosOperador()
     }
 }, { deep: true })
@@ -350,46 +385,45 @@ onUnmounted(() => {
 })
 </script>
 
-<!-- EL TEMPLATE ES EL MISMO -->
 <template>
     <!-- Modal Principal -->
-    <div v-if="modelValue" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="cerrarModal">
+    <div v-if="modelValue" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="cerrarModal">
         <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl animate-fadeIn">
-            <!-- Header -->
-            <div class="bg-gradient-to-r from-primary-600 to-primary-700 p-4 sticky top-0 z-10 rounded-t-xl">
+            <!-- ==================== HEADER ==================== -->
+            <div class="bg-primary-600 p-3 sticky top-0 z-10 rounded-t-xl">
                 <div class="flex justify-between items-center">
-                    <h3 class="text-white font-bold text-lg flex items-center gap-2">
-                        <i :class="editando ? 'fas fa-edit' : 'fas fa-user-plus'"></i>
+                    <h3 class="text-white font-semibold text-sm flex items-center gap-1.5">
+                        <i :class="editando ? 'fas fa-edit' : 'fas fa-user-plus'" class="text-[10px]"></i>
                         {{ editando ? 'Editar Operador PedidoClientes' : 'Nuevo Operador PedidoClientes' }}
                     </h3>
-                    <button @click="cerrarModal" class="text-white/80 hover:text-white transition text-xl leading-none">
+                    <button @click="cerrarModal" class="text-white/80 hover:text-white transition text-sm">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
 
-            <!-- Body -->
-            <div class="p-6">
+            <!-- ==================== BODY ==================== -->
+            <div class="p-4">
                 <!-- Mensajes -->
-                <div v-if="mensajeExito" class="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm flex items-center gap-2 animate-slideDown">
-                    <i class="fas fa-check-circle"></i>
+                <div v-if="mensajeExito" class="mb-3 p-2 bg-emerald-50 border border-emerald-200 rounded-md text-emerald-700 text-xs flex items-center gap-1.5 animate-slideDown">
+                    <i class="fas fa-check-circle text-[10px]"></i>
                     <span>{{ mensajeExito }}</span>
                 </div>
-                <div v-if="mensajeError" class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-center gap-2 animate-slideDown">
-                    <i class="fas fa-exclamation-circle"></i>
+                <div v-if="mensajeError" class="mb-3 p-2 bg-red-50 border border-red-200 rounded-md text-red-700 text-xs flex items-center gap-1.5 animate-slideDown">
+                    <i class="fas fa-exclamation-circle text-[10px]"></i>
                     <span>{{ mensajeError }}</span>
                 </div>
 
-                <form @submit.prevent="submitForm" class="space-y-4">
-                    <!-- Info de tipo -->
-                    <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex items-center gap-2 text-emerald-700 text-sm">
-                        <i class="fas fa-info-circle"></i>
-                        <span class="font-medium">Tipo de operador predefinido: <span class="font-bold">PedidoClientes</span></span>
+                <form @submit.prevent="submitForm" class="space-y-3">
+                    <!-- Info tipo -->
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-md p-2.5 flex items-center gap-1.5 text-emerald-700 text-xs">
+                        <i class="fas fa-info-circle text-[10px]"></i>
+                        <span class="font-medium">Tipo: <span class="font-bold">PedidoClientes</span></span>
                     </div>
 
-                    <!-- Identificador con buscador -->
+                    <!-- Identificador -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">
+                        <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
                             Persona (CI/NIT) <span class="text-red-500">*</span>
                         </label>
                         <div class="relative">
@@ -402,98 +436,95 @@ onUnmounted(() => {
                                         @input="buscarIdentificadores(textoBusqueda)"
                                         @focus="textoBusqueda && buscarIdentificadores(textoBusqueda)"
                                         placeholder="Buscar por CI/NIT o nombre..."
-                                        class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:outline-none pr-28"
+                                        class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none pr-20"
                                         :class="{ 'border-red-500': errors.IdIdentificador }"
-                                        :style="{ borderColor: errors.IdIdentificador ? '#ef4444' : `var(--color-primary-300)` }"
                                         autocomplete="off"
                                     />
                                     <button type="button" @click="abrirModalIdentificador"
-                                        class="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs transition px-2 py-1 rounded flex items-center gap-1"
-                                        :style="{ color: `var(--color-primary-600)`, backgroundColor: `var(--color-primary-50)` }"
+                                        class="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] transition px-1.5 py-0.5 rounded flex items-center gap-0.5 bg-primary-50 text-primary-600 hover:bg-primary-100"
                                         title="Agregar nuevo identificador">
-                                        <i class="fas fa-plus-circle"></i>
-                                        <span class="hidden xs:inline">Nuevo</span>
+                                        <i class="fas fa-plus-circle text-[9px]"></i>
+                                        <span>Nuevo</span>
                                     </button>
                                 </div>
                             </div>
                             
                             <div v-if="mostrarSugerencias && sugerencias.length > 0"
-                                class="absolute z-20 mt-1 w-full bg-white border rounded-lg shadow-lg max-h-48 overflow-y-auto"
-                                :style="{ borderColor: `var(--color-primary-300)` }">
+                                class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
                                 <div v-for="item in sugerencias" :key="item.id"
                                     @click="seleccionarIdentificador(item)"
-                                    class="px-3 py-2 cursor-pointer hover:bg-gray-50 border-b last:border-b-0 transition text-sm">
-                                    <div class="font-medium text-gray-800">{{ item.Nombre }}</div>
-                                    <div class="text-xs text-gray-500">CI/NIT: {{ item.CI_NIT }}</div>
+                                    class="px-2.5 py-1.5 cursor-pointer hover:bg-primary-50 border-b border-gray-100 last:border-b-0 transition text-sm">
+                                    <div class="font-medium text-gray-800 text-xs">{{ item.Nombre }}</div>
+                                    <div class="text-[9px] text-gray-500">CI/NIT: {{ item.CI_NIT }}</div>
                                 </div>
                             </div>
                             
-                            <p v-if="errors.IdIdentificador" class="text-xs text-red-500 mt-1">{{ errors.IdIdentificador }}</p>
+                            <p v-if="errors.IdIdentificador" class="text-[8px] text-red-500 mt-0.5">{{ errors.IdIdentificador }}</p>
                             
-                            <div v-if="identificadorSeleccionado" class="mt-1 text-xs text-gray-600 flex items-center gap-2">
-                                <i class="fas fa-check-circle text-green-500"></i>
+                            <div v-if="identificadorSeleccionado" class="mt-0.5 text-[9px] text-gray-600 flex items-center gap-1">
+                                <i class="fas fa-check-circle text-emerald-500 text-[8px]"></i>
                                 <span>Seleccionado: <strong>{{ identificadorSeleccionado.CI_NIT }}</strong> - {{ identificadorSeleccionado.Nombre }}</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Iniciales y Nombre de Acceso -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Iniciales + Nombre Acceso -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
                                 Iniciales <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 type="text" 
                                 v-model="form.Iniciales" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm uppercase focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm uppercase focus:ring-primary-500 focus:border-primary-500 outline-none" 
                                 :class="{ 'border-red-500': errors.Iniciales }" 
                                 placeholder="Ej: JPG" 
                                 maxlength="5"
                             />
-                            <p v-if="errors.Iniciales" class="text-xs text-red-500 mt-1">{{ errors.Iniciales }}</p>
+                            <p v-if="errors.Iniciales" class="text-[8px] text-red-500 mt-0.5">{{ errors.Iniciales }}</p>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
                                 Nombre de Acceso <span class="text-red-500">*</span>
                             </label>
                             <input 
                                 type="text" 
                                 v-model="form.NombreAcceso" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" 
                                 :class="{ 'border-red-500': errors.NombreAcceso }" 
                                 placeholder="Usuario para login"
                             />
-                            <p v-if="errors.NombreAcceso" class="text-xs text-red-500 mt-1">{{ errors.NombreAcceso }}</p>
+                            <p v-if="errors.NombreAcceso" class="text-[8px] text-red-500 mt-0.5">{{ errors.NombreAcceso }}</p>
                         </div>
                     </div>
 
-                    <!-- Contraseña y Sucursal -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Contraseña + Sucursal -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
                                 Contraseña 
                                 <span v-if="!editando" class="text-red-500">*</span>
-                                <span v-else class="text-gray-400 text-xs">(dejar en blanco para no cambiar)</span>
+                                <span v-else class="text-gray-400">(opcional)</span>
                             </label>
                             <input 
                                 type="password" 
                                 v-model="form.Clave" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" 
                                 :class="{ 'border-red-500': errors.Clave }" 
                                 :placeholder="editando ? 'Nueva contraseña (opcional)' : 'Mínimo 4 caracteres'"
                             />
-                            <p v-if="errors.Clave" class="text-xs text-red-500 mt-1">{{ errors.Clave }}</p>
+                            <p v-if="errors.Clave" class="text-[8px] text-red-500 mt-0.5">{{ errors.Clave }}</p>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">
-                                Sucursal de Asignación <span class="text-red-500">*</span>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
+                                Sucursal <span class="text-red-500">*</span>
                             </label>
                             <select 
                                 v-model="form.IdSucursal" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition"
+                                class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.IdSucursal }"
                             >
                                 <option value="">Seleccione una sucursal</option>
@@ -501,56 +532,138 @@ onUnmounted(() => {
                                     {{ suc.nombre }} {{ suc.NumeroSucursal ? `(N° ${suc.NumeroSucursal})` : '' }}
                                 </option>
                             </select>
-                            <p v-if="errors.IdSucursal" class="text-xs text-red-500 mt-1">{{ errors.IdSucursal }}</p>
+                            <p v-if="errors.IdSucursal" class="text-[8px] text-red-500 mt-0.5">{{ errors.IdSucursal }}</p>
                         </div>
                     </div>
 
                     <!-- Dirección -->
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Dirección Domicilio</label>
+                        <label class="block text-[10px] font-medium text-gray-500 mb-0.5">Dirección Domicilio</label>
                         <input 
                             type="text" 
                             v-model="form.DireccionDomicilio" 
-                            class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" 
                             :class="{ 'border-red-500': errors.DireccionDomicilio }" 
                             placeholder="Dirección completa"
                         />
-                        <p v-if="errors.DireccionDomicilio" class="text-xs text-red-500 mt-1">{{ errors.DireccionDomicilio }}</p>
+                        <p v-if="errors.DireccionDomicilio" class="text-[8px] text-red-500 mt-0.5">{{ errors.DireccionDomicilio }}</p>
                     </div>
 
                     <!-- Teléfonos -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Teléfono Domicilio</label>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">Teléfono Domicilio</label>
                             <input 
                                 type="text" 
                                 v-model="form.TelefonoDomicilio" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" 
                                 :class="{ 'border-red-500': errors.TelefonoDomicilio }" 
                                 placeholder="Teléfono fijo"
                             />
-                            <p v-if="errors.TelefonoDomicilio" class="text-xs text-red-500 mt-1">{{ errors.TelefonoDomicilio }}</p>
+                            <p v-if="errors.TelefonoDomicilio" class="text-[8px] text-red-500 mt-0.5">{{ errors.TelefonoDomicilio }}</p>
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Número Celular</label>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">Número Celular</label>
                             <input 
                                 type="text" 
                                 v-model="form.NumeroCelular" 
-                                class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" 
                                 :class="{ 'border-red-500': errors.NumeroCelular }" 
                                 placeholder="Celular / WhatsApp"
                             />
-                            <p v-if="errors.NumeroCelular" class="text-xs text-red-500 mt-1">{{ errors.NumeroCelular }}</p>
+                            <p v-if="errors.NumeroCelular" class="text-[8px] text-red-500 mt-0.5">{{ errors.NumeroCelular }}</p>
+                        </div>
+                    </div>
+
+                    <!-- ==================== UBICACIÓN ==================== -->
+                    <div class="border-t border-gray-200 pt-3 mt-1">
+                        <div class="flex items-center gap-1.5 mb-2">
+                            <i class="fas fa-map-marker-alt text-primary-600 text-[10px]"></i>
+                            <h4 class="text-xs font-semibold text-gray-700">Ubicación</h4>
+                            <span class="text-[8px] text-gray-400 ml-auto">
+                                <i class="fas fa-info-circle mr-0.5"></i>
+                                Seleccione <strong>solo uno</strong>
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                            <!-- Ciudad -->
+                            <label 
+                                class="flex items-center gap-2 p-2 border rounded-md cursor-pointer transition-all duration-150"
+                                :class="form.Ciudad === 1 
+                                    ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200' 
+                                    : 'border-gray-200 hover:bg-gray-50'"
+                            >
+                                <input 
+                                    type="radio" 
+                                    name="tipoUbicacion"
+                                    :checked="form.Ciudad === 1"
+                                    @change="seleccionarTipoUbicacion('Ciudad')"
+                                    class="w-3.5 h-3.5 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <div class="flex-1">
+                                    <span class="text-xs font-medium text-gray-700 flex items-center gap-1">
+                                        <i class="fas fa-city text-blue-500 text-[10px]"></i>
+                                        Ciudad
+                                    </span>
+                                </div>
+                                <i v-if="form.Ciudad === 1" class="fas fa-check-circle text-blue-500 text-sm"></i>
+                            </label>
+
+                            <!-- Provincia -->
+                            <label 
+                                class="flex items-center gap-2 p-2 border rounded-md cursor-pointer transition-all duration-150"
+                                :class="form.Provincia === 1 
+                                    ? 'border-emerald-400 bg-emerald-50 ring-1 ring-emerald-200' 
+                                    : 'border-gray-200 hover:bg-gray-50'"
+                            >
+                                <input 
+                                    type="radio" 
+                                    name="tipoUbicacion"
+                                    :checked="form.Provincia === 1"
+                                    @change="seleccionarTipoUbicacion('Provincia')"
+                                    class="w-3.5 h-3.5 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                                />
+                                <div class="flex-1">
+                                    <span class="text-xs font-medium text-gray-700 flex items-center gap-1">
+                                        <i class="fas fa-tree text-emerald-500 text-[10px]"></i>
+                                        Provincia
+                                    </span>
+                                </div>
+                                <i v-if="form.Provincia === 1" class="fas fa-check-circle text-emerald-500 text-sm"></i>
+                            </label>
+                        </div>
+
+                        <!-- Alerta -->
+                        <p v-if="!alMenosUnoMarcado && errors.Ciudad" class="text-[9px] text-red-500 mb-1.5 flex items-center gap-1">
+                            <i class="fas fa-exclamation-circle text-[8px]"></i>
+                            Debe seleccionar Ciudad o Provincia
+                        </p>
+                        <!-- Input Destino -->
+                        <div>
+                            <label class="block text-[10px] font-medium text-gray-500 mb-0.5">
+                                <i class="fas fa-location-dot text-orange-500 mr-0.5 text-[9px]"></i>
+                                Destino
+                            </label>
+                            <input 
+                                type="text" 
+                                v-model="form.Destino" 
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none uppercase" 
+                                :class="{ 'border-red-500': errors.Destino }" 
+                                placeholder="Ej: Cochabamba, Cercado, Quillacollo..."
+                                maxlength="150"
+                            />
+                            <p v-if="errors.Destino" class="text-[8px] text-red-500 mt-0.5">{{ errors.Destino }}</p>
                         </div>
                     </div>
 
                     <!-- Botones -->
-                    <div class="flex justify-end gap-3 pt-4 border-t">
+                    <div class="flex flex-wrap justify-end gap-1.5 pt-3 border-t border-gray-200">
                         <button 
                             type="button" 
                             @click="cerrarModal" 
-                            class="px-5 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition text-sm font-medium"
+                            class="px-3 py-1.5 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100 transition text-xs font-medium"
                             :disabled="loading"
                         >
                             Cancelar
@@ -558,10 +671,10 @@ onUnmounted(() => {
                         <button 
                             type="submit" 
                             :disabled="loading" 
-                            class="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-2 text-sm font-medium"
+                            class="px-4 py-1.5 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 transition disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium"
                         >
-                            <i v-if="loading" class="fas fa-spinner fa-spin"></i>
-                            <i v-else class="fas fa-save"></i>
+                            <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else class="fas fa-save text-[10px]"></i>
                             {{ loading ? 'Guardando...' : 'Guardar Operador' }}
                         </button>
                     </div>
@@ -580,68 +693,27 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
+}
+
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to {
-        opacity: 1;
-        transform: scale(1);
-    }
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 @keyframes slideDown {
-    from {
-        opacity: 0;
-        transform: translateY(-10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fadeIn {
-    animation: fadeIn 0.2s ease-out;
-}
+.animate-fadeIn { animation: fadeIn 0.2s ease-out; }
+.animate-slideDown { animation: slideDown 0.3s ease-out; }
 
-.animate-slideDown {
-    animation: slideDown 0.3s ease-out;
-}
-
-.overflow-y-auto::-webkit-scrollbar {
-    width: 6px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
-}
-
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
-}
-
-input:focus, select:focus {
-    --tw-ring-color: var(--color-primary-500);
-    --tw-ring-offset-width: 0px;
-    --tw-ring-offset-color: #fff;
-    --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-    --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-    box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
-    outline: 2px solid transparent;
-    outline-offset: 2px;
-}
-
-@media (max-width: 480px) {
-    .xs\:inline {
-        display: inline !important;
-    }
-}
+.overflow-y-auto::-webkit-scrollbar { width: 4px; }
+.overflow-y-auto::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+.overflow-y-auto::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 </style>

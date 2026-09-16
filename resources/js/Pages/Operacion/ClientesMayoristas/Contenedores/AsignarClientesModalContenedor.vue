@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch, inject, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
 
 const toast = inject('toast')
@@ -33,35 +33,60 @@ const clienteSeleccionadoParaAgregar = ref(null)
 const nuevoClienteMinimo = ref('')
 const editandoMinimo = ref({})
 
+// ✅ REFS para detectar click fuera
+const dropdownRef = ref(null)
+const inputBusquedaRef = ref(null)
+
+// =============================================
+// HELPERS DE ORDENAMIENTO
+// =============================================
+const ordenarPorNombre = (arr) => {
+    return [...arr].sort((a, b) => {
+        return (a.Nombre || '').localeCompare(b.Nombre || '', 'es', {
+            sensitivity: 'base',
+            numeric: true
+        })
+    })
+}
+
 // =============================================
 // COMPUTADOS
 // =============================================
+const clientesAsignadosOrdenados = computed(() => {
+    return ordenarPorNombre(clientesAsignados.value)
+})
 
 const clientesFiltrados = computed(() => {
     if (!busquedaCliente.value.trim()) {
-        return clientesAsignados.value
+        return clientesAsignadosOrdenados.value
     }
     const termino = busquedaCliente.value.toLowerCase().trim()
-    return clientesAsignados.value.filter(c =>
+    const filtrados = clientesAsignados.value.filter(c =>
         c.Nombre?.toLowerCase().includes(termino) ||
         c.CI_NIT?.toString().includes(termino)
     )
+    return ordenarPorNombre(filtrados)
 })
 
 const clientesDisponibles = computed(() => {
     const idsAsignados = clientesAsignados.value.map(c => c.IdIdentificador)
-    return todosClientes.value.filter(c => !idsAsignados.includes(c.IdIdentificador))
+    const disponibles = todosClientes.value.filter(c => !idsAsignados.includes(c.IdIdentificador))
+    return ordenarPorNombre(disponibles)
 })
 
+// ✅ Solo devuelve resultados si el dropdown está abierto
 const clientesDisponiblesFiltrados = computed(() => {
+    if (!mostrarListaClientes.value) return []
+    
     if (!busquedaClienteParaAgregar.value) {
         return clientesDisponibles.value.slice(0, 10)
     }
     const termino = busquedaClienteParaAgregar.value.toLowerCase().trim()
-    return clientesDisponibles.value.filter(c =>
+    const filtrados = clientesDisponibles.value.filter(c =>
         c.Nombre?.toLowerCase().includes(termino) ||
         c.CI_NIT?.toString().includes(termino)
     )
+    return filtrados.slice(0, 20)
 })
 
 const puedeAgregar = computed(() => {
@@ -71,7 +96,6 @@ const puedeAgregar = computed(() => {
            parseFloat(nuevoClienteMinimo.value) <= capacidadContenedor.value
 })
 
-// ✅ COMPUTED PARA VALIDACIÓN DE MÍNIMO
 const errorMinimo = computed(() => {
     if (!nuevoClienteMinimo.value) return ''
     const minimo = parseFloat(nuevoClienteMinimo.value)
@@ -83,6 +107,41 @@ const errorMinimo = computed(() => {
 })
 
 // =============================================
+// ✅ CONTROL DEL DROPDOWN
+// =============================================
+
+// Abrir dropdown al hacer focus
+const abrirDropdown = () => {
+    mostrarListaClientes.value = true
+}
+
+// Cerrar dropdown con delay (para que el click en una opción se registre)
+const cerrarDropdownConDelay = () => {
+    setTimeout(() => {
+        mostrarListaClientes.value = false
+    }, 150)
+}
+
+// Cerrar dropdown inmediatamente
+const cerrarDropdown = () => {
+    mostrarListaClientes.value = false
+}
+
+// ✅ Click fuera del dropdown
+const handleClickOutside = (event) => {
+    if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+        mostrarListaClientes.value = false
+    }
+}
+
+// ✅ Manejar tecla Escape
+const handleEscape = (event) => {
+    if (event.key === 'Escape') {
+        mostrarListaClientes.value = false
+    }
+}
+
+// =============================================
 // MÉTODOS
 // =============================================
 
@@ -92,23 +151,20 @@ const cargarDatos = async () => {
     loading.value = true
 
     try {
-        // ✅ OBTENER CAPACIDAD DEL CONTENEDOR
         capacidadContenedor.value = parseFloat(props.contenedor.CapacidadTotal || 0)
 
-        // ✅ OBTENER CLIENTES ASIGNADOS
         const responseAsignados = await axios.get(
             `/operacion/pedidos/clientes-mayoristas/contenedores/${props.contenedor.IdContenedor}/clientes-asignados`
         )
         if (responseAsignados.data.success) {
-            clientesAsignados.value = responseAsignados.data.data
+            clientesAsignados.value = ordenarPorNombre(responseAsignados.data.data)
         }
 
-        // ✅ OBTENER CLIENTES DISPONIBLES
         const responseTodos = await axios.get(
             `/operacion/pedidos/clientes-mayoristas/contenedores/clientes-disponibles`
         )
         if (responseTodos.data.success) {
-            todosClientes.value = responseTodos.data.data
+            todosClientes.value = ordenarPorNombre(responseTodos.data.data)
         }
 
     } catch (error) {
@@ -123,14 +179,22 @@ const seleccionarClienteParaAgregar = (cliente) => {
     clienteSeleccionadoParaAgregar.value = cliente
     busquedaClienteParaAgregar.value = `${cliente.Nombre} (${cliente.CI_NIT})`
     mostrarListaClientes.value = false
-    // ✅ LIMPIAR ERROR AL SELECCIONAR
-    errorMinimo.value = ''
+}
+
+const limpiarSeleccionCliente = () => {
+    clienteSeleccionadoParaAgregar.value = null
+    busquedaClienteParaAgregar.value = ''
+    mostrarListaClientes.value = false
+    
+    // ✅ Volver a enfocar el input después de limpiar
+    nextTick(() => {
+        inputBusquedaRef.value?.focus()
+    })
 }
 
 const agregarCliente = async () => {
     if (!puedeAgregar.value) return
 
-    // ✅ VALIDACIÓN EXTRA (por si acaso)
     const minimo = parseFloat(nuevoClienteMinimo.value)
     if (minimo > capacidadContenedor.value) {
         toast?.error('Error', `La cantidad mínima (${minimo}) no puede ser mayor que la capacidad del contenedor (${capacidadContenedor.value})`)
@@ -153,9 +217,11 @@ const agregarCliente = async () => {
             await cargarDatos()
             emit('actualizar', { type: 'agregar' })
             
+            // ✅ Limpiar formulario
             clienteSeleccionadoParaAgregar.value = null
             nuevoClienteMinimo.value = ''
             busquedaClienteParaAgregar.value = ''
+            mostrarListaClientes.value = false
         } else {
             toast?.error('Error', response.data.message || 'Error al agregar cliente')
         }
@@ -177,10 +243,8 @@ const actualizarMinimo = async (cliente) => {
         return
     }
 
-    // ✅ VALIDAR QUE NO SUPERE LA CAPACIDAD
     if (parseFloat(minimo) > capacidadContenedor.value) {
         toast?.error('Error', `La cantidad mínima (${minimo}) no puede ser mayor que la capacidad del contenedor (${capacidadContenedor.value})`)
-        // Revertir al valor anterior
         cliente.cantidad_minima_temporal = cliente.CantidadMinima
         return
     }
@@ -242,16 +306,52 @@ const cerrar = () => {
     emit('close')
 }
 
-watch(() => props.visible, (newVal) => {
-    if (newVal && props.contenedor) {
-        cargarDatos()
-    }
-})
-
 const formatearNumero = (num) => {
     if (num === undefined || num === null) return '0'
     return Number(num).toFixed(0)
 }
+
+// =============================================
+// WATCHERS
+// =============================================
+
+// Al abrir el modal → cargar datos y resetear el dropdown
+watch(() => props.visible, (newVal) => {
+    if (newVal && props.contenedor) {
+        cargarDatos()
+        mostrarListaClientes.value = false
+        clienteSeleccionadoParaAgregar.value = null
+        busquedaClienteParaAgregar.value = ''
+        nuevoClienteMinimo.value = ''
+    }
+})
+
+// Al cambiar la búsqueda → si hay texto, abrir dropdown
+watch(busquedaClienteParaAgregar, (newVal) => {
+    if (newVal && !clienteSeleccionadoParaAgregar.value) {
+        mostrarListaClientes.value = true
+    }
+})
+
+// Al seleccionar cliente → limpiar si cambia la búsqueda
+watch(clienteSeleccionadoParaAgregar, (newVal, oldVal) => {
+    if (oldVal && !newVal) {
+        busquedaClienteParaAgregar.value = ''
+    }
+})
+
+// =============================================
+// LIFECYCLE
+// =============================================
+onMounted(() => {
+    document.addEventListener('click', handleClickOutside)
+    document.addEventListener('keydown', handleEscape)
+})
+
+onUnmounted(() => {
+    document.removeEventListener('click', handleClickOutside)
+    document.removeEventListener('keydown', handleEscape)
+})
 </script>
 
 <template>
@@ -309,38 +409,83 @@ const formatearNumero = (num) => {
                     </p>
                     
                     <div class="flex flex-wrap items-center gap-2">
-                        <div class="relative flex-1 min-w-[160px]">
-                            <input
-                                type="text"
-                                v-model="busquedaClienteParaAgregar"
-                                @focus="mostrarListaClientes = true"
-                                @input="mostrarListaClientes = true"
-                                placeholder="Buscar cliente..."
-                                class="w-full border border-gray-300 rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition bg-white"
-                            />
+                        <!-- ✅ INPUT CON DROPDOWN CONTROLADO -->
+                        <div 
+                            ref="dropdownRef"
+                            class="relative flex-1 min-w-[200px]"
+                        >
+                            <div class="relative">
+                                <input
+                                    ref="inputBusquedaRef"
+                                    type="text"
+                                    v-model="busquedaClienteParaAgregar"
+                                    @focus="abrirDropdown"
+                                    @blur="cerrarDropdownConDelay"
+                                    :placeholder="clienteSeleccionadoParaAgregar ? '' : 'Buscar cliente...'"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition"
+                                    :class="{
+                                        'bg-green-50 border-green-300 pr-7': clienteSeleccionadoParaAgregar,
+                                        'bg-white border-gray-300 pr-7': !clienteSeleccionadoParaAgregar && busquedaClienteParaAgregar,
+                                        'bg-white border-gray-300': !clienteSeleccionadoParaAgregar && !busquedaClienteParaAgregar
+                                    }"
+                                    autocomplete="off"
+                                />
+                                
+                                <!-- Botón limpiar -->
+                                <button
+                                    v-if="clienteSeleccionadoParaAgregar || busquedaClienteParaAgregar"
+                                    @mousedown.prevent="limpiarSeleccionCliente"
+                                    type="button"
+                                    class="absolute right-1.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5 rounded hover:bg-gray-100"
+                                    title="Limpiar"
+                                >
+                                    <i class="fas fa-times text-[10px]"></i>
+                                </button>
+                            </div>
+
+                            <!-- DROPDOWN -->
                             <div 
                                 v-if="mostrarListaClientes && clientesDisponiblesFiltrados.length > 0"
-                                class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-36 overflow-y-auto"
+                                class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
+                                @mousedown.prevent
                             >
+                                <div class="px-2 py-1 bg-gray-50 border-b text-[9px] text-gray-500 flex items-center justify-between sticky top-0">
+                                    <span>
+                                        <i class="fas fa-users text-[8px] mr-1"></i>
+                                        {{ clientesDisponiblesFiltrados.length }} disponible(s)
+                                    </span>
+                                    <span class="text-gray-400">
+                                        Presione <kbd class="px-1 bg-white rounded border border-gray-300 text-[8px]">Esc</kbd>
+                                    </span>
+                                </div>
+
                                 <div
                                     v-for="cliente in clientesDisponiblesFiltrados"
                                     :key="cliente.IdIdentificador"
-                                    @click="seleccionarClienteParaAgregar(cliente)"
-                                    class="px-2 py-1.5 hover:bg-gray-100 cursor-pointer text-xs flex justify-between items-center border-b last:border-0"
+                                    @mousedown.prevent="seleccionarClienteParaAgregar(cliente)"
+                                    class="px-2 py-1.5 hover:bg-primary-50 cursor-pointer text-xs flex justify-between items-center border-b border-gray-100 last:border-0 transition"
                                 >
-                                    <span class="font-medium">{{ cliente.Nombre }}</span>
-                                    <span class="text-[10px] text-gray-400 font-mono">{{ cliente.CI_NIT }}</span>
+                                    <div class="flex items-center gap-2 min-w-0">
+                                        <div class="w-5 h-5 rounded-full bg-primary-100 flex items-center justify-center flex-shrink-0">
+                                            <i class="fas fa-user text-primary-600 text-[8px]"></i>
+                                        </div>
+                                        <span class="font-medium text-gray-800 truncate">{{ cliente.Nombre }}</span>
+                                    </div>
+                                    <span class="text-[10px] text-gray-400 font-mono flex-shrink-0 ml-2">{{ cliente.CI_NIT }}</span>
                                 </div>
                             </div>
+
+                            <!-- Sin resultados -->
                             <div 
-                                v-else-if="mostrarListaClientes && busquedaClienteParaAgregar && clientesDisponiblesFiltrados.length === 0"
-                                class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg p-2 text-center text-gray-400 text-[10px]"
+                                v-else-if="mostrarListaClientes && busquedaClienteParaAgregar && !clienteSeleccionadoParaAgregar && clientesDisponiblesFiltrados.length === 0"
+                                class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-3 text-center"
                             >
-                                <i class="fas fa-search mr-1"></i>
-                                No hay clientes disponibles
+                                <i class="fas fa-search text-gray-300 text-base mb-1 block"></i>
+                                <p class="text-[10px] text-gray-500">No hay clientes con "{{ busquedaClienteParaAgregar }}"</p>
                             </div>
                         </div>
 
+                        <!-- MÍNIMO -->
                         <div class="flex items-center gap-1">
                             <span class="text-[10px] text-gray-500">Mín:</span>
                             <input
@@ -359,6 +504,7 @@ const formatearNumero = (num) => {
                             <span class="text-[10px] text-gray-400">und</span>
                         </div>
 
+                        <!-- BOTÓN AGREGAR -->
                         <button
                             @click="agregarCliente"
                             :disabled="!puedeAgregar || guardando"
@@ -370,7 +516,7 @@ const formatearNumero = (num) => {
                         </button>
                     </div>
 
-                    <!-- ✅ MENSAJE DE ERROR O ADVERTENCIA -->
+                    <!-- MENSAJE DE ERROR O ADVERTENCIA -->
                     <div v-if="errorMinimo" class="mt-1.5 text-[10px] text-red-500 flex items-center gap-1">
                         <i class="fas fa-exclamation-circle"></i>
                         {{ errorMinimo }}
@@ -394,7 +540,7 @@ const formatearNumero = (num) => {
                             type="text"
                             v-model="busquedaCliente"
                             placeholder="Buscar cliente asignado..."
-                            class="w-full border border-gray-200 rounded-md pl-7 pr-2 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition bg-gray-50 focus:bg-white"
+                            class="w-full border border-gray-200 rounded-md pl-7 pr-7 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition bg-gray-50 focus:bg-white"
                         />
                         <button 
                             v-if="busquedaCliente"
@@ -416,7 +562,10 @@ const formatearNumero = (num) => {
                             <thead class="bg-gray-50 border-b">
                                 <tr>
                                     <th class="px-2 py-1.5 text-left font-medium text-gray-500">CI/NIT</th>
-                                    <th class="px-2 py-1.5 text-left font-medium text-gray-500">Cliente</th>
+                                    <th class="px-2 py-1.5 text-left font-medium text-gray-500">
+                                        Cliente
+                                        <i class="fas fa-sort-alpha-down text-[9px] text-primary-500 ml-1" title="Ordenado alfabéticamente"></i>
+                                    </th>
                                     <th class="px-2 py-1.5 text-center font-medium text-gray-500">Mínimo</th>
                                     <th class="px-2 py-1.5 text-center font-medium text-gray-500">Acciones</th>
                                 </tr>
@@ -554,10 +703,16 @@ input[type="number"] {
     background: #a8a8a8;
 }
 
-/* Transiciones */
 .transition {
     transition-property: all;
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     transition-duration: 150ms;
+}
+
+/* Estilo para kbd */
+kbd {
+    font-family: monospace;
+    font-size: 9px;
+    line-height: 1;
 }
 </style>

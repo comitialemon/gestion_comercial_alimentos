@@ -279,14 +279,6 @@ onMounted(() => {
                                     <i class="fas fa-calendar-check mr-1 text-green-500"></i>
                                     Entrega: {{ formatearFecha(pedido.FechaEntrega) }}
                                 </span>
-                                <span>
-                                    <i class="fas fa-store mr-1"></i>
-                                    {{ pedido.sucursal?.Nombre || 'Sin sucursal' }}
-                                </span>
-                                <span v-if="pedido.cliente?.Nombre">
-                                    <i class="fas fa-user mr-1"></i>
-                                    {{ pedido.cliente.Nombre }}
-                                </span>
                             </div>
                         </div>
 

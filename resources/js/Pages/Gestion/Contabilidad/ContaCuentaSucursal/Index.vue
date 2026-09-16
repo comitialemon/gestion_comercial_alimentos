@@ -1,8 +1,8 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { ref, computed, onMounted, inject } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import axios from 'axios'
-import ModalConfirmacion from './components/ModalConfirmacion.vue' // 🔥 RUTA CORRECTA
+import ModalConfirmacion from './components/ModalConfirmacion.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -14,62 +14,42 @@ const props = defineProps({
     sucursales: Array,
 })
 
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
+// ==================== ESTADO ====================
 const loading = ref(false)
 const busquedaSucursal = ref('')
 const nuevaSucursalId = ref('')
 const nuevaCuentaId = ref('')
-const nuevaCuentaNombre = ref('') // SELECT - Se selecciona de un dropdown
+const nuevaCuentaNombre = ref('')
 const nuevaDinamica = ref('')
 const busquedaCuentaLocal = ref('')
 const busquedaSucursalNueva = ref('')
 const agregando = ref(false)
 const editandoId = ref(null)
 
-// ESTADO PARA EL MODAL DE CONFIRMACIÓN
+// Modal confirmación
 const modalConfirmVisible = ref(false)
 const elementoAEliminar = ref(null)
 const confirmandoEliminacion = ref(false)
 
-// COMPUTADO PARA EL MENSAJE DEL MODAL
+// Expansión de sucursales
+const sucursalesExpandidas = ref({})
+
+// ==================== COMPUTED ====================
 const mensajeEliminar = computed(() => {
     if (!elementoAEliminar.value) return '¿Estás seguro de que deseas eliminar este elemento?'
     return `¿Estás seguro de que deseas desasignar la cuenta "${elementoAEliminar.value.Cuenta || ''}" de esta sucursal?`
 })
 
-// Estado para controlar sucursales expandidas/contraídas
-const sucursalesExpandidas = ref({})
-
-// Inicializar todas las sucursales como contraídas
-onMounted(() => {
-    setTimeout(() => {
-        asignacionesPorSucursal.value.forEach(grupo => {
-            if (sucursalesExpandidas.value[grupo.id] === undefined) {
-                sucursalesExpandidas.value[grupo.id] = false
-            }
-        })
-    }, 100)
-})
-
-// Alternar expansión/contracción
-const toggleSucursal = (sucursalId) => {
-    sucursalesExpandidas.value[sucursalId] = !sucursalesExpandidas.value[sucursalId]
-}
-
-// Expandir todas
-const expandirTodas = () => {
-    asignacionesPorSucursal.value.forEach(grupo => {
-        sucursalesExpandidas.value[grupo.id] = true
-    })
-}
-
-// Contraer todas
-const contraerTodas = () => {
-    asignacionesPorSucursal.value.forEach(grupo => {
-        sucursalesExpandidas.value[grupo.id] = false
-    })
-}
-
-// Filtrar sucursales para el selector rápido
 const sucursalesFiltradas = computed(() => {
     if (!busquedaSucursalNueva.value) return props.sucursales || []
     const termino = busquedaSucursalNueva.value.toLowerCase()
@@ -79,7 +59,6 @@ const sucursalesFiltradas = computed(() => {
     )
 })
 
-// Cuentas filtradas para el select
 const cuentasFiltradas = computed(() => {
     if (!busquedaCuentaLocal.value) return props.cuentas || []
     const termino = busquedaCuentaLocal.value.toLowerCase()
@@ -89,7 +68,6 @@ const cuentasFiltradas = computed(() => {
     )
 })
 
-// Agrupar asignaciones por sucursal
 const asignacionesPorSucursal = computed(() => {
     const grupos = {}
     
@@ -112,7 +90,6 @@ const asignacionesPorSucursal = computed(() => {
     return Object.values(grupos).sort((a, b) => a.nombre.localeCompare(b.nombre))
 })
 
-// Filtrar sucursales por búsqueda
 const sucursalesFiltradasGrid = computed(() => {
     if (!busquedaSucursal.value) return asignacionesPorSucursal.value
     const termino = busquedaSucursal.value.toLowerCase()
@@ -122,7 +99,23 @@ const sucursalesFiltradasGrid = computed(() => {
     )
 })
 
-// Obtener el texto de la cuenta relacionada
+// ==================== FUNCIONES ====================
+const toggleSucursal = (sucursalId) => {
+    sucursalesExpandidas.value[sucursalId] = !sucursalesExpandidas.value[sucursalId]
+}
+
+const expandirTodas = () => {
+    asignacionesPorSucursal.value.forEach(grupo => {
+        sucursalesExpandidas.value[grupo.id] = true
+    })
+}
+
+const contraerTodas = () => {
+    asignacionesPorSucursal.value.forEach(grupo => {
+        sucursalesExpandidas.value[grupo.id] = false
+    })
+}
+
 const getCuentaRelacionada = (asignacion) => {
     if (asignacion.cuenta?.Cuenta) {
         return `${asignacion.cuenta.Cuenta} - ${asignacion.cuenta.Descripcion || ''}`
@@ -130,62 +123,50 @@ const getCuentaRelacionada = (asignacion) => {
     return 'Sin relación'
 }
 
-// Buscar nombre de sucursal por ID
 const buscarNombreSucursal = (id) => {
     const sucursal = props.sucursales?.find(s => s.id === id)
     if (!sucursal) return ''
     return `${sucursal.nombre} ${sucursal.NumeroSucursal ? `(N° ${sucursal.NumeroSucursal})` : ''}`
 }
 
-// Buscar nombre de cuenta por ID
 const buscarNombreCuenta = (id) => {
     const cuenta = props.cuentas?.find(c => c.id === id)
     if (!cuenta) return ''
     return `${cuenta.Cuenta} - ${cuenta.Descripcion}`
 }
 
-// Seleccionar sucursal para nueva asignación
 const seleccionarSucursalNueva = (sucursal) => {
     nuevaSucursalId.value = sucursal.id
     busquedaSucursalNueva.value = `${sucursal.nombre} ${sucursal.NumeroSucursal ? `(N° ${sucursal.NumeroSucursal})` : ''}`
 }
 
-// Limpiar selección de sucursal
 const limpiarSucursalNueva = () => {
     nuevaSucursalId.value = ''
     busquedaSucursalNueva.value = ''
 }
 
-// Seleccionar cuenta
 const seleccionarCuenta = (cuenta) => {
     nuevaCuentaId.value = cuenta.id
     busquedaCuentaLocal.value = `${cuenta.Cuenta} - ${cuenta.Descripcion}`
 }
 
-// Limpiar selección de cuenta
 const limpiarCuenta = () => {
     nuevaCuentaId.value = ''
     busquedaCuentaLocal.value = ''
 }
 
-// Cerrar dropdowns
 const cerrarDropdownSucursal = () => {
     setTimeout(() => {
-        if (!nuevaSucursalId.value) {
-            busquedaSucursalNueva.value = ''
-        }
+        if (!nuevaSucursalId.value) busquedaSucursalNueva.value = ''
     }, 200)
 }
 
 const cerrarDropdownCuenta = () => {
     setTimeout(() => {
-        if (!nuevaCuentaId.value) {
-            busquedaCuentaLocal.value = ''
-        }
+        if (!nuevaCuentaId.value) busquedaCuentaLocal.value = ''
     }, 200)
 }
 
-// AGREGAR ASIGNACIÓN
 const agregarAsignacion = async () => {
     if (!nuevaSucursalId.value) {
         toast?.error('Error', 'Seleccione una sucursal')
@@ -224,7 +205,6 @@ const agregarAsignacion = async () => {
     }
 }
 
-// EDITAR DINÁMICA
 const editarDinamica = (asignacion) => {
     editandoId.value = asignacion.IdCuentaSucursales
 }
@@ -249,13 +229,11 @@ const guardarDinamica = async (asignacion) => {
     }
 }
 
-// ELIMINAR ASIGNACIÓN - CON MODAL
 const mostrarModalEliminar = (asignacion) => {
     elementoAEliminar.value = asignacion
     modalConfirmVisible.value = true
 }
 
-// CONFIRMAR ELIMINACIÓN
 const confirmarEliminacion = async () => {
     if (!elementoAEliminar.value) return
     
@@ -265,9 +243,7 @@ const confirmarEliminacion = async () => {
         if (response.data.success) {
             modalConfirmVisible.value = false
             toast?.success('Éxito', 'Cuenta desasignada correctamente')
-            setTimeout(() => {
-                window.location.reload()
-            }, 500)
+            setTimeout(() => window.location.reload(), 500)
         }
     } catch (error) {
         modalConfirmVisible.value = false
@@ -278,39 +254,55 @@ const confirmarEliminacion = async () => {
     }
 }
 
-// CANCELAR ELIMINACIÓN
 const cancelarEliminacion = () => {
     modalConfirmVisible.value = false
     elementoAEliminar.value = null
 }
+
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
+    
+    setTimeout(() => {
+        asignacionesPorSucursal.value.forEach(grupo => {
+            if (sucursalesExpandidas.value[grupo.id] === undefined) {
+                sucursalesExpandidas.value[grupo.id] = false
+            }
+        })
+    }, 100)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100">
-        <div class="py-3 px-3 sm:px-5 lg:px-6">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
-                <!-- Header -->
-                <div class="flex justify-between items-center mb-4">
-                    <div class="flex items-center gap-2">
-                        <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-link text-primary-600"></i>
-                        </div>
-                        <div>
-                            <h1 class="text-lg font-bold text-gray-800">Cuentas por Sucursal</h1>
-                            <p class="text-xs text-gray-500">Asignación de cuentas contables a sucursales</p>
-                        </div>
+                <!-- ==================== HEADER COMPACTO ==================== -->
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                        <i class="fas fa-link text-primary-600 text-base"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Cuentas por Sucursal</h1>
+                        <p class="text-xs text-gray-500">Asignación de cuentas contables a sucursales</p>
                     </div>
                 </div>
 
-                <!-- Formulario para nueva asignación -->
-                <div class="bg-white rounded-lg shadow-sm p-4 mb-4">
-                    <h2 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                        <i class="fas fa-plus-circle text-primary-500 text-xs"></i> Nueva Asignación
+                <!-- ==================== FORMULARIO ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4 border border-primary-200">
+                    <h2 class="text-xs font-semibold text-gray-800 mb-2 flex items-center gap-1.5">
+                        <i class="fas fa-plus-circle text-primary-500 text-[10px]"></i> Nueva Asignación
                     </h2>
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                    
+                    <div class="flex flex-wrap items-end gap-2">
                         <!-- Sucursal -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Sucursal *</label>
+                        <div class="flex-1 min-w-[160px] max-w-[220px]">
+                            <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Sucursal <span class="text-red-500">*</span></label>
                             <div class="relative">
                                 <input 
                                     type="text" 
@@ -318,164 +310,162 @@ const cancelarEliminacion = () => {
                                     @focus="busquedaSucursalNueva = ''" 
                                     @blur="cerrarDropdownSucursal" 
                                     placeholder="Buscar sucursal..." 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs"
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     :class="{'border-primary-500 bg-primary-50': nuevaSucursalId}"
                                 >
                                 <div v-if="nuevaSucursalId" class="absolute right-2 top-1/2 -translate-y-1/2">
-                                    <button @click="limpiarSucursalNueva" class="text-gray-400 hover:text-red-500" title="Limpiar selección">
-                                        <i class="fas fa-times-circle text-xs"></i>
+                                    <button @click="limpiarSucursalNueva" class="text-gray-400 hover:text-red-500" title="Limpiar">
+                                        <i class="fas fa-times-circle text-[10px]"></i>
                                     </button>
                                 </div>
-                                <div v-if="busquedaSucursalNueva && sucursalesFiltradas.length" class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                                    <div v-for="s in sucursalesFiltradas" :key="s.id" @click="seleccionarSucursalNueva(s)" class="px-2 py-1 hover:bg-gray-100 cursor-pointer text-xs border-b flex justify-between">
+                                <div v-if="busquedaSucursalNueva && sucursalesFiltradas.length" class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                                    <div v-for="s in sucursalesFiltradas" :key="s.id" @click="seleccionarSucursalNueva(s)" class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer text-xs border-b border-gray-100 last:border-b-0 flex justify-between">
                                         <span>{{ s.nombre }}</span>
-                                        <span class="text-gray-400 text-[10px]">N° {{ s.NumeroSucursal }}</span>
+                                        <span class="text-gray-400 text-[9px]">N° {{ s.NumeroSucursal }}</span>
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="nuevaSucursalId" class="mt-1 text-xs text-primary-600">
-                                <i class="fas fa-check-circle"></i> Sucursal seleccionada: {{ buscarNombreSucursal(nuevaSucursalId) }}
+                            <div v-if="nuevaSucursalId" class="mt-0.5 text-[9px] text-primary-600">
+                                <i class="fas fa-check-circle"></i> {{ buscarNombreSucursal(nuevaSucursalId) }}
                             </div>
                         </div>
 
-                        <!-- Cuenta de Contabilidad (IdCuenta) -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Cuenta (Contabilidad) *</label>
+                        <!-- Cuenta -->
+                        <div class="flex-1 min-w-[160px] max-w-[220px]">
+                            <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Cuenta <span class="text-red-500">*</span></label>
                             <div class="relative">
                                 <input 
                                     type="text" 
                                     v-model="busquedaCuentaLocal" 
                                     @focus="busquedaCuentaLocal = ''" 
                                     @blur="cerrarDropdownCuenta" 
-                                    placeholder="Buscar cuenta por número o descripción..." 
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs font-mono"
+                                    placeholder="Buscar cuenta..." 
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm font-mono focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     :class="{'border-primary-500 bg-primary-50': nuevaCuentaId}"
                                 >
                                 <div v-if="nuevaCuentaId" class="absolute right-2 top-1/2 -translate-y-1/2">
-                                    <button @click="limpiarCuenta" class="text-gray-400 hover:text-red-500" title="Limpiar selección">
-                                        <i class="fas fa-times-circle text-xs"></i>
+                                    <button @click="limpiarCuenta" class="text-gray-400 hover:text-red-500" title="Limpiar">
+                                        <i class="fas fa-times-circle text-[10px]"></i>
                                     </button>
                                 </div>
-                                <div v-if="busquedaCuentaLocal && cuentasFiltradas.length" class="absolute z-10 mt-1 w-full bg-white border rounded-md shadow-lg max-h-40 overflow-y-auto">
-                                    <div v-for="c in cuentasFiltradas" :key="c.id" @click="seleccionarCuenta(c)" class="px-2 py-1 hover:bg-gray-100 cursor-pointer text-xs border-b">
-                                        <span class="font-mono">{{ c.Cuenta }}</span> - {{ c.Descripcion }}
+                                <div v-if="busquedaCuentaLocal && cuentasFiltradas.length" class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
+                                    <div v-for="c in cuentasFiltradas" :key="c.id" @click="seleccionarCuenta(c)" class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer text-xs border-b border-gray-100 last:border-b-0">
+                                        <span class="font-mono font-semibold">{{ c.Cuenta }}</span> - {{ c.Descripcion }}
                                     </div>
                                 </div>
                             </div>
-                            <div v-if="nuevaCuentaId" class="mt-1 text-xs text-primary-600">
-                                <i class="fas fa-check-circle"></i> Cuenta seleccionada: {{ buscarNombreCuenta(nuevaCuentaId) }}
+                            <div v-if="nuevaCuentaId" class="mt-0.5 text-[9px] text-primary-600">
+                                <i class="fas fa-check-circle"></i> {{ buscarNombreCuenta(nuevaCuentaId) }}
                             </div>
                         </div>
 
-                        <!-- SELECT - Nombre de Cuenta -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Nombre de Cuenta *</label>
-                            <select v-model="nuevaCuentaNombre" class="w-full border rounded-md px-2 py-1.5 text-xs" :class="{'border-primary-500 bg-primary-50': nuevaCuentaNombre}">
-                                <option value="">Seleccione un tipo de cuenta</option>
+                        <!-- Tipo de Cuenta -->
+                        <div class="min-w-[120px]">
+                            <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Tipo <span class="text-red-500">*</span></label>
+                            <select v-model="nuevaCuentaNombre" class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" :class="{'border-primary-500 bg-primary-50': nuevaCuentaNombre}">
+                                <option value="">Seleccione</option>
                                 <option value="Ingreso">Ingreso</option>
                                 <option value="Egreso">Egreso</option>
                                 <option value="CuentaSucursal">CuentaSucursal</option>
                             </select>
-                            <div v-if="nuevaCuentaNombre" class="mt-1 text-xs text-green-600">
-                                <i class="fas fa-check-circle"></i> Tipo seleccionado: {{ nuevaCuentaNombre }}
-                            </div>
                         </div>
 
                         <!-- Dinámica -->
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 mb-1">Dinámica (D/H) *</label>
-                            <select v-model="nuevaDinamica" class="w-full border rounded-md px-2 py-1.5 text-xs">
+                        <div class="min-w-[100px]">
+                            <label class="text-[10px] font-medium text-gray-500 block mb-0.5">Dinámica <span class="text-red-500">*</span></label>
+                            <select v-model="nuevaDinamica" class="w-full border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Seleccionar</option>
                                 <option value="D">D - Debe</option>
                                 <option value="H">H - Haber</option>
                             </select>
                         </div>
-                    </div>
 
-                    <!-- Botón fuera del grid -->
-                    <div class="mt-3 flex justify-end">
-                        <button @click="agregarAsignacion" :disabled="agregando" class="px-4 py-1.5 bg-primary-600 text-white rounded-md text-xs hover:bg-primary-700 transition flex items-center gap-1">
-                            <i v-if="agregando" class="fas fa-spinner fa-spin"></i>
-                            <i v-else class="fas fa-plus"></i>
-                            Asignar Cuenta
-                        </button>
+                        <!-- Botón -->
+                        <div class="flex gap-1.5 ml-auto">
+                            <button @click="agregarAsignacion" :disabled="agregando" class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1.5 disabled:opacity-50">
+                                <i v-if="agregando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                                <i v-else class="fas fa-plus text-[10px]"></i>
+                                Asignar Cuenta
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Barra de herramientas -->
-                <div class="flex justify-between items-center mb-4">
-                    <div class="relative">
-                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input type="text" v-model="busquedaSucursal" placeholder="Buscar sucursal por nombre o número..." class="w-64 border rounded-md pl-8 pr-3 py-1.5 text-sm">
-                    </div>
-                    
-                    <div class="flex gap-2">
-                        <button @click="expandirTodas" class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs hover:bg-gray-300 transition flex items-center gap-1">
-                            <i class="fas fa-expand-alt"></i> Expandir todas
-                        </button>
-                        <button @click="contraerTodas" class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs hover:bg-gray-300 transition flex items-center gap-1">
-                            <i class="fas fa-compress-alt"></i> Contraer todas
-                        </button>
+                <!-- ==================== FILTROS ==================== -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="relative flex-1 min-w-[200px] max-w-[300px]">
+                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                            <input type="text" v-model="busquedaSucursal" placeholder="Buscar sucursal..." 
+                                class="w-full border border-gray-300 rounded-md pl-7 pr-3 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
+                        </div>
+                        
+                        <div class="flex gap-1.5">
+                            <button @click="expandirTodas" class="px-2.5 py-1 bg-gray-200 text-gray-700 rounded-md text-[10px] hover:bg-gray-300 transition flex items-center gap-1">
+                                <i class="fas fa-expand-alt text-[9px]"></i> Expandir
+                            </button>
+                            <button @click="contraerTodas" class="px-2.5 py-1 bg-gray-200 text-gray-700 rounded-md text-[10px] hover:bg-gray-300 transition flex items-center gap-1">
+                                <i class="fas fa-compress-alt text-[9px]"></i> Contraer
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Grupos por sucursal (Acordeón) -->
+                <!-- ==================== LISTA DE SUCURSALES ==================== -->
                 <div v-if="sucursalesFiltradasGrid.length > 0" class="space-y-3">
-                    <div v-for="grupo in sucursalesFiltradasGrid" :key="grupo.id" class="bg-white rounded-lg shadow-sm overflow-hidden">
+                    <div v-for="grupo in sucursalesFiltradasGrid" :key="grupo.id" class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
                         <!-- Header del grupo -->
                         <div 
                             @click="toggleSucursal(grupo.id)"
-                            class="px-4 py-3 bg-primary-50 border-b border-primary-100 cursor-pointer hover:bg-primary-100 transition flex items-center justify-between"
+                            class="px-3 py-2 bg-primary-50 border-b border-primary-100 cursor-pointer hover:bg-primary-100 transition flex flex-wrap items-center justify-between gap-2"
                         >
-                            <div class="flex items-center gap-3">
-                                <i class="fas" :class="sucursalesExpandidas[grupo.id] ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                            <div class="flex items-center gap-2">
+                                <i class="fas text-primary-600 text-[10px] transition-transform" :class="sucursalesExpandidas[grupo.id] ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
                                 <i class="fas fa-store text-primary-500 text-sm"></i>
                                 <h2 class="text-sm font-semibold text-primary-800">{{ grupo.nombre }}</h2>
-                                <span v-if="grupo.numero" class="text-xs text-primary-500 bg-primary-100 px-2 py-0.5 rounded-full">
+                                <span v-if="grupo.numero" class="text-[9px] text-primary-500 bg-primary-100 px-1.5 py-0.5 rounded-full">
                                     N° {{ grupo.numero }}
                                 </span>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <span class="text-xs text-primary-400">
-                                    {{ grupo.asignaciones.length }} cuenta(s) asignada(s)
-                                </span>
-                            </div>
+                            <span class="text-[10px] text-primary-400">
+                                {{ grupo.asignaciones.length }} cuenta(s)
+                            </span>
                         </div>
 
-                        <!-- Cuerpo del grupo (expandible) -->
+                        <!-- Tabla de asignaciones -->
                         <div v-show="sucursalesExpandidas[grupo.id]" class="overflow-x-auto transition-all duration-300">
                             <table class="min-w-full">
                                 <thead class="bg-gray-50">
                                     <tr>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cuenta (Nombre)</th>
-                                        <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Cuenta Relacionada (Contabilidad)</th>
-                                        <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase w-24">Dinámica</th>
-                                        <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase w-16">Acciones</th>
+                                        <th class="px-3 py-1.5 text-left text-[9px] font-medium text-gray-500 uppercase">Cuenta</th>
+                                        <th class="px-3 py-1.5 text-left text-[9px] font-medium text-gray-500 uppercase">Cuenta Relacionada</th>
+                                        <th class="px-3 py-1.5 text-center text-[9px] font-medium text-gray-500 uppercase w-24">Dinámica</th>
+                                        <th class="px-3 py-1.5 text-center text-[9px] font-medium text-gray-500 uppercase w-16">Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
                                     <tr v-for="asignacion in grupo.asignaciones" :key="asignacion.IdCuentaSucursales" class="hover:bg-gray-50 transition">
-                                        <td class="px-3 py-2 text-sm text-gray-700 font-medium">
+                                        <td class="px-3 py-2 text-xs text-gray-700 font-medium">
                                             {{ asignacion.Cuenta || '-' }}
                                         </td>
-                                        <td class="px-3 py-2 text-sm text-gray-500">
+                                        <td class="px-3 py-2 text-xs text-gray-500">
                                             {{ getCuentaRelacionada(asignacion) }}
                                         </td>
                                         <td class="px-3 py-2 text-center">
                                             <div v-if="editandoId !== asignacion.IdCuentaSucursales" class="inline-flex items-center gap-1">
-                                                <span class="px-2 py-0.5 text-xs rounded-full" :class="asignacion.DinamicaCuenta === 'D' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800'">
+                                                <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="asignacion.DinamicaCuenta === 'D' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'">
                                                     {{ asignacion.DinamicaCuenta }}
                                                 </span>
                                                 <button @click.stop="editarDinamica(asignacion)" class="text-primary-400 hover:text-primary-600" title="Editar dinámica">
-                                                    <i class="fas fa-edit text-[10px]"></i>
+                                                    <i class="fas fa-edit text-[9px]"></i>
                                                 </button>
                                             </div>
                                             <div v-else class="flex items-center justify-center gap-1">
-                                                <select v-model="asignacion.DinamicaCuenta" class="w-16 border rounded px-1 py-0.5 text-xs">
+                                                <select v-model="asignacion.DinamicaCuenta" class="w-14 border border-gray-300 rounded px-1 py-0.5 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none">
                                                     <option value="D">D</option>
                                                     <option value="H">H</option>
                                                 </select>
-                                                <button @click.stop="guardarDinamica(asignacion)" class="text-green-600 hover:text-green-800" title="Guardar">
+                                                <button @click.stop="guardarDinamica(asignacion)" class="text-emerald-600 hover:text-emerald-800" title="Guardar">
                                                     <i class="fas fa-save text-[10px]"></i>
                                                 </button>
                                                 <button @click.stop="editandoId = null" class="text-gray-400 hover:text-gray-600" title="Cancelar">
@@ -484,9 +474,8 @@ const cancelarEliminacion = () => {
                                             </div>
                                         </td>
                                         <td class="px-3 py-2 text-center">
-                                            <!-- BOTÓN QUE ABRE EL MODAL -->
-                                            <button @click.stop="mostrarModalEliminar(asignacion)" class="text-red-400 hover:text-red-600 transition" title="Desasignar cuenta">
-                                                <i class="fas fa-trash-alt text-xs"></i>
+                                            <button @click.stop="mostrarModalEliminar(asignacion)" class="text-red-400 hover:text-red-600 transition text-xs" title="Desasignar">
+                                                <i class="fas fa-trash-alt"></i>
                                             </button>
                                         </td>
                                     </tr>
@@ -501,33 +490,59 @@ const cancelarEliminacion = () => {
                     </div>
                 </div>
 
-                <!-- Mensaje sin resultados -->
-                <div v-else class="bg-white rounded-lg shadow-sm p-8 text-center">
-                    <i class="fas fa-store text-4xl text-gray-300 mb-2 block"></i>
-                    <p class="text-gray-500 text-sm">No hay sucursales con cuentas asignadas</p>
-                    <p class="text-xs text-gray-400 mt-1">Utilice el formulario superior para asignar cuentas a sucursales</p>
+                <!-- Sin resultados -->
+                <div v-else class="bg-white rounded-xl shadow-sm p-10 text-center text-gray-400">
+                    <i class="fas fa-store text-3xl mb-2 block"></i>
+                    <p class="text-sm font-medium">No hay sucursales con cuentas asignadas</p>
+                    <p class="text-xs mt-1">Utilice el formulario superior para asignar cuentas a sucursales</p>
                 </div>
 
-                <!-- Footer informativo -->
-                <div class="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    <strong>Dinámica de cuenta:</strong> "D" (Debe) para cuentas de activo y gasto, "H" (Haber) para cuentas de pasivo, patrimonio e ingreso.
+                <!-- ==================== FOOTER INFO ==================== -->
+                <div class="mt-3 p-2.5 bg-blue-50 rounded-xl border border-blue-100 text-xs text-blue-700 flex items-start gap-2">
+                    <i class="fas fa-info-circle mt-0.5 text-blue-500 text-[10px]"></i>
+                    <div>
+                        <span class="font-medium">Dinámica de cuenta:</span>
+                        <span class="text-[11px] ml-1">"D" (Debe) para cuentas de activo y gasto, "H" (Haber) para cuentas de pasivo, patrimonio e ingreso.</span>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- 🔥 MODAL DE CONFIRMACIÓN - Usando tu componente -->
-    <ModalConfirmacion
-        v-model="modalConfirmVisible"
-        titulo="¿Desasignar cuenta?"
-        :mensaje="mensajeEliminar"
-        @confirm="confirmarEliminacion"
-        @cancel="cancelarEliminacion"
-    >
-        <div class="text-xs text-gray-500 bg-yellow-50 p-2 rounded border border-yellow-200">
-            <i class="fas fa-info-circle text-yellow-600"></i>
-            Esta acción no elimina la cuenta contable, solo la desasigna de esta sucursal.
-        </div>
-    </ModalConfirmacion>
+        <!-- ==================== MODAL DE CONFIRMACIÓN ==================== -->
+        <ModalConfirmacion
+            v-model="modalConfirmVisible"
+            titulo="¿Desasignar cuenta?"
+            :mensaje="mensajeEliminar"
+            @confirm="confirmarEliminacion"
+            @cancel="cancelarEliminacion"
+        >
+            <div class="text-xs text-gray-500 bg-yellow-50 p-2 rounded border border-yellow-200">
+                <i class="fas fa-info-circle text-yellow-600"></i>
+                Esta acción no elimina la cuenta contable, solo la desasigna de esta sucursal.
+            </div>
+        </ModalConfirmacion>
+    </div>
 </template>
+
+<style scoped>
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+</style>

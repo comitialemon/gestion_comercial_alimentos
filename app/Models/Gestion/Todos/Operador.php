@@ -172,4 +172,22 @@ class Operador extends Model
             ? 'bg-green-100 text-green-800' 
             : 'bg-red-100 text-red-800';
     }
+    // app/Models/Gestion/Todos/Operador.php
+
+    public function asignacionesSucursal()
+    {
+        return $this->hasMany(OperadorSucursalDb::class, 'IdOperador', 'IdOperador');
+    }
+    /**
+     * Configuración específica para operadores de tipo PedidoClientes
+     * (Ciudad, Provincia, Destino)
+     */
+    public function pedidoClienteConfig()
+    {
+        return $this->hasOne(
+            \App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente::class,
+            'IdOperador',
+            'IdOperador'
+        );
+    }
 }

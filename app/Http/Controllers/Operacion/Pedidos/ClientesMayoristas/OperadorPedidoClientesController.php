@@ -9,6 +9,7 @@ use App\Models\Gestion\Todos\Identificador;
 use App\Models\Gestion\Todos\OperadorSucursalDb;
 use App\Models\Gestion\Todos\ClienteSucursal;
 use App\Models\Gestion\Todos\Cliente;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente; // ✅ NUEVO
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -22,16 +23,25 @@ class OperadorPedidoClientesController extends Controller
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         
         if (!$clienteId) {
             return redirect()->route('contexto.index')
                 ->with('error', 'Debes seleccionar una empresa primero');
         }
 
-        // Query principal
+        // ✅ Filtrar operadores que tengan asignación en ESTE cliente
         $query = Operador::whereHas('tipo', function($q) {
-            $q->where('Detalle', 'PedidoClientes');
-        })->with(['identificador', 'tipo']);
+                $q->where('Detalle', 'PedidoClientes');
+            })
+            ->whereHas('asignacionesSucursal', function($q) use ($clienteId) {
+                $q->where('IdCliente', $clienteId);
+            })
+            ->with([
+                'identificador', 
+                'tipo',
+                'pedidoClienteConfig',  // ✅ Cargar Ciudad, Provincia, Destino
+            ]);
 
         // Filtros
         if ($request->filled('search')) {
@@ -52,30 +62,38 @@ class OperadorPedidoClientesController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // ✅ ASIGNACIONES - Obtener con los datos completos
+        // ✅ Asignaciones filtradas por cliente
         $asignaciones = OperadorSucursalDb::where('IdCliente', $clienteId)
             ->with(['sucursal', 'operador'])
             ->get()
             ->groupBy('IdOperador')
             ->map(function($items) {
-                // Retornar la primera asignación de cada operador
                 return $items->first();
             });
 
-        // Datos para el modal
+        // ✅ Sucursales filtradas por cliente
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
 
-        $identificadores = Identificador::orderBy('Nombre')
+        // ✅ Identificadores: solo los que YA tienen operador en este cliente
+        $idsConOperador = $asignaciones->pluck('IdOperador')->filter()->toArray();
+        
+        $identificadores = Identificador::whereIn('IdIdentificador',
+                Operador::whereIn('IdOperador', $idsConOperador)
+                    ->pluck('IdIdentificador')
+                    ->filter()
+                    ->unique()
+            )
+            ->orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
 
         $tipoOperador = OperadorTipo::where('Detalle', 'PedidoClientes')->first();
 
         return Inertia::render('Operacion/ClientesMayoristas/OperadoresClientes/Index', [
             'operadores' => $operadores,
-            'asignaciones' => $asignaciones,  // ✅ Ahora es un objeto con la asignación de cada operador
+            'asignaciones' => $asignaciones,
             'sucursales' => $sucursales,
             'identificadores' => $identificadores,
             'tipoOperador' => $tipoOperador,
@@ -92,6 +110,7 @@ class OperadorPedidoClientesController extends Controller
     public function store(Request $request)
     {
         $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
         
         if (!$clienteId) {
             return response()->json([
@@ -128,12 +147,17 @@ class OperadorPedidoClientesController extends Controller
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            
+            // ✅ Nuevos campos
+            'Ciudad' => 'nullable|boolean',
+            'Provincia' => 'nullable|boolean',
+            'Destino' => 'nullable|string|max:150',
         ]);
 
         try {
             DB::beginTransaction();
 
-            // Crear el operador
+            // 1. Crear el operador genérico
             $operador = Operador::create([
                 'IdIdentificador' => $request->IdIdentificador,
                 'Iniciales' => strtoupper($request->Iniciales),
@@ -146,16 +170,27 @@ class OperadorPedidoClientesController extends Controller
                 'ActivoInactivo' => 0,
             ]);
 
-            // Asignar a la sucursal
+            // 2. Asignar a la sucursal
             $asignacion = OperadorSucursalDb::create([
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $request->IdSucursal,
                 'IdOperador' => $operador->IdOperador,
             ]);
 
+            // ✅ 3. Crear la config específica de PedidoClientes
+            OperadorPedidoCliente::create([
+                'IdOperador' => $operador->IdOperador,
+                'Ciudad' => $request->boolean('Ciudad') ? 1 : 0,
+                'Provincia' => $request->boolean('Provincia') ? 1 : 0,
+                'Destino' => $request->Destino,
+                'ActivoInactivo' => 1,
+                'IdOperadorInserta' => $operadorId,
+                'FechaInserta' => now('America/La_Paz'),
+            ]);
+
             DB::commit();
 
-            $operador->load(['identificador', 'tipo']);
+            $operador->load(['identificador', 'tipo', 'pedidoClienteConfig']);
             $asignacion->load(['sucursal', 'operador.identificador']);
 
             return response()->json([
@@ -181,6 +216,7 @@ class OperadorPedidoClientesController extends Controller
     public function update(Request $request, $id)
     {
         $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
         
         $operador = Operador::findOrFail($id);
 
@@ -203,11 +239,17 @@ class OperadorPedidoClientesController extends Controller
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            
+            // ✅ Nuevos campos
+            'Ciudad' => 'nullable|boolean',
+            'Provincia' => 'nullable|boolean',
+            'Destino' => 'nullable|string|max:150',
         ]);
 
         try {
             DB::beginTransaction();
 
+            // 1. Actualizar operador genérico
             $datos = [
                 'IdIdentificador' => $request->IdIdentificador,
                 'Iniciales' => strtoupper($request->Iniciales),
@@ -223,7 +265,7 @@ class OperadorPedidoClientesController extends Controller
 
             $operador->update($datos);
 
-            // Actualizar asignación
+            // 2. Actualizar asignación de sucursal
             if ($clienteId) {
                 OperadorSucursalDb::updateOrCreate(
                     [
@@ -236,9 +278,22 @@ class OperadorPedidoClientesController extends Controller
                 );
             }
 
+            // ✅ 3. Actualizar o crear la config específica
+            OperadorPedidoCliente::updateOrCreate(
+                ['IdOperador' => $operador->IdOperador],
+                [
+                    'Ciudad' => $request->boolean('Ciudad') ? 1 : 0,
+                    'Provincia' => $request->boolean('Provincia') ? 1 : 0,
+                    'Destino' => $request->Destino,
+                    'ActivoInactivo' => 1,
+                    'IdOperadorActualiza' => $operadorId,
+                    'FechaActualiza' => now('America/La_Paz'),
+                ]
+            );
+
             DB::commit();
 
-            $operador->load(['identificador', 'tipo']);
+            $operador->load(['identificador', 'tipo', 'pedidoClienteConfig']);
 
             return response()->json([
                 'success' => true,

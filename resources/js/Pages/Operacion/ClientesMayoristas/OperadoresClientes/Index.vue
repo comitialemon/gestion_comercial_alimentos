@@ -1,4 +1,3 @@
-<!-- resources/js/Pages/Operacion/ClientesMayoristas/OperadoresClientes/Index.vue -->
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
 import { router, Link } from '@inertiajs/vue3'
@@ -34,6 +33,47 @@ const asignacionSeleccionada = ref(null)
 // Filtros
 const search = ref(props.filtros?.search || '')
 const estado = ref(props.filtros?.estado || '')
+
+// ==================== HELPERS ====================
+const getConfig = (operador) => {
+    return operador.pedido_cliente_config || {}
+}
+
+// ✅ NUEVA: Obtener destino en mayúsculas
+const getDestinoMayusculas = (operador) => {
+    const destino = getConfig(operador).Destino
+    return destino ? destino.toUpperCase() : null
+}
+
+// ✅ Determinar tipo de ubicación (Ciudad o Provincia)
+const getTipoUbicacion = (operador) => {
+    const config = getConfig(operador)
+    if (config.Ciudad === 1 || config.Ciudad === true) {
+        return 'Ciudad'
+    }
+    if (config.Provincia === 1 || config.Provincia === true) {
+        return 'Provincia'
+    }
+    return null
+}
+
+// ✅ Clase de color según el tipo
+const getTipoUbicacionClase = (tipo) => {
+    if (tipo === 'Ciudad') {
+        return 'bg-blue-100 text-blue-700 border-blue-200'
+    }
+    if (tipo === 'Provincia') {
+        return 'bg-green-100 text-green-700 border-green-200'
+    }
+    return 'bg-gray-100 text-gray-500 border-gray-200'
+}
+
+// ✅ Ícono según el tipo
+const getTipoUbicacionIcono = (tipo) => {
+    if (tipo === 'Ciudad') return 'fas fa-city'
+    if (tipo === 'Provincia') return 'fas fa-tree'
+    return 'fas fa-minus'
+}
 
 // ==================== FUNCIONES ====================
 const aplicarFiltros = () => {
@@ -75,19 +115,15 @@ const nuevoOperador = () => {
 const editarOperador = (operador) => {
     operadorSeleccionado.value = operador
     
-    // ✅ OBTENER LA ASIGNACIÓN DEL OPERADOR - CORREGIDO
     if (props.asignaciones && props.asignaciones[operador.IdOperador]) {
         const asignacion = props.asignaciones[operador.IdOperador]
-        // ✅ Si es un array, tomar el primer elemento
         if (Array.isArray(asignacion)) {
             asignacionSeleccionada.value = asignacion[0] || null
         } else {
             asignacionSeleccionada.value = asignacion
         }
-        console.log('✅ Asignación encontrada:', asignacionSeleccionada.value)
     } else {
         asignacionSeleccionada.value = null
-        console.log('❌ No hay asignación para el operador:', operador.IdOperador)
     }
     
     editando.value = true
@@ -110,7 +146,6 @@ const estadoClase = (activo) => {
 onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
-    console.log('📋 Asignaciones recibidas:', props.asignaciones)
 })
 
 onUnmounted(() => {
@@ -170,7 +205,7 @@ onUnmounted(() => {
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
                         
-                        <!-- VISTA MÓVIL -->
+                        <!-- ==================== VISTA MÓVIL ==================== -->
                         <div v-if="isMobile" class="p-2 space-y-2">
                             <div v-for="operador in operadores.data" :key="operador.IdOperador" 
                                 class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
@@ -184,6 +219,41 @@ onUnmounted(() => {
                                             <div><span class="text-gray-500">CI:</span> <span class="font-mono">{{ operador.identificador?.CI_NIT || '-' }}</span></div>
                                             <div><span class="text-gray-500">Usuario:</span> <span>{{ operador.NombreAcceso }}</span></div>
                                             <div class="col-span-2"><span class="text-gray-500">Tipo:</span> <span class="text-emerald-600 font-medium">PedidoClientes</span></div>
+                                        </div>
+                                        
+                                        <!-- UBICACIÓN -->
+                                        <div class="mt-2 pt-2 border-t border-gray-200">
+                                            <div class="flex items-center gap-2 mb-1">
+                                                <i class="fas fa-map-marker-alt text-orange-500 text-[9px]"></i>
+                                                <span class="text-[9px] font-semibold text-gray-600">Ciudad/Provincia</span>
+                                            </div>
+                                            
+                                            <div class="mb-1">
+                                                <span 
+                                                    v-if="getTipoUbicacion(operador)"
+                                                    class="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full border font-medium"
+                                                    :class="getTipoUbicacionClase(getTipoUbicacion(operador))"
+                                                >
+                                                    <i :class="getTipoUbicacionIcono(getTipoUbicacion(operador))"></i>
+                                                    {{ getTipoUbicacion(operador) }}
+                                                </span>
+                                                <span 
+                                                    v-else
+                                                    class="inline-flex items-center gap-1 text-[9px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200"
+                                                >
+                                                    <i class="fas fa-minus"></i>
+                                                    Sin asignar
+                                                </span>
+                                            </div>
+                                            
+                                            <!-- ✅ DESTINO EN MAYÚSCULAS -->
+                                            <div v-if="getDestinoMayusculas(operador)" class="text-[9px] text-gray-600">
+                                                <i class="fas fa-location-dot text-orange-500 mr-0.5"></i>
+                                                <span class="font-medium">{{ getDestinoMayusculas(operador) }}</span>
+                                            </div>
+                                            <div v-else class="text-[9px] text-gray-400 italic">
+                                                Sin destino
+                                            </div>
                                         </div>
                                     </div>
                                     <div class="flex flex-col items-end gap-1">
@@ -215,7 +285,7 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- VISTA ESCRITORIO -->
+                        <!-- ==================== VISTA ESCRITORIO ==================== -->
                         <table v-else class="min-w-full divide-y divide-gray-200">
                             <thead class="bg-primary-50 sticky top-0 z-10">
                                 <tr>
@@ -223,6 +293,12 @@ onUnmounted(() => {
                                     <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">CI/NIT</th>
                                     <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Nombre</th>
                                     <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Usuario</th>
+                                    <th class="px-3 py-1.5 text-center text-[9px] font-medium text-primary-700 uppercase w-32">
+                                        <i class="fas fa-map-marker-alt mr-1"></i>Ciudad/Provincia
+                                    </th>
+                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">
+                                        <i class="fas fa-location-dot mr-1"></i>Destino
+                                    </th>
                                     <th class="px-3 py-1.5 text-center text-[9px] font-medium text-primary-700 uppercase w-24">Estado</th>
                                     <th class="px-3 py-1.5 text-right text-[9px] font-medium text-primary-700 uppercase w-12">Acción</th>
                                 </tr>
@@ -236,6 +312,36 @@ onUnmounted(() => {
                                         {{ operador.identificador?.Nombre || '-' }}
                                     </td>
                                     <td class="px-3 py-1.5 text-xs text-gray-600">{{ operador.NombreAcceso }}</td>
+                                    
+                                    <!-- COLUMNA CIUDAD/PROVINCIA -->
+                                    <td class="px-3 py-1.5 text-center">
+                                        <span 
+                                            v-if="getTipoUbicacion(operador)"
+                                            class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border font-medium"
+                                            :class="getTipoUbicacionClase(getTipoUbicacion(operador))"
+                                            :title="`Tipo: ${getTipoUbicacion(operador)}`"
+                                        >
+                                            <i :class="getTipoUbicacionIcono(getTipoUbicacion(operador))" class="text-[9px]"></i>
+                                            {{ getTipoUbicacion(operador) }}
+                                        </span>
+                                        <span 
+                                            v-else
+                                            class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-400 border border-gray-200"
+                                        >
+                                            <i class="fas fa-minus text-[9px]"></i>
+                                            Sin asignar
+                                        </span>
+                                    </td>
+                                    
+                                    <!-- ✅ COLUMNA DESTINO EN MAYÚSCULAS -->
+                                    <td class="px-3 py-1.5 text-xs text-gray-700">
+                                        <span v-if="getDestinoMayusculas(operador)" class="inline-flex items-center gap-1">
+                                            <i class="fas fa-location-dot text-orange-500 text-[10px]"></i>
+                                            <span class="font-medium">{{ getDestinoMayusculas(operador) }}</span>
+                                        </span>
+                                        <span v-else class="text-gray-400 italic text-[10px]">—</span>
+                                    </td>
+                                    
                                     <td class="px-3 py-1.5 text-center">
                                         <span class="px-1.5 py-0.5 text-[8px] rounded-full" :class="estadoClase(operador.ActivoInactivo)">
                                             {{ estadoTexto(operador.ActivoInactivo) }}
@@ -249,7 +355,7 @@ onUnmounted(() => {
                                     </td>
                                 </tr>
                                 <tr v-if="operadores.data.length === 0">
-                                    <td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                    <td colspan="8" class="px-4 py-10 text-center text-gray-400 text-sm">
                                         <i class="fas fa-users text-2xl mb-1 block"></i>
                                         No hay operadores registrados
                                     </td>

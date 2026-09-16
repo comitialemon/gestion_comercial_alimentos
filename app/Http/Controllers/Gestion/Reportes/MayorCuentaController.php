@@ -88,6 +88,7 @@ class MayorCuentaController extends Controller
 
     /**
      * Reporte 1: Mayor de cuenta en Bolivianos (sin identificador)
+     * IDÉNTICO a ScriptCase
      */
     private function exportarBolivianos($cuentaId, $fechaMayor)
     {
@@ -109,7 +110,7 @@ class MayorCuentaController extends Controller
 
         // Fecha inicial para saldo anterior
         if ($tipoDeCuenta == 'B') {
-            $fechaInicialSaldoAnterior = '1900-01-01';
+            $fechaInicialSaldoAnterior = '1900/01/01';
             $auxiliarGestion = null;
         } else {
             $primerDia = DB::connection('mysql_gestion_comercial_alimentos')
@@ -118,7 +119,7 @@ class MayorCuentaController extends Controller
                 ->whereYear('Fecha', date('Y', strtotime($fechaMayor)))
                 ->first();
             
-            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900-01-01';
+            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900/01/01';
             $auxiliarGestion = date('Y', strtotime($fechaMayor));
         }
 
@@ -181,7 +182,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario.IdCliente', session('cliente_id'))
             ->where('conta_diario.IdSucursal', session('cliente_sucursal_id'))
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->orderBy('todos_fecha.Fecha')
             ->orderBy('conta_diario.NumeroDiario')
             ->get([
@@ -205,10 +206,10 @@ class MayorCuentaController extends Controller
 
         $worksheet->setCellValue('A1', $this->toExcelString('Mayor de Cuenta'));
         $worksheet->setCellValue('A2', $this->toExcelString('(Expresado en Bolivianos)'));
-        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razón Social: ' . ($empresa->Nombre ?? '')));
-        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal: ' . ($sucursal->Nombre ?? '')));
-        $worksheet->setCellValue('A5', $this->toExcelString('Dirección: ' . ($empresa->Direccion ?? '')));
-        $worksheet->setCellValue('A6', $this->toExcelString('Cuenta: ' . $numeroCuenta . '  ' . $descripcionCuenta));
+        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razon Social : ' . ($empresa->Nombre ?? '')));
+        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal : ' . ($sucursal->Nombre ?? '')));
+        $worksheet->setCellValue('A5', $this->toExcelString('Direccion : ' . ($empresa->Direccion ?? '')));
+        $worksheet->setCellValue('A6', $this->toExcelString('Cuenta : ' . $numeroCuenta . '  ' . $descripcionCuenta));
 
         $worksheet->mergeCells('A1:J1');
         $worksheet->mergeCells('A2:J2');
@@ -224,22 +225,24 @@ class MayorCuentaController extends Controller
         $worksheet->getStyle('A2')->applyFromArray(['font' => ['bold' => true, 'size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]]);
 
         $worksheet->setCellValue('A7', $this->toExcelString('Fecha'));
-        $worksheet->setCellValue('B7', $this->toExcelString('Número Diario'));
+        $worksheet->setCellValue('B7', $this->toExcelString('Numero Diario'));
         $worksheet->setCellValue('C7', $this->toExcelString('Detalle'));
         $worksheet->setCellValue('D7', $this->toExcelString('Identificador'));
         $worksheet->setCellValue('E7', $this->toExcelString('Debe'));
         $worksheet->setCellValue('F7', $this->toExcelString('Haber'));
         $worksheet->setCellValue('G7', $this->toExcelString('Saldo'));
-        $worksheet->setCellValue('H7', $this->toExcelString('D/H'));
+        $worksheet->setCellValue('H7', $this->toExcelString('D_H'));
         $worksheet->setCellValue('I7', $this->toExcelString('Op.'));
         $worksheet->setCellValue('J7', $this->toExcelString('Tipo'));
 
         $fechaFormat = date('d/m/Y', strtotime($fechaMayor));
-        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al ( ' . $fechaFormat . ' )'));
-        $worksheet->setCellValue('G8', abs($saldoInicial));
+        $saldoInicialA = round(abs($saldoInicial), 2);
+        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al  ( ' . $fechaFormat . ' )'));
+        $worksheet->setCellValue('G8', $saldoInicialA);
         $worksheet->setCellValue('H8', $dHInicial);
 
-        $worksheet->mergeCells('C8:D8');
+        $worksheet->getStyle('C8')->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+        $worksheet->getStyle('G8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $headerStyle = [
             'font' => ['bold' => true],
@@ -255,11 +258,9 @@ class MayorCuentaController extends Controller
         $worksheet->getColumnDimension('E')->setWidth(14);
         $worksheet->getColumnDimension('F')->setWidth(14);
         $worksheet->getColumnDimension('G')->setWidth(14);
-        $worksheet->getColumnDimension('H')->setWidth(5);
+        $worksheet->getColumnDimension('H')->setWidth(4);
         $worksheet->getColumnDimension('I')->setWidth(5);
         $worksheet->getColumnDimension('J')->setWidth(5);
-
-        $worksheet->getStyle('E8:J8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $fila = 9;
         $auxiliarSaldoActual = $auxiliarSaldo;
@@ -288,7 +289,7 @@ class MayorCuentaController extends Controller
                 $dHMuestra = '';
             }
 
-            $identificadorCompleto = ($row->CI_NIT ?? '') . ' - ' . ($row->identificador_nombre ?? '');
+            $identificadorCompleto = $row->identificador_nombre ?? '';
             $glosa = is_string($row->Glosa) ? $row->Glosa : '';
 
             $worksheet->setCellValue('A' . $fila, $row->fecha);
@@ -302,31 +303,31 @@ class MayorCuentaController extends Controller
             $worksheet->setCellValue('I' . $fila, $row->Iniciales);
             $worksheet->setCellValue('J' . $fila, $row->tipo_diario);
 
+            // Alineación
+            $worksheet->getStyle('A' . $fila)->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('B' . $fila . ':J' . $fila)->applyFromArray(['alignment' => ['vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('C' . $fila)->getAlignment()->setWrapText(true);
+            $worksheet->getStyle('D' . $fila)->getAlignment()->setWrapText(true);
+
             $worksheet->getStyle('E' . $fila . ':G' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
 
             $fila++;
         }
 
-        if ($fila > 9) {
-            $worksheet->getStyle('A7:J' . ($fila - 1))->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
-        }
+        // NOTA: ScriptCase NO aplica bordes a las filas de datos en Reporte 1
+        // Solo aplica borde a la fila 7 (títulos) - ya aplicado arriba
 
-        // Totales
-        $filaTotal = $fila + 2;
-        $worksheet->setCellValue('E' . $filaTotal, $this->toExcelString('TOTALES EN BOLIVIANOS:'));
-        $worksheet->getStyle('E' . $filaTotal)->getFont()->setBold(true);
-        
-        $totalDebe = $detalle->where('D_H', 'D')->sum('MontoBolivianos');
-        $totalHaber = $detalle->where('D_H', 'H')->sum('MontoBolivianos');
-        
-        $worksheet->setCellValue('F' . $filaTotal, number_format($totalDebe, 2, ',', '.'));
-        $worksheet->setCellValue('G' . $filaTotal, number_format($totalHaber, 2, ',', '.'));
-        $worksheet->getStyle('F' . $filaTotal . ':G' . $filaTotal)->getNumberFormat()->setFormatCode('#,##0.00');
+        // NOTA: ScriptCase NO agrega fila de totales - NO agregar
 
         // Configuración de impresión
-        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 8);
+        $worksheet->getPageSetup()->setPrintArea('A1:J' . $fila);
+        $worksheet->getPageMargins()->setTop(0.3);
+        $worksheet->getPageMargins()->setRight(0.3);
+        $worksheet->getPageMargins()->setLeft(0.3);
+        $worksheet->getPageMargins()->setBottom(0.3);
         $worksheet->getPageSetup()->setFitToPage(false);
         $worksheet->getPageSetup()->setScale(60);
+        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 7);
 
         // ==========================================
         // DESCARGA DEL ARCHIVO
@@ -344,6 +345,8 @@ class MayorCuentaController extends Controller
 
     /**
      * Reporte 2: Mayor de cuenta en Otra Moneda (sin identificador)
+     * IDÉNTICO a ScriptCase
+     * NOTA: En ScriptCase, el saldo anterior NO filtra por IdSucursal
      */
     private function exportarOtraMoneda($cuentaId, $fechaMayor)
     {
@@ -363,7 +366,7 @@ class MayorCuentaController extends Controller
         $tipoDeCuenta = $cuenta->TipoDeCuenta;
 
         if ($tipoDeCuenta == 'B') {
-            $fechaInicialSaldoAnterior = '1900-01-01';
+            $fechaInicialSaldoAnterior = '1900/01/01';
             $auxiliarGestion = null;
         } else {
             $primerDia = DB::connection('mysql_gestion_comercial_alimentos')
@@ -372,7 +375,7 @@ class MayorCuentaController extends Controller
                 ->whereYear('Fecha', date('Y', strtotime($fechaMayor)))
                 ->first();
             
-            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900-01-01';
+            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900/01/01';
             $auxiliarGestion = date('Y', strtotime($fechaMayor));
         }
 
@@ -386,16 +389,16 @@ class MayorCuentaController extends Controller
             ->where('IdClienteSucursal', session('cliente_sucursal_id'))
             ->first(['Nombre']);
 
+        // IMPORTANTE: ScriptCase NO filtra por IdSucursal en el saldo anterior del Reporte 2
         $saldoAnteriorDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario')
             ->join('conta_diario_propiamente', 'conta_diario.IdDiario', '=', 'conta_diario_propiamente.IdDiario')
             ->join('todos_fecha', 'conta_diario.IdFecha', '=', 'todos_fecha.IdFecha')
             ->where('conta_diario.IdCliente', session('cliente_id'))
-            ->where('conta_diario.IdSucursal', session('cliente_sucursal_id'))
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario_propiamente.D_H', 'D')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoOtraMoneda');
 
         $saldoAnteriorHaber = DB::connection('mysql_gestion_comercial_alimentos')
@@ -403,11 +406,10 @@ class MayorCuentaController extends Controller
             ->join('conta_diario_propiamente', 'conta_diario.IdDiario', '=', 'conta_diario_propiamente.IdDiario')
             ->join('todos_fecha', 'conta_diario.IdFecha', '=', 'todos_fecha.IdFecha')
             ->where('conta_diario.IdCliente', session('cliente_id'))
-            ->where('conta_diario.IdSucursal', session('cliente_sucursal_id'))
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario_propiamente.D_H', 'H')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoOtraMoneda');
 
         $saldoInicial = $saldoAnteriorDebe - $saldoAnteriorHaber;
@@ -421,6 +423,7 @@ class MayorCuentaController extends Controller
             $dHInicial = '';
         }
 
+        // El detalle SÍ filtra por IdSucursal (igual que ScriptCase)
         $detalle = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario')
             ->join('conta_diario_propiamente', 'conta_diario.IdDiario', '=', 'conta_diario_propiamente.IdDiario')
@@ -432,7 +435,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario.IdCliente', session('cliente_id'))
             ->where('conta_diario.IdSucursal', session('cliente_sucursal_id'))
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->orderBy('todos_fecha.Fecha')
             ->orderBy('conta_diario.NumeroDiario')
             ->get([
@@ -453,10 +456,10 @@ class MayorCuentaController extends Controller
 
         $worksheet->setCellValue('A1', $this->toExcelString('Mayor de Cuenta'));
         $worksheet->setCellValue('A2', $this->toExcelString('(Expresado en Otra Moneda)'));
-        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razón Social: ' . ($empresa->Nombre ?? '')));
-        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal: ' . ($sucursal->Nombre ?? '')));
-        $worksheet->setCellValue('A5', $this->toExcelString('Dirección: ' . ($empresa->Direccion ?? '')));
-        $worksheet->setCellValue('A6', $this->toExcelString('Cuenta: ' . $numeroCuenta . '  ' . $descripcionCuenta));
+        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razon Social : ' . ($empresa->Nombre ?? '')));
+        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal : ' . ($sucursal->Nombre ?? '')));
+        $worksheet->setCellValue('A5', $this->toExcelString('Direccion : ' . ($empresa->Direccion ?? '')));
+        $worksheet->setCellValue('A6', $this->toExcelString('Cuenta : ' . $numeroCuenta . '  ' . $descripcionCuenta));
 
         $worksheet->mergeCells('A1:J1');
         $worksheet->mergeCells('A2:J2');
@@ -466,32 +469,34 @@ class MayorCuentaController extends Controller
 
         $titleStyle = [
             'font' => ['bold' => true, 'size' => 15],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
         $worksheet->getStyle('A1')->applyFromArray($titleStyle);
         $worksheet->getStyle('A2')->applyFromArray(['font' => ['bold' => true, 'size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]]);
 
         $worksheet->setCellValue('A7', $this->toExcelString('Fecha'));
-        $worksheet->setCellValue('B7', $this->toExcelString('Número Diario'));
+        $worksheet->setCellValue('B7', $this->toExcelString('Numero Diario'));
         $worksheet->setCellValue('C7', $this->toExcelString('Detalle'));
         $worksheet->setCellValue('D7', $this->toExcelString('Identificador'));
         $worksheet->setCellValue('E7', $this->toExcelString('Debe'));
         $worksheet->setCellValue('F7', $this->toExcelString('Haber'));
         $worksheet->setCellValue('G7', $this->toExcelString('Saldo'));
-        $worksheet->setCellValue('H7', $this->toExcelString('D/H'));
+        $worksheet->setCellValue('H7', $this->toExcelString('D_H'));
         $worksheet->setCellValue('I7', $this->toExcelString('Op.'));
         $worksheet->setCellValue('J7', $this->toExcelString('Tipo'));
 
         $fechaFormat = date('d/m/Y', strtotime($fechaMayor));
-        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al ( ' . $fechaFormat . ' )'));
-        $worksheet->setCellValue('G8', abs($saldoInicial));
+        $saldoInicialA = round(abs($saldoInicial), 2);
+        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al  ( ' . $fechaFormat . ' )'));
+        $worksheet->setCellValue('G8', $saldoInicialA);
         $worksheet->setCellValue('H8', $dHInicial);
 
-        $worksheet->mergeCells('C8:D8');
+        $worksheet->getStyle('C8')->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+        $worksheet->getStyle('G8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $headerStyle = [
             'font' => ['bold' => true],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ];
         $worksheet->getStyle('A7:J7')->applyFromArray($headerStyle);
@@ -503,11 +508,9 @@ class MayorCuentaController extends Controller
         $worksheet->getColumnDimension('E')->setWidth(14);
         $worksheet->getColumnDimension('F')->setWidth(14);
         $worksheet->getColumnDimension('G')->setWidth(14);
-        $worksheet->getColumnDimension('H')->setWidth(5);
+        $worksheet->getColumnDimension('H')->setWidth(4);
         $worksheet->getColumnDimension('I')->setWidth(5);
         $worksheet->getColumnDimension('J')->setWidth(5);
-
-        $worksheet->getStyle('E8:J8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $fila = 9;
         $auxiliarSaldoActual = $auxiliarSaldo;
@@ -536,7 +539,7 @@ class MayorCuentaController extends Controller
                 $dHMuestra = '';
             }
 
-            $identificadorCompleto = ($row->CI_NIT ?? '') . ' - ' . ($row->identificador_nombre ?? '');
+            $identificadorCompleto = $row->identificador_nombre ?? '';
             $glosa = is_string($row->Glosa) ? $row->Glosa : '';
 
             $worksheet->setCellValue('A' . $fila, $row->fecha);
@@ -550,18 +553,24 @@ class MayorCuentaController extends Controller
             $worksheet->setCellValue('I' . $fila, $row->Iniciales);
             $worksheet->setCellValue('J' . $fila, $row->tipo_diario);
 
+            $worksheet->getStyle('A' . $fila)->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('B' . $fila . ':J' . $fila)->applyFromArray(['alignment' => ['vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('C' . $fila)->getAlignment()->setWrapText(true);
+            $worksheet->getStyle('D' . $fila)->getAlignment()->setWrapText(true);
+
             $worksheet->getStyle('E' . $fila . ':G' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
 
             $fila++;
         }
 
-        if ($fila > 9) {
-            $worksheet->getStyle('A7:J' . ($fila - 1))->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
-        }
-
-        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 8);
+        $worksheet->getPageSetup()->setPrintArea('A1:J' . $fila);
+        $worksheet->getPageMargins()->setTop(0.3);
+        $worksheet->getPageMargins()->setRight(0.3);
+        $worksheet->getPageMargins()->setLeft(0.3);
+        $worksheet->getPageMargins()->setBottom(0.3);
         $worksheet->getPageSetup()->setFitToPage(false);
         $worksheet->getPageSetup()->setScale(60);
+        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 7);
 
         $nombreArchivo = 'MayorOtraMoneda.xls';
         
@@ -576,6 +585,7 @@ class MayorCuentaController extends Controller
 
     /**
      * Reporte 3: Mayor de cuenta en Bolivianos CON identificador
+     * IDÉNTICO a ScriptCase
      */
     private function exportarBolivianosConIdentificador($cuentaId, $fechaMayor, $identificadorId)
     {
@@ -595,7 +605,7 @@ class MayorCuentaController extends Controller
         $tipoDeCuenta = $cuenta->TipoDeCuenta;
 
         if ($tipoDeCuenta == 'B') {
-            $fechaInicialSaldoAnterior = '1900-01-01';
+            $fechaInicialSaldoAnterior = '1900/01/01';
             $auxiliarGestion = null;
         } else {
             $primerDia = DB::connection('mysql_gestion_comercial_alimentos')
@@ -604,7 +614,7 @@ class MayorCuentaController extends Controller
                 ->whereYear('Fecha', date('Y', strtotime($fechaMayor)))
                 ->first();
             
-            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900-01-01';
+            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900/01/01';
             $auxiliarGestion = date('Y', strtotime($fechaMayor));
         }
 
@@ -623,6 +633,7 @@ class MayorCuentaController extends Controller
             ->where('IdIdentificador', $identificadorId)
             ->first(['CI_NIT', 'Nombre']);
 
+        // IMPORTANTE: ScriptCase usa Contabilizado != 0 en este reporte
         $saldoAnteriorDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario')
             ->join('conta_diario_propiamente', 'conta_diario.IdDiario', '=', 'conta_diario_propiamente.IdDiario')
@@ -632,7 +643,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.D_H', 'D')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoBolivianos');
 
         $saldoAnteriorHaber = DB::connection('mysql_gestion_comercial_alimentos')
@@ -644,7 +655,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.D_H', 'H')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoBolivianos');
 
         $saldoInicial = $saldoAnteriorDebe - $saldoAnteriorHaber;
@@ -669,7 +680,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario.IdCliente', session('cliente_id'))
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->orderBy('todos_fecha.Fecha')
             ->orderBy('conta_diario.NumeroDiario')
             ->get([
@@ -688,59 +699,60 @@ class MayorCuentaController extends Controller
 
         $worksheet->setCellValue('A1', $this->toExcelString('Mayor de Cuenta - Identificador'));
         $worksheet->setCellValue('A2', $this->toExcelString('(Expresado en Bolivianos)'));
-        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razón Social: ' . ($empresa->Nombre ?? '')));
-        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal: ' . ($sucursal->Nombre ?? '')));
-        $worksheet->setCellValue('A5', $this->toExcelString('Cuenta: ' . $numeroCuenta . '  ' . $descripcionCuenta));
-        $worksheet->setCellValue('A6', $this->toExcelString('Nombre: ' . ($identificador->Nombre ?? '') . ' CI - NIT: ' . ($identificador->CI_NIT ?? '')));
+        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razon Social : ' . ($empresa->Nombre ?? '')));
+        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal : ' . ($sucursal->Nombre ?? '')));
+        $worksheet->setCellValue('A5', $this->toExcelString('Cuenta : ' . $numeroCuenta . '  ' . $descripcionCuenta));
+        $worksheet->setCellValue('A6', $this->toExcelString('Nombre : ' . ($identificador->Nombre ?? '') . ' CI - NIT  : ' . ($identificador->CI_NIT ?? '')));
 
-        $worksheet->mergeCells('A1:I1');
-        $worksheet->mergeCells('A2:I2');
+        $worksheet->mergeCells('A1:J1');
+        $worksheet->mergeCells('A2:J2');
         $worksheet->mergeCells('A3:C3');
         $worksheet->mergeCells('A4:C4');
         $worksheet->mergeCells('A5:C5');
 
         $titleStyle = [
             'font' => ['bold' => true, 'size' => 15],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
         $worksheet->getStyle('A1')->applyFromArray($titleStyle);
         $worksheet->getStyle('A2')->applyFromArray(['font' => ['bold' => true, 'size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]]);
 
+        // OJO: Este reporte solo tiene 9 columnas (A-I)
         $worksheet->setCellValue('A7', $this->toExcelString('Fecha'));
-        $worksheet->setCellValue('B7', $this->toExcelString('Número Diario'));
+        $worksheet->setCellValue('B7', $this->toExcelString('Numero Diario'));
         $worksheet->setCellValue('C7', $this->toExcelString('Detalle'));
         $worksheet->setCellValue('D7', $this->toExcelString('Debe'));
         $worksheet->setCellValue('E7', $this->toExcelString('Haber'));
         $worksheet->setCellValue('F7', $this->toExcelString('Saldo'));
-        $worksheet->setCellValue('G7', $this->toExcelString('D/H'));
+        $worksheet->setCellValue('G7', $this->toExcelString('D_H'));
         $worksheet->setCellValue('H7', $this->toExcelString('Op.'));
         $worksheet->setCellValue('I7', $this->toExcelString('Tipo'));
 
         $fechaFormat = date('d/m/Y', strtotime($fechaMayor));
-        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al ( ' . $fechaFormat . ' )'));
-        $worksheet->setCellValue('F8', abs($saldoInicial));
+        $saldoInicialA = round(abs($saldoInicial), 2);
+        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al  ( ' . $fechaFormat . ' )'));
+        $worksheet->setCellValue('F8', $saldoInicialA);
         $worksheet->setCellValue('G8', $dHInicial);
 
-        $worksheet->mergeCells('C8:D8');
+        $worksheet->getStyle('C8')->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+        $worksheet->getStyle('F8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $headerStyle = [
             'font' => ['bold' => true],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ];
         $worksheet->getStyle('A7:I7')->applyFromArray($headerStyle);
 
         $worksheet->getColumnDimension('A')->setWidth(11);
         $worksheet->getColumnDimension('B')->setWidth(11);
-        $worksheet->getColumnDimension('C')->setWidth(60);
-        $worksheet->getColumnDimension('D')->setWidth(14);
+        $worksheet->getColumnDimension('C')->setWidth(40);
+        $worksheet->getColumnDimension('D')->setWidth(40);
         $worksheet->getColumnDimension('E')->setWidth(14);
         $worksheet->getColumnDimension('F')->setWidth(14);
         $worksheet->getColumnDimension('G')->setWidth(5);
-        $worksheet->getColumnDimension('H')->setWidth(5);
+        $worksheet->getColumnDimension('H')->setWidth(4);
         $worksheet->getColumnDimension('I')->setWidth(5);
-
-        $worksheet->getStyle('D8:I8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $fila = 9;
         $auxiliarSaldoActual = $auxiliarSaldo;
@@ -781,18 +793,26 @@ class MayorCuentaController extends Controller
             $worksheet->setCellValue('H' . $fila, $row->Iniciales);
             $worksheet->setCellValue('I' . $fila, $row->tipo_diario);
 
+            $worksheet->getStyle('A' . $fila)->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('B' . $fila . ':I' . $fila)->applyFromArray(['alignment' => ['vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('C' . $fila)->getAlignment()->setWrapText(true);
+
             $worksheet->getStyle('D' . $fila . ':F' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
 
             $fila++;
         }
 
-        if ($fila > 9) {
-            $worksheet->getStyle('A7:I' . ($fila - 1))->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
-        }
+        // NOTA: ScriptCase NO aplica bordes a las filas de datos en este reporte
+        // Solo se aplica borde a la fila 7 (títulos)
 
-        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 8);
+        $worksheet->getPageSetup()->setPrintArea('A1:I' . $fila);
+        $worksheet->getPageMargins()->setTop(0.3);
+        $worksheet->getPageMargins()->setRight(0.3);
+        $worksheet->getPageMargins()->setLeft(0.3);
+        $worksheet->getPageMargins()->setBottom(0.3);
         $worksheet->getPageSetup()->setFitToPage(false);
         $worksheet->getPageSetup()->setScale(60);
+        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 7);
 
         $nombreArchivo = 'MayorBolivianosIdentificador.xls';
         
@@ -807,6 +827,7 @@ class MayorCuentaController extends Controller
 
     /**
      * Reporte 4: Mayor de cuenta en Otra Moneda CON identificador
+     * IDÉNTICO a ScriptCase
      */
     private function exportarOtraMonedaConIdentificador($cuentaId, $fechaMayor, $identificadorId)
     {
@@ -826,7 +847,7 @@ class MayorCuentaController extends Controller
         $tipoDeCuenta = $cuenta->TipoDeCuenta;
 
         if ($tipoDeCuenta == 'B') {
-            $fechaInicialSaldoAnterior = '1900-01-01';
+            $fechaInicialSaldoAnterior = '1900/01/01';
             $auxiliarGestion = null;
         } else {
             $primerDia = DB::connection('mysql_gestion_comercial_alimentos')
@@ -835,7 +856,7 @@ class MayorCuentaController extends Controller
                 ->whereYear('Fecha', date('Y', strtotime($fechaMayor)))
                 ->first();
             
-            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900-01-01';
+            $fechaInicialSaldoAnterior = $primerDia->fecha ?? '1900/01/01';
             $auxiliarGestion = date('Y', strtotime($fechaMayor));
         }
 
@@ -854,6 +875,7 @@ class MayorCuentaController extends Controller
             ->where('IdIdentificador', $identificadorId)
             ->first(['CI_NIT', 'Nombre']);
 
+        // IMPORTANTE: ScriptCase usa Contabilizado != 0 en este reporte
         $saldoAnteriorDebe = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('conta_diario')
             ->join('conta_diario_propiamente', 'conta_diario.IdDiario', '=', 'conta_diario_propiamente.IdDiario')
@@ -863,7 +885,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.D_H', 'D')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoOtraMoneda');
 
         $saldoAnteriorHaber = DB::connection('mysql_gestion_comercial_alimentos')
@@ -875,7 +897,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.D_H', 'H')
             ->whereBetween('todos_fecha.Fecha', [$fechaInicialSaldoAnterior, $fechaMayor])
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->sum('conta_diario_propiamente.MontoOtraMoneda');
 
         $saldoInicial = $saldoAnteriorDebe - $saldoAnteriorHaber;
@@ -900,7 +922,7 @@ class MayorCuentaController extends Controller
             ->where('conta_diario_propiamente.IdCuenta', $cuentaId)
             ->where('conta_diario.IdCliente', session('cliente_id'))
             ->where('conta_diario_propiamente.IdIdentificador', $identificadorId)
-            ->where('conta_diario.Contabilizado', 1)
+            ->where('conta_diario.Contabilizado', '!=', 0)
             ->orderBy('todos_fecha.Fecha')
             ->orderBy('conta_diario.NumeroDiario')
             ->get([
@@ -919,59 +941,59 @@ class MayorCuentaController extends Controller
 
         $worksheet->setCellValue('A1', $this->toExcelString('Mayor de Cuenta - Identificador'));
         $worksheet->setCellValue('A2', $this->toExcelString('(Expresado en Otra Moneda)'));
-        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razón Social: ' . ($empresa->Nombre ?? '')));
-        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal: ' . ($sucursal->Nombre ?? '')));
-        $worksheet->setCellValue('A5', $this->toExcelString('Cuenta: ' . $numeroCuenta . '  ' . $descripcionCuenta));
-        $worksheet->setCellValue('A6', $this->toExcelString('Nombre: ' . ($identificador->Nombre ?? '') . ' CI - NIT: ' . ($identificador->CI_NIT ?? '')));
+        $worksheet->setCellValue('A3', $this->toExcelString('Nombre o Razon Social : ' . ($empresa->Nombre ?? '')));
+        $worksheet->setCellValue('A4', $this->toExcelString('Sucursal : ' . ($sucursal->Nombre ?? '')));
+        $worksheet->setCellValue('A5', $this->toExcelString('Cuenta : ' . $numeroCuenta . '  ' . $descripcionCuenta));
+        $worksheet->setCellValue('A6', $this->toExcelString('Nombre : ' . ($identificador->Nombre ?? '') . ' CI - NIT  : ' . ($identificador->CI_NIT ?? '')));
 
-        $worksheet->mergeCells('A1:I1');
-        $worksheet->mergeCells('A2:I2');
+        $worksheet->mergeCells('A1:J1');
+        $worksheet->mergeCells('A2:J2');
         $worksheet->mergeCells('A3:C3');
         $worksheet->mergeCells('A4:C4');
         $worksheet->mergeCells('A5:C5');
 
         $titleStyle = [
             'font' => ['bold' => true, 'size' => 15],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
         $worksheet->getStyle('A1')->applyFromArray($titleStyle);
         $worksheet->getStyle('A2')->applyFromArray(['font' => ['bold' => true, 'size' => 8], 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]]);
 
         $worksheet->setCellValue('A7', $this->toExcelString('Fecha'));
-        $worksheet->setCellValue('B7', $this->toExcelString('Número Diario'));
+        $worksheet->setCellValue('B7', $this->toExcelString('Numero Diario'));
         $worksheet->setCellValue('C7', $this->toExcelString('Detalle'));
         $worksheet->setCellValue('D7', $this->toExcelString('Debe'));
         $worksheet->setCellValue('E7', $this->toExcelString('Haber'));
         $worksheet->setCellValue('F7', $this->toExcelString('Saldo'));
-        $worksheet->setCellValue('G7', $this->toExcelString('D/H'));
+        $worksheet->setCellValue('G7', $this->toExcelString('D_H'));
         $worksheet->setCellValue('H7', $this->toExcelString('Op.'));
         $worksheet->setCellValue('I7', $this->toExcelString('Tipo'));
 
         $fechaFormat = date('d/m/Y', strtotime($fechaMayor));
-        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al ( ' . $fechaFormat . ' )'));
-        $worksheet->setCellValue('F8', abs($saldoInicial));
+        $saldoInicialA = round(abs($saldoInicial), 2);
+        $worksheet->setCellValue('C8', $this->toExcelString('Saldo de Cuenta al  ( ' . $fechaFormat . ' )'));
+        $worksheet->setCellValue('F8', $saldoInicialA);
         $worksheet->setCellValue('G8', $dHInicial);
 
-        $worksheet->mergeCells('C8:D8');
+        $worksheet->getStyle('C8')->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+        $worksheet->getStyle('F8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $headerStyle = [
             'font' => ['bold' => true],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]],
         ];
         $worksheet->getStyle('A7:I7')->applyFromArray($headerStyle);
 
         $worksheet->getColumnDimension('A')->setWidth(11);
         $worksheet->getColumnDimension('B')->setWidth(11);
-        $worksheet->getColumnDimension('C')->setWidth(60);
-        $worksheet->getColumnDimension('D')->setWidth(14);
+        $worksheet->getColumnDimension('C')->setWidth(40);
+        $worksheet->getColumnDimension('D')->setWidth(40);
         $worksheet->getColumnDimension('E')->setWidth(14);
         $worksheet->getColumnDimension('F')->setWidth(14);
         $worksheet->getColumnDimension('G')->setWidth(5);
-        $worksheet->getColumnDimension('H')->setWidth(5);
+        $worksheet->getColumnDimension('H')->setWidth(4);
         $worksheet->getColumnDimension('I')->setWidth(5);
-
-        $worksheet->getStyle('D8:I8')->getNumberFormat()->setFormatCode('#,##0.00');
 
         $fila = 9;
         $auxiliarSaldoActual = $auxiliarSaldo;
@@ -1012,18 +1034,23 @@ class MayorCuentaController extends Controller
             $worksheet->setCellValue('H' . $fila, $row->Iniciales);
             $worksheet->setCellValue('I' . $fila, $row->tipo_diario);
 
+            $worksheet->getStyle('A' . $fila)->applyFromArray(['alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('B' . $fila . ':I' . $fila)->applyFromArray(['alignment' => ['vertical' => Alignment::VERTICAL_CENTER]]);
+            $worksheet->getStyle('C' . $fila)->getAlignment()->setWrapText(true);
+
             $worksheet->getStyle('D' . $fila . ':F' . $fila)->getNumberFormat()->setFormatCode('#,##0.00');
 
             $fila++;
         }
 
-        if ($fila > 9) {
-            $worksheet->getStyle('A7:I' . ($fila - 1))->applyFromArray(['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]]);
-        }
-
-        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 8);
+        $worksheet->getPageSetup()->setPrintArea('A1:I' . $fila);
+        $worksheet->getPageMargins()->setTop(0.3);
+        $worksheet->getPageMargins()->setRight(0.3);
+        $worksheet->getPageMargins()->setLeft(0.3);
+        $worksheet->getPageMargins()->setBottom(0.3);
         $worksheet->getPageSetup()->setFitToPage(false);
         $worksheet->getPageSetup()->setScale(60);
+        $worksheet->getPageSetup()->setRowsToRepeatAtTopByStartAndEnd(1, 7);
 
         $nombreArchivo = 'MayorOtraMonedaIdentificador.xls';
         
@@ -1136,5 +1163,4 @@ class MayorCuentaController extends Controller
         
         return $resultado;
     }
-    
 }

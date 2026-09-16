@@ -1054,6 +1054,10 @@ class PedidoClienteController extends Controller
 
     /**
      * ✅ GENERAR PDF DEL PEDIDO
+     * - Cada contenedor como bloque independiente
+     * - Incluye Destino del operador
+     * - Observaciones destacadas
+     * - Resumen agrupado por tipo de contenedor
      */
     public function generarPdf($id)
     {
@@ -1066,7 +1070,7 @@ class PedidoClienteController extends Controller
             
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
-                ->with(['detalles.producto', 'detalles.contenedor'])
+                ->with(['detalles.producto', 'detalles.contenedor.tipoContenedor'])
                 ->first();
 
             if (!$pedido) {
@@ -1080,6 +1084,9 @@ class PedidoClienteController extends Controller
                     ->with('error', 'El pedido no tiene productos.');
             }
 
+            // ============================================================
+            // DATOS DE LA EMPRESA
+            // ============================================================
             $empresa = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente')
                 ->where('IdCliente', $clienteId)
@@ -1096,205 +1103,427 @@ class PedidoClienteController extends Controller
                 ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
 
-            $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
-                $primerItem = $items->first();
-                $contenedor = $primerItem->contenedor;
-                $totalUnidadesContenedor = $items->sum('Cantidad');
-                $subtotal = $items->sum(function($item) {
-                    return $item->Cantidad * $item->Precio;
-                });
-                
-                return [
-                    'IdContenedor' => $primerItem->IdContenedor,
-                    'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                    'Orden' => intval($orden),
-                    'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
-                    'productos' => $items->map(function($item) {
-                        return [
-                            'IdProducto' => $item->IdProducto,
-                            'Codigo' => $item->producto ? $item->producto->Codigo : '-',
-                            'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
-                            'Cantidad' => $item->Cantidad,
-                            'Precio' => $item->Precio,
-                            'Subtotal' => $item->Cantidad * $item->Precio,
-                        ];
-                    }),
-                    'total_unidades' => $totalUnidadesContenedor,
-                    'subtotal' => $subtotal,
-                ];
-            })->values();
+            // ============================================================
+            // CONFIG OPERADOR (Ciudad/Provincia/Destino)
+            // ============================================================
+            $configOperador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_operadores_clientes')
+                ->where('IdOperador', $pedido->IdOperador)
+                ->first();
+
+            $destino = null;
+            $tipoUbicacion = null;
+
+            if ($configOperador) {
+                if (isset($configOperador->Ciudad) && $configOperador->Ciudad == 1) {
+                    $tipoUbicacion = 'Ciudad';
+                } elseif (isset($configOperador->Provincia) && $configOperador->Provincia == 1) {
+                    $tipoUbicacion = 'Provincia';
+                }
+                $destino = $configOperador->Destino ?? null;
+            }
+
+            // ============================================================
+            // AGRUPAR POR OrdenContenedor (cada contenedor = bloque único)
+            // ============================================================
+            $detallesAgrupados = $pedido->detalles
+                ->groupBy('OrdenContenedor')
+                ->map(function($items, $orden) {
+                    $primerItem = $items->first();
+                    $contenedor = $primerItem->contenedor;
+                    
+                    $totalUnidadesContenedor = $items->sum('Cantidad');
+                    $subtotal = $items->sum(function($item) {
+                        return $item->Cantidad * $item->Precio;
+                    });
+                    
+                    return [
+                        'OrdenContenedor' => intval($orden),
+                        'IdContenedor' => $primerItem->IdContenedor,
+                        'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                        'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                        'productos' => $items->map(function($item) {
+                            return [
+                                'IdProducto' => $item->IdProducto,
+                                'Codigo' => $item->producto ? $item->producto->Codigo : '-',
+                                'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
+                                'Cantidad' => $item->Cantidad,
+                                'Precio' => $item->Precio,
+                                'Subtotal' => $item->Cantidad * $item->Precio,
+                            ];
+                        })->values()->toArray(),
+                        'total_unidades' => $totalUnidadesContenedor,
+                        'subtotal' => $subtotal,
+                    ];
+                })
+                ->sortBy('IdContenedor')
+                ->values();
+
+            // ============================================================
+            // ✅ RESUMEN AGRUPADO POR TIPO DE CONTENEDOR
+            // ============================================================
+            $resumenPorTipo = $detallesAgrupados
+                ->groupBy('Codigo')
+                ->map(function($items, $codigo) {
+                    return [
+                        'Codigo' => $codigo,
+                        'cantidad_contenedores' => $items->count(),
+                        'total_unidades' => $items->sum('total_unidades'),
+                        'subtotal' => $items->sum('subtotal'),
+                    ];
+                })
+                ->sortBy('Codigo')
+                ->values();
 
             $totalUnidades = $pedido->detalles->sum('Cantidad');
-            $totalContenedores = $pedido->detalles->groupBy('OrdenContenedor')->count();
+            $totalContenedores = $detallesAgrupados->count();
             $totalGeneral = $pedido->detalles->sum(function($item) {
                 return $item->Cantidad * $item->Precio;
             });
 
+            // ============================================================
+            // CREAR PDF
+            // ============================================================
             $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
             $pdf->setPrintHeader(false);
             $pdf->setPrintFooter(false);
-            $pdf->SetMargins(12, 10, 12);
-            $pdf->SetAutoPageBreak(true, 15);
+            $pdf->SetMargins(10, 10, 10);
+            $pdf->SetAutoPageBreak(true, 12);
             $pdf->AddPage();
 
-            $y = 10;
-            
-            $pdf->SetFont('helvetica', 'B', 13);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 5, $empresa->Nombre ?? 'EMPRESA', 0, 1, 'C');
-            $y += 5;
-            
-            $pdf->SetFont('helvetica', '', 8);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 3.5, $sucursal->Nombre ?? '', 0, 1, 'C');
-            $y += 3.5;
-            
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 3.5, $sucursal->Direccion ?? '', 0, 1, 'C');
-            $y += 3.5;
-            
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 3.5, "NIT: " . ($empresa->NIT ?? ''), 0, 1, 'C');
-            $y += 5;
-            
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 0.3, '', 'T', 1);
-            $y += 4;
+            $y = 8;
 
+            // ============================================================
+            // HEADER EMPRESA
+            // ============================================================
             $pdf->SetFont('helvetica', 'B', 12);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 5, 'PEDIDO DE PRODUCTOS', 0, 1, 'C');
-            $y += 5;
-            
-            $pdf->SetFont('helvetica', 'B', 10);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(186, 4, 'N° ' . ($pedido->NumeroPedido ?? '000000'), 0, 1, 'C');
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 5, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'), 0, 1, 'C');
             $y += 5;
 
             $pdf->SetFont('helvetica', '', 7.5);
-            
-            $x = 12;
-            $pdf->SetXY($x, $y);
-            $pdf->Cell(30, 3.5, 'Fecha Pedido:', 0, 0, 'L');
-            $pdf->SetXY($x + 30, $y);
-            $pdf->Cell(50, 3.5, Carbon::parse($pedido->FechaPedido)->format('d/m/Y H:i'), 0, 0, 'L');
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 3.5, $sucursal->Nombre ?? '', 0, 1, 'C');
             $y += 3.5;
-            
-            if ($pedido->FechaEntrega) {
-                $pdf->SetXY($x, $y);
-                $pdf->Cell(30, 3.5, 'Fecha Entrega:', 0, 0, 'L');
-                $pdf->SetXY($x + 30, $y);
-                $pdf->Cell(50, 3.5, Carbon::parse($pedido->FechaEntrega)->format('d/m/Y'), 0, 0, 'L');
+
+            if (!empty($sucursal->Direccion)) {
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(196, 3.5, $sucursal->Direccion, 0, 1, 'C');
                 $y += 3.5;
             }
-            
-            $pdf->SetXY($x, $y);
-            $pdf->Cell(30, 3.5, 'Operador:', 0, 0, 'L');
-            $pdf->SetXY($x + 30, $y);
-            $pdf->Cell(50, 3.5, $operador->nombre ?? 'Sin operador', 0, 0, 'L');
-            $y += 3.5;
-            
-            $pdf->SetXY($x, $y);
-            $pdf->Cell(30, 3.5, 'Sucursal:', 0, 0, 'L');
-            $pdf->SetXY($x + 30, $y);
-            $pdf->Cell(50, 3.5, $sucursal->Nombre ?? 'Sin sucursal', 0, 0, 'L');
-            $y += 3.5;
-            
-            $pdf->SetXY($x, $y);
-            $pdf->Cell(30, 3.5, 'Estado:', 0, 0, 'L');
-            $pdf->SetXY($x + 30, $y);
-            $pdf->Cell(50, 3.5, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
-            $y += 5;
 
-            // TABLA DE PRODUCTOS
-            $pdf->SetFont('helvetica', 'B', 7);
-            $pdf->SetFillColor(245, 245, 245);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(6, 4, '#', 'TB', 0, 'C', 1);
-            $pdf->Cell(64, 4, 'PRODUCTO', 'TB', 0, 'L', 1);
-            $pdf->Cell(22, 4, 'CANTIDAD', 'TB', 0, 'C', 1);
-            $pdf->Cell(28, 4, 'PRECIO UNIT.', 'TB', 0, 'C', 1);
-            $pdf->Cell(36, 4, 'SUBTOTAL', 'TB', 1, 'C', 1);
-            $y += 4;
-
-            $pdf->SetFont('helvetica', '', 6.5);
-            $contador = 0;
-            $fill = false;
-            
-            foreach ($detallesAgrupados as $item) {
-                $pdf->SetFont('helvetica', 'B', 6.5);
-                $pdf->SetFillColor(250, 250, 250);
-                $pdf->SetXY(12, $y);
-                $pdf->Cell(156, 3.5, '[' . $item['Codigo'] . ']', 'LTR', 1, 'L', 1);
+            if (!empty($empresa->NIT)) {
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(196, 3.5, "NIT: " . $empresa->NIT, 0, 1, 'C');
                 $y += 3.5;
-                
-                $pdf->SetFont('helvetica', '', 6.5);
-                $fill = !$fill;
-                
-                foreach ($item['productos'] as $producto) {
-                    $contador++;
-                    $nombreProducto = $producto['Descripcion'] ?? '-';
-                    if (strlen($nombreProducto) > 38) {
-                        $nombreProducto = substr($nombreProducto, 0, 35) . '...';
-                    }
-                    
-                    $pdf->SetXY(12, $y);
-                    $pdf->Cell(6, 3.5, $contador . '.', 'LR', 0, 'C', $fill);
-                    $pdf->Cell(64, 3.5, $nombreProducto, 'LR', 0, 'L', $fill);
-                    $pdf->Cell(22, 3.5, number_format($producto['Cantidad'], 0, ',', '.'), 'LR', 0, 'C', $fill);
-                    $pdf->Cell(28, 3.5, number_format($producto['Precio'], 2, ',', '.'), 'LR', 0, 'C', $fill);
-                    $pdf->Cell(36, 3.5, number_format($producto['Subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
-                    $y += 3.5;
-                    $fill = !$fill;
-                }
-                
-                $pdf->SetFont('helvetica', 'B', 6.5);
-                $pdf->SetFillColor(240, 248, 255);
-                $pdf->SetXY(12, $y);
-                $pdf->Cell(6, 3.5, '', 'LRB', 0, 'C', 1);
-                $pdf->Cell(64, 3.5, 'TOTAL CONTENEDOR', 'LRB', 0, 'R', 1);
-                $pdf->Cell(22, 3.5, number_format($item['total_unidades'], 0, ',', '.'), 'LRB', 0, 'C', 1);
-                $pdf->Cell(28, 3.5, '', 'LRB', 0, 'C', 1);
-                $pdf->Cell(36, 3.5, number_format($item['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
-                $y += 3.5;
-                
-                $pdf->SetFont('helvetica', '', 6.5);
             }
 
-            $y += 3;
-            
-            $pdf->SetFont('helvetica', 'B', 8);
-            
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(60, 4, 'Total Contenedores: ' . number_format($totalContenedores, 0, ',', '.'), 0, 0, 'L');
-            $pdf->SetXY(90, $y);
-            $pdf->Cell(60, 4, 'Total Unidades: ' . number_format($totalUnidades, 0, ',', '.'), 0, 0, 'L');
+            $y += 2;
+            $pdf->SetDrawColor(180, 180, 180);
+            $pdf->Line(10, $y, 206, $y);
             $y += 5;
-            
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(156, 0.3, '', 'T', 1);
-            $y += 4;
-            
-            $pdf->SetFont('helvetica', 'B', 11);
-            $pdf->SetXY(12, $y);
-            $pdf->Cell(100, 6, 'TOTAL GENERAL DEL PEDIDO', 0, 0, 'R');
-            $pdf->SetXY(112, $y);
-            $pdf->Cell(56, 6, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
+
+            // ============================================================
+            // TÍTULO
+            // ============================================================
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->SetTextColor(30, 60, 120);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 7, 'PEDIDO DE PRODUCTOS', 0, 1, 'C');
             $y += 7;
 
-            if ($pedido->Observaciones) {
-                $pdf->SetFont('helvetica', 'B', 7);
-                $pdf->SetXY(12, $y);
-                $pdf->Cell(156, 3.5, 'OBSERVACIONES:', 0, 1, 'L');
-                $y += 3.5;
-                
-                $pdf->SetFont('helvetica', '', 7);
-                $pdf->SetXY(12, $y);
-                $pdf->MultiCell(156, 3, $pedido->Observaciones, 0, 'L');
-                $y = $pdf->GetY() + 3;
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 5, 'N° ' . ($pedido->NumeroPedido ?? '000000'), 0, 1, 'C');
+            $y += 8;
+
+            // ============================================================
+            // INFO PEDIDO EN 2 COLUMNAS
+            // ============================================================
+            $pdf->SetFont('helvetica', '', 8);
+            
+            $colIzq_label = 12;
+            $colIzq_valor = 45;
+            $colDer_label = 108;
+            $colDer_valor = 138;
+            $yInfo = $y;
+            $altoFila = 5;
+
+            // COLUMNA IZQUIERDA
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetXY($colIzq_label, $yInfo);
+            $pdf->Cell(33, $altoFila, 'Fecha Pedido:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetXY($colIzq_valor, $yInfo);
+            $pdf->Cell(60, $altoFila, Carbon::parse($pedido->FechaPedido)->format('d/m/Y H:i'), 0, 0, 'L');
+            $yInfo += $altoFila;
+
+            if ($pedido->FechaEntrega) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetXY($colIzq_label, $yInfo);
+                $pdf->Cell(33, $altoFila, 'Fecha Entrega:', 0, 0, 'L');
+                $pdf->SetFont('helvetica', '', 8);
+                $pdf->SetXY($colIzq_valor, $yInfo);
+                $pdf->Cell(60, $altoFila, Carbon::parse($pedido->FechaEntrega)->format('d/m/Y'), 0, 0, 'L');
+                $yInfo += $altoFila;
             }
 
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetXY($colIzq_label, $yInfo);
+            $pdf->Cell(33, $altoFila, 'Operador:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetXY($colIzq_valor, $yInfo);
+            $pdf->Cell(60, $altoFila, $operador->nombre ?? 'Sin operador', 0, 0, 'L');
+            $yInfo += $altoFila;
+
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetXY($colIzq_label, $yInfo);
+            $pdf->Cell(33, $altoFila, 'Sucursal:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetXY($colIzq_valor, $yInfo);
+            $pdf->Cell(60, $altoFila, $sucursal->Nombre ?? 'Sin sucursal', 0, 0, 'L');
+            $yInfo += $altoFila;
+
+            // COLUMNA DERECHA
+            $yInfoDer = $y;
+
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetXY($colDer_label, $yInfoDer);
+            $pdf->Cell(30, $altoFila, 'Estado:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetXY($colDer_valor, $yInfoDer);
+            $pdf->Cell(58, $altoFila, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
+            $yInfoDer += $altoFila;
+
+            if ($tipoUbicacion) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetXY($colDer_label, $yInfoDer);
+                $pdf->Cell(30, $altoFila, 'Tipo:', 0, 0, 'L');
+                $pdf->SetFont('helvetica', '', 8);
+                $pdf->SetXY($colDer_valor, $yInfoDer);
+                $pdf->Cell(58, $altoFila, $tipoUbicacion, 0, 0, 'L');
+                $yInfoDer += $altoFila;
+            }
+
+            if ($destino) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetXY($colDer_label, $yInfoDer);
+                $pdf->Cell(30, $altoFila, 'Destino:', 0, 0, 'L');
+                $pdf->SetFont('helvetica', '', 8);
+                $pdf->SetXY($colDer_valor, $yInfoDer);
+                $pdf->Cell(58, $altoFila, $destino, 0, 0, 'L');
+                $yInfoDer += $altoFila;
+            }
+
+            $y = max($yInfo, $yInfoDer) + 3;
+
+            // ============================================================
+            // OBSERVACIONES
+            // ============================================================
+            if (!empty($pedido->Observaciones)) {
+                $pdf->SetDrawColor(251, 191, 36);
+                $pdf->SetFillColor(255, 251, 235);
+                
+                $pdf->SetFont('helvetica', '', 7.5);
+                $alturaTexto = $pdf->getStringHeight(180, $pedido->Observaciones);
+                $alturaCaja = max(12, 6 + $alturaTexto + 3);
+                
+                $pdf->RoundedRect(10, $y, 196, $alturaCaja, 1.5, '1111', 'DF');
+                
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetTextColor(146, 64, 14);
+                $pdf->SetXY(12, $y + 2);
+                $pdf->Cell(100, 4, 'OBSERVACIONES:', 0, 0, 'L');
+                
+                $pdf->SetFont('helvetica', '', 7.5);
+                $pdf->SetTextColor(80, 40, 10);
+                $pdf->SetXY(12, $y + 6.5);
+                $pdf->MultiCell(192, 3, $pedido->Observaciones, 0, 'L');
+                
+                $y += $alturaCaja + 4;
+                
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetDrawColor(0, 0, 0);
+                $pdf->SetFillColor(255, 255, 255);
+            }
+
+            // ============================================================
+            // CABECERA TABLA
+            // ============================================================
+            $pdf->SetFont('helvetica', 'B', 7);
+            $pdf->SetFillColor(240, 240, 240);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetDrawColor(180, 180, 180);
+
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(8, 5, '#', 'TB', 0, 'C', 1);
+            $pdf->Cell(72, 5, 'PRODUCTO', 'TB', 0, 'L', 1);
+            $pdf->Cell(24, 5, 'CANTIDAD', 'TB', 0, 'C', 1);
+            $pdf->Cell(30, 5, 'PRECIO UNIT.', 'TB', 0, 'C', 1);
+            $pdf->Cell(62, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
+            $y += 5;
+
+            $pdf->SetFont('helvetica', '', 7);
+            $contador = 0;
+
+            // ============================================================
+            // LISTA POR CONTENEDOR
+            // ============================================================
+            foreach ($detallesAgrupados as $index => $grupo) {
+                if ($index > 0) {
+                    $y += 3;
+                }
+
+                // HEADER CONTENEDOR
+                $pdf->SetFont('helvetica', 'B', 8.5);
+                $pdf->SetFillColor(225, 238, 255);
+                $pdf->SetTextColor(20, 50, 110);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(196, 6, '', 'LTR', 1, 'L', 1);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
+                $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
+                $y += 6;
+
+                $pdf->SetTextColor(0, 0, 0);
+
+                // PRODUCTOS
+                $pdf->SetFont('helvetica', '', 7);
+                $fill = false;
+
+                foreach ($grupo['productos'] as $producto) {
+                    $contador++;
+                    $nombreProducto = $producto['Descripcion'] ?? '-';
+                    if (mb_strlen($nombreProducto, 'UTF-8') > 42) {
+                        $nombreProducto = mb_substr($nombreProducto, 0, 40, 'UTF-8') . '...';
+                    }
+                    
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell(8, 4, $contador . '.', 'LR', 0, 'C', $fill);
+                    $pdf->Cell(72, 4, ' ' . $nombreProducto, 'LR', 0, 'L', $fill);
+                    $pdf->Cell(24, 4, number_format($producto['Cantidad'], 0, ',', '.'), 'LR', 0, 'C', $fill);
+                    $pdf->Cell(30, 4, number_format($producto['Precio'], 2, ',', '.'), 'LR', 0, 'C', $fill);
+                    $pdf->Cell(62, 4, number_format($producto['Subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
+                    $y += 4;
+                    $fill = !$fill;
+                }
+
+                // TOTAL CONTENEDOR
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(235, 245, 255);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(8, 4.5, '', 'LRB', 0, 'C', 1);
+                $pdf->Cell(72, 4.5, 'TOTAL ' . $grupo['Codigo'] . ' #' . $grupo['OrdenContenedor'], 'LRB', 0, 'R', 1);
+                $pdf->Cell(24, 4.5, number_format($grupo['total_unidades'], 0, ',', '.'), 'LRB', 0, 'C', 1);
+                $pdf->Cell(30, 4.5, '', 'LRB', 0, 'C', 1);
+                $pdf->Cell(62, 4.5, 'Bs. ' . number_format($grupo['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
+                $y += 4.5;
+            }
+
+            $y += 5;
+
+            // ============================================================
+            // TOTALES GENERALES
+            // ============================================================
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetTextColor(0, 0, 0);
+            
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(98, 5, 'Total Contenedores: ' . number_format($totalContenedores, 0, ',', '.'), 0, 0, 'L');
+            $pdf->Cell(98, 5, 'Total Unidades: ' . number_format($totalUnidades, 0, ',', '.'), 0, 0, 'L');
+            $y += 6;
+
+            $pdf->SetDrawColor(180, 180, 180);
+            $pdf->Line(10, $y, 206, $y);
+            $y += 4;
+
+            $pdf->SetFont('helvetica', 'B', 12);
+            $pdf->SetTextColor(20, 50, 110);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(136, 7, 'TOTAL GENERAL DEL PEDIDO', 0, 0, 'R');
+            $pdf->SetXY(146, $y);
+            $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
+            $y += 10;
+
+            // ============================================================
+            // ✅ RESUMEN AGRUPADO POR TIPO DE CONTENEDOR
+            // ============================================================
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(30, 60, 120);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 6, 'RESUMEN POR TIPO DE CONTENEDOR', 0, 1, 'C');
+            $y += 7;
+
+            // Cabecera del resumen
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetFillColor(240, 240, 240);
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetDrawColor(180, 180, 180);
+
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(90, 5, 'CONTENEDOR', 'TB', 0, 'L', 1);
+            $pdf->Cell(30, 5, 'CANT.', 'TB', 0, 'C', 1);
+            $pdf->Cell(30, 5, 'UNIDADES', 'TB', 0, 'C', 1);
+            $pdf->Cell(46, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
+            $y += 5;
+
+            $pdf->SetFont('helvetica', '', 8);
+            $fill = false;
+
+            // Filas AGRUPADAS por tipo
+            foreach ($resumenPorTipo as $item) {
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(90, 5, '  ' . $item['Codigo'], 'LR', 0, 'L', $fill);
+                $pdf->Cell(30, 5, $item['cantidad_contenedores'] . ' cont.', 'LR', 0, 'C', $fill);
+                $pdf->Cell(30, 5, number_format($item['total_unidades'], 0, ',', '.') . ' und', 'LR', 0, 'C', $fill);
+                $pdf->Cell(46, 5, 'Bs. ' . number_format($item['subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
+                $y += 5;
+                $fill = !$fill;
+            }
+
+            // Fila de TOTAL
+            $pdf->SetFont('helvetica', 'B', 8);
+            $pdf->SetFillColor(235, 245, 255);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(90, 5, '  TOTAL GENERAL', 'LRB', 0, 'R', 1);
+            $pdf->Cell(30, 5, $totalContenedores . ' cont.', 'LRB', 0, 'C', 1);
+            $pdf->Cell(30, 5, number_format($totalUnidades, 0, ',', '.') . ' und', 'LRB', 0, 'C', 1);
+            $pdf->Cell(46, 5, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 'LRB', 1, 'C', 1);
+            $y += 10;
+
+            // Reset
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetDrawColor(0, 0, 0);
+            $pdf->SetFillColor(255, 255, 255);
+
+            // ============================================================
+            // FIRMAS
+            // ============================================================
+            $y += 15;
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetFont('helvetica', '', 8);
+
+            $pdf->SetXY(25, $y);
+            $pdf->Cell(70, 0.3, '', 'T', 0, 'C');
+            $pdf->SetXY(115, $y);
+            $pdf->Cell(70, 0.3, '', 'T', 1, 'C');
+
+            $pdf->SetXY(25, $y + 1);
+            $pdf->Cell(70, 4, 'Firma Operador', 0, 0, 'C');
+            $pdf->SetXY(115, $y + 1);
+            $pdf->Cell(70, 4, 'Firma Recibido', 0, 1, 'C');
+
+            // ============================================================
+            // SALIDA
+            // ============================================================
             $nombreArchivo = 'Pedido_' . ($pedido->NumeroPedido ?? '000000') . '.pdf';
+            
+            if (ob_get_length()) {
+                ob_end_clean();
+            }
             
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="' . $nombreArchivo . '"');
