@@ -658,4 +658,77 @@ class ContenedorController extends Controller
             ], 500);
         }
     }
+    /**
+    * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")
+    */
+    public function indexSupervisor(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 0)
+            ->orderBy('Nombre')
+            ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
+        
+        $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
+        
+        $query = Contenedor::porCliente()
+            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+        
+        if ($sucursalFiltro) {
+            $query->where('IdSucursal', $sucursalFiltro);
+        }
+        
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->activos();
+            } elseif ($request->estado === 'borradores') {
+                $query->borradores();
+            }
+        }
+        
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where(function($q) use ($buscar) {
+                $q->where('Codigo', 'LIKE', "%{$buscar}%");
+            });
+        }
+        
+        $contenedores = $query->orderBy('Codigo')
+            ->paginate(20)
+            ->appends($request->all());
+        
+        $contenedores->getCollection()->transform(function($contenedor) {
+            return [
+                'IdContenedor' => $contenedor->IdContenedor,
+                'Codigo' => $contenedor->Codigo,
+                'IdTipoContenedor' => $contenedor->IdTipoContenedor,
+                'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'GruposAnalisis' => $contenedor->gruposNombres,
+                'CapacidadTotal' => $contenedor->CapacidadTotal,
+                'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
+                'TotalProductos' => $contenedor->totalProductos,
+                'ActivoInactivo' => $contenedor->ActivoInactivo,
+                'EstadoTexto' => $contenedor->EstadoTexto,
+                'EstadoColor' => $contenedor->EstadoColor,
+                'IdSucursal' => $contenedor->IdSucursal,
+                'sucursal' => $contenedor->sucursal ? [
+                    'Nombre' => $contenedor->sucursal->Nombre,
+                    'NumeroSucursal' => $contenedor->sucursal->NumeroSucursal,
+                ] : null,
+            ];
+        });
+
+        // ✅ MISMA DATA, PERO OTRA VISTA
+        return Inertia::render('Operacion/ClientesMayoristas/Contenedores/AdministrarClientes', [
+            'contenedores' => $contenedores,
+            'sucursales' => $sucursales,
+            'sucursalSeleccionada' => $sucursalFiltro,
+            'filtroEstado' => $request->estado,
+            'buscar' => $request->buscar,
+        ]);
+    }
 }

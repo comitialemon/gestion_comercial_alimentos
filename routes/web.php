@@ -1319,7 +1319,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // ✅ RUTAS FIJAS (sin {id}) - DEBEN IR PRIMERO
                     Route::get('/clientes-disponibles', [ContenedorClienteController::class, 'getClientesDisponibles'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.clientes-disponibles');
-                    
+                    // ✅ VERSIÓN SUPERVISOR (sin botón "Nuevo Contenedor")
+                    Route::get('/supervisor', [ContenedorController::class, 'indexSupervisor'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.index-supervisor');
                     // ✅ RUTAS CON {id}
                     Route::get('/{id}/edit', [ContenedorController::class, 'edit'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.edit');
@@ -1388,6 +1390,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                             ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.list');
                     });
                 });
+                
 
                 // ============================================================
                 // PEDIDOS CLIENTES
