@@ -1457,6 +1457,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Guardar precio
                     Route::post('/', [PrecioProductoController::class, 'store'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.store');
+                    
                     // Obtener precio de un producto (API)
                     Route::get('/get-precio', [PrecioProductoController::class, 'getPrecio'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.get-precio');
@@ -1464,6 +1465,18 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // ✅ VISTA DE BITÁCORA
                     Route::get('/bitacora', [PrecioProductoController::class, 'bitacoraIndex'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora');
+
+                    // ✅ NUEVO: Exportar PDF de la bitácora
+                    Route::get('/bitacora/exportar-pdf', [PrecioProductoController::class, 'exportarPdfBitacora'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.exportar-pdf');
+                    
+                    // ✅ Autocompletes de la bitácora
+                    Route::get('/bitacora/buscar-clientes', [PrecioProductoController::class, 'buscarClientesBitacora'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.buscar-clientes');
+                    
+                    Route::get('/bitacora/buscar-productos', [PrecioProductoController::class, 'buscarProductosBitacora'])
+                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.buscar-productos');
+                    
                     // Eliminar precio
                     Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
                         ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
@@ -1564,6 +1577,10 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Vista del informe
                     Route::get('/', [InformePedidosClientesMayoristasController::class, 'index'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.index');
+                    
+                    // ✅ NUEVO: Búsqueda de operadores para autocomplete
+                    Route::get('/buscar-operadores', [InformePedidosClientesMayoristasController::class, 'buscarOperadores'])
+                        ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.buscar-operadores');
                     
                     // PDF - SOLO RESUMEN (Matriz)
                     Route::post('/exportar-pdf-resumen', [InformePedidosClientesMayoristasController::class, 'exportarPdfResumen'])

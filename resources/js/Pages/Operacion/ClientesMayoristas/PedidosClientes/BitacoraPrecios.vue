@@ -51,88 +51,135 @@ const filtros = ref({
 
 const aplicandoFiltros = ref(false)
 
-// ==================== WATCHERS ====================
-watch(() => filtros.value.identificador_id, () => { aplicarFiltrosAutomatico() })
-watch(() => filtros.value.producto_id, () => { aplicarFiltrosAutomatico() })
-
-let timeoutFechaDesde = null
-watch(() => filtros.value.fecha_desde, () => {
-    clearTimeout(timeoutFechaDesde)
-    timeoutFechaDesde = setTimeout(() => { aplicarFiltrosAutomatico() }, 500)
-})
-
-let timeoutFechaHasta = null
-watch(() => filtros.value.fecha_hasta, () => {
-    clearTimeout(timeoutFechaHasta)
-    timeoutFechaHasta = setTimeout(() => { aplicarFiltrosAutomatico() }, 500)
-})
-
 // ==================== AUTOCOMPLETE - CLIENTE ====================
 const busquedaCliente = ref('')
 const mostrarClientes = ref(false)
+const clientesSugeridos = ref([])
+const buscandoClientes = ref(false)
+let timeoutCliente = null
 
-const clientesFiltrados = computed(() => {
-    if (!busquedaCliente.value) return props.clientesConPrecios.slice(0, 10)
-    const termino = busquedaCliente.value.toLowerCase()
-    return props.clientesConPrecios.filter(c =>
-        c.Nombre?.toLowerCase().includes(termino) ||
-        c.CI_NIT?.toString().includes(termino)
-    )
-})
+if (props.filtros?.identificador_id && props.clientesConPrecios?.length) {
+    const cli = props.clientesConPrecios.find(c => c.IdIdentificador == props.filtros.identificador_id)
+    if (cli) busquedaCliente.value = `${cli.Nombre} - ${cli.CI_NIT}`
+}
 
-const clienteSeleccionado = computed(() => {
-    if (filtros.value.identificador_id) {
-        const cliente = props.clientesConPrecios.find(c => c.IdIdentificador == filtros.value.identificador_id)
-        if (cliente) return `${cliente.CI_NIT} - ${cliente.Nombre}`
+const buscarClientes = async () => {
+    buscandoClientes.value = true
+    try {
+        const params = new URLSearchParams({ q: busquedaCliente.value || '' })
+        const res = await fetch(`/operacion/pedidos/clientes-mayoristas/precios/bitacora/buscar-clientes?${params}`)
+        const data = await res.json()
+        clientesSugeridos.value = data.clientes || []
+    } catch (e) {
+        clientesSugeridos.value = []
+    } finally {
+        buscandoClientes.value = false
     }
-    return ''
+}
+
+watch(busquedaCliente, (nuevo) => {
+    if (!nuevo) {
+        filtros.value.identificador_id = ''
+    }
+    clearTimeout(timeoutCliente)
+    timeoutCliente = setTimeout(buscarClientes, 300)
 })
 
 const seleccionarCliente = (cliente) => {
     filtros.value.identificador_id = cliente.IdIdentificador
-    busquedaCliente.value = `${cliente.CI_NIT} - ${cliente.Nombre}`
+    busquedaCliente.value = `${cliente.Nombre} - ${cliente.CI_NIT}`
     mostrarClientes.value = false
 }
 
 const limpiarCliente = () => {
     filtros.value.identificador_id = ''
     busquedaCliente.value = ''
+    clientesSugeridos.value = []
 }
 
 // ==================== AUTOCOMPLETE - PRODUCTO ====================
 const busquedaProducto = ref('')
 const mostrarProductos = ref(false)
+const productosSugeridos = ref([])
+const buscandoProductos = ref(false)
+let timeoutProducto = null
 
-const productosFiltrados = computed(() => {
-    if (!busquedaProducto.value) return props.productosHabilitados.slice(0, 10)
-    const termino = busquedaProducto.value.toLowerCase()
-    return props.productosHabilitados.filter(p =>
-        p.Descripcion?.toLowerCase().includes(termino) ||
-        p.Codigo?.toLowerCase().includes(termino)
-    )
-})
+if (props.filtros?.producto_id && props.productosHabilitados?.length) {
+    const prod = props.productosHabilitados.find(p => p.IdProducto == props.filtros.producto_id)
+    if (prod) busquedaProducto.value = `${prod.Descripcion} - ${prod.Codigo}`
+}
 
-const productoSeleccionado = computed(() => {
-    if (filtros.value.producto_id) {
-        const producto = props.productosHabilitados.find(p => p.IdProducto == filtros.value.producto_id)
-        if (producto) return `${producto.Codigo} - ${producto.Descripcion}`
+const buscarProductos = async () => {
+    buscandoProductos.value = true
+    try {
+        const params = new URLSearchParams({ q: busquedaProducto.value || '' })
+        const res = await fetch(`/operacion/pedidos/clientes-mayoristas/precios/bitacora/buscar-productos?${params}`)
+        const data = await res.json()
+        productosSugeridos.value = data.productos || []
+    } catch (e) {
+        productosSugeridos.value = []
+    } finally {
+        buscandoProductos.value = false
     }
-    return ''
+}
+
+watch(busquedaProducto, (nuevo) => {
+    if (!nuevo) {
+        filtros.value.producto_id = ''
+    }
+    clearTimeout(timeoutProducto)
+    timeoutProducto = setTimeout(buscarProductos, 300)
 })
 
 const seleccionarProducto = (producto) => {
     filtros.value.producto_id = producto.IdProducto
-    busquedaProducto.value = `${producto.Codigo} - ${producto.Descripcion}`
+    busquedaProducto.value = `${producto.Descripcion} - ${producto.Codigo}`
     mostrarProductos.value = false
 }
 
 const limpiarProducto = () => {
     filtros.value.producto_id = ''
     busquedaProducto.value = ''
+    productosSugeridos.value = []
 }
 
-// ==================== EXPANSIÓN DE PRODUCTOS ====================
+// ==================== WATCHERS ====================
+watch(() => filtros.value.identificador_id, (nuevo, anterior) => {
+    if (nuevo !== anterior) aplicarFiltrosAutomatico()
+})
+
+watch(() => filtros.value.producto_id, (nuevo, anterior) => {
+    if (nuevo !== anterior) aplicarFiltrosAutomatico()
+})
+
+let timeoutFechaDesde = null
+watch(() => filtros.value.fecha_desde, (nuevo, anterior) => {
+    if (nuevo === anterior) return
+    clearTimeout(timeoutFechaDesde)
+    timeoutFechaDesde = setTimeout(() => { aplicarFiltrosAutomatico() }, 500)
+})
+
+let timeoutFechaHasta = null
+watch(() => filtros.value.fecha_hasta, (nuevo, anterior) => {
+    if (nuevo === anterior) return
+    clearTimeout(timeoutFechaHasta)
+    timeoutFechaHasta = setTimeout(() => { aplicarFiltrosAutomatico() }, 500)
+})
+
+// ==================== EXPANSIÓN - ACORDEONES ====================
+const clientesExpandidos = ref({})
 const productosExpandidos = ref({})
+
+const toggleCliente = (clienteId) => {
+    clientesExpandidos.value = {
+        ...clientesExpandidos.value,
+        [clienteId]: !clientesExpandidos.value[clienteId]
+    }
+}
+
+const estaClienteExpandido = (clienteId) => {
+    return !!clientesExpandidos.value[clienteId]
+}
 
 const toggleProducto = (clienteId, productoId) => {
     const key = `${clienteId}_${productoId}`
@@ -146,6 +193,24 @@ const estaExpandido = (clienteId, productoId) => {
     return !!productosExpandidos.value[`${clienteId}_${productoId}`]
 }
 
+const expandirTodo = () => {
+    const clientes = {}
+    const productos = {}
+    bitacoraAgrupada.value.forEach(cliente => {
+        clientes[cliente.id] = true
+        cliente.productos.forEach(producto => {
+            productos[`${cliente.id}_${producto.id}`] = true
+        })
+    })
+    clientesExpandidos.value = clientes
+    productosExpandidos.value = productos
+}
+
+const contraerTodo = () => {
+    clientesExpandidos.value = {}
+    productosExpandidos.value = {}
+}
+
 // ==================== APLICAR FILTROS ====================
 const aplicarFiltrosAutomatico = () => {
     if (aplicandoFiltros.value) return
@@ -156,14 +221,14 @@ const aplicarFiltrosAutomatico = () => {
     if (filtros.value.producto_id) params.append('producto_id', filtros.value.producto_id)
     if (filtros.value.fecha_desde) params.append('fecha_desde', filtros.value.fecha_desde)
     if (filtros.value.fecha_hasta) params.append('fecha_hasta', filtros.value.fecha_hasta)
-    // ✅ Resetear a página 1 al filtrar
     params.append('page', '1')
 
     router.visit(`/operacion/pedidos/clientes-mayoristas/precios/bitacora?${params.toString()}`, {
         preserveState: true,
+        preserveScroll: true,
         onSuccess: () => {
             aplicandoFiltros.value = false
-            productosExpandidos.value = {}
+            contraerTodo()
         },
         onError: () => {
             aplicandoFiltros.value = false
@@ -180,13 +245,27 @@ const limpiarFiltros = () => {
     }
     busquedaCliente.value = ''
     busquedaProducto.value = ''
+    clientesSugeridos.value = []
+    productosSugeridos.value = []
 }
 
-// ==================== AGRUPACIÓN POR CLIENTE ====================
+// ==================== EXPORTAR PDF ====================
+const exportarPdf = () => {
+    const params = new URLSearchParams()
+    if (filtros.value.identificador_id) params.append('identificador_id', filtros.value.identificador_id)
+    if (filtros.value.producto_id) params.append('producto_id', filtros.value.producto_id)
+    if (filtros.value.fecha_desde) params.append('fecha_desde', filtros.value.fecha_desde)
+    if (filtros.value.fecha_hasta) params.append('fecha_hasta', filtros.value.fecha_hasta)
+
+    const url = `/operacion/pedidos/clientes-mayoristas/precios/bitacora/exportar-pdf?${params.toString()}`
+    window.open(url, '_blank')
+}
+
+// ==================== AGRUPACIÓN ====================
 const bitacoraAgrupada = computed(() => {
     const grupos = {}
 
-    props.bitacora.forEach(registro => {  // ✅ Ahora es array directo
+    props.bitacora.forEach(registro => {
         const clienteId = registro.IdIdentificador
         const clienteNombre = registro.IdentificadorNombre
         const ciNit = registro.CI_NIT
@@ -215,21 +294,23 @@ const bitacoraAgrupada = computed(() => {
         grupos[clienteId].totalCambios++
     })
 
-    return Object.values(grupos).map(cliente => ({
-        ...cliente,
-        productos: Object.values(cliente.productos)
-            .map(producto => ({
-                ...producto,
-                registros: producto.registros.sort((a, b) =>
-                    new Date(b.FechaCambio) - new Date(a.FechaCambio)
-                ),
-                ultimaFecha: producto.registros.reduce((max, r) => {
-                    const fecha = new Date(r.FechaCambio)
-                    return fecha > max ? fecha : max
-                }, new Date(0)),
-            }))
-            .sort((a, b) => b.ultimaFecha - a.ultimaFecha),
-    }))
+    return Object.values(grupos)
+        .map(cliente => ({
+            ...cliente,
+            productos: Object.values(cliente.productos)
+                .map(producto => ({
+                    ...producto,
+                    registros: producto.registros.sort((a, b) =>
+                        new Date(b.FechaCambio) - new Date(a.FechaCambio)
+                    ),
+                    ultimaFecha: producto.registros.reduce((max, r) => {
+                        const fecha = new Date(r.FechaCambio)
+                        return fecha > max ? fecha : max
+                    }, new Date(0)),
+                }))
+                .sort((a, b) => b.ultimaFecha - a.ultimaFecha),
+        }))
+        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es', { sensitivity: 'base' }))
 })
 
 // ==================== PAGINACIÓN ====================
@@ -239,7 +320,7 @@ const irAPagina = (url) => {
             preserveState: true,
             preserveScroll: true,
             onSuccess: () => {
-                productosExpandidos.value = {}
+                contraerTodo()
                 window.scrollTo({ top: 0, behavior: 'smooth' })
             }
         })
@@ -327,6 +408,8 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     if (timeoutFechaDesde) clearTimeout(timeoutFechaDesde)
     if (timeoutFechaHasta) clearTimeout(timeoutFechaHasta)
+    if (timeoutCliente) clearTimeout(timeoutCliente)
+    if (timeoutProducto) clearTimeout(timeoutProducto)
 })
 </script>
 
@@ -335,7 +418,7 @@ onUnmounted(() => {
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-7xl mx-auto">
 
-                <!-- HEADER -->
+                <!-- ==================== HEADER ==================== -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
@@ -349,16 +432,27 @@ onUnmounted(() => {
                             </p>
                         </div>
                     </div>
-                    <button
-                        @click="irAPrecios"
-                        class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1.5"
-                    >
-                        <i class="fas fa-arrow-left text-[10px]"></i>
-                        Volver a Precios
-                    </button>
+
+                    <div class="flex gap-1.5">
+                        <button
+                            @click="exportarPdf"
+                            :disabled="bitacora.length === 0"
+                            class="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-medium hover:bg-emerald-700 transition flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <i class="fas fa-file-pdf text-[10px]"></i>
+                            Exportar PDF
+                        </button>
+                        <button
+                            @click="irAPrecios"
+                            class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1.5"
+                        >
+                            <i class="fas fa-arrow-left text-[10px]"></i>
+                            Volver a Precios
+                        </button>
+                    </div>
                 </div>
 
-                <!-- FILTROS -->
+                <!-- ==================== FILTROS ==================== -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-end gap-2">
                         <!-- Cliente -->
@@ -369,12 +463,10 @@ onUnmounted(() => {
                                     <input
                                         type="text"
                                         v-model="busquedaCliente"
-                                        @focus="mostrarClientes = true"
+                                        @focus="mostrarClientes = true; buscarClientes()"
                                         @blur="cerrarAutocompletar"
-                                        :placeholder="!filtros.identificador_id ? 'Buscar cliente...' : ''"
-                                        :value="filtros.identificador_id ? clienteSeleccionado : busquedaCliente"
-                                        @input="(e) => { if (!filtros.identificador_id) busquedaCliente = e.target.value }"
-                                        class="flex-1 border border-gray-300 rounded-l-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                        placeholder="Buscar cliente..."
+                                        class="flex-1 border border-gray-300 rounded-l-md px-2.5 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     />
                                     <button
                                         v-if="filtros.identificador_id"
@@ -386,20 +478,23 @@ onUnmounted(() => {
                                     </button>
                                 </div>
                                 <div
-                                    v-if="mostrarClientes && clientesFiltrados.length > 0"
+                                    v-if="mostrarClientes && clientesSugeridos.length > 0"
                                     class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
                                 >
                                     <div
-                                        v-for="cliente in clientesFiltrados"
+                                        v-for="cliente in clientesSugeridos"
                                         :key="cliente.IdIdentificador"
                                         @mousedown.prevent="seleccionarCliente(cliente)"
-                                        class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-sm flex items-center gap-2"
+                                        class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-xs text-gray-700"
                                     >
-                                        <span class="font-mono text-[10px] text-primary-600 bg-primary-50 px-1.5 py-0.5 rounded flex-shrink-0">
-                                            {{ cliente.CI_NIT }}
-                                        </span>
-                                        <span class="text-gray-800 truncate">{{ cliente.Nombre }}</span>
+                                        {{ cliente.Nombre }} - {{ cliente.CI_NIT }}
                                     </div>
+                                </div>
+                                <div
+                                    v-else-if="mostrarClientes && busquedaCliente && !buscandoClientes"
+                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center"
+                                >
+                                    <p class="text-[10px] text-gray-400">Sin resultados</p>
                                 </div>
                             </div>
                         </div>
@@ -412,12 +507,10 @@ onUnmounted(() => {
                                     <input
                                         type="text"
                                         v-model="busquedaProducto"
-                                        @focus="mostrarProductos = true"
+                                        @focus="mostrarProductos = true; buscarProductos()"
                                         @blur="cerrarAutocompletar"
-                                        :placeholder="!filtros.producto_id ? 'Buscar producto...' : ''"
-                                        :value="filtros.producto_id ? productoSeleccionado : busquedaProducto"
-                                        @input="(e) => { if (!filtros.producto_id) busquedaProducto = e.target.value }"
-                                        class="flex-1 border border-gray-300 rounded-l-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                        placeholder="Buscar producto..."
+                                        class="flex-1 border border-gray-300 rounded-l-md px-2.5 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none"
                                     />
                                     <button
                                         v-if="filtros.producto_id"
@@ -429,20 +522,23 @@ onUnmounted(() => {
                                     </button>
                                 </div>
                                 <div
-                                    v-if="mostrarProductos && productosFiltrados.length > 0"
+                                    v-if="mostrarProductos && productosSugeridos.length > 0"
                                     class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
                                 >
                                     <div
-                                        v-for="producto in productosFiltrados"
+                                        v-for="producto in productosSugeridos"
                                         :key="producto.IdProducto"
                                         @mousedown.prevent="seleccionarProducto(producto)"
-                                        class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-sm flex items-center gap-2"
+                                        class="px-2.5 py-1.5 hover:bg-primary-50 cursor-pointer border-b border-gray-100 last:border-b-0 text-xs text-gray-700"
                                     >
-                                        <span class="font-mono text-[10px] text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">
-                                            {{ producto.Codigo }}
-                                        </span>
-                                        <span class="text-gray-800 truncate">{{ producto.Descripcion }}</span>
+                                        {{ producto.Descripcion }} - {{ producto.Codigo }}
                                     </div>
+                                </div>
+                                <div
+                                    v-else-if="mostrarProductos && busquedaProducto && !buscandoProductos"
+                                    class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center"
+                                >
+                                    <p class="text-[10px] text-gray-400">Sin resultados</p>
                                 </div>
                             </div>
                         </div>
@@ -453,7 +549,7 @@ onUnmounted(() => {
                             <input
                                 type="date"
                                 v-model="filtros.fecha_desde"
-                                class="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                class="w-32 border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
 
@@ -463,7 +559,7 @@ onUnmounted(() => {
                             <input
                                 type="date"
                                 v-model="filtros.fecha_hasta"
-                                class="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                class="w-32 border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
 
@@ -483,7 +579,7 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- SIN DATOS -->
+                <!-- ==================== SIN DATOS ==================== -->
                 <div v-if="bitacora.length === 0" class="bg-white rounded-xl shadow-sm p-10 text-center text-gray-400">
                     <i class="fas fa-inbox text-3xl mb-2 block"></i>
                     <p class="text-sm">No hay registros en la bitácora</p>
@@ -491,22 +587,35 @@ onUnmounted(() => {
 
                 <!-- ==================== BITÁCORA ==================== -->
                 <div v-else class="space-y-3">
-                    <!-- Contador -->
+                    <!-- Barra de acciones -->
                     <div class="bg-white rounded-xl shadow-sm px-3 py-2 flex flex-wrap items-center justify-between gap-2">
                         <div class="flex items-center gap-3 text-[11px] text-gray-600">
                             <span class="flex items-center gap-1">
                                 <i class="fas fa-users text-primary-500"></i>
-                                <strong>{{ paginacion.total }}</strong> cliente(s) con cambios
+                                <strong>{{ paginacion.total }}</strong> cliente(s)
                             </span>
                             <span class="text-gray-300">|</span>
                             <span class="flex items-center gap-1">
-                                <i class="fas fa-list text-primary-500"></i>
+                                <i class="fas fa-file-alt text-primary-500"></i>
                                 Página <strong>{{ paginacion.current_page }}</strong> de <strong>{{ paginacion.last_page }}</strong>
                             </span>
                         </div>
-                        <span class="text-[10px] text-gray-400">
-                            Mostrando clientes {{ paginacion.from }} a {{ paginacion.to }} de {{ paginacion.total }}
-                        </span>
+                        <div class="flex gap-1.5">
+                            <button
+                                @click="expandirTodo"
+                                class="text-[10px] bg-primary-100 hover:bg-primary-200 text-primary-700 px-2.5 py-1 rounded-md transition flex items-center gap-1"
+                            >
+                                <i class="fas fa-expand-alt text-[8px]"></i>
+                                Expandir todo
+                            </button>
+                            <button
+                                @click="contraerTodo"
+                                class="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded-md transition flex items-center gap-1"
+                            >
+                                <i class="fas fa-compress-alt text-[8px]"></i>
+                                Contraer todo
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Por cada CLIENTE -->
@@ -516,43 +625,47 @@ onUnmounted(() => {
                         class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200"
                     >
                         <!-- Header del CLIENTE -->
-                        <div class="bg-gradient-to-r from-primary-50 to-primary-100/50 px-3 py-2 border-b border-primary-100">
-                            <div class="flex items-center justify-between gap-2">
-                                <div class="flex items-center gap-2 min-w-0 flex-1">
-                                    <div class="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border border-primary-200">
-                                        <span class="text-primary-600 font-bold text-xs">
-                                            {{ cliente.nombre?.charAt(0)?.toUpperCase() || '?' }}
+                        <button
+                            @click="toggleCliente(cliente.id)"
+                            class="w-full bg-gradient-to-r from-primary-50 to-primary-100/40 px-3 py-2.5 border-b border-primary-100 flex items-center justify-between gap-2 hover:from-primary-100/70 transition-all text-left"
+                        >
+                            <div class="flex items-center gap-2 min-w-0 flex-1">
+                                <div class="w-6 h-6 rounded-md bg-primary-600 text-white flex items-center justify-center flex-shrink-0 transition-transform duration-200"
+                                    :class="estaClienteExpandido(cliente.id) ? 'rotate-90' : ''">
+                                    <i class="fas fa-chevron-right text-[9px]"></i>
+                                </div>
+                                <div class="w-9 h-9 bg-white rounded-full flex items-center justify-center shadow-sm flex-shrink-0 border border-primary-200">
+                                    <span class="text-primary-600 font-bold text-xs">
+                                        {{ cliente.nombre?.charAt(0)?.toUpperCase() || '?' }}
+                                    </span>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <h2 class="font-bold text-gray-800 text-sm truncate">
+                                        {{ cliente.nombre }}
+                                    </h2>
+                                    <div class="flex items-center gap-2 text-[9px] text-gray-500 flex-wrap">
+                                        <span v-if="cliente.ci_nit" class="font-mono">
+                                            <i class="fas fa-id-card text-[8px] mr-0.5"></i>
+                                            CI: {{ cliente.ci_nit }}
                                         </span>
                                     </div>
-                                    <div class="min-w-0 flex-1">
-                                        <h2 class="font-bold text-gray-800 text-sm truncate">
-                                            {{ cliente.nombre }}
-                                        </h2>
-                                        <div class="flex items-center gap-2 text-[9px] text-gray-500 flex-wrap">
-                                            <span v-if="cliente.ci_nit" class="font-mono">
-                                                <i class="fas fa-id-card text-[8px] mr-0.5"></i>
-                                                CI: {{ cliente.ci_nit }}
-                                            </span>
-                                            <span class="font-mono">Id: {{ cliente.id }}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="flex items-center gap-1.5 flex-shrink-0">
-                                    <span class="text-[9px] bg-white text-primary-700 px-2 py-0.5 rounded-full font-medium border border-primary-200">
-                                        <i class="fas fa-box text-[8px] mr-0.5"></i>
-                                        {{ Object.keys(cliente.productos).length }}
-                                    </span>
-                                    <span class="text-[9px] bg-white text-primary-700 px-2 py-0.5 rounded-full font-medium border border-primary-200">
-                                        <i class="fas fa-history text-[8px] mr-0.5"></i>
-                                        {{ cliente.totalCambios }}
-                                    </span>
                                 </div>
                             </div>
-                        </div>
+
+                            <div class="flex items-center gap-1.5 flex-shrink-0">
+                                <span class="text-[9px] bg-white text-primary-700 px-2 py-0.5 rounded-full font-medium border border-primary-200">
+                                    <i class="fas fa-box text-[8px] mr-0.5"></i>
+                                    {{ Object.keys(cliente.productos).length }}
+                                </span>
+                                <span class="text-[9px] bg-white text-primary-700 px-2 py-0.5 rounded-full font-medium border border-primary-200">
+                                    <i class="fas fa-history text-[8px] mr-0.5"></i>
+                                    {{ cliente.totalCambios }}
+                                </span>
+                            </div>
+                        </button>
 
                         <!-- Productos -->
-                        <div class="divide-y divide-gray-100">
+                        <div v-show="estaClienteExpandido(cliente.id)" class="divide-y divide-gray-100">
                             <div
                                 v-for="producto in cliente.productos"
                                 :key="producto.id"
@@ -564,7 +677,7 @@ onUnmounted(() => {
                                     :class="{ 'bg-primary-50/40': estaExpandido(cliente.id, producto.id) }"
                                 >
                                     <div class="flex items-center gap-2 min-w-0 flex-1">
-                                        <div class="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-transform"
+                                        <div class="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 transition-transform duration-200"
                                             :class="estaExpandido(cliente.id, producto.id)
                                                 ? 'bg-primary-100 text-primary-600 rotate-90'
                                                 : 'bg-gray-100 text-gray-500'">
@@ -602,6 +715,7 @@ onUnmounted(() => {
                                     </div>
                                 </button>
 
+                                <!-- Historial expandido -->
                                 <div
                                     v-if="estaExpandido(cliente.id, producto.id)"
                                     class="bg-gray-50/50 border-t border-gray-100 px-3 py-2"
@@ -716,5 +830,9 @@ onUnmounted(() => {
 
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #9ca3af;
+}
+
+.rotate-90 {
+    transform: rotate(90deg);
 }
 </style>
