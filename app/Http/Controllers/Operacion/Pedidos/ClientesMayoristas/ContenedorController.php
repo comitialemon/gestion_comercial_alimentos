@@ -54,7 +54,13 @@ class ContenedorController extends Controller
             });
         }
         
-        $contenedores = $query->orderBy('Codigo')
+        // ✅ ORDENAMIENTO NATURAL: alfabético por prefijo + numérico por sufijo
+        // Ejemplo: TERMO-20, TERMO-30, TERMO-80, TERMO-100
+        $contenedores = $query
+            ->orderByRaw("
+                LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
+                CAST(SUBSTRING_INDEX(Codigo, '-', -1) AS UNSIGNED) ASC
+            ")
             ->paginate(20)
             ->appends($request->all());
         
@@ -659,8 +665,8 @@ class ContenedorController extends Controller
         }
     }
     /**
-    * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")
-    */
+     * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")
+     */
     public function indexSupervisor(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -697,7 +703,17 @@ class ContenedorController extends Controller
             });
         }
         
-        $contenedores = $query->orderBy('Codigo')
+        // ✅ ORDENAMIENTO NATURAL: alfabético por prefijo + numérico por sufijo
+        // Ejemplo: termo20, termo30, termo80, termo100
+        $contenedores = $query
+            ->orderByRaw("
+                LOWER(
+                    REGEXP_REPLACE(Codigo, '[0-9]+', '')
+                ) ASC,
+                CAST(
+                    REGEXP_REPLACE(Codigo, '[^0-9]+', '') AS UNSIGNED
+                ) ASC
+            ")
             ->paginate(20)
             ->appends($request->all());
         
@@ -722,7 +738,6 @@ class ContenedorController extends Controller
             ];
         });
 
-        // ✅ MISMA DATA, PERO OTRA VISTA
         return Inertia::render('Operacion/ClientesMayoristas/Contenedores/AdministrarClientes', [
             'contenedores' => $contenedores,
             'sucursales' => $sucursales,
