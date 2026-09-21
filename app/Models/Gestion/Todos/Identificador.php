@@ -67,4 +67,15 @@ class Identificador extends Model
         
         return $result;
     }
+    /**
+     * Grupos de análisis con mínimos configurados para este cliente
+     */
+    public function gruposMinimos()
+    {
+        return $this->hasMany(
+            \App\Models\Operacion\Pedidos\ClientesMayoristas\ClienteGrupo::class,
+            'IdIdentificador',
+            'IdIdentificador'
+        );
+    }
 }

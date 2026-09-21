@@ -11,30 +11,15 @@ defineOptions({ layout: AppLayout })
 const toast = inject('toast')
 
 const props = defineProps({
-    pedido: {
-        type: Object,
-        required: true
-    },
-    detallesAgrupados: {
-        type: Array,
-        default: () => []
-    },
-    clienteNombre: {
-        type: String,
-        default: ''
-    },
-    sucursalNombre: {
-        type: String,
-        default: ''
-    },
-    operadorNombre: {
-        type: String,
-        default: ''
-    },
-    idIdentificador: {
-        type: Number,
-        default: null
-    }
+    pedido: { type: Object, required: true },
+    detallesAgrupados: { type: Array, default: () => [] },
+    clienteNombre: { type: String, default: '' },
+    sucursalNombre: { type: String, default: '' },
+    operadorNombre: { type: String, default: '' },
+    idIdentificador: { type: Number, default: null },
+    progresoGrupos: { type: Array, default: () => [] },
+    cumpleMinimos: { type: Boolean, default: true },
+    tipoPrecio: { type: String, default: 'sin_factura' }, // ✅ NUEVO
 })
 
 // ==================== ESTADO ====================
@@ -43,6 +28,10 @@ const observaciones = ref(props.pedido?.Observaciones || '')
 const fechaEntrega = ref('')
 const modalConfirmacionVisible = ref(false)
 const errorFechaEntrega = ref('')
+
+// ✅ Estado para tipo de precio
+const tipoPrecioLocal = ref(props.tipoPrecio || 'sin_factura')
+const cambiandoTipoPrecio = ref(false)
 
 // ✅ ESTADO PARA EDICIÓN
 const modalEdicionVisible = ref(false)
@@ -72,9 +61,7 @@ const totalUnidades = computed(() => {
     return total
 })
 
-const totalContenedores = computed(() => {
-    return props.detallesAgrupados ? props.detallesAgrupados.length : 0
-})
+const totalContenedores = computed(() => props.detallesAgrupados ? props.detallesAgrupados.length : 0)
 
 const totalGeneral = computed(() => {
     let total = 0
@@ -103,19 +90,38 @@ const fechaPedido = computed(() => {
     return new Date().toLocaleString('es-BO')
 })
 
-// ✅ FUNCIONES DE FORMATEO (las que faltaban)
+// ✅ Progreso reactivo
+const progresoLocal = computed(() => props.progresoGrupos || [])
+
+const gruposQueNoCumplen = computed(() => {
+    return progresoLocal.value.filter(g => !g.Cumple)
+})
+
+const cumpleTodos = computed(() => {
+    return progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0
+})
+
+// ✅ No se puede finalizar si no cumple mínimos
+const puedeFinalizar = computed(() => {
+    return cumpleTodos.value && props.detallesAgrupados.length > 0
+})
+
+// ✅ Texto del tipo de precio
+const tipoPrecioTexto = computed(() => {
+    return tipoPrecioLocal.value === 'con_factura' ? 'Con Factura' : 'Sin Factura'
+})
+
+// ==================== FORMATEO ====================
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0'
     const numero = parseFloat(valor)
-    if (isNaN(numero)) return '0'
-    return numero.toFixed(0)
+    return isNaN(numero) ? '0' : numero.toFixed(0)
 }
 
 const formatearPrecio = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0.00'
     const numero = parseFloat(valor)
-    if (isNaN(numero)) return '0.00'
-    return numero.toFixed(2)
+    return isNaN(numero) ? '0.00' : numero.toFixed(2)
 }
 
 // ==================== FUNCIONES ====================
@@ -133,7 +139,7 @@ const validarFechaEntrega = () => {
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
     
     if (fechaEntrega.value <= hoyStr) {
-        errorFechaEntrega.value = `La fecha de entrega debe ser mínimo 1 día después de hoy (${hoy.toLocaleDateString('es-BO')})`
+        errorFechaEntrega.value = `La fecha debe ser mínimo 1 día después de hoy (${hoy.toLocaleDateString('es-BO')})`
         return false
     }
     
@@ -141,9 +147,50 @@ const validarFechaEntrega = () => {
     return true
 }
 
+// ✅ CAMBIAR TIPO DE PRECIO
+const cambiarTipoPrecio = async (nuevoTipo) => {
+    if (nuevoTipo === tipoPrecioLocal.value) return
+    
+    cambiandoTipoPrecio.value = true
+    
+    try {
+        const response = await axios.post(
+            '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/cambiar-tipo-precio',
+            {
+                IdPedidoCliente: props.pedido.IdPedidoCliente,
+                TipoPrecio: nuevoTipo
+            }
+        )
+        
+        if (response.data.success) {
+            tipoPrecioLocal.value = nuevoTipo
+            toast?.success('Éxito', 'Precios recalculados correctamente')
+            
+            if (response.data.productos_sin_precio?.length > 0) {
+                toast?.warning('Atención', `${response.data.productos_sin_precio.length} producto(s) no tienen precio para este tipo`)
+            }
+            
+            router.reload()
+        } else {
+            toast?.error('Error', response.data.message || 'Error al cambiar tipo de precio')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al cambiar tipo de precio')
+    } finally {
+        cambiandoTipoPrecio.value = false
+    }
+}
+
 const abrirModalConfirmacion = () => {
     if (props.detallesAgrupados.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
+        return
+    }
+
+    if (!cumpleTodos.value) {
+        const grupos = gruposQueNoCumplen.value.map(g => `${g.NombreGrupo}: faltan ${g.Falta} und`).join('\n')
+        toast?.error('Mínimos incompletos', `No se puede finalizar:\n${grupos}`)
         return
     }
     
@@ -174,7 +221,8 @@ const finalizarPedido = async () => {
                 IdCliente: props.pedido.IdCliente,
                 IdSucursal: props.pedido.IdSucursal,
                 FechaEntrega: fechaEntregaFormateada,
-                Observaciones: observaciones.value || null
+                Observaciones: observaciones.value || null,
+                TipoPrecio: tipoPrecioLocal.value // ✅ NUEVO
             }
         )
         
@@ -189,7 +237,12 @@ const finalizarPedido = async () => {
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
             }, 1500)
         } else {
-            toast?.error('Error', response.data.message || 'Error al finalizar el pedido')
+            if (response.data.errores) {
+                const errores = response.data.errores.join('\n')
+                toast?.error('No se puede finalizar', errores)
+            } else {
+                toast?.error('Error', response.data.message || 'Error al finalizar el pedido')
+            }
         }
     } catch (error) {
         console.error('❌ Error:', error)
@@ -200,7 +253,7 @@ const finalizarPedido = async () => {
     }
 }
 
-// ✅ FUNCIONES DE EDICIÓN
+// ✅ EDICIÓN
 const abrirModalEdicion = (item) => {
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
@@ -266,23 +319,88 @@ const eliminarContenedor = async (item) => {
     }
 }
 </script>
-
 <template>
     <div class="min-h-screen bg-gray-100">
         <div class="max-w-5xl mx-auto px-3 py-4">
             
             <!-- HEADER -->
             <div class="flex items-center justify-between mb-4">
-                <button 
-                    @click="irAtras"
-                    class="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition text-sm font-medium"
-                >
+                <button @click="irAtras" class="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition text-sm font-medium">
                     <i class="fas fa-arrow-left"></i>
                     Volver
                 </button>
                 <span class="text-xs text-gray-400">
                     Pedido #{{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
                 </span>
+            </div>
+
+            <!-- ✅ SELECTOR DE TIPO DE PRECIO -->
+            <div class="mb-4 bg-white rounded-xl shadow-sm p-4">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-tag text-primary-500"></i>
+                        <span class="text-sm font-medium text-gray-700">Tipo de Precio:</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button
+                            @click="cambiarTipoPrecio('sin_factura')"
+                            :disabled="cambiandoTipoPrecio || tipoPrecioLocal === 'sin_factura'"
+                            class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2"
+                            :class="tipoPrecioLocal === 'sin_factura' 
+                                ? 'bg-gray-800 text-white shadow-md' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        >
+                            <i class="fas fa-receipt"></i>
+                            Sin Factura
+                            <i v-if="cambiandoTipoPrecio && tipoPrecioLocal !== 'sin_factura'" class="fas fa-spinner fa-spin text-xs"></i>
+                        </button>
+                        <button
+                            @click="cambiarTipoPrecio('con_factura')"
+                            :disabled="cambiandoTipoPrecio || tipoPrecioLocal === 'con_factura'"
+                            class="px-4 py-2 rounded-lg text-sm font-medium transition flex items-center gap-2"
+                            :class="tipoPrecioLocal === 'con_factura' 
+                                ? 'bg-blue-600 text-white shadow-md' 
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
+                        >
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            Con Factura
+                            <i v-if="cambiandoTipoPrecio && tipoPrecioLocal !== 'con_factura'" class="fas fa-spinner fa-spin text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+                <p v-if="cambiandoTipoPrecio" class="text-xs text-blue-600 mt-2">
+                    <i class="fas fa-sync fa-spin mr-1"></i>
+                    Recalculando precios...
+                </p>
+            </div>
+
+            <!-- ✅ ALERTA DE MÍNIMOS -->
+            <div v-if="!cumpleTodos" class="mb-4 bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
+                <div class="flex items-start gap-3">
+                    <i class="fas fa-exclamation-triangle text-red-500 text-xl"></i>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-red-800 text-sm">No se puede finalizar el pedido</h3>
+                        <p class="text-xs text-red-700 mt-1">Faltan cumplir los siguientes mínimos por grupo:</p>
+                        <ul class="mt-2 space-y-1">
+                            <li v-for="grupo in gruposQueNoCumplen" :key="grupo.IdGrupoAnalisis" class="text-xs text-red-700 flex items-center gap-2">
+                                <i class="fas fa-circle text-[6px]"></i>
+                                <strong>{{ grupo.NombreGrupo }}:</strong>
+                                <span>faltan {{ grupo.Falta }} und (tienes {{ grupo.CantidadPedida }}, mínimo {{ grupo.CantidadMinima }})</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ PROGRESO (SI CUMPLE) -->
+            <div v-else-if="progresoLocal.length > 0" class="mb-4 bg-green-50 border-l-4 border-green-500 rounded-lg p-3">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-check-circle text-green-500 text-xl"></i>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-green-800 text-sm">¡Todo listo!</h3>
+                        <p class="text-xs text-green-700">Todos los mínimos están cumplidos. Puede finalizar el pedido.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- DOCUMENTO DEL PEDIDO -->
@@ -305,6 +423,15 @@ const eliminarContenedor = async (item) => {
                         <div class="text-xs text-gray-500 sm:text-right">
                             <p><span class="font-medium">Fecha:</span> {{ fechaPedido }}</p>
                             <p><span class="font-medium">Operador:</span> {{ operadorNombre || 'Sin operador' }}</p>
+                            <p class="mt-1">
+                                <span class="font-medium">Tipo:</span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                    :class="tipoPrecioLocal === 'con_factura' 
+                                        ? 'bg-blue-100 text-blue-800' 
+                                        : 'bg-gray-100 text-gray-700'">
+                                    {{ tipoPrecioTexto }}
+                                </span>
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -344,7 +471,6 @@ const eliminarContenedor = async (item) => {
                             :key="idx"
                             class="border rounded-lg overflow-hidden bg-white shadow-sm"
                         >
-                            <!-- Header del contenedor CON BOTONES -->
                             <div class="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
                                 <div class="flex items-center gap-2 flex-wrap">
                                     <span class="text-[10px] font-mono bg-primary-100 text-primary-700 px-2 py-0.5 rounded-full font-semibold">#{{ idx + 1 }}</span>
@@ -361,25 +487,16 @@ const eliminarContenedor = async (item) => {
                                         </span>
                                     </div>
                                     <div class="flex items-center gap-1">
-                                        <button 
-                                            @click="abrirModalEdicion(item)"
-                                            class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] transition"
-                                            title="Editar contenedor"
-                                        >
+                                        <button @click="abrirModalEdicion(item)" class="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] transition" title="Editar contenedor">
                                             <i class="fas fa-pencil-alt"></i>
                                         </button>
-                                        <button 
-                                            @click="eliminarContenedor(item)"
-                                            class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-[10px] transition"
-                                            title="Eliminar contenedor"
-                                        >
+                                        <button @click="eliminarContenedor(item)" class="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-[10px] transition" title="Eliminar contenedor">
                                             <i class="fas fa-trash-alt"></i>
                                         </button>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Tabla de productos -->
                             <div class="overflow-x-auto">
                                 <table class="w-full text-left border-collapse text-sm">
                                     <thead>
@@ -391,20 +508,10 @@ const eliminarContenedor = async (item) => {
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100">
-                                        <tr 
-                                            v-for="producto in item.productos" 
-                                            :key="producto.IdProducto"
-                                            class="hover:bg-gray-50/80 transition-colors"
-                                        >
-                                            <td class="py-2.5 px-4 text-gray-700">
-                                                {{ producto.Descripcion }}
-                                            </td>
-                                            <td class="py-2.5 px-4 text-right font-medium text-gray-800">
-                                                {{ formatearNumero(producto.Cantidad) }}
-                                            </td>
-                                            <td class="py-2.5 px-4 text-right text-gray-600">
-                                                Bs. {{ formatearPrecio(producto.Precio || 0) }}
-                                            </td>
+                                        <tr v-for="producto in item.productos" :key="producto.IdProducto" class="hover:bg-gray-50/80 transition-colors">
+                                            <td class="py-2.5 px-4 text-gray-700">{{ producto.Descripcion }}</td>
+                                            <td class="py-2.5 px-4 text-right font-medium text-gray-800">{{ formatearNumero(producto.Cantidad) }}</td>
+                                            <td class="py-2.5 px-4 text-right text-gray-600">Bs. {{ formatearPrecio(producto.Precio || 0) }}</td>
                                             <td class="py-2.5 px-4 text-right font-bold text-primary-600">
                                                 Bs. {{ formatearPrecio((Number(producto.Cantidad) || 0) * (Number(producto.Precio) || 0)) }}
                                             </td>
@@ -415,7 +522,6 @@ const eliminarContenedor = async (item) => {
                         </div>
                     </div>
 
-                    <!-- TOTAL GENERAL -->
                     <div v-if="detallesAgrupados.length > 0" class="mt-4 pt-3 border-t-2 border-primary-200 flex justify-end">
                         <div class="text-right">
                             <div class="flex items-center gap-6">
@@ -458,7 +564,7 @@ const eliminarContenedor = async (item) => {
                             </p>
                             <p class="text-[10px] text-gray-400 mt-1">
                                 <i class="fas fa-info-circle mr-1"></i>
-                                La fecha de entrega debe ser mínimo 1 día después de hoy
+                                Mínimo 1 día después de hoy
                             </p>
                         </div>
                     </div>
@@ -480,32 +586,27 @@ const eliminarContenedor = async (item) => {
 
                 <!-- PIE / BOTONES -->
                 <div class="p-5 bg-gray-50 border-t flex flex-col sm:flex-row justify-end gap-3">
-                    <button 
-                        @click="irAtras"
-                        class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2"
-                    >
+                    <button @click="irAtras" class="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
                         <i class="fas fa-arrow-left text-xs"></i>
                         Seguir agregando
                     </button>
                     <button 
                         @click="abrirModalConfirmacion"
-                        :disabled="loading || detallesAgrupados.length === 0"
-                        class="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+                        :disabled="loading || !puedeFinalizar"
+                        class="px-6 py-2.5 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+                        :class="puedeFinalizar 
+                            ? 'bg-green-600 hover:bg-green-700 text-white' 
+                            : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                     >
                         <i v-if="loading" class="fas fa-spinner fa-spin"></i>
+                        <i v-else-if="!puedeFinalizar" class="fas fa-ban"></i>
                         <i v-else class="fas fa-check-circle"></i>
-                        {{ loading ? 'Procesando...' : 'Finalizar Pedido' }}
+                        {{ loading ? 'Procesando...' : (puedeFinalizar ? 'Finalizar Pedido' : 'Cumplir mínimos') }}
                     </button>
                 </div>
             </div>
-
-            <div class="mt-4 text-center text-[10px] text-gray-400">
-                <i class="fas fa-shield-alt mr-1"></i>
-                Al finalizar el pedido se generará un comprobante
-            </div>
         </div>
 
-        <!-- MODAL DE CONFIRMACIÓN -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
             title="Confirmar Pedido"
@@ -516,7 +617,6 @@ const eliminarContenedor = async (item) => {
             @confirm="finalizarPedido"
         />
 
-        <!-- MODAL DE EDICIÓN -->
         <CreateModalProductos
             :visible="modalEdicionVisible"
             :contenedor="contenedorSeleccionado"

@@ -19,12 +19,13 @@ class PedidoCliente extends Model
         'IdCliente',
         'IdSucursal',
         'IdOperador',
+        'TipoPrecio',           // ✅ NUEVO
         'NumeroPedido',
         'FechaPedido',
         'FechaEntrega',
         'TotalUnidades',
         'TotalContenedores',
-        'TotalGeneral', // ✅ NUEVO
+        'TotalGeneral',
         'ActivoInactivo',
         'EstadoPedido',
         'Observaciones',
@@ -39,7 +40,7 @@ class PedidoCliente extends Model
         'FechaEntrega' => 'date',
         'TotalUnidades' => 'decimal:2',
         'TotalContenedores' => 'integer',
-        'TotalGeneral' => 'decimal:2', // ✅ NUEVO
+        'TotalGeneral' => 'decimal:2',
         'ActivoInactivo' => 'integer',
     ];
 
@@ -145,12 +146,13 @@ class PedidoCliente extends Model
             'IdCliente' => session('cliente_id'),
             'IdSucursal' => session('cliente_sucursal_id'),
             'IdOperador' => session('operador_id'),
+            'TipoPrecio' => 'sin_factura',   // ✅ NUEVO
             'NumeroPedido' => '0',
             'FechaPedido' => Carbon::now('America/La_Paz'),
             'FechaEntrega' => null,
             'TotalUnidades' => 0,
             'TotalContenedores' => 0,
-            'TotalGeneral' => 0, // ✅ NUEVO
+            'TotalGeneral' => 0,
             'ActivoInactivo' => 0,
             'EstadoPedido' => 'Borrador',
             'Observaciones' => null,
@@ -222,29 +224,48 @@ class PedidoCliente extends Model
         return str_pad($this->NumeroPedido, 6, '0', STR_PAD_LEFT);
     }
 
-    // ==================== ✅ NUEVOS ACCESORS ====================
-
-    /**
-     * ✅ Formatear TotalGeneral
-     */
     public function getTotalGeneralFormateadoAttribute()
     {
         return number_format($this->TotalGeneral, 2, ',', '.');
     }
 
-    /**
-     * ✅ Obtener TotalGeneral como string con Bs.
-     */
     public function getTotalGeneralConMonedaAttribute()
     {
         return 'Bs. ' . number_format($this->TotalGeneral, 2, ',', '.');
     }
 
-    /**
-     * ✅ Verificar si el pedido tiene total general
-     */
     public function getTieneTotalGeneralAttribute()
     {
         return $this->TotalGeneral > 0;
+    }
+
+    // ==================== ✅ NUEVOS ACCESORS ====================
+
+    /**
+     * ✅ Texto del tipo de precio
+     */
+    public function getTipoPrecioTextoAttribute()
+    {
+        return $this->TipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura';
+    }
+
+    /**
+     * ✅ Badge del tipo de precio (para UI)
+     */
+    public function getTipoPrecioBadgeAttribute()
+    {
+        return $this->TipoPrecio === 'con_factura' 
+            ? 'bg-blue-100 text-blue-800' 
+            : 'bg-gray-100 text-gray-800';
+    }
+
+    /**
+     * ✅ Icono del tipo de precio
+     */
+    public function getTipoPrecioIconoAttribute()
+    {
+        return $this->TipoPrecio === 'con_factura' 
+            ? 'fa-file-invoice-dollar' 
+            : 'fa-receipt';
     }
 }

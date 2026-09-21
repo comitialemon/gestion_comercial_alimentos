@@ -17,7 +17,6 @@ class ContenedorCliente extends Model
         'IdIdentificador',
         'IdCliente',
         'IdSucursal',
-        'CantidadMinima',
         'ActivoInactivo',
         'IdOperadorInserta',
         'FechaInserta',
@@ -26,7 +25,6 @@ class ContenedorCliente extends Model
     ];
 
     protected $casts = [
-        'CantidadMinima' => 'decimal:2',
         'ActivoInactivo' => 'integer',
     ];
 

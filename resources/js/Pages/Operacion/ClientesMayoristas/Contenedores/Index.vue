@@ -5,6 +5,7 @@ import { ref, watch, onMounted, onUnmounted, computed, inject } from 'vue'
 import axios from 'axios'
 import ShowModal from './ShowModal.vue'
 import AsignarClientesModal from './AsignarClientesModalContenedor.vue'
+import ModalEditarContenedor from './ModalEditarContenedor.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -24,8 +25,6 @@ const props = defineProps({
 // =============================================
 
 const sucursalId = ref(props.sucursalSeleccionada || '')
-const sucursalBusqueda = ref('')
-const mostrarSucursales = ref(false)
 
 const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
@@ -63,24 +62,50 @@ const cerrarModalClientes = () => {
 }
 
 // =============================================
-// COMPUTADOS - Autocomplete
+// ✅ MODAL DE EDITAR CONTENEDOR (reactivación a Borrador)
 // =============================================
+const modalEditarVisible = ref(false)
+const contenedorParaEditar = ref(null)
 
-const sucursalesDisponibles = computed(() => {
-    if (!props.sucursales) return []
-    if (!sucursalBusqueda.value) return props.sucursales
-    
-    const termino = sucursalBusqueda.value.toLowerCase()
-    return props.sucursales.filter(s => 
-        s.nombre?.toLowerCase().includes(termino) ||
-        (s.numero && s.numero.toString().includes(termino))
-    )
-})
+const intentarEditar = (contenedor) => {
+    // Si está en Borrador → va directo a editar
+    if (contenedor.ActivoInactivo === 0) {
+        router.visit(`/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}/edit`)
+        return
+    }
+
+    // Si está Activo → abrir modal para confirmar reactivación
+    contenedorParaEditar.value = contenedor
+    modalEditarVisible.value = true
+}
+
+const cerrarModalEditar = () => {
+    modalEditarVisible.value = false
+    contenedorParaEditar.value = null
+}
+
+const handleEditarConfirmado = () => {
+    mostrarToast('Contenedor enviado a BORRADOR. Redirigiendo...', 'success')
+    cerrarModalEditar()
+}
+
+// =============================================
+// COMPUTADOS
+// =============================================
 
 const sucursalNombre = computed(() => {
     if (!sucursalId.value) return ''
     const suc = props.sucursales?.find(s => s.id == sucursalId.value)
-    return suc?.nombre || ''
+    return suc?.nombre || 'Sucursal'
+})
+
+// ✅ Query params para exportaciones (respeta filtros actuales)
+const queryParams = computed(() => {
+    const params = new URLSearchParams()
+    if (sucursalId.value) params.set('sucursal_id', sucursalId.value)
+    if (estadoFiltro.value) params.set('estado', estadoFiltro.value)
+    if (buscador.value) params.set('buscar', buscador.value)
+    return params.toString()
 })
 
 // =============================================
@@ -175,7 +200,6 @@ const actualizarExpandidas = () => {
 // ✅ ACTUALIZAR DATOS LOCALES (SIN RECARGAR)
 // =============================================
 const actualizarDatosLocales = () => {
-    // Recargar los datos desde el servidor sin recargar la página
     const params = {
         sucursal_id: sucursalId.value || undefined,
         estado: estadoFiltro.value || undefined,
@@ -218,20 +242,6 @@ const aplicarFiltros = () => {
     })
 }
 
-const seleccionarSucursal = (sucursal) => {
-    sucursalId.value = sucursal.id
-    sucursalBusqueda.value = sucursal.nombre
-    mostrarSucursales.value = false
-    aplicarFiltros()
-}
-
-const limpiarSucursal = () => {
-    sucursalId.value = ''
-    sucursalBusqueda.value = ''
-    mostrarSucursales.value = false
-    aplicarFiltros()
-}
-
 let timeoutBuscador
 const buscarContenedores = () => {
     clearTimeout(timeoutBuscador)
@@ -243,14 +253,6 @@ const buscarContenedores = () => {
 const limpiarBusqueda = () => {
     buscador.value = ''
     aplicarFiltros()
-}
-
-// Cerrar autocompletes
-const handleClickOutside = (event) => {
-    const container = document.querySelector('.sucursal-autocomplete')
-    if (container && !container.contains(event.target)) {
-        mostrarSucursales.value = false
-    }
 }
 
 // =============================================
@@ -306,7 +308,7 @@ const mostrarToast = (mensaje, tipo = 'success') => {
     const toastAnterior = document.querySelector('.custom-toast')
     if (toastAnterior) toastAnterior.remove()
     
-    const toast = document.createElement('div')
+    const toastEl = document.createElement('div')
     const colores = {
         success: 'bg-green-500',
         error: 'bg-red-500',
@@ -319,11 +321,11 @@ const mostrarToast = (mensaje, tipo = 'success') => {
         warning: 'fa-exclamation-triangle',
         info: 'fa-info-circle'
     }
-    toast.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${colores[tipo] || 'bg-blue-500'}`
-    toast.innerHTML = `<i class="fas ${iconos[tipo] || 'fa-info-circle'}"></i> ${mensaje}`
-    document.body.appendChild(toast)
+    toastEl.className = `custom-toast fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 px-4 py-2 rounded-lg shadow-lg text-sm text-white flex items-center gap-2 ${colores[tipo] || 'bg-blue-500'}`
+    toastEl.innerHTML = `<i class="fas ${iconos[tipo] || 'fa-info-circle'}"></i> ${mensaje}`
+    document.body.appendChild(toastEl)
     setTimeout(() => {
-        if (toast && toast.remove) toast.remove()
+        if (toastEl && toastEl.remove) toastEl.remove()
     }, 4000)
 }
 
@@ -367,7 +369,6 @@ const ejecutarCambioEstado = async () => {
         
         if (response.data.success) {
             mostrarToast(response.data.message, 'success')
-            // ✅ ACTUALIZAR LOCALMENTE SIN RECARGAR
             actualizarDatosLocales()
             cerrarModalConfirmacion()
         } else {
@@ -397,7 +398,6 @@ const eliminarContenedor = async (id, nombre) => {
         
         if (response.data.success) {
             mostrarToast(response.data.message, 'success')
-            // ✅ ACTUALIZAR LOCALMENTE SIN RECARGAR
             actualizarDatosLocales()
         } else {
             mostrarToast(response.data.message, 'error')
@@ -412,7 +412,6 @@ const eliminarContenedor = async (id, nombre) => {
 // ✅ MANEJAR ACTUALIZACIÓN DESDE MODAL
 // =============================================
 const handleActualizar = () => {
-    // Actualizar los datos sin recargar la página
     actualizarDatosLocales()
 }
 
@@ -458,16 +457,7 @@ const handleResize = () => {
 
 onMounted(() => {
     window.addEventListener('resize', handleResize)
-    document.addEventListener('click', handleClickOutside)
     
-    if (sucursalId.value) {
-        const sucursal = props.sucursales?.find(s => s.id == sucursalId.value)
-        if (sucursal) {
-            sucursalBusqueda.value = sucursal.nombre
-        }
-    }
-    
-    // Inicializar datos
     contenedoresData.value = props.contenedores
     
     setTimeout(() => {
@@ -477,7 +467,6 @@ onMounted(() => {
 
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
-    document.removeEventListener('click', handleClickOutside)
 })
 
 // ✅ WATCH para cuando cambian los props (navegación)
@@ -516,54 +505,22 @@ watch(() => props.contenedores, (newVal) => {
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-center gap-3">
                         
-                        <!-- Sucursal - Autocomplete -->
-                        <div class="sucursal-autocomplete flex items-center gap-1">
+                        <!-- ✅ Sucursal como ETIQUETA FIJA (no seleccionable) -->
+                        <div class="flex items-center gap-1">
                             <label class="text-xs font-medium text-gray-700">Sucursal:</label>
-                            <div class="relative">
-                                <input 
-                                    type="text"
-                                    v-model="sucursalBusqueda"
-                                    @focus="mostrarSucursales = true"
-                                    @input="mostrarSucursales = true"
-                                    class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-36 sm:w-44 pr-6 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                    placeholder="Seleccione Sucursal..."
-                                    autocomplete="off"
-                                />
-                                <button 
-                                    v-if="sucursalBusqueda"
-                                    @click="limpiarSucursal"
-                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                    type="button"
-                                >
-                                    <i class="fas fa-times text-[10px]"></i>
-                                </button>
-                                
-                                <div v-if="mostrarSucursales && sucursalesDisponibles.length > 0" 
-                                    class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto min-w-[180px]">
-                                    <div 
-                                        v-for="suc in sucursalesDisponibles" 
-                                        :key="suc.id"
-                                        @click="seleccionarSucursal(suc)"
-                                        class="px-3 py-1.5 cursor-pointer hover:bg-primary-50 text-xs flex justify-between items-center border-b border-gray-100 last:border-0"
-                                        :class="sucursalId == suc.id ? 'bg-primary-50' : ''"
-                                    >
-                                        <span class="truncate">{{ suc.nombre }}</span>
-                                        <span v-if="sucursalId == suc.id" class="text-primary-600">
-                                            <i class="fas fa-check-circle text-[10px]"></i>
-                                        </span>
-                                    </div>
-                                </div>
-                                
-                                <div v-else-if="mostrarSucursales && sucursalesDisponibles.length === 0 && sucursalBusqueda" 
-                                    class="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-gray-500 text-xs">
-                                    <i class="fas fa-search mr-1"></i> No se encontraron sucursales
-                                </div>
-                            </div>
-                            <span v-if="sucursalId && sucursalNombre" class="text-[10px] text-primary-600 font-medium ml-1">
-                                <i class="fas fa-check-circle"></i> {{ sucursalNombre }}
+                            <span 
+                                v-if="sucursalId && sucursalNombre" 
+                                class="inline-flex items-center gap-1.5 bg-primary-50 border border-primary-200 text-primary-700 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                            >
+                                <i class="fas fa-store text-primary-500 text-[10px]"></i>
+                                {{ sucursalNombre }}
                             </span>
-                            <span v-else class="text-[10px] text-gray-400 ml-1">
-                                <i class="fas fa-store"></i> Ninguna
+                            <span 
+                                v-else 
+                                class="inline-flex items-center gap-1.5 bg-gray-50 border border-gray-200 text-gray-500 text-xs font-medium px-2.5 py-1 rounded-lg"
+                            >
+                                <i class="fas fa-store text-gray-400 text-[10px]"></i>
+                                Sin sucursal
                             </span>
                         </div>
                         
@@ -595,11 +552,28 @@ watch(() => props.contenedores, (newVal) => {
                             </button>
                         </div>
                         
-                        <!-- Botones Expandir/Contraer -->
-                        <div class="flex gap-1 ml-auto">
+                        <!-- ✅ Botones de acción (exportar + expandir/contraer) -->
+                        <div class="flex gap-1 ml-auto flex-wrap">
+                            
+                            <!-- Exportar PDF -->
+                            <a 
+                                :href="`/operacion/pedidos/clientes-mayoristas/contenedores/exportar-pdf?${queryParams}`"
+                                target="_blank"
+                                class="text-[10px] bg-red-100 hover:bg-red-200 text-red-700 px-2 py-1 rounded transition flex items-center gap-1"
+                                title="Exportar a PDF"
+                            >
+                                <i class="fas fa-file-pdf"></i> PDF
+                            </a>
+                            
+                            <!-- Separador visual -->
+                            <div class="w-px bg-gray-200 mx-1"></div>
+                            
+                            <!-- Expandir -->
                             <button @click="expandirTodas" class="text-[10px] bg-primary-100 hover:bg-primary-200 text-primary-700 px-2 py-1 rounded transition">
                                 <i class="fas fa-plus-circle"></i> Expandir
                             </button>
+                            
+                            <!-- Contraer -->
                             <button @click="contraerTodas" class="text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1 rounded transition">
                                 <i class="fas fa-minus-circle"></i> Contraer
                             </button>
@@ -627,9 +601,9 @@ watch(() => props.contenedores, (newVal) => {
                     <div class="w-16 h-16 sm:w-20 sm:h-20 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-store text-primary-400 text-3xl sm:text-4xl"></i>
                     </div>
-                    <h3 class="text-base sm:text-lg font-semibold text-gray-700">Seleccione una Sucursal</h3>
+                    <h3 class="text-base sm:text-lg font-semibold text-gray-700">Sin Sucursal Asignada</h3>
                     <p class="text-xs sm:text-sm text-gray-400 mt-2 max-w-sm mx-auto">
-                        Use el campo de búsqueda de sucursales para visualizar los contenedores de una sucursal específica.
+                        No hay una sucursal asignada para visualizar los contenedores.
                     </p>
                 </div>
 
@@ -682,7 +656,6 @@ watch(() => props.contenedores, (newVal) => {
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Asignar Clientes</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acción</th>
                                             </tr>
                                         </thead>
@@ -695,16 +668,6 @@ watch(() => props.contenedores, (newVal) => {
                                                         <i :class="getEstadoIcono(item.ActivoInactivo)" class="mr-0.5 text-[8px]"></i>
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
-                                                </td>
-                                                <td class="px-3 py-2 text-center">
-                                                    <button 
-                                                        @click="abrirModalClientes(item)" 
-                                                        class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded text-xs" 
-                                                        title="Asignar clientes"
-                                                    >
-                                                        <i class="fas fa-users"></i>
-                                                        <span class="ml-1 text-[10px]">Clientes</span>
-                                                    </button>
                                                 </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <div v-if="puedeDesactivar(item)" class="relative inline-flex items-center cursor-pointer" @click="toggleSwitch(item)">
@@ -725,21 +688,12 @@ watch(() => props.contenedores, (newVal) => {
                                                 </td>
                                                 <td class="px-3 py-2 text-right">
                                                     <div class="flex justify-end gap-2">
-                                                        <Link 
-                                                            v-if="item.ActivoInactivo === 0" 
-                                                            :href="`/operacion/pedidos/clientes-mayoristas/contenedores/${item.IdContenedor}/edit`" 
+                                                        <button 
+                                                            @click="intentarEditar(item)" 
                                                             class="text-amber-500 hover:text-amber-700 transition p-1 hover:bg-amber-50 rounded" 
                                                             title="Editar"
                                                         >
                                                             <i class="fas fa-edit text-sm"></i>
-                                                        </Link>
-                                                        <button 
-                                                            v-if="item.ActivoInactivo === 0" 
-                                                            @click="eliminarContenedor(item.IdContenedor, item.Nombre)" 
-                                                            class="text-red-500 hover:text-red-700 transition p-1 hover:bg-red-50 rounded" 
-                                                            title="Eliminar"
-                                                        >
-                                                            <i class="fas fa-trash-alt text-sm"></i>
                                                         </button>
                                                     </div>
                                                 </td>
@@ -772,14 +726,6 @@ watch(() => props.contenedores, (newVal) => {
                                             </div>
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
                                                 <div class="flex gap-2">
-                                                    <!-- 🔥 BOTÓN CLIENTES (Móvil) -->
-                                                    <button 
-                                                        @click="abrirModalClientes(item)" 
-                                                        class="text-blue-500 hover:text-blue-700 text-xs" 
-                                                        title="Asignar clientes"
-                                                    >
-                                                        <i class="fas fa-users"></i>
-                                                    </button>
                                                     <button 
                                                         @click="abrirModal(item)" 
                                                         class="text-blue-500 hover:text-blue-700" 
@@ -787,22 +733,14 @@ watch(() => props.contenedores, (newVal) => {
                                                     >
                                                         <i class="fas fa-eye text-sm"></i>
                                                     </button>
-                                                    <Link 
-                                                        v-if="item.ActivoInactivo === 0" 
-                                                        :href="`/operacion/pedidos/clientes-mayoristas/contenedores/${item.IdContenedor}/edit`" 
+                                                    <button 
+                                                        @click="intentarEditar(item)" 
                                                         class="text-amber-500 hover:text-amber-700" 
                                                         title="Editar"
                                                     >
                                                         <i class="fas fa-edit text-sm"></i>
-                                                    </Link>
-                                                    <button 
-                                                        v-if="item.ActivoInactivo === 0" 
-                                                        @click="eliminarContenedor(item.IdContenedor, item.Nombre)" 
-                                                        class="text-red-500 hover:text-red-700" 
-                                                        title="Eliminar"
-                                                    >
-                                                        <i class="fas fa-trash-alt text-sm"></i>
                                                     </button>
+
                                                 </div>
                                                 <div v-if="puedeDesactivar(item)" class="relative inline-flex items-center cursor-pointer mt-1" @click="toggleSwitch(item)">
                                                     <div class="w-8 h-4 rounded-full transition-colors duration-200 ease-in-out"
@@ -908,13 +846,13 @@ watch(() => props.contenedores, (newVal) => {
         />
 
         <!-- ============================================= -->
-        <!-- ✅ MODAL: ASIGNAR CLIENTES A CONTENEDOR -->
+        <!-- MODAL EDITAR CONTENEDOR (reactivación a Borrador) -->
         <!-- ============================================= -->
-        <AsignarClientesModal
-            :visible="modalClientesVisible"
-            :contenedor="contenedorParaClientes"
-            @close="cerrarModalClientes"
-            @actualizar="handleActualizar"
+        <ModalEditarContenedor
+            :visible="modalEditarVisible"
+            :contenedor="contenedorParaEditar"
+            @close="cerrarModalEditar"
+            @confirmado="handleEditarConfirmado"
         />
 
     </div>
@@ -949,13 +887,5 @@ watch(() => props.contenedores, (newVal) => {
 }
 .overflow-hidden {
     overflow: hidden;
-}
-
-/* Autocomplete */
-.sucursal-autocomplete {
-    display: inline-flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
 }
 </style>

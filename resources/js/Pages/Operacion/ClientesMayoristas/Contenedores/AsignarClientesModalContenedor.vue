@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, inject, onMounted, onUnmounted, nextTick } from 'vue'
 import axios from 'axios'
+import ConfigurarMinimosModal from '../PedidosClientes/ConfigurarMinimosModal.vue'
 
 const toast = inject('toast')
 
@@ -30,10 +31,12 @@ const busquedaCliente = ref('')
 const busquedaClienteParaAgregar = ref('')
 const mostrarListaClientes = ref(false)
 const clienteSeleccionadoParaAgregar = ref(null)
-const nuevoClienteMinimo = ref('')
-const editandoMinimo = ref({})
 
-// ✅ REFS para detectar click fuera
+// ✅ MODAL DE MÍNIMOS
+const modalMinimosVisible = ref(false)
+const clienteParaMinimos = ref(null)
+
+// REFS para detectar click fuera
 const dropdownRef = ref(null)
 const inputBusquedaRef = ref(null)
 
@@ -74,7 +77,6 @@ const clientesDisponibles = computed(() => {
     return ordenarPorNombre(disponibles)
 })
 
-// ✅ Solo devuelve resultados si el dropdown está abierto
 const clientesDisponiblesFiltrados = computed(() => {
     if (!mostrarListaClientes.value) return []
     
@@ -90,51 +92,28 @@ const clientesDisponiblesFiltrados = computed(() => {
 })
 
 const puedeAgregar = computed(() => {
-    return clienteSeleccionadoParaAgregar.value &&
-           nuevoClienteMinimo.value !== '' &&
-           parseFloat(nuevoClienteMinimo.value) >= 0 &&
-           parseFloat(nuevoClienteMinimo.value) <= capacidadContenedor.value
-})
-
-const errorMinimo = computed(() => {
-    if (!nuevoClienteMinimo.value) return ''
-    const minimo = parseFloat(nuevoClienteMinimo.value)
-    if (minimo < 0) return 'La cantidad mínima no puede ser negativa'
-    if (minimo > capacidadContenedor.value) {
-        return `La cantidad mínima (${minimo}) no puede ser mayor que la capacidad (${capacidadContenedor.value})`
-    }
-    return ''
+    return !!clienteSeleccionadoParaAgregar.value
 })
 
 // =============================================
-// ✅ CONTROL DEL DROPDOWN
+// CONTROL DEL DROPDOWN
 // =============================================
-
-// Abrir dropdown al hacer focus
 const abrirDropdown = () => {
     mostrarListaClientes.value = true
 }
 
-// Cerrar dropdown con delay (para que el click en una opción se registre)
 const cerrarDropdownConDelay = () => {
     setTimeout(() => {
         mostrarListaClientes.value = false
     }, 150)
 }
 
-// Cerrar dropdown inmediatamente
-const cerrarDropdown = () => {
-    mostrarListaClientes.value = false
-}
-
-// ✅ Click fuera del dropdown
 const handleClickOutside = (event) => {
     if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
         mostrarListaClientes.value = false
     }
 }
 
-// ✅ Manejar tecla Escape
 const handleEscape = (event) => {
     if (event.key === 'Escape') {
         mostrarListaClientes.value = false
@@ -186,7 +165,6 @@ const limpiarSeleccionCliente = () => {
     busquedaClienteParaAgregar.value = ''
     mostrarListaClientes.value = false
     
-    // ✅ Volver a enfocar el input después de limpiar
     nextTick(() => {
         inputBusquedaRef.value?.focus()
     })
@@ -195,20 +173,14 @@ const limpiarSeleccionCliente = () => {
 const agregarCliente = async () => {
     if (!puedeAgregar.value) return
 
-    const minimo = parseFloat(nuevoClienteMinimo.value)
-    if (minimo > capacidadContenedor.value) {
-        toast?.error('Error', `La cantidad mínima (${minimo}) no puede ser mayor que la capacidad del contenedor (${capacidadContenedor.value})`)
-        return
-    }
-
     guardando.value = true
 
     try {
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/contenedores/${props.contenedor.IdContenedor}/clientes`,
             {
-                IdIdentificador: clienteSeleccionadoParaAgregar.value.IdIdentificador,
-                CantidadMinima: minimo
+                IdIdentificador: clienteSeleccionadoParaAgregar.value.IdIdentificador
+                // ✅ Ya NO se envía CantidadMinima
             }
         )
 
@@ -217,11 +189,17 @@ const agregarCliente = async () => {
             await cargarDatos()
             emit('actualizar', { type: 'agregar' })
             
+            // ✅ GUARDAR datos del cliente para el modal de mínimos
+            const clienteGuardado = { ...clienteSeleccionadoParaAgregar.value }
+            
             // ✅ Limpiar formulario
             clienteSeleccionadoParaAgregar.value = null
-            nuevoClienteMinimo.value = ''
             busquedaClienteParaAgregar.value = ''
             mostrarListaClientes.value = false
+
+            // ✅ ABRIR MODAL DE CONFIGURAR MÍNIMOS AUTOMÁTICAMENTE
+            clienteParaMinimos.value = clienteGuardado
+            modalMinimosVisible.value = true
         } else {
             toast?.error('Error', response.data.message || 'Error al agregar cliente')
         }
@@ -233,48 +211,19 @@ const agregarCliente = async () => {
     }
 }
 
-const actualizarMinimo = async (cliente) => {
-    const id = cliente.IdContenedorCliente
-    const minimo = cliente.cantidad_minima_temporal !== undefined 
-        ? cliente.cantidad_minima_temporal 
-        : cliente.CantidadMinima
+const abrirModalMinimosCliente = (cliente) => {
+    clienteParaMinimos.value = cliente
+    modalMinimosVisible.value = true
+}
 
-    if (minimo === cliente.CantidadMinima) {
-        return
-    }
+const cerrarModalMinimos = () => {
+    modalMinimosVisible.value = false
+    clienteParaMinimos.value = null
+}
 
-    if (parseFloat(minimo) > capacidadContenedor.value) {
-        toast?.error('Error', `La cantidad mínima (${minimo}) no puede ser mayor que la capacidad del contenedor (${capacidadContenedor.value})`)
-        cliente.cantidad_minima_temporal = cliente.CantidadMinima
-        return
-    }
-
-    editandoMinimo.value[id] = true
-
-    try {
-        const response = await axios.put(
-            `/operacion/pedidos/clientes-mayoristas/contenedores/clientes/${id}`,
-            {
-                CantidadMinima: parseFloat(minimo)
-            }
-        )
-
-        if (response.data.success) {
-            cliente.CantidadMinima = parseFloat(minimo)
-            delete cliente.cantidad_minima_temporal
-            toast?.success('Éxito', 'Cantidad mínima actualizada')
-            emit('actualizar', { type: 'actualizar' })
-        } else {
-            toast?.error('Error', response.data.message || 'Error al actualizar')
-            cliente.cantidad_minima_temporal = cliente.CantidadMinima
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al actualizar')
-        cliente.cantidad_minima_temporal = cliente.CantidadMinima
-    } finally {
-        editandoMinimo.value[id] = false
-    }
+const onMinimosGuardados = () => {
+    toast?.success('Éxito', 'Mínimos configurados correctamente')
+    cargarDatos()
 }
 
 const eliminarCliente = async (cliente) => {
@@ -314,26 +263,21 @@ const formatearNumero = (num) => {
 // =============================================
 // WATCHERS
 // =============================================
-
-// Al abrir el modal → cargar datos y resetear el dropdown
 watch(() => props.visible, (newVal) => {
     if (newVal && props.contenedor) {
         cargarDatos()
         mostrarListaClientes.value = false
         clienteSeleccionadoParaAgregar.value = null
         busquedaClienteParaAgregar.value = ''
-        nuevoClienteMinimo.value = ''
     }
 })
 
-// Al cambiar la búsqueda → si hay texto, abrir dropdown
 watch(busquedaClienteParaAgregar, (newVal) => {
     if (newVal && !clienteSeleccionadoParaAgregar.value) {
         mostrarListaClientes.value = true
     }
 })
 
-// Al seleccionar cliente → limpiar si cambia la búsqueda
 watch(clienteSeleccionadoParaAgregar, (newVal, oldVal) => {
     if (oldVal && !newVal) {
         busquedaClienteParaAgregar.value = ''
@@ -377,11 +321,6 @@ onUnmounted(() => {
                         <span class="text-primary-600 font-medium">
                             {{ clientesAsignados.length }} cliente(s)
                         </span>
-                        <span class="mx-1">•</span>
-                        <span class="text-orange-500 text-[9px]">
-                            <i class="fas fa-info-circle"></i>
-                            Mínimo ≤ {{ formatearNumero(capacidadContenedor) }} und
-                        </span>
                     </p>
                 </div>
                 <button 
@@ -409,7 +348,7 @@ onUnmounted(() => {
                     </p>
                     
                     <div class="flex flex-wrap items-center gap-2">
-                        <!-- ✅ INPUT CON DROPDOWN CONTROLADO -->
+                        <!-- INPUT CON DROPDOWN -->
                         <div 
                             ref="dropdownRef"
                             class="relative flex-1 min-w-[200px]"
@@ -431,7 +370,6 @@ onUnmounted(() => {
                                     autocomplete="off"
                                 />
                                 
-                                <!-- Botón limpiar -->
                                 <button
                                     v-if="clienteSeleccionadoParaAgregar || busquedaClienteParaAgregar"
                                     @mousedown.prevent="limpiarSeleccionCliente"
@@ -485,25 +423,6 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- MÍNIMO -->
-                        <div class="flex items-center gap-1">
-                            <span class="text-[10px] text-gray-500">Mín:</span>
-                            <input
-                                type="number"
-                                step="1"
-                                min="0"
-                                :max="capacidadContenedor"
-                                v-model="nuevoClienteMinimo"
-                                placeholder="0"
-                                class="w-16 text-center border border-gray-300 rounded-md px-1 py-1.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition"
-                                :class="{
-                                    'border-red-400 bg-red-50': errorMinimo && parseFloat(nuevoClienteMinimo) > 0,
-                                    'border-gray-300': !errorMinimo || parseFloat(nuevoClienteMinimo) === 0
-                                }"
-                            />
-                            <span class="text-[10px] text-gray-400">und</span>
-                        </div>
-
                         <!-- BOTÓN AGREGAR -->
                         <button
                             @click="agregarCliente"
@@ -514,16 +433,6 @@ onUnmounted(() => {
                             <i v-else class="fas fa-plus text-[10px]"></i>
                             {{ guardando ? 'Agregando...' : 'Agregar' }}
                         </button>
-                    </div>
-
-                    <!-- MENSAJE DE ERROR O ADVERTENCIA -->
-                    <div v-if="errorMinimo" class="mt-1.5 text-[10px] text-red-500 flex items-center gap-1">
-                        <i class="fas fa-exclamation-circle"></i>
-                        {{ errorMinimo }}
-                    </div>
-                    <div v-else-if="nuevoClienteMinimo && parseFloat(nuevoClienteMinimo) > 0" class="mt-1.5 text-[10px] text-green-600 flex items-center gap-1">
-                        <i class="fas fa-check-circle"></i>
-                        Cantidad mínima válida (máx: {{ formatearNumero(capacidadContenedor) }} und)
                     </div>
 
                     <p v-if="clientesDisponibles.length === 0 && !busquedaClienteParaAgregar" class="text-[10px] text-gray-400 mt-1.5">
@@ -566,7 +475,7 @@ onUnmounted(() => {
                                         Cliente
                                         <i class="fas fa-sort-alpha-down text-[9px] text-primary-500 ml-1" title="Ordenado alfabéticamente"></i>
                                     </th>
-                                    <th class="px-2 py-1.5 text-center font-medium text-gray-500">Mínimo</th>
+                                    <th class="px-2 py-1.5 text-center font-medium text-gray-500">Mínimos</th>
                                     <th class="px-2 py-1.5 text-center font-medium text-gray-500">Acciones</th>
                                 </tr>
                             </thead>
@@ -583,49 +492,23 @@ onUnmounted(() => {
                                         {{ cliente.Nombre }}
                                     </td>
                                     <td class="px-2 py-1.5 text-center">
-                                        <div class="flex items-center justify-center gap-1">
-                                            <input
-                                                type="number"
-                                                step="1"
-                                                min="0"
-                                                :max="capacidadContenedor"
-                                                :value="cliente.cantidad_minima_temporal !== undefined ? cliente.cantidad_minima_temporal : cliente.CantidadMinima"
-                                                @input="(e) => { 
-                                                    const val = parseFloat(e.target.value) || 0;
-                                                    if (val > capacidadContenedor) {
-                                                        toast?.error('Error', `La cantidad mínima (${val}) no puede ser mayor que la capacidad (${capacidadContenedor})`);
-                                                        e.target.value = cliente.cantidad_minima_temporal !== undefined ? cliente.cantidad_minima_temporal : cliente.CantidadMinima;
-                                                        return;
-                                                    }
-                                                    cliente.cantidad_minima_temporal = val;
-                                                    if (cliente.cantidad_minima_temporal === cliente.CantidadMinima) {
-                                                        delete cliente.cantidad_minima_temporal;
-                                                    }
-                                                }"
-                                                @blur="actualizarMinimo(cliente)"
-                                                class="w-16 text-center border rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none transition"
-                                                :class="{
-                                                    'border-primary-400 bg-primary-50': cliente.cantidad_minima_temporal !== undefined,
-                                                    'border-gray-200': cliente.cantidad_minima_temporal === undefined
-                                                }"
-                                            />
-                                            <span class="text-[9px] text-gray-400">und</span>
-                                        </div>
-                                        <div v-if="cliente.cantidad_minima_temporal !== undefined" class="text-[8px] text-primary-500 mt-0.5">
-                                            <i class="fas fa-pen"></i> Editando...
-                                        </div>
+                                        <button
+                                            @click="abrirModalMinimosCliente(cliente)"
+                                            class="text-[10px] px-2 py-0.5 rounded-full font-medium transition inline-flex items-center gap-1"
+                                            :class="cliente.TieneMinimosConfigurados 
+                                                ? 'bg-green-100 text-green-700 hover:bg-green-200' 
+                                                : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'"
+                                            :title="cliente.TieneMinimosConfigurados ? 'Editar mínimos' : 'Configurar mínimos'"
+                                        >
+                                            <i :class="cliente.TieneMinimosConfigurados ? 'fas fa-cog' : 'fas fa-exclamation-triangle'"></i>
+                                            {{ cliente.TieneMinimosConfigurados 
+                                                ? (cliente.TotalGruposConfigurados + ' grupo(s)') 
+                                                : 'Sin configurar' 
+                                            }}
+                                        </button>
                                     </td>
                                     <td class="px-2 py-1.5 text-center">
                                         <div class="flex items-center justify-center gap-1.5">
-                                            <button
-                                                @click="actualizarMinimo(cliente)"
-                                                :disabled="editandoMinimo[cliente.IdContenedorCliente]"
-                                                class="text-green-500 hover:text-green-700 text-[10px] disabled:opacity-50"
-                                                title="Guardar"
-                                            >
-                                                <i v-if="editandoMinimo[cliente.IdContenedorCliente]" class="fas fa-spinner fa-spin"></i>
-                                                <i v-else class="fas fa-save"></i>
-                                            </button>
                                             <button
                                                 @click="eliminarCliente(cliente)"
                                                 class="text-red-500 hover:text-red-700 text-[10px]"
@@ -660,6 +543,15 @@ onUnmounted(() => {
             </div>
 
         </div>
+
+        <!-- MODAL DE CONFIGURAR MÍNIMOS -->
+        <ConfigurarMinimosModal
+            :visible="modalMinimosVisible"
+            :identificador="clienteParaMinimos"
+            :contenedor="contenedor"
+            @close="cerrarModalMinimos"
+            @saved="onMinimosGuardados"
+        />
     </div>
 </template>
 
@@ -709,7 +601,6 @@ input[type="number"] {
     transition-duration: 150ms;
 }
 
-/* Estilo para kbd */
 kbd {
     font-family: monospace;
     font-size: 9px;

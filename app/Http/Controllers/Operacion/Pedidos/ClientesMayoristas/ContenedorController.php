@@ -299,21 +299,26 @@ class ContenedorController extends Controller
 
     /**
      * PASO 2: Mostrar formulario de edición
+     * ✅ MODIFICADO: 
+     *  - Ya NO filtra por IdOperadorInserta (cualquier operador puede editar)
+     *  - Si el contenedor está ACTIVO, lo pasa automáticamente a BORRADOR
      */
     public function edit($id)
     {
         $clienteId = session('cliente_id');
-        $operadorId = session('operador_id');
         
         $contenedor = Contenedor::porCliente($clienteId)
             ->where('IdContenedor', $id)
-            ->where('IdOperadorInserta', $operadorId)
             ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal'])
             ->firstOrFail();
 
+        // ✅ Si está activo, lo pasamos automáticamente a BORRADOR
         if ($contenedor->ActivoInactivo == 1) {
-            return redirect()->route('operacion.pedidos.clientes-mayoristas.contenedores.index')
-                ->with('error', 'No se puede editar un contenedor ya activo');
+            $contenedor->update([
+                'ActivoInactivo' => 0,
+                'IdOperadorActualiza' => session('operador_id'),
+                'FechaActualiza' => Carbon::now('America/La_Paz'),
+            ]);
         }
 
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
@@ -663,6 +668,257 @@ class ContenedorController extends Controller
                 'message' => 'Error al eliminar: ' . $e->getMessage()
             ], 500);
         }
+    }
+    /**
+     * ✅ EXPORTAR PDF: Contenedores con sus grupos y productos
+     */
+    public function exportarPdf(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+
+        $contenedores = $this->obtenerContenedoresParaReporte($request, $clienteId, $sucursalId);
+
+        if ($contenedores->isEmpty()) {
+            return redirect()->back()->with('error', 'No hay contenedores para exportar.');
+        }
+
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT']);
+
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', $operadorId)
+            ->first(['todos_identificador.Nombre as nombre']);
+
+        $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
+
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(10, 10, 10);
+        $pdf->SetAutoPageBreak(true, 12);
+        $pdf->AddPage();
+
+        $y = 8;
+
+        // ============ HEADER EMPRESA ============
+        $pdf->SetFont('helvetica', 'B', 13);
+        $pdf->SetTextColor(30, 60, 120);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 5.5, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'), 0, 1, 'C');
+        $y += 5.5;
+
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->SetTextColor(80, 80, 80);
+        if (!empty($empresa->NIT)) {
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 3.5, 'NIT: ' . $empresa->NIT, 0, 1, 'C');
+            $y += 3.5;
+        }
+
+        $y += 1;
+        $pdf->SetDrawColor(180, 180, 180);
+        $pdf->Line(10, $y, 206, $y);
+        $y += 4;
+
+        // ============ TÍTULO ============
+        $pdf->SetFont('helvetica', 'B', 13);
+        $pdf->SetTextColor(30, 60, 120);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 6, 'REPORTE DE CONTENEDORES Y GRUPOS', 0, 1, 'C');
+        $y += 6;
+
+        $pdf->SetFont('helvetica', '', 7.5);
+        $pdf->SetTextColor(80, 80, 80);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 3.5, 'Fecha de impresión: ' . $fechaImpresion . '  ·  Generado por: ' . ($operador->nombre ?? '-'), 0, 1, 'C');
+        $y += 5;
+
+        // ============ CONTADORES ============
+        $totalContenedores = $contenedores->count();
+        $totalGrupos = 0;
+        $totalProductos = 0;
+        foreach ($contenedores as $c) {
+            $totalGrupos += $c->gruposAnalisis->count();
+            $totalProductos += $c->productos->count();
+        }
+
+        $pdf->SetFont('helvetica', 'B', 8);
+        $pdf->SetFillColor(240, 245, 255);
+        $pdf->SetTextColor(30, 60, 120);
+        $textoContadores = 'Contenedores: ' . $totalContenedores
+            . '  ·  Grupos: ' . $totalGrupos
+            . '  ·  Productos: ' . $totalProductos;
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 5, $textoContadores, 1, 1, 'C', 1);
+        $y += 7;
+
+        // ============ RECORRER CONTENEDORES ============
+        foreach ($contenedores as $contenedor) {
+            if ($y > 250) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
+            // ============ HEADER DEL CONTENEDOR ============
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetFillColor(230, 240, 255);
+            $pdf->SetTextColor(20, 50, 110);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 5.5, '  ' . $contenedor->Codigo, 'LTR', 1, 'L', 1);
+            $y += 5.5;
+
+            // Info del contenedor (una sola línea, sin sucursal)
+            $pdf->SetFont('helvetica', '', 7.5);
+            $pdf->SetTextColor(80, 80, 80);
+            $pdf->SetXY(10, $y);
+            $estado = $contenedor->ActivoInactivo == 1 ? 'Activo' : 'Borrador';
+            $tipo = $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-';
+            $info = '  Tipo: ' . $tipo
+                . ' · Capacidad: ' . number_format($contenedor->CapacidadTotal, 2, ',', '.') . ' und'
+                . ' · Estado: ' . $estado
+                . ' - ' . $contenedor->gruposAnalisis->count() . ' grupo(s)'
+                . ' · ' . $contenedor->productos->count() . ' producto(s)';
+            $pdf->Cell(196, 4.5, $info, 'LRB', 1, 'L', 1);
+            $y += 5.5;
+
+            // Recorrer grupos
+            foreach ($contenedor->gruposAnalisis as $grupo) {
+                if ($y > 250) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                // Header del grupo
+                $pdf->SetFont('helvetica', 'B', 8.5);
+                $pdf->SetFillColor(245, 248, 255);
+                $pdf->SetTextColor(20, 50, 110);
+                $pdf->SetXY(12, $y);
+                $pdf->Cell(192, 5, '[' . $grupo->Grupo . ']', 'LR', 1, 'L', 1);
+                $y += 4;
+
+                // Productos del grupo
+                $productos = \App\Models\Gestion\Inventario\ProductoDetalle::where('IdCliente', $clienteId)
+                    ->where('IdGrupoAnalisis', $grupo->IdGrupoAnalisis)
+                    ->where('ActivoInactivo', 0)
+                    ->orderBy('Descripcion')
+                    ->get(['IdProducto', 'Codigo', 'Descripcion']);
+
+                if ($productos->isEmpty()) {
+                    $pdf->SetFont('helvetica', 'I', 7);
+                    $pdf->SetTextColor(150, 150, 150);
+                    $pdf->SetXY(14, $y);
+                    $pdf->Cell(190, 4, '  (Sin productos en este grupo)', 'LR', 1, 'L');
+                    $y += 4;
+                } else {
+                    // ✅ ENCABEZADOS: CÓDIGO y PRODUCTO al 50% cada uno
+                    // Total: 10 + 91 + 91 = 192mm
+                    $pdf->SetFont('helvetica', 'B', 7.5);
+                    $pdf->SetFillColor(245, 245, 245);
+                    $pdf->SetTextColor(80, 80, 80);
+                    $pdf->SetXY(14, $y);
+                    $pdf->Cell(10, 4.5, '#', 'TB', 0, 'C', 1);
+                    $pdf->Cell(91, 4.5, 'CÓDIGO', 'TB', 0, 'C', 1);
+                    $pdf->Cell(91, 4.5, 'PRODUCTO', 'TB', 1, 'L', 1);
+                    $y += 4.5;
+
+                    // Filas
+                    $pdf->SetFont('helvetica', '', 7.5);
+                    $pdf->SetTextColor(60, 60, 60);
+                    $fill = false;
+                    $contador = 0;
+
+                    foreach ($productos as $producto) {
+                        if ($y > 260) {
+                            $pdf->AddPage();
+                            $y = 15;
+
+                            // Re-imprimir encabezados
+                            $pdf->SetFont('helvetica', 'B', 7.5);
+                            $pdf->SetFillColor(245, 245, 245);
+                            $pdf->SetTextColor(80, 80, 80);
+                            $pdf->SetXY(14, $y);
+                            $pdf->Cell(10, 4.5, '#', 'TB', 0, 'C', 1);
+                            $pdf->Cell(91, 4.5, 'CÓDIGO', 'TB', 0, 'C', 1);
+                            $pdf->Cell(91, 4.5, 'PRODUCTO', 'TB', 1, 'L', 1);
+                            $y += 4.5;
+
+                            $pdf->SetFont('helvetica', '', 7.5);
+                            $pdf->SetTextColor(60, 60, 60);
+                        }
+
+                        $contador++;
+                        $nombreProducto = $producto->Descripcion ?? '-';
+                        if (mb_strlen($nombreProducto, 'UTF-8') > 55) {
+                            $nombreProducto = mb_substr($nombreProducto, 0, 53, 'UTF-8') . '...';
+                        }
+
+                        $pdf->SetXY(14, $y);
+                        $pdf->Cell(10, 4.5, $contador, 'LR', 0, 'C', $fill);
+                        $pdf->Cell(91, 4.5, ' ' . $producto->Codigo, 'LR', 0, 'L', $fill);
+                        $pdf->Cell(91, 4.5, ' ' . $nombreProducto, 'LR', 1, 'L', $fill);
+                        $y += 4.5;
+                        $fill = !$fill;
+                    }
+
+                    // Línea final
+                    $pdf->SetXY(14, $y);
+                    $pdf->Cell(192, 0.3, '', 'T', 1);
+                    $y += 2;
+                }
+            }
+
+            $y += 2;
+        }
+
+        $nombreArchivo = 'Contenedores_' . Carbon::now('America/La_Paz')->format('Y-m-d') . '.pdf';
+        $pdf->Output($nombreArchivo, 'D');
+        exit;
+    }
+        /**
+     * ✅ HELPER PRIVADO: Obtener contenedores aplicando los mismos filtros del index
+     */
+    private function obtenerContenedoresParaReporte(Request $request, $clienteId, $sucursalId)
+    {
+        $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
+
+        $query = Contenedor::porCliente()
+            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+
+        if ($sucursalFiltro) {
+            $query->where('IdSucursal', $sucursalFiltro);
+        }
+
+        if ($request->filled('estado')) {
+            if ($request->estado === 'activos') {
+                $query->activos();
+            } elseif ($request->estado === 'borradores') {
+                $query->borradores();
+            }
+        }
+
+        if ($request->filled('buscar')) {
+            $buscar = $request->buscar;
+            $query->where(function ($q) use ($buscar) {
+                $q->where('Codigo', 'LIKE', "%{$buscar}%");
+            });
+        }
+
+        return $query
+            ->orderByRaw("
+                LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
+                CAST(SUBSTRING_INDEX(Codigo, '-', -1) AS UNSIGNED) ASC
+            ")
+            ->get();
     }
     /**
      * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")

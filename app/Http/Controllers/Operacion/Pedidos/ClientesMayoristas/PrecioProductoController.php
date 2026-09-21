@@ -23,19 +23,19 @@ class PrecioProductoController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ✅ CONSULTA DIRECTA (sin caché, sin modelos)
+        // ✅ IDENTIFICADORES
         $identificadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_identificador as i')
             ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
             ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
             ->where('ot.Detalle', 'PedidoClientes')
-            ->where('o.ActivoInactivo', 0)  // ✅ 0 = Activo
+            ->where('o.ActivoInactivo', 0)
             ->select('i.IdIdentificador', 'i.Nombre', 'i.CI_NIT')
             ->orderBy('i.Nombre')
             ->distinct()
             ->get();
 
-        // ✅ 2. OBTENER LOS GRUPOS DE ANÁLISIS QUE ESTÁN EN CONTENEDORES ACTIVOS
+        // ✅ GRUPOS DE ANÁLISIS ACTIVOS
         $gruposIds = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->with('gruposAnalisis')
@@ -45,7 +45,7 @@ class PrecioProductoController extends Controller
             ->unique()
             ->toArray();
 
-        // ✅ 3. OBTENER LOS PRODUCTOS DE ESOS GRUPOS
+        // ✅ PRODUCTOS
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposIds)
             ->where('ActivoInactivo', 0)
@@ -53,24 +53,34 @@ class PrecioProductoController extends Controller
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Descripcion', 'Codigo', 'Precio']);
 
-        // ✅ 4. OBTENER TODOS LOS PRECIOS PARA ESTOS IDENTIFICADORES
+        // ✅ PRECIOS CON LOS 3 CAMPOS
         $todosLosPrecios = PrecioProducto::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->whereIn('IdIdentificador', $identificadores->pluck('IdIdentificador'))
             ->where('ActivoInactivo', 1)
-            ->get(['IdProducto', 'IdIdentificador', 'Precio']);
+            ->get([
+                'IdProducto',
+                'IdIdentificador',
+                'PrecioSinFactura',
+                'PrecioConFactura',
+                'PedidoMinimo',
+            ]);
 
-        // ✅ 5. AGRUPAR PRECIOS POR PRODUCTO
+        // ✅ AGRUPAR POR PRODUCTO
         $preciosPorProducto = [];
         foreach ($todosLosPrecios as $precio) {
             $productoId = $precio->IdProducto;
             if (!isset($preciosPorProducto[$productoId])) {
                 $preciosPorProducto[$productoId] = [];
             }
-            $preciosPorProducto[$productoId][$precio->IdIdentificador] = $precio->Precio;
+            $preciosPorProducto[$productoId][$precio->IdIdentificador] = [
+                'PrecioSinFactura' => $precio->PrecioSinFactura,
+                'PrecioConFactura' => $precio->PrecioConFactura,
+                'PedidoMinimo' => $precio->PedidoMinimo,
+            ];
         }
 
-        // ✅ 6. ARMAR EL ARRAY FINAL DE PRODUCTOS
+        // ✅ ARMAR ARRAY FINAL
         $productosFinal = [];
         foreach ($productos as $producto) {
             $productosFinal[] = [
@@ -82,11 +92,6 @@ class PrecioProductoController extends Controller
             ];
         }
 
-        // ✅ LOG PARA VERIFICAR
-        Log::info('=== IDENTIFICADORES ENCONTRADOS ===');
-        Log::info('Cantidad: ' . $identificadores->count());
-        Log::info('Datos:', $identificadores->toArray());
-
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/PrecioPedidosClientesMayoristas', [
             'identificadores' => $identificadores,
             'productos' => $productosFinal,
@@ -95,14 +100,16 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * ✅ GUARDAR O ACTUALIZAR UN PRECIO
+     * ✅ GUARDAR O ACTUALIZAR UN PRECIO (con los 3 campos)
      */
     public function store(Request $request)
     {
         $request->validate([
             'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
             'IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
-            'Precio' => 'required|numeric|min:0',
+            'PrecioSinFactura' => 'nullable|numeric|min:0',
+            'PrecioConFactura' => 'nullable|numeric|min:0',
+            'PedidoMinimo' => 'nullable|integer|min:0',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
             'Motivo' => 'nullable|string|max:255',
         ]);
@@ -119,23 +126,47 @@ class PrecioProductoController extends Controller
                     ->first();
 
                 if ($precio) {
-                    $precioAnterior = $precio->Precio;
-                    
+                    // ✅ Guardar valores anteriores para bitácora
+                    $anterior = [
+                        'PrecioSinFactura' => $precio->PrecioSinFactura,
+                        'PrecioConFactura' => $precio->PrecioConFactura,
+                        'PedidoMinimo' => $precio->PedidoMinimo,
+                    ];
+
                     $precio->update([
-                        'Precio' => $request->Precio,
+                        'PrecioSinFactura' => $request->PrecioSinFactura,
+                        'PrecioConFactura' => $request->PrecioConFactura,
+                        'PedidoMinimo' => $request->PedidoMinimo ?? 0,
                         'IdOperadorActualiza' => $operadorId,
                         'FechaActualiza' => Carbon::now('America/La_Paz'),
                     ]);
 
-                    if ($precioAnterior != $request->Precio) {
-                        $this->guardarBitacora($precio, $precioAnterior, $request->Precio, $operadorId, $request->Motivo);
+                    // ✅ Detectar cambios y guardar en bitácora
+                    $cambioSinFactura = $anterior['PrecioSinFactura'] != $request->PrecioSinFactura;
+                    $cambioConFactura = $anterior['PrecioConFactura'] != $request->PrecioConFactura;
+                    $cambioMinimo = $anterior['PedidoMinimo'] != ($request->PedidoMinimo ?? 0);
+
+                    if ($cambioSinFactura || $cambioConFactura || $cambioMinimo) {
+                        $this->guardarBitacora(
+                            $precio,
+                            $anterior['PrecioSinFactura'],
+                            $request->PrecioSinFactura,
+                            $operadorId,
+                            $request->Motivo,
+                            $anterior['PrecioConFactura'],
+                            $request->PrecioConFactura,
+                            $anterior['PedidoMinimo'],
+                            $request->PedidoMinimo ?? 0,
+                        );
                     }
 
                 } else {
                     $precio = PrecioProducto::create([
                         'IdIdentificador' => $request->IdIdentificador,
                         'IdProducto' => $request->IdProducto,
-                        'Precio' => $request->Precio,
+                        'PrecioSinFactura' => $request->PrecioSinFactura,
+                        'PrecioConFactura' => $request->PrecioConFactura,
+                        'PedidoMinimo' => $request->PedidoMinimo ?? 0,
                         'IdCliente' => $clienteId,
                         'IdSucursal' => $request->IdSucursal,
                         'IdOperadorInserta' => $operadorId,
@@ -143,7 +174,17 @@ class PrecioProductoController extends Controller
                         'ActivoInactivo' => 1,
                     ]);
 
-                    $this->guardarBitacora($precio, 0, $request->Precio, $operadorId, $request->Motivo ?? 'Creación de precio');
+                    $this->guardarBitacora(
+                        $precio,
+                        0,
+                        $request->PrecioSinFactura,
+                        $operadorId,
+                        $request->Motivo ?? 'Creación de precio',
+                        0,
+                        $request->PrecioConFactura,
+                        0,
+                        $request->PedidoMinimo ?? 0,
+                    );
                 }
             });
 
@@ -186,11 +227,15 @@ class PrecioProductoController extends Controller
                 }
 
                 $this->guardarBitacora(
-                    $precio, 
-                    $precio->Precio, 
-                    0, 
-                    $operadorId, 
-                    'Eliminación de precio'
+                    $precio,
+                    $precio->PrecioSinFactura,
+                    0,
+                    $operadorId,
+                    'Eliminación de precio',
+                    $precio->PrecioConFactura,
+                    0,
+                    $precio->PedidoMinimo,
+                    0,
                 );
 
                 $precio->update([
@@ -217,10 +262,19 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * ✅ GUARDAR EN BITÁCORA
+     * ✅ GUARDAR EN BITÁCORA (con los 3 campos)
      */
-    private function guardarBitacora($precio, $precioAnterior, $precioNuevo, $operadorId, $motivo = null)
-    {
+    private function guardarBitacora(
+        $precio,
+        $precioSinFacturaAnterior,
+        $precioSinFacturaNuevo,
+        $operadorId,
+        $motivo = null,
+        $precioConFacturaAnterior = null,
+        $precioConFacturaNuevo = null,
+        $pedidoMinimoAnterior = null,
+        $pedidoMinimoNuevo = null
+    ) {
         DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_precio_bitacora')
             ->insert([
@@ -229,16 +283,21 @@ class PrecioProductoController extends Controller
                 'IdProducto' => $precio->IdProducto,
                 'IdCliente' => $precio->IdCliente,
                 'IdSucursal' => $precio->IdSucursal,
-                'PrecioAnterior' => $precioAnterior,
-                'PrecioNuevo' => $precioNuevo,
+                'PrecioAnterior' => $precioSinFacturaAnterior,
+                'PrecioNuevo' => $precioSinFacturaNuevo,
                 'IdOperador' => $operadorId,
                 'FechaCambio' => Carbon::now('America/La_Paz'),
                 'Motivo' => $motivo,
+                // ⚠️ Si quieres guardar los otros 2 campos en bitácora, primero agrega las columnas
+                // 'PrecioConFacturaAnterior' => $precioConFacturaAnterior,
+                // 'PrecioConFacturaNuevo' => $precioConFacturaNuevo,
+                // 'PedidoMinimoAnterior' => $pedidoMinimoAnterior,
+                // 'PedidoMinimoNuevo' => $pedidoMinimoNuevo,
             ]);
     }
 
     /**
-     * ✅ OBTENER EL PRECIO DE UN PRODUCTO PARA UN IDENTIFICADOR (API)
+     * ✅ OBTENER PRECIO (API)
      */
     public function getPrecio(Request $request)
     {
@@ -261,14 +320,15 @@ class PrecioProductoController extends Controller
             'success' => true,
             'data' => [
                 'tiene_precio' => $precio ? true : false,
-                'precio' => $precio ? $precio->Precio : null,
-                'precio_formateado' => $precio ? number_format($precio->Precio, 2, ',', '.') : null,
+                'PrecioSinFactura' => $precio?->PrecioSinFactura,
+                'PrecioConFactura' => $precio?->PrecioConFactura,
+                'PedidoMinimo' => $precio?->PedidoMinimo ?? 0,
             ]
         ]);
     }
 
     /**
-     * ✅ BUSCAR CLIENTES PARA AUTOCOMPLETE (de la bitácora)
+     * ✅ BUSCAR CLIENTES PARA AUTOCOMPLETE (bitácora)
      */
     public function buscarClientesBitacora(Request $request)
     {
@@ -285,7 +345,7 @@ class PrecioProductoController extends Controller
         if (!empty($termino)) {
             $query->where(function ($q) use ($termino) {
                 $q->where('i.Nombre', 'LIKE', '%' . $termino . '%')
-                ->orWhere('i.CI_NIT', 'LIKE', '%' . $termino . '%');
+                  ->orWhere('i.CI_NIT', 'LIKE', '%' . $termino . '%');
             });
         }
 
@@ -303,7 +363,7 @@ class PrecioProductoController extends Controller
     }
 
     /**
-     * ✅ BUSCAR PRODUCTOS PARA AUTOCOMPLETE (de la bitácora)
+     * ✅ BUSCAR PRODUCTOS PARA AUTOCOMPLETE (bitácora)
      */
     public function buscarProductosBitacora(Request $request)
     {
@@ -320,7 +380,7 @@ class PrecioProductoController extends Controller
         if (!empty($termino)) {
             $query->where(function ($q) use ($termino) {
                 $q->where('p.Descripcion', 'LIKE', '%' . $termino . '%')
-                ->orWhere('p.Codigo', 'LIKE', '%' . $termino . '%');
+                  ->orWhere('p.Codigo', 'LIKE', '%' . $termino . '%');
             });
         }
 
@@ -336,20 +396,16 @@ class PrecioProductoController extends Controller
             'productos' => $productos,
         ]);
     }
+
     /**
-     * ✅ VER BITÁCORA DE PRECIOS (paginada por CLIENTES, ordenados ALFABÉTICAMENTE)
+     * ✅ VER BITÁCORA
      */
     public function bitacoraIndex(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
-        // ✅ Cuántos CLIENTES por página
         $clientesPorPagina = 5;
 
-        // ============================================================
-        // 1. IDENTIFICADORES (también sirven para el autocomplete de clientes)
-        // ============================================================
         $identificadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_identificador as i')
             ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
@@ -361,9 +417,6 @@ class PrecioProductoController extends Controller
             ->distinct()
             ->get();
 
-        // ============================================================
-        // 2. GRUPOS
-        // ============================================================
         $gruposIds = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->with('gruposAnalisis')
@@ -373,25 +426,18 @@ class PrecioProductoController extends Controller
             ->unique()
             ->toArray();
 
-        // ============================================================
-        // 3. PRODUCTOS (también sirven para el autocomplete de productos)
-        // ============================================================
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposIds)
             ->where('ActivoInactivo', 0)
             ->orderBy('Descripcion')
             ->get(['IdProducto', 'Descripcion', 'Codigo']);
 
-        // ============================================================
-        // 4. QUERY BASE
-        // ============================================================
         $queryBase = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_precio_bitacora as b')
             ->where('b.IdCliente', $clienteId)
             ->where('b.IdSucursal', $sucursalId)
             ->whereIn('b.IdIdentificador', $identificadores->pluck('IdIdentificador'));
 
-        // Filtros
         if ($request->filled('identificador_id')) {
             $queryBase->where('b.IdIdentificador', $request->identificador_id);
         }
@@ -405,9 +451,6 @@ class PrecioProductoController extends Controller
             $queryBase->whereDate('b.FechaCambio', '<=', $request->fecha_hasta);
         }
 
-        // ============================================================
-        // 5. OBTENER IDs DE CLIENTES PAGINADOS (ORDEN ALFABÉTICO)
-        // ============================================================
         $page = (int) $request->get('page', 1);
         $page = max(1, $page);
         $offset = ($page - 1) * $clientesPorPagina;
@@ -422,16 +465,12 @@ class PrecioProductoController extends Controller
             ->pluck('b.IdIdentificador')
             ->toArray();
 
-        // Total de clientes únicos
         $totalClientes = (clone $queryBase)
             ->distinct()
             ->count('b.IdIdentificador');
 
-        // ============================================================
-        // 6. OBTENER REGISTROS DE ESOS CLIENTES
-        // ============================================================
         $bitacora = collect();
-        
+
         if (!empty($clientesPaginadosIds)) {
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('operacion_pedidos_clientes_precio_bitacora as b')
@@ -455,7 +494,6 @@ class PrecioProductoController extends Controller
                 ->where('b.IdSucursal', $sucursalId)
                 ->whereIn('b.IdIdentificador', $clientesPaginadosIds);
 
-            // ✅ MISMOS filtros que la query base
             if ($request->filled('producto_id')) {
                 $query->where('b.IdProducto', $request->producto_id);
             }
@@ -466,18 +504,14 @@ class PrecioProductoController extends Controller
                 $query->whereDate('b.FechaCambio', '<=', $request->fecha_hasta);
             }
 
-            // ✅ Ordenar: primero por cliente (alfabético), luego por fecha descendente
             $bitacora = $query
                 ->orderBy('i.Nombre', 'asc')
                 ->orderBy('b.FechaCambio', 'desc')
                 ->get();
         }
 
-        // ============================================================
-        // 7. CONSTRUIR PAGINACIÓN MANUAL
-        // ============================================================
-        $totalPaginas = $totalClientes > 0 
-            ? (int) ceil($totalClientes / $clientesPorPagina) 
+        $totalPaginas = $totalClientes > 0
+            ? (int) ceil($totalClientes / $clientesPorPagina)
             : 1;
 
         $paginacion = [
@@ -490,40 +524,31 @@ class PrecioProductoController extends Controller
             'links' => $this->generarLinksPaginacion($page, $totalPaginas, $request),
         ];
 
-        // ============================================================
-        // 8. RETORNAR A INERTIA
-        //    ✅ Se reutilizan $identificadores y $productos para los autocompletes
-        // ============================================================
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/BitacoraPrecios', [
             'bitacora'              => $bitacora,
             'paginacion'            => $paginacion,
             'identificadores'       => $identificadores,
             'productos'             => $productos,
             'clientesPorPagina'     => $clientesPorPagina,
-            'clientesConPrecios'    => $identificadores,   // ✅ Para el autocomplete de clientes
-            'productosHabilitados'  => $productos,         // ✅ Para el autocomplete de productos
+            'clientesConPrecios'    => $identificadores,
+            'productosHabilitados'  => $productos,
             'filtros'               => $request->only(['identificador_id', 'producto_id', 'fecha_desde', 'fecha_hasta']),
         ]);
     }
 
-    /**
-     * ✅ Generar links de paginación al estilo Laravel
-     */
     private function generarLinksPaginacion($currentPage, $lastPage, $request)
     {
         $links = [];
         $queryParams = $request->query();
-        
-        // Anterior
+
         $links[] = [
-            'url' => $currentPage > 1 
+            'url' => $currentPage > 1
                 ? $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $currentPage - 1]))
                 : null,
             'label' => '&laquo; Anterior',
             'active' => false,
         ];
-        
-        // Números
+
         for ($i = 1; $i <= $lastPage; $i++) {
             $links[] = [
                 'url' => $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $i])),
@@ -531,22 +556,18 @@ class PrecioProductoController extends Controller
                 'active' => $i === $currentPage,
             ];
         }
-        
-        // Siguiente
+
         $links[] = [
-            'url' => $currentPage < $lastPage 
+            'url' => $currentPage < $lastPage
                 ? $request->url() . '?' . http_build_query(array_merge($queryParams, ['page' => $currentPage + 1]))
                 : null,
             'label' => 'Siguiente &raquo;',
             'active' => false,
         ];
-        
+
         return $links;
     }
 
-    /**
-     * ✅ LIMPIAR CACHÉ DE PRECIOS
-     */
     private function limpiarCachePrecios()
     {
         $clienteId = session('cliente_id');
@@ -560,8 +581,9 @@ class PrecioProductoController extends Controller
         cache()->forget('operador_identificador_' . session('operador_id'));
         cache()->forget('operador_nombre_' . session('operador_id'));
     }
+
     /**
-     * ✅ EXPORTAR PDF DE LA BITÁCORA (Código / Detalle / Precio)
+     * ✅ EXPORTAR PDF DE LA BITÁCORA
      */
     public function exportarPdfBitacora(Request $request)
     {
@@ -572,17 +594,11 @@ class PrecioProductoController extends Controller
         $fechaHastaFiltro = $request->get('fecha_hasta');
         $productoFiltro = $request->get('producto_id');
 
-        // ============================================================
-        // 1. EMPRESA
-        // ============================================================
         $empresa = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
             ->where('IdCliente', $clienteId)
             ->first(['Nombre', 'NIT', 'Direccion', 'Fono']);
 
-        // ============================================================
-        // 2. IDENTIFICADORES
-        // ============================================================
         $identificadoresQuery = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_identificador as i')
             ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
@@ -605,9 +621,6 @@ class PrecioProductoController extends Controller
 
         $identificadoresIds = $identificadores->pluck('IdIdentificador')->toArray();
 
-        // ============================================================
-        // 3. QUERY BASE
-        // ============================================================
         $queryBase = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_precio_bitacora as b')
             ->where('b.IdCliente', $clienteId)
@@ -624,9 +637,6 @@ class PrecioProductoController extends Controller
             $queryBase->whereDate('b.FechaCambio', '<=', $fechaHastaFiltro);
         }
 
-        // ============================================================
-        // 4. REGISTROS
-        // ============================================================
         $registros = (clone $queryBase)
             ->join('todos_identificador as i', 'b.IdIdentificador', '=', 'i.IdIdentificador')
             ->join('inventario_productodetalle as p', 'b.IdProducto', '=', 'p.IdProducto')
@@ -649,9 +659,6 @@ class PrecioProductoController extends Controller
             return redirect()->back()->with('error', 'No hay registros para exportar.');
         }
 
-        // ============================================================
-        // 5. AGRUPAR: Cliente → Producto (último precio)
-        // ============================================================
         $agrupado = [];
         foreach ($registros as $reg) {
             $cId = $reg->IdIdentificador;
@@ -679,9 +686,6 @@ class PrecioProductoController extends Controller
             return strcasecmp($a['nombre'] ?? '', $b['nombre'] ?? '');
         });
 
-        // ============================================================
-        // 6. DATOS CABECERA
-        // ============================================================
         $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
 
         $operadorLogueado = DB::connection('mysql_gestion_comercial_alimentos')
@@ -701,9 +705,6 @@ class PrecioProductoController extends Controller
             $totalProductos += count($c['productos']);
         }
 
-        // ============================================================
-        // 7. CREAR PDF
-        // ============================================================
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
@@ -713,12 +714,9 @@ class PrecioProductoController extends Controller
 
         $y = 6;
 
-        // ============================================================
-        // HEADER COMPACTO
-        // ============================================================
+        // HEADER
         $yHeader = $y;
 
-        // ===== IZQUIERDA: EMPRESA + NIT =====
         $pdf->SetFont('helvetica', 'B', 14);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(10, $yHeader);
@@ -730,7 +728,6 @@ class PrecioProductoController extends Controller
         $nit = !empty($empresa->NIT) ? 'NIT: ' . $empresa->NIT : '';
         $pdf->Cell(70, 3.5, $nit, 0, 1, 'L');
 
-        // ===== CENTRO: TÍTULO + SUBTÍTULO =====
         $pdf->SetFont('helvetica', 'B', 15);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(70, $yHeader + 1);
@@ -745,7 +742,6 @@ class PrecioProductoController extends Controller
         $pdf->SetXY(70, $yHeader + 7);
         $pdf->Cell(76, 3.5, $subtitulo, 0, 1, 'C');
 
-        // ===== DERECHA: FECHA + GENERADO POR =====
         $pdf->SetFont('helvetica', 'B', 7.5);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(130, $yHeader);
@@ -766,17 +762,13 @@ class PrecioProductoController extends Controller
         $pdf->SetXY(168, $yHeader + 4.5);
         $pdf->Cell(38, 3.5, $inicialesOperador, 0, 1, 'R');
 
-        // ===== LÍNEA SEPARADORA =====
-        $y = $yHeader + 12;   // ✅ antes era +16
+        $y = $yHeader + 12;
         $pdf->SetDrawColor(30, 60, 120);
         $pdf->SetLineWidth(0.5);
         $pdf->Line(10, $y, 206, $y);
         $pdf->SetLineWidth(0.2);
-        $y += 3;               // ✅ antes era +5
+        $y += 3;
 
-        // ============================================================
-        // BARRA DE RESUMEN (compacta)
-        // ============================================================
         $rango = 'Todos los registros';
         if ($fechaDesdeFiltro || $fechaHastaFiltro) {
             $rango = ($fechaDesdeFiltro ? Carbon::parse($fechaDesdeFiltro)->format('d/m/Y') : '...')
@@ -798,25 +790,19 @@ class PrecioProductoController extends Controller
         $pdf->SetXY(12, $y + 1.5);
         $pdf->Cell(192, 3.5, $textoResumen, 0, 0, 'L');
 
-        $y += 9;              // ✅ antes era +12
+        $y += 9;
 
-        // ============================================================
-        // DEFINICIÓN DE COLUMNAS
-        // ============================================================
         $colNum     = 8;
         $colCodigo  = 72;
         $colDetalle = 72;
         $colPrecio  = 44;
 
         $xNum     = 10;
-        $xCodigo  = $xNum + $colNum;          // 18
-        $xDetalle = $xCodigo + $colCodigo;    // 90
-        $xPrecio  = $xDetalle + $colDetalle;  // 162
-        $xFin     = $xPrecio + $colPrecio;    // 206
+        $xCodigo  = $xNum + $colNum;
+        $xDetalle = $xCodigo + $colCodigo;
+        $xPrecio  = $xDetalle + $colDetalle;
+        $xFin     = $xPrecio + $colPrecio;
 
-        // ============================================================
-        // CABECERA TABLA
-        // ============================================================
         $pdf->SetFillColor(30, 60, 120);
         $pdf->SetTextColor(255, 255, 255);
         $pdf->SetDrawColor(30, 60, 120);
@@ -831,13 +817,9 @@ class PrecioProductoController extends Controller
 
         $pdf->SetTextColor(0, 0, 0);
 
-        // ============================================================
-        // ITERAR CLIENTES
-        // ============================================================
         $contadorGlobal = 0;
 
         foreach ($agrupado as $cliente) {
-            // ===== HEADER CLIENTE =====
             $pdf->SetFont('helvetica', 'B', 9);
             $pdf->SetFillColor(232, 234, 246);
             $pdf->SetTextColor(30, 60, 120);
@@ -855,7 +837,6 @@ class PrecioProductoController extends Controller
 
             $pdf->SetTextColor(0, 0, 0);
 
-            // ===== PRODUCTOS =====
             $fill = false;
 
             foreach ($cliente['productos'] as $producto) {
@@ -875,82 +856,43 @@ class PrecioProductoController extends Controller
                 $yInicio = $y;
                 $yFin = $yInicio + $alturaFila;
 
-                // Fondo alternado
                 $bgColor = $fill ? [248, 249, 252] : [255, 255, 255];
                 $pdf->SetFillColor($bgColor[0], $bgColor[1], $bgColor[2]);
 
-                // 1. Fondo
                 $pdf->Rect($xNum, $yInicio, $xFin - $xNum, $alturaFila, 'F');
 
-                // 2. Líneas verticales
                 $pdf->SetDrawColor(220, 220, 220);
                 $pdf->Line($xNum,     $yInicio, $xNum,     $yFin);
                 $pdf->Line($xCodigo,  $yInicio, $xCodigo,  $yFin);
                 $pdf->Line($xDetalle, $yInicio, $xDetalle, $yFin);
                 $pdf->Line($xPrecio,  $yInicio, $xPrecio,  $yFin);
                 $pdf->Line($xFin,     $yInicio, $xFin,     $yFin);
-
-                // 3. Línea horizontal superior
                 $pdf->Line($xNum, $yInicio, $xFin, $yInicio);
 
-                // 4. Columna #
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetTextColor(120, 120, 120);
                 $pdf->SetXY($xNum, $yInicio);
                 $pdf->Cell($colNum, $alturaFila, $contadorGlobal, 0, 0, 'C', false);
 
-                // 5. Columna CÓDIGO
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetTextColor(30, 60, 120);
                 $pdf->SetXY($xCodigo + 2, $yInicio + 0.8);
-                $pdf->MultiCell(
-                    $colCodigo - 4,
-                    3.5,
-                    $codigo,
-                    0,
-                    'L',
-                    false,
-                    1,
-                    '',
-                    '',
-                    true,
-                    0,
-                    false,
-                    false
-                );
+                $pdf->MultiCell($colCodigo - 4, 3.5, $codigo, 0, 'L', false, 1, '', '', true, 0, false, false);
 
-                // 6. Columna DETALLE
                 $pdf->SetFont('helvetica', '', 8);
                 $pdf->SetTextColor(50, 50, 50);
                 $pdf->SetXY($xDetalle + 2, $yInicio + 0.8);
-                $pdf->MultiCell(
-                    $colDetalle - 4,
-                    3.5,
-                    $nombre,
-                    0,
-                    'L',
-                    false,
-                    1,
-                    '',
-                    '',
-                    true,
-                    0,
-                    false,
-                    false
-                );
+                $pdf->MultiCell($colDetalle - 4, 3.5, $nombre, 0, 'L', false, 1, '', '', true, 0, false, false);
 
-                // 7. Columna PRECIO
                 $pdf->SetFont('helvetica', 'B', 9);
                 $pdf->SetTextColor(20, 130, 80);
                 $pdf->SetXY($xPrecio, $yInicio);
                 $pdf->Cell($colPrecio, $alturaFila, $precioTxt . '   ', 0, 0, 'R', false);
 
-                // 8. Avanzar Y
                 $y = $yFin;
                 $fill = !$fill;
             }
 
-            // ===== SUBTOTAL CLIENTE =====
             $pdf->SetFillColor(245, 247, 252);
             $pdf->SetTextColor(30, 60, 120);
             $pdf->SetDrawColor(220, 220, 220);
@@ -964,9 +906,6 @@ class PrecioProductoController extends Controller
             $y += 2;
         }
 
-        // ============================================================
-        // TOTAL GENERAL
-        // ============================================================
         $y += 2;
         $pdf->SetDrawColor(30, 60, 120);
         $pdf->SetLineWidth(0.5);
@@ -980,9 +919,6 @@ class PrecioProductoController extends Controller
         $pdf->Cell(150, 6, 'TOTAL GENERAL', 0, 0, 'R');
         $pdf->Cell(46, 6, count($agrupado) . ' clientes · ' . $totalProductos . ' productos', 0, 1, 'R');
 
-        // ============================================================
-        // SALIDA
-        // ============================================================
         if (ob_get_length()) {
             ob_end_clean();
         }
@@ -991,5 +927,4 @@ class PrecioProductoController extends Controller
         $pdf->Output($nombreArchivo, 'D');
         exit;
     }
-    
 }

@@ -22,6 +22,10 @@ const props = defineProps({
     datosEdicion: {
         type: Object,
         default: null
+    },
+    tipoPrecio: { // ✅ NUEVO
+        type: String,
+        default: 'sin_factura'
     }
 })
 
@@ -33,12 +37,10 @@ const productosSeleccionados = ref([])
 const busquedaProducto = ref('')
 const totalUnidadesSeleccionadas = ref(0)
 const capacidadTotalContenedor = ref(0)
-const cantidadMinimaContenedor = ref(0) // ✅ NUEVO
 const contenedorData = ref(null)
 const errorMensaje = ref('')
 const excedeCapacidad = ref(false)
 const errorCarga = ref(false)
-const hayProductosSinPrecio = ref(false)
 
 const toast = inject('toast', null)
 
@@ -66,44 +68,11 @@ const estaCompleto = computed(() => {
     return totalUnidadesSeleccionadas.value === capacidadTotalContenedor.value && capacidadTotalContenedor.value > 0
 })
 
-// ✅ Total requerido (mínimo del contenedor)
-const totalRequerido = computed(() => {
-    return cantidadMinimaContenedor.value || 0
-})
-
-// ✅ Cuánto falta para llegar al mínimo
-const faltaParaMinimo = computed(() => {
-    if (totalRequerido.value === 0) return 0
-    const falta = totalRequerido.value - totalUnidadesSeleccionadas.value
-    return falta > 0 ? falta : 0
-})
-
-// ✅ Si el total NO alcanza el mínimo requerido
-const totalMenorQueMinimo = computed(() => {
-    return totalRequerido.value > 0 && 
-           totalUnidadesSeleccionadas.value > 0 && 
-           totalUnidadesSeleccionadas.value < totalRequerido.value
-})
-
-// ✅ Si ya alcanzó o superó el mínimo
-const cumpleMinimo = computed(() => {
-    if (totalRequerido.value === 0) return true
-    return totalUnidadesSeleccionadas.value >= totalRequerido.value
-})
-
-// ✅ El botón se habilita SOLO cuando:
-// - Hay productos con precio
-// - No excede capacidad
-// - Tiene al menos 1 unidad
-// - No hay productos sin precio
-// - CUMPLE con el mínimo requerido
 const puedeAgregar = computed(() => {
     return !loading.value && 
            productosAgregados.value.length > 0 && 
            !excedeCapacidad.value && 
-           totalUnidadesSeleccionadas.value > 0 &&
-           !hayProductosSinPrecio.value &&
-           cumpleMinimo.value
+           totalUnidadesSeleccionadas.value > 0
 })
 
 const porcentajeCompletado = computed(() => {
@@ -126,14 +95,12 @@ const formatearNumero = (valor) => {
 }
 
 // ==================== FUNCIONES DE CANTIDAD ====================
-
 const actualizarCantidad = (producto, event) => {
     const input = event.target
     let valor = input.value.replace(/,/g, '.').trim()
     
     if (valor === '' || valor === '-') {
         producto.Cantidad = 0
-        producto.selected = false
         recalcularTotal()
         validarCapacidad()
         return
@@ -143,7 +110,6 @@ const actualizarCantidad = (producto, event) => {
     
     if (isNaN(cantidad) || cantidad < 0) {
         producto.Cantidad = 0
-        producto.selected = false
         input.value = 0
         recalcularTotal()
         validarCapacidad()
@@ -160,7 +126,6 @@ const actualizarCantidad = (producto, event) => {
     }
     
     producto.Cantidad = cantidad
-    producto.selected = cantidad > 0 && producto.tiene_precio
     recalcularTotal()
     validarCapacidad()
 }
@@ -172,7 +137,6 @@ const incrementarCantidad = (producto) => {
     
     if (actual < disponible) {
         producto.Cantidad = Math.min(actual + 1, disponible)
-        producto.selected = producto.Cantidad > 0 && producto.tiene_precio
         recalcularTotal()
         validarCapacidad()
     }
@@ -181,7 +145,6 @@ const incrementarCantidad = (producto) => {
 const decrementarCantidad = (producto) => {
     if (producto.Cantidad > 0) {
         producto.Cantidad--
-        producto.selected = producto.Cantidad > 0 && producto.tiene_precio
         recalcularTotal()
         validarCapacidad()
     }
@@ -189,7 +152,6 @@ const decrementarCantidad = (producto) => {
 
 const recalcularTotal = () => {
     totalUnidadesSeleccionadas.value = productosSeleccionados.value.reduce((sum, p) => sum + (p.Cantidad || 0), 0)
-    hayProductosSinPrecio.value = productosSeleccionados.value.some(p => p.Cantidad > 0 && !p.tiene_precio)
 }
 
 const validarCapacidad = () => {
@@ -205,14 +167,12 @@ const validarCapacidad = () => {
 const limpiarTodo = () => {
     productosSeleccionados.value.forEach(p => {
         p.Cantidad = 0
-        p.selected = false
     })
     recalcularTotal()
     validarCapacidad()
     busquedaProducto.value = ''
     errorMensaje.value = ''
     excedeCapacidad.value = false
-    hayProductosSinPrecio.value = false
 }
 
 // ==================== CARGAR PRODUCTOS ====================
@@ -227,26 +187,25 @@ const cargarProductos = async () => {
     errorCarga.value = false
     contenedorData.value = props.contenedor
     capacidadTotalContenedor.value = parseFloat(props.contenedor.CapacidadTotal) || 0
-    cantidadMinimaContenedor.value = parseFloat(props.contenedor.cantidadMinima) || 0 // ✅ NUEVO
     busquedaProducto.value = ''
     productosSeleccionados.value = []
     totalUnidadesSeleccionadas.value = 0
     errorMensaje.value = ''
     excedeCapacidad.value = false
-    hayProductosSinPrecio.value = false
 
     try {
+        // ✅ Pasar tipo_precio como query param
+        const tipoPrecioParam = props.tipoPrecio || 'sin_factura'
+        
         const response = await axios.get(
-            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos-precios`
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos-precios`,
+            {
+                params: { tipo_precio: tipoPrecioParam } // ✅ NUEVO
+            }
         )
         
         if (response.data.success) {
             let productosRaw = []
-            
-            // ✅ Actualizar cantidad mínima desde la respuesta del servidor
-            if (response.data.data.cantidadMinima !== undefined) {
-                cantidadMinimaContenedor.value = parseFloat(response.data.data.cantidadMinima) || 0
-            }
             
             if (response.data.data && response.data.data.productos_agrupados) {
                 const agrupados = response.data.data.productos_agrupados
@@ -257,8 +216,8 @@ const cargarProductos = async () => {
                                 IdProducto: p.IdProducto,
                                 Codigo: p.Codigo,
                                 Descripcion: p.Descripcion,
-                                Precio: p.Precio || 0,
-                                PrecioEspecial: p.PrecioEspecial || null,
+                                // ✅ Usar PrecioFinal del backend
+                                PrecioFinal: p.PrecioFinal || 0,
                                 tiene_precio: p.tiene_precio || false,
                                 IdGrupoAnalisis: p.IdGrupoAnalisis,
                                 GrupoAnalisis: grupo.grupo_nombre || 'Sin grupo',
@@ -276,7 +235,7 @@ const cargarProductos = async () => {
             
             productosSeleccionados.value = productosRaw.map(p => {
                 let cantidad = 0
-                let precio = p.PrecioEspecial
+                let precio = p.PrecioFinal
                 
                 if (props.modoEdicion && props.datosEdicion) {
                     const existente = props.datosEdicion.productos.find(
@@ -284,29 +243,25 @@ const cargarProductos = async () => {
                     )
                     if (existente) {
                         cantidad = parseInt(existente.Cantidad) || 0
-                        precio = existente.Precio || p.PrecioEspecial
+                        // ✅ Usar el precio existente si está en edición
+                        precio = existente.Precio || p.PrecioFinal
                     }
                 }
                 
                 return {
                     ...p,
                     Cantidad: cantidad,
-                    selected: cantidad > 0 && p.tiene_precio,
+                    PrecioFinal: precio, // ✅ Precio correcto
                     CantidadMaxima: capacidadTotalContenedor.value
                 }
             })
-            
-            const sinPrecio = productosSeleccionados.value.filter(p => !p.tiene_precio)
-            if (sinPrecio.length > 0) {
-                hayProductosSinPrecio.value = true
-            }
             
             recalcularTotal()
             validarCapacidad()
             
         } else {
             errorCarga.value = true
-            errorMensaje.value = '❌ Error al cargar'
+            errorMensaje.value = response.data.data?.mensaje || '❌ Error al cargar'
         }
     } catch (error) {
         console.error('Error:', error)
@@ -326,7 +281,7 @@ const agregarAlCarrito = () => {
         .map(p => ({
             IdProducto: p.IdProducto,
             Cantidad: p.Cantidad,
-            Precio: p.PrecioEspecial
+            Precio: p.PrecioFinal // ✅ Usar PrecioFinal
         }))
 
     if (props.modoEdicion && props.datosEdicion) {
@@ -339,7 +294,8 @@ const agregarAlCarrito = () => {
     } else {
         emit('agregar', {
             IdContenedor: contenedorData.value.IdContenedor,
-            productos: productosAgregar
+            productos: productosAgregar,
+            TipoPrecio: props.tipoPrecio // ✅ NUEVO
         })
     }
     
@@ -368,8 +324,14 @@ watch(() => props.idIdentificador, (newVal) => {
         cargarProductos()
     }
 })
-</script>
 
+// ✅ Recargar cuando cambie tipo_precio
+watch(() => props.tipoPrecio, (newVal) => {
+    if (newVal && props.visible && props.contenedor) {
+        cargarProductos()
+    }
+})
+</script>
 <template>
     <!-- Modal Overlay -->
     <div 
@@ -377,7 +339,7 @@ watch(() => props.idIdentificador, (newVal) => {
         class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
         @click.self="cerrarModal"
     >
-        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up">
+        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up flex flex-col">
             
             <!-- HEADER -->
             <div class="px-4 py-3 border-b bg-primary-50 flex items-center justify-between flex-shrink-0">
@@ -388,13 +350,18 @@ watch(() => props.idIdentificador, (newVal) => {
                         <span class="text-xs font-normal text-gray-500 ml-1">
                             (Cap: {{ formatearNumero(capacidadTotalContenedor) }} und)
                         </span>
-                        <span v-if="totalRequerido > 0" class="text-xs font-normal text-orange-500 ml-1">
-                            | Mínimo requerido: {{ formatearNumero(totalRequerido) }} und
-                        </span>
                     </h3>
                     <p class="text-[10px] text-gray-400">
                         {{ modoEdicion ? 'Modifica las cantidades de los productos' : 'Selecciona las cantidades a pedir' }}
                     </p>
+                    <!-- ✅ Mostrar tipo de precio -->
+                    <span class="text-[9px] px-2 py-0.5 rounded-full font-medium mt-1 inline-block"
+                        :class="tipoPrecio === 'con_factura' 
+                            ? 'bg-blue-100 text-blue-700' 
+                            : 'bg-gray-100 text-gray-600'">
+                        <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-1"></i>
+                        {{ tipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}
+                    </span>
                 </div>
                 <button 
                     @click="cerrarModal"
@@ -409,21 +376,10 @@ watch(() => props.idIdentificador, (newVal) => {
                 <div class="flex-1">
                     <div class="flex justify-between text-[10px] text-gray-500">
                         <span>Usado: <strong class="text-primary-600">{{ totalUnidadesSeleccionadas }}</strong></span>
-                        <!-- ✅ Mostrar mínimo requerido -->
-                        <span v-if="totalRequerido > 0" class="text-orange-600">
-                            Mín: <strong>{{ formatearNumero(totalRequerido) }}</strong>
-                        </span>
                         <span>Restante: <strong :class="totalRestante > 0 ? 'text-green-600' : 'text-red-500'">{{ totalRestante > 0 ? totalRestante : 0 }}</strong></span>
                         <span>Máx: <strong>{{ formatearNumero(capacidadTotalContenedor) }}</strong></span>
                     </div>
-                    <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5 relative">
-                        <!-- ✅ Marcador visual del mínimo -->
-                        <div 
-                            v-if="totalRequerido > 0 && capacidadTotalContenedor > 0"
-                            class="absolute top-0 bottom-0 w-0.5 bg-orange-500 z-10"
-                            :style="{ left: Math.min((totalRequerido / capacidadTotalContenedor) * 100, 100) + '%' }"
-                            title="Mínimo requerido"
-                        ></div>
+                    <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
                         <div 
                             class="h-full transition-all duration-300 rounded-full"
                             :class="colorBarra"
@@ -436,30 +392,8 @@ watch(() => props.idIdentificador, (newVal) => {
                 </span>
             </div>
 
-            <!-- ✅ INDICADOR DE MÍNIMO -->
-            <div 
-                v-if="totalRequerido > 0 && idIdentificador && !errorCarga" 
-                class="px-4 py-2 border-b flex items-center justify-between text-xs flex-shrink-0"
-                :class="cumpleMinimo ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-700'"
-            >
-                <div class="flex items-center gap-2">
-                    <i :class="cumpleMinimo ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'"></i>
-                    <span v-if="cumpleMinimo">
-                        <strong>¡Mínimo alcanzado!</strong> ({{ totalUnidadesSeleccionadas }} / {{ formatearNumero(totalRequerido) }} und)
-                    </span>
-                    <span v-else>
-                        Falta agregar <strong>{{ faltaParaMinimo }}</strong> und para alcanzar el mínimo de <strong>{{ formatearNumero(totalRequerido) }}</strong>
-                    </span>
-                </div>
-                <div class="hidden sm:flex items-center gap-1 font-mono text-[11px]">
-                    <span>{{ totalUnidadesSeleccionadas }}</span>
-                    <span class="text-gray-400">/</span>
-                    <span class="font-bold">{{ formatearNumero(totalRequerido) }}</span>
-                </div>
-            </div>
-
             <!-- CUERPO -->
-            <div class="p-3 overflow-y-auto" style="max-height: calc(90vh - 220px);">
+            <div class="p-3 overflow-y-auto flex-1">
                 
                 <!-- Alertas -->
                 <div v-if="!idIdentificador" class="mb-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded text-xs text-yellow-700">
@@ -475,12 +409,8 @@ watch(() => props.idIdentificador, (newVal) => {
                     <i class="fas fa-exclamation-circle mr-1"></i> {{ errorMensaje }}
                 </div>
 
-                <div v-if="hayProductosSinPrecio && !errorCarga && idIdentificador" class="mb-3 p-2 bg-orange-50 border-l-4 border-orange-400 rounded text-xs text-orange-700">
-                    <i class="fas fa-exclamation-triangle mr-1"></i> Productos sin precio asignado
-                </div>
-
                 <div v-if="!errorCarga && productosSeleccionados.length === 0 && idIdentificador" class="mb-3 p-2 bg-blue-50 border-l-4 border-blue-400 rounded text-xs text-blue-700">
-                    <i class="fas fa-info-circle mr-1"></i> No hay productos con precio asignado para este contenedor
+                    <i class="fas fa-info-circle mr-1"></i> No hay productos con precio para los grupos configurados
                 </div>
 
                 <!-- Buscador -->
@@ -503,8 +433,8 @@ watch(() => props.idIdentificador, (newVal) => {
                 <!-- Sin productos -->
                 <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-8 text-gray-400">
                     <i class="fas fa-box-open text-2xl block mb-2"></i>
-                    <p class="text-xs">No hay productos disponibles con precio</p>
-                    <p class="text-[10px] text-gray-400 mt-1">Contacta al supervisor para asignar precios a este contenedor</p>
+                    <p class="text-xs">No hay productos disponibles</p>
+                    <p class="text-[10px] text-gray-400 mt-1">Los grupos sin mínimo configurado no se muestran</p>
                 </div>
 
                 <!-- Lista de productos -->
@@ -514,9 +444,7 @@ watch(() => props.idIdentificador, (newVal) => {
                         :key="producto.IdProducto"
                         class="bg-gray-50 hover:bg-gray-100 rounded-lg p-2 transition-all duration-200 text-xs"
                         :class="{
-                            'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio,
-                            'ring-1 ring-orange-300 bg-orange-50/50': producto.Cantidad > 0 && !producto.tiene_precio,
-                            'opacity-60': !producto.tiene_precio
+                            'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio
                         }"
                     >
                         <div class="grid grid-cols-12 gap-1 items-center">
@@ -538,10 +466,10 @@ watch(() => props.idIdentificador, (newVal) => {
                                 </div>
                             </div>
 
-                            <!-- Precio -->
+                            <!-- Precio - ✅ Corregido a PrecioFinal -->
                             <div class="col-span-3 sm:col-span-2 text-center">
                                 <span v-if="producto.tiene_precio" class="text-green-600 font-medium text-xs">
-                                    Bs. {{ Number(producto.PrecioEspecial).toFixed(2) }}
+                                    Bs. {{ Number(producto.PrecioFinal).toFixed(2) }}
                                 </span>
                                 <span v-else class="text-red-400 text-[9px]">Sin precio</span>
                             </div>
@@ -567,7 +495,6 @@ watch(() => props.idIdentificador, (newVal) => {
                                     class="w-full text-center border rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
                                     :class="{
                                         'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio,
-                                        'border-orange-300 bg-orange-50': producto.Cantidad > 0 && !producto.tiene_precio,
                                         'border-gray-200': producto.Cantidad === 0 || !producto.tiene_precio
                                     }"
                                     placeholder="0"
@@ -581,10 +508,10 @@ watch(() => props.idIdentificador, (newVal) => {
                                 </button>
                             </div>
 
-                            <!-- Total -->
+                            <!-- Total - ✅ Corregido a PrecioFinal -->
                             <div class="col-span-3 sm:col-span-2 text-right font-bold text-xs">
                                 <span v-if="producto.tiene_precio && producto.Cantidad > 0" class="text-primary-600">
-                                    Bs. {{ (producto.Cantidad * producto.PrecioEspecial).toFixed(2) }}
+                                    Bs. {{ (producto.Cantidad * producto.PrecioFinal).toFixed(2) }}
                                 </span>
                                 <span v-else class="text-gray-300">-</span>
                             </div>
@@ -602,13 +529,8 @@ watch(() => props.idIdentificador, (newVal) => {
                     <span v-else-if="productosAgregados.length === 0" class="text-gray-400">
                         <i class="fas fa-info-circle mr-1"></i> Agrega productos para continuar
                     </span>
-                    <!-- ✅ Mensaje claro con el mínimo faltante -->
-                    <span v-else-if="!cumpleMinimo" class="text-orange-600 font-medium">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        Faltan <strong>{{ faltaParaMinimo }} und</strong> para el mínimo ({{ totalUnidadesSeleccionadas }}/{{ formatearNumero(totalRequerido) }})
-                    </span>
                     <span v-else class="text-green-600">
-                        <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s) listos — Mínimo alcanzado
+                        <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s) · {{ totalUnidadesSeleccionadas }} und
                     </span>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
@@ -623,7 +545,6 @@ watch(() => props.idIdentificador, (newVal) => {
                         @click="agregarAlCarrito"
                         :disabled="!puedeAgregar || errorCarga || !idIdentificador"
                         class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none"
-                        :title="!cumpleMinimo && totalRequerido > 0 ? `Faltan ${faltaParaMinimo} und para el mínimo` : ''"
                     >
                         <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
                         <i v-else class="fas fa-save text-[10px]"></i>

@@ -17,7 +17,9 @@ class PrecioProducto extends Model
     protected $fillable = [
         'IdIdentificador',
         'IdProducto',
-        'Precio',
+        'PrecioSinFactura',      // ✅ ANTES: 'Precio'
+        'PrecioConFactura',      // ✅ NUEVO
+        'PedidoMinimo',          // ✅ NUEVO
         'IdCliente',
         'IdSucursal',
         'IdOperadorInserta',
@@ -28,7 +30,9 @@ class PrecioProducto extends Model
     ];
 
     protected $casts = [
-        'Precio' => 'decimal:2',
+        'PrecioSinFactura' => 'decimal:2',   // ← Cambiar de 'integer' a 'decimal:2'
+        'PrecioConFactura' => 'decimal:2',   // ← Cambiar de 'integer' a 'decimal:2'
+        'PedidoMinimo' => 'integer',
         'ActivoInactivo' => 'integer',
     ];
 
@@ -73,8 +77,13 @@ class PrecioProducto extends Model
 
     // ==================== ACCESORS ====================
     
-    public function getPrecioFormateadoAttribute()
+    public function getPrecioSinFacturaFormateadoAttribute()
     {
-        return number_format($this->Precio, 2, ',', '.');
+        return number_format($this->PrecioSinFactura ?? 0, 2, ',', '.');
+    }
+
+    public function getPrecioConFacturaFormateadoAttribute()
+    {
+        return number_format($this->PrecioConFactura ?? 0, 2, ',', '.');
     }
 }
