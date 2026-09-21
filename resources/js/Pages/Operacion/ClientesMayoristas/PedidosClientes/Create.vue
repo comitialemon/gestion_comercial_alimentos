@@ -20,7 +20,7 @@ const props = defineProps({
     nombreOperador: { type: String, default: '' },
     minimosGrupos: { type: Array, default: () => [] },
     progresoInicial: { type: Array, default: () => [] },
-    tipoPrecio: { type: String, default: 'sin_factura' },   // ✅ NUEVO
+    tipoPrecio: { type: String, default: 'sin_factura' },
 })
 
 // ==================== ESTADO ====================
@@ -65,8 +65,12 @@ const contenedoresFiltrados = computed(() => {
 
 /**
  * ✅ PROGRESO CALCULADO LOCALMENTE
+ * 
+ * ⚠️ SOLO muestra los grupos que tienen al menos 1 producto en el carrito.
+ * Los grupos configurados sin productos NO se muestran (no obligan al cliente).
  */
 const progresoGrupos = computed(() => {
+    // 1. Acumular cantidades por grupo (solo grupos con productos)
     const acumulado = {}
 
     carritoItems.value.forEach(item => {
@@ -78,20 +82,28 @@ const progresoGrupos = computed(() => {
         })
     })
 
-    return minimos.value.map(minimo => {
-        const pedida = acumulado[minimo.IdGrupoAnalisis] || 0
-        const minima = Number(minimo.CantidadMinimaGrupo) || 0
+    // ✅ 2. Si no hay productos, no hay progreso
+    if (Object.keys(acumulado).length === 0) {
+        return []
+    }
 
-        return {
-            IdGrupoAnalisis: minimo.IdGrupoAnalisis,
-            NombreGrupo: minimo.NombreGrupo,
-            CantidadMinima: minima,
-            CantidadPedida: pedida,
-            Cumple: pedida >= minima,
-            Falta: Math.max(0, minima - pedida),
-            Porcentaje: minima > 0 ? Math.min((pedida / minima) * 100, 100) : 100
-        }
-    })
+    // ✅ 3. Solo iterar los grupos que TIENEN productos
+    return minimos.value
+        .filter(minimo => acumulado[minimo.IdGrupoAnalisis] !== undefined)
+        .map(minimo => {
+            const pedida = acumulado[minimo.IdGrupoAnalisis] || 0
+            const minima = Number(minimo.CantidadMinimaGrupo) || 0
+
+            return {
+                IdGrupoAnalisis: minimo.IdGrupoAnalisis,
+                NombreGrupo: minimo.NombreGrupo,
+                CantidadMinima: minima,
+                CantidadPedida: pedida,
+                Cumple: pedida >= minima,
+                Falta: Math.max(0, minima - pedida),
+                Porcentaje: minima > 0 ? Math.min((pedida / minima) * 100, 100) : 100
+            }
+        })
 })
 
 const gruposQueNoCumplen = computed(() => progresoGrupos.value.filter(g => !g.Cumple))
@@ -385,7 +397,7 @@ onMounted(() => {
             </div>
 
             <!-- ==================== PROGRESO DE GRUPOS ==================== -->
-            <div v-if="minimos.length > 0 && hayProductosEnCarrito" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4"
+            <div v-if="progresoGrupos.length > 0 && hayProductosEnCarrito" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4"
                  :class="cumpleTodosMinimos ? 'border-green-500' : 'border-orange-500'">
                 
                 <div class="flex items-center justify-between mb-3">

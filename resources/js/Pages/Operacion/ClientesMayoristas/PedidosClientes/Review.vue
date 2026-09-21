@@ -19,7 +19,7 @@ const props = defineProps({
     idIdentificador: { type: Number, default: null },
     progresoGrupos: { type: Array, default: () => [] },
     cumpleMinimos: { type: Boolean, default: true },
-    tipoPrecio: { type: String, default: 'sin_factura' }, // ✅ NUEVO
+    tipoPrecio: { type: String, default: 'sin_factura' },
 })
 
 // ==================== ESTADO ====================
@@ -29,11 +29,24 @@ const fechaEntrega = ref('')
 const modalConfirmacionVisible = ref(false)
 const errorFechaEntrega = ref('')
 
-// ✅ Estado para tipo de precio
+// ✅ Tipo de precio
 const tipoPrecioLocal = ref(props.tipoPrecio || 'sin_factura')
 const cambiandoTipoPrecio = ref(false)
 
-// ✅ ESTADO PARA EDICIÓN
+// ✅ Detalles reactivos (para actualizar precios sin recargar)
+const detallesLocal = ref(
+    (props.detallesAgrupados || []).map(item => ({
+        ...item,
+        productos: (item.productos || []).map(p => ({
+            ...p,
+            Cantidad: Number(p.Cantidad) || 0,
+            Precio: Number(p.Precio) || 0,
+            Subtotal: (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0),
+        })),
+    }))
+)
+
+// ✅ Estado para edición
 const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 
@@ -49,31 +62,23 @@ const fechaMinima = computed(() => {
 
 const totalUnidades = computed(() => {
     let total = 0
-    if (props.detallesAgrupados && props.detallesAgrupados.length > 0) {
-        props.detallesAgrupados.forEach(item => {
-            if (item.productos) {
-                item.productos.forEach(p => {
-                    total += Number(p.Cantidad) || 0
-                })
-            }
+    detallesLocal.value.forEach(item => {
+        (item.productos || []).forEach(p => {
+            total += Number(p.Cantidad) || 0
         })
-    }
+    })
     return total
 })
 
-const totalContenedores = computed(() => props.detallesAgrupados ? props.detallesAgrupados.length : 0)
+const totalContenedores = computed(() => detallesLocal.value.length)
 
 const totalGeneral = computed(() => {
     let total = 0
-    if (props.detallesAgrupados && props.detallesAgrupados.length > 0) {
-        props.detallesAgrupados.forEach(item => {
-            if (item.productos) {
-                item.productos.forEach(p => {
-                    total += (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0)
-                })
-            }
+    detallesLocal.value.forEach(item => {
+        (item.productos || []).forEach(p => {
+            total += (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0)
         })
-    }
+    })
     return total
 })
 
@@ -90,7 +95,6 @@ const fechaPedido = computed(() => {
     return new Date().toLocaleString('es-BO')
 })
 
-// ✅ Progreso reactivo
 const progresoLocal = computed(() => props.progresoGrupos || [])
 
 const gruposQueNoCumplen = computed(() => {
@@ -101,12 +105,10 @@ const cumpleTodos = computed(() => {
     return progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0
 })
 
-// ✅ No se puede finalizar si no cumple mínimos
 const puedeFinalizar = computed(() => {
-    return cumpleTodos.value && props.detallesAgrupados.length > 0
+    return cumpleTodos.value && detallesLocal.value.length > 0
 })
 
-// ✅ Texto del tipo de precio
 const tipoPrecioTexto = computed(() => {
     return tipoPrecioLocal.value === 'con_factura' ? 'Con Factura' : 'Sin Factura'
 })
@@ -147,7 +149,7 @@ const validarFechaEntrega = () => {
     return true
 }
 
-// ✅ CAMBIAR TIPO DE PRECIO
+// ✅ CAMBIAR TIPO DE PRECIO - Actualiza precios en pantalla sin recargar
 const cambiarTipoPrecio = async (nuevoTipo) => {
     if (nuevoTipo === tipoPrecioLocal.value) return
     
@@ -155,22 +157,28 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
     
     try {
         const response = await axios.post(
-            '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/cambiar-tipo-precio',
-            {
-                IdPedidoCliente: props.pedido.IdPedidoCliente,
-                TipoPrecio: nuevoTipo
-            }
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/recalcular-tipo-precio`,
+            { TipoPrecio: nuevoTipo }
         )
         
         if (response.data.success) {
-            tipoPrecioLocal.value = nuevoTipo
-            toast?.success('Éxito', 'Precios recalculados correctamente')
+            // ✅ Actualizar tipo
+            tipoPrecioLocal.value = response.data.tipo_precio || nuevoTipo
             
-            if (response.data.productos_sin_precio?.length > 0) {
-                toast?.warning('Atención', `${response.data.productos_sin_precio.length} producto(s) no tienen precio para este tipo`)
+            // ✅ Actualizar detalles con los nuevos precios
+            if (Array.isArray(response.data.detalles_agrupados)) {
+                detallesLocal.value = response.data.detalles_agrupados.map(item => ({
+                    ...item,
+                    productos: (item.productos || []).map(p => ({
+                        ...p,
+                        Cantidad: Number(p.Cantidad) || 0,
+                        Precio: Number(p.Precio) || 0,
+                        Subtotal: (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0),
+                    })),
+                }))
             }
             
-            router.reload()
+            toast?.success('Éxito', 'Precios recalculados correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al cambiar tipo de precio')
         }
@@ -183,7 +191,7 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
 }
 
 const abrirModalConfirmacion = () => {
-    if (props.detallesAgrupados.length === 0) {
+    if (detallesLocal.value.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
         return
     }
@@ -222,7 +230,7 @@ const finalizarPedido = async () => {
                 IdSucursal: props.pedido.IdSucursal,
                 FechaEntrega: fechaEntregaFormateada,
                 Observaciones: observaciones.value || null,
-                TipoPrecio: tipoPrecioLocal.value // ✅ NUEVO
+                TipoPrecio: tipoPrecioLocal.value
             }
         )
         
@@ -319,6 +327,7 @@ const eliminarContenedor = async (item) => {
     }
 }
 </script>
+
 <template>
     <div class="min-h-screen bg-gray-100">
         <div class="max-w-5xl mx-auto px-3 py-4">
@@ -460,14 +469,14 @@ const eliminarContenedor = async (item) => {
                         </span>
                     </div>
 
-                    <div v-if="detallesAgrupados.length === 0" class="text-center text-gray-400 py-6">
+                    <div v-if="detallesLocal.length === 0" class="text-center text-gray-400 py-6">
                         <i class="fas fa-inbox text-2xl mb-2 block"></i>
                         <p class="text-sm">No hay productos en este pedido</p>
                     </div>
 
                     <div v-else class="space-y-4">
                         <div 
-                            v-for="(item, idx) in detallesAgrupados" 
+                            v-for="(item, idx) in detallesLocal" 
                             :key="idx"
                             class="border rounded-lg overflow-hidden bg-white shadow-sm"
                         >
@@ -522,7 +531,7 @@ const eliminarContenedor = async (item) => {
                         </div>
                     </div>
 
-                    <div v-if="detallesAgrupados.length > 0" class="mt-4 pt-3 border-t-2 border-primary-200 flex justify-end">
+                    <div v-if="detallesLocal.length > 0" class="mt-4 pt-3 border-t-2 border-primary-200 flex justify-end">
                         <div class="text-right">
                             <div class="flex items-center gap-6">
                                 <div>

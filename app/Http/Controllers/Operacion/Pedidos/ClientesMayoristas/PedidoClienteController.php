@@ -8,7 +8,7 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalle;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PrecioProducto;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ClienteGrupo;
-
+use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\ClienteSucursal;
@@ -96,6 +96,10 @@ class PedidoClienteController extends Controller
 
     /**
      * ✅ CALCULAR PROGRESO DE GRUPOS
+     * 
+     * ⚠️ IMPORTANTE: Solo se muestran y validan los grupos que tengan
+     * al menos 1 producto en el carrito. Los grupos configurados
+     * que no tengan productos NO se cuentan (no obligan al cliente).
      */
     private function calcularProgresoGrupos($pedidoBorrador, $idIdentificador, $clienteId, $sucursalId)
     {
@@ -121,15 +125,23 @@ class PedidoClienteController extends Controller
             $acumulado[$grupoId] += (float) $detalle->Cantidad;
         }
 
-        // 3. Obtener mínimos
+        // ✅ 3. SI NO HAY PRODUCTOS, NO HAY PROGRESO
+        if (empty($acumulado)) {
+            return [];
+        }
+
+        // ✅ 4. SOLO LOS GRUPOS QUE TIENEN PRODUCTOS
+        $gruposConProductos = array_keys($acumulado);
+
         $minimos = ClienteGrupo::where('IdIdentificador', $idIdentificador)
             ->where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
+            ->whereIn('IdGrupoAnalisis', $gruposConProductos)  // ✅ ESTO ES CLAVE
             ->where('ActivoInactivo', 1)
             ->with('grupoAnalisis')
             ->get();
 
-        // 4. Combinar
+        // 5. Combinar
         $progreso = [];
         foreach ($minimos as $minimo) {
             $grupoId = $minimo->IdGrupoAnalisis;
@@ -148,7 +160,6 @@ class PedidoClienteController extends Controller
 
         return $progreso;
     }
-
     /**
      * ✅ OBTENER EL PRECIO SEGÚN EL TIPO
      */
@@ -953,6 +964,135 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
+        /**
+     * ✅ RECALCULAR TIPO DE PRECIO Y DEVOLVER DATOS FRESCOS
+     * 
+     * Se usa desde Review.vue para actualizar los precios en pantalla
+     * sin recargar la página.
+     */
+    public function recalcularTipoPrecio(Request $request, $id)
+    {
+        $request->validate([
+            'TipoPrecio' => 'required|in:sin_factura,con_factura',
+        ]);
+
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $idIdentificador = $this->getIdIdentificadorOperador();
+
+        $pedido = PedidoCliente::where('IdCliente', $clienteId)
+            ->where('IdPedidoCliente', $id)
+            ->where('ActivoInactivo', 0)
+            ->first();
+
+        if (!$pedido) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Pedido no encontrado o ya finalizado.'
+            ], 404);
+        }
+
+        if ($pedido->TipoPrecio === $request->TipoPrecio) {
+            // Igual devolvemos los datos frescos por si acaso
+            $pedido->load(['detalles.producto', 'detalles.contenedor']);
+        } else {
+            DB::beginTransaction();
+
+            try {
+                // ✅ Obtener todos los precios configurados
+                $precios = PrecioProducto::where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdIdentificador', $idIdentificador)
+                    ->where('ActivoInactivo', 1)
+                    ->get()
+                    ->keyBy('IdProducto');
+
+                // ✅ Recalcular precios de todos los detalles
+                $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->get();
+                $totalGeneral = 0;
+                $productosSinPrecio = [];
+
+                foreach ($detalles as $detalle) {
+                    $precio = $precios[$detalle->IdProducto] ?? null;
+
+                    if (!$precio) {
+                        $productosSinPrecio[] = $detalle->IdProducto;
+                        continue;
+                    }
+
+                    $nuevoPrecio = $this->obtenerPrecioSegunTipo($precio, $request->TipoPrecio);
+
+                    if ($nuevoPrecio === null || $nuevoPrecio <= 0) {
+                        $productosSinPrecio[] = $detalle->IdProducto;
+                        continue;
+                    }
+
+                    $detalle->update(['Precio' => $nuevoPrecio]);
+                    $totalGeneral += $detalle->Cantidad * $nuevoPrecio;
+                }
+
+                $pedido->update([
+                    'TipoPrecio' => $request->TipoPrecio,
+                    'TotalGeneral' => $totalGeneral,
+                ]);
+
+                DB::commit();
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('Error al recalcular tipo precio: ' . $e->getMessage());
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al recalcular: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+
+        // ✅ Recargar detalles frescos para devolver al frontend
+        $pedido->load(['detalles.producto', 'detalles.contenedor']);
+
+        $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+            $primerItem = $items->first();
+            $contenedor = $primerItem->contenedor;
+            $total = $items->sum('Cantidad');
+            $subtotal = $items->sum(function($item) {
+                return $item->Cantidad * $item->Precio;
+            });
+
+            return [
+                'IdContenedor' => $primerItem->IdContenedor,
+                'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                'Orden' => intval($orden),
+                'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                'productos' => $items->map(function($item) {
+                    return [
+                        'IdProducto' => $item->IdProducto,
+                        'Codigo' => $item->producto ? $item->producto->Codigo : '-',
+                        'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
+                        'Cantidad' => (float) $item->Cantidad,
+                        'Precio' => (float) $item->Precio,
+                        'Subtotal' => (float) ($item->Cantidad * $item->Precio),
+                        'IdGrupoAnalisis' => $item->producto ? $item->producto->IdGrupoAnalisis : null,
+                        'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
+                    ];
+                }),
+                'total_unidades' => (float) $total,
+                'subtotal' => (float) $subtotal,
+            ];
+        })->values();
+
+        $totalGeneralFinal = $pedido->detalles->sum(function($item) {
+            return $item->Cantidad * $item->Precio;
+        });
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Precios recalculados correctamente',
+            'tipo_precio' => $pedido->TipoPrecio,
+            'detalles_agrupados' => $detallesAgrupados,
+            'total_general' => (float) $totalGeneralFinal,
+        ]);
+    }
 
     /**
      * ✅ FINALIZAR PEDIDO
@@ -1344,21 +1484,28 @@ class PedidoClienteController extends Controller
                 ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
 
-            $configOperador = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_operadores_clientes')
-                ->where('IdOperador', $pedido->IdOperador)
+            // ✅ Obtener configuración de ubicación del operador
+            $configOperador = OperadorPedidoCliente::where('IdOperador', $pedido->IdOperador)
+                ->where('ActivoInactivo', 1)
                 ->first();
 
             $destino = null;
             $tipoUbicacion = null;
 
             if ($configOperador) {
-                if (isset($configOperador->Ciudad) && $configOperador->Ciudad == 1) {
-                    $tipoUbicacion = 'Ciudad';
-                } elseif (isset($configOperador->Provincia) && $configOperador->Provincia == 1) {
-                    $tipoUbicacion = 'Provincia';
+                // ✅ Ciudad y Provincia son VARCHAR con "0" o "1"
+                $ubicaciones = [];
+                if ($configOperador->Ciudad == 1) $ubicaciones[] = 'Ciudad';
+                if ($configOperador->Provincia == 1) $ubicaciones[] = 'Provincia';
+                
+                $tipoUbicacion = !empty($ubicaciones) ? implode(' / ', $ubicaciones) : null;
+                
+                // ✅ Destino: leer y limpiar
+                $destinoRaw = $configOperador->getAttribute('Destino');
+                $destino = trim((string) ($destinoRaw ?? ''));
+                if ($destino === '') {
+                    $destino = null;
                 }
-                $destino = $configOperador->Destino ?? null;
             }
 
             $detallesAgrupados = $pedido->detalles
@@ -1517,7 +1664,7 @@ class PedidoClienteController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
             $yInfoDer += $altoFila;
 
-            // ✅ NUEVO: Mostrar tipo de precio
+            // ✅ Mostrar tipo de precio
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetXY($colDer_label, $yInfoDer);
             $pdf->Cell(30, $altoFila, 'Tipo Precio:', 0, 0, 'L');
@@ -1526,7 +1673,8 @@ class PedidoClienteController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->TipoPrecioTexto, 0, 0, 'L');
             $yInfoDer += $altoFila;
 
-            if ($tipoUbicacion) {
+            // ✅ Mostrar Ciudad / Provincia
+            if (!empty($tipoUbicacion)) {
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetXY($colDer_label, $yInfoDer);
                 $pdf->Cell(30, $altoFila, 'Tipo:', 0, 0, 'L');
@@ -1536,13 +1684,14 @@ class PedidoClienteController extends Controller
                 $yInfoDer += $altoFila;
             }
 
-            if ($destino) {
+            // ✅ Mostrar Destino
+            if (!empty($destino)) {
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetXY($colDer_label, $yInfoDer);
                 $pdf->Cell(30, $altoFila, 'Destino:', 0, 0, 'L');
                 $pdf->SetFont('helvetica', '', 8);
                 $pdf->SetXY($colDer_valor, $yInfoDer);
-                $pdf->Cell(58, $altoFila, $destino, 0, 0, 'L');
+                $pdf->Cell(68, $altoFila, $destino, 0, 0, 'L');
                 $yInfoDer += $altoFila;
             }
 

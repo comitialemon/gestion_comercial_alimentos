@@ -17,32 +17,36 @@ const props = defineProps({
     sucursalNombre: {
         type: String,
         default: ''
-    },
-    operadorNombre: {
-        type: String,
-        default: ''
     }
 })
 
 const emit = defineEmits(['cerrar'])
 
-// ==================== COMPUTADOS ====================
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const handleResize = () => { isMobile.value = window.innerWidth < 640 }
+
+// ==================== COMPUTED ====================
 const totalUnidades = computed(() => {
     let total = 0
-    if (props.detallesAgrupados && props.detallesAgrupados.length > 0) {
+    if (props.detallesAgrupados?.length > 0) {
         props.detallesAgrupados.forEach(item => {
-            if (item.productos) {
-                item.productos.forEach(p => {
-                    total += Number(p.Cantidad) || 0
-                })
-            }
+            item.productos?.forEach(p => {
+                total += Number(p.Cantidad) || 0
+            })
         })
     }
     return total
 })
 
-const totalContenedores = computed(() => {
-    return props.detallesAgrupados ? props.detallesAgrupados.length : 0
+const totalContenedores = computed(() => props.detallesAgrupados?.length || 0)
+
+const totalProductos = computed(() => {
+    let total = 0
+    props.detallesAgrupados?.forEach(item => {
+        total += item.productos?.length || 0
+    })
+    return total
 })
 
 const fechaPedido = computed(() => {
@@ -58,6 +62,7 @@ const fechaPedido = computed(() => {
     return new Date().toLocaleString('es-BO')
 })
 
+// ==================== HELPERS ====================
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0'
     const numero = parseFloat(valor)
@@ -75,13 +80,13 @@ const formatearFecha = (fecha) => {
 
 const getEstadoBadge = (estado) => {
     const badges = {
-        'Borrador': 'bg-amber-50 text-amber-700 border-amber-200',
-        'Pendiente': 'bg-blue-50 text-blue-700 border-blue-200',
-        'En Proceso': 'bg-orange-50 text-orange-700 border-orange-200',
-        'Entregado': 'bg-emerald-50 text-emerald-700 border-emerald-200',
-        'Cancelado': 'bg-rose-50 text-rose-700 border-rose-200'
+        'Borrador': 'bg-amber-100 text-amber-700 border-amber-200',
+        'Pendiente': 'bg-blue-100 text-blue-700 border-blue-200',
+        'En Proceso': 'bg-orange-100 text-orange-700 border-orange-200',
+        'Entregado': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+        'Cancelado': 'bg-red-100 text-red-700 border-red-200'
     }
-    return badges[estado] || 'bg-gray-50 text-gray-700 border-gray-200'
+    return badges[estado] || 'bg-gray-100 text-gray-700 border-gray-200'
 }
 
 const getEstadoIcono = (estado) => {
@@ -95,181 +100,233 @@ const getEstadoIcono = (estado) => {
     return iconos[estado] || 'fa-circle'
 }
 
-// ==================== FUNCIONES ====================
+// ==================== ACCIONES ====================
 const cerrarModal = () => {
     emit('cerrar')
 }
 
 const abrirPdf = (id) => {
-    const url = `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`
-    window.open(url, '_blank')
+    window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`, '_blank')
 }
 </script>
 
 <template>
-    <!-- CONTENEDOR PRINCIPAL DEL MODAL CON ALTURA MÁXIMA ESTRICTA -->
-    <div class="w-full max-h-[85vh] flex flex-col bg-white text-gray-800 text-xs rounded-2xl shadow-2xl overflow-hidden">
-        
-        <!-- HEADER FIJO -->
-        <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between flex-shrink-0">
-            <div class="flex items-center gap-2.5 flex-wrap">
-                <span class="font-bold text-gray-900 text-sm">
-                    Pedido #{{ pedido?.NumeroPedido || 'Nuevo' }}
-                </span>
-                <span 
-                    class="px-2 py-0.5 text-[11px] rounded-full font-semibold border flex items-center gap-1"
-                    :class="getEstadoBadge(pedido.EstadoPedido)"
-                >
-                    <i :class="getEstadoIcono(pedido.EstadoPedido)"></i>
-                    {{ pedido.EstadoPedido || 'Borrador' }}
-                </span>
-            </div>
-            <button 
-                @click="cerrarModal"
-                class="w-7 h-7 rounded-lg hover:bg-gray-200 text-gray-400 hover:text-gray-700 transition flex items-center justify-center cursor-pointer"
-            >
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-
-        <!-- CUERPO CON SCROLL FORZADO -->
-        <div class="p-4 overflow-y-auto flex-1 space-y-3 custom-scroll">
+    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" @click.self="cerrarModal">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             
-            <!-- DATOS BÁSICOS -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gray-50/60 p-2.5 rounded-xl border border-gray-100">
-                <div>
-                    <span class="text-gray-400 block text-[10px] uppercase font-semibold">Cliente</span>
-                    <span class="font-medium text-gray-700 truncate block">{{ clienteNombre || 'Sin cliente' }}</span>
-                </div>
-                <div>
-                    <span class="text-gray-400 block text-[10px] uppercase font-semibold">Sucursal</span>
-                    <span class="font-medium text-gray-700 truncate block">{{ sucursalNombre || 'Sin sucursal' }}</span>
-                </div>
-                <div>
-                    <span class="text-gray-400 block text-[10px] uppercase font-semibold">Operador</span>
-                    <span class="font-medium text-gray-700 truncate block">{{ operadorNombre || 'Sin operador' }}</span>
-                </div>
-                <div>
-                    <span class="text-gray-400 block text-[10px] uppercase font-semibold">Fecha</span>
-                    <span class="font-medium text-gray-700 truncate block">{{ fechaPedido }}</span>
-                </div>
-            </div>
-
-            <!-- MINI KPIS -->
-            <div class="grid grid-cols-3 gap-2 text-center">
-                <div class="bg-primary-50/20 border border-primary-100/50 rounded-lg p-2">
-                    <span class="text-[10px] text-gray-400 font-semibold block uppercase">Contenedores</span>
-                    <span class="text-sm font-bold text-gray-800">{{ totalContenedores }}</span>
-                </div>
-                <div class="bg-primary-50/20 border border-primary-100/50 rounded-lg p-2">
-                    <span class="text-[10px] text-gray-400 font-semibold block uppercase">Total Unidades</span>
-                    <span class="text-sm font-bold text-primary-600">{{ formatearNumero(totalUnidades) }}</span>
-                </div>
-                <div class="bg-primary-50/20 border border-primary-100/50 rounded-lg p-2">
-                    <span class="text-[10px] text-gray-400 font-semibold block uppercase">Entrega</span>
-                    <span class="text-xs font-bold text-gray-700 mt-0.5 block">
-                        {{ pedido.FechaEntrega ? formatearFecha(pedido.FechaEntrega) : 'N/D' }}
-                    </span>
-                </div>
-            </div>
-
-            <!-- OBSERVACIONES -->
-            <div v-if="pedido.Observaciones" class="bg-amber-50/40 border border-amber-100 p-2.5 rounded-lg">
-                <span class="text-[10px] font-bold text-amber-800 uppercase block mb-0.5">Observaciones</span>
-                <p class="text-gray-600 leading-tight">{{ pedido.Observaciones }}</p>
-            </div>
-
-            <!-- LISTA DE PRODUCTOS -->
-            <div class="space-y-2 pt-1">
-                <div class="flex items-center justify-between text-gray-400 font-semibold uppercase text-[10px] px-1">
-                    <span>Contenedores y Productos</span>
-                    <span>{{ detallesAgrupados.length }} grupo(s)</span>
-                </div>
-
-                <div v-if="detallesAgrupados.length === 0" class="text-center text-gray-400 py-6 bg-gray-50/50 rounded-xl border border-dashed border-gray-200">
-                    <i class="fas fa-inbox text-xl mb-1 block"></i>
-                    <span>No hay productos registrados</span>
-                </div>
-
-                <div v-else class="space-y-2">
-                    <div 
-                        v-for="(item, idx) in detallesAgrupados" 
-                        :key="idx"
-                        class="border border-gray-200/70 rounded-lg overflow-hidden bg-white shadow-2xs"
-                    >
-                        <div class="flex items-center justify-between px-3 py-1.5 bg-gray-50/90 border-b border-gray-100">
-                            <div class="flex items-center gap-2">
-                                <span class="font-mono bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded text-[10px] font-bold">
-                                    #{{ idx + 1 }}
-                                </span>
-                                <span class="font-semibold text-gray-800">{{ item.Codigo }}</span>
-                                <span class="text-gray-400 text-[10px]">(Cap: {{ formatearNumero(item.CapacidadTotal) }})</span>
-                            </div>
-                            <span class="font-bold text-primary-700 text-[11px]">
-                                {{ formatearNumero(item.total_unidades) }} und
-                            </span>
-                        </div>
-
-                        <div class="divide-y divide-gray-50">
-                            <div 
-                                v-for="(producto, pIdx) in item.productos" 
-                                :key="pIdx"
-                                class="flex justify-between items-center py-1.5 px-3 hover:bg-gray-50/40"
+            <!-- ==================== HEADER ==================== -->
+            <div class="bg-primary-600 p-3 flex items-center justify-between flex-shrink-0">
+                <div class="flex items-center gap-2 min-w-0">
+                    <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-file-invoice text-white text-sm"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <h3 class="text-white font-semibold text-sm truncate flex items-center gap-2">
+                            Pedido #{{ pedido?.NumeroPedido || 'Nuevo' }}
+                            <span 
+                                class="px-2 py-0.5 text-[9px] rounded-full font-medium border flex items-center gap-1"
+                                :class="getEstadoBadge(pedido.EstadoPedido)"
                             >
-                                <div class="flex items-center gap-2 pr-2">
-                                    <span class="font-mono text-gray-400 text-[10px]">{{ producto.Codigo }}</span>
-                                    <span class="text-gray-700">{{ producto.Descripcion }}</span>
+                                <i :class="getEstadoIcono(pedido.EstadoPedido)" class="text-[8px]"></i>
+                                {{ pedido.EstadoPedido || 'Borrador' }}
+                            </span>
+                        </h3>
+                        <p class="text-white/80 text-[10px] truncate mt-0.5">
+                            {{ clienteNombre || 'Sin cliente' }}
+                            <span class="mx-1 opacity-60">•</span>
+                            {{ sucursalNombre || 'Sin sucursal' }}
+                        </p>
+                    </div>
+                </div>
+                <button @click="cerrarModal" class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 flex-shrink-0 transition">
+                    <i class="fas fa-times text-sm"></i>
+                </button>
+            </div>
+
+            <!-- ==================== BODY ==================== -->
+            <div class="flex-1 overflow-y-auto p-3 space-y-3">
+
+                <!-- DATOS PRINCIPALES (SIN OPERADOR) -->
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div class="bg-gray-50 rounded-lg p-2.5 border border-gray-200">
+                        <span class="text-[9px] text-gray-400 font-medium uppercase tracking-wide block">Cliente</span>
+                        <span class="text-xs font-medium text-gray-800 truncate block" :title="clienteNombre">
+                            {{ clienteNombre || 'Sin cliente' }}
+                        </span>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-2.5 border border-gray-200">
+                        <span class="text-[9px] text-gray-400 font-medium uppercase tracking-wide block">Sucursal</span>
+                        <span class="text-xs font-medium text-gray-800 truncate block" :title="sucursalNombre">
+                            {{ sucursalNombre || 'Sin sucursal' }}
+                        </span>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-2.5 border border-gray-200">
+                        <span class="text-[9px] text-gray-400 font-medium uppercase tracking-wide block">Fecha</span>
+                        <span class="text-xs font-medium text-gray-800 truncate block">{{ fechaPedido }}</span>
+                    </div>
+                </div>
+
+                <!-- KPIS -->
+                <div class="grid grid-cols-3 gap-2">
+                    <div class="bg-primary-50 rounded-lg p-2.5 border border-primary-100 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-primary-100 text-primary-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-box text-sm"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="text-[9px] text-gray-500 font-medium uppercase block">Contenedores</span>
+                            <span class="text-sm font-bold text-gray-800">{{ totalContenedores }}</span>
+                        </div>
+                    </div>
+                    <div class="bg-emerald-50 rounded-lg p-2.5 border border-emerald-100 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-cubes text-sm"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="text-[9px] text-gray-500 font-medium uppercase block">Productos</span>
+                            <span class="text-sm font-bold text-gray-800">{{ totalProductos }}</span>
+                        </div>
+                    </div>
+                    <div class="bg-blue-50 rounded-lg p-2.5 border border-blue-100 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-shopping-basket text-sm"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="text-[9px] text-gray-500 font-medium uppercase block">Unidades</span>
+                            <span class="text-sm font-bold text-gray-800">{{ formatearNumero(totalUnidades) }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FECHA DE ENTREGA + OBSERVACIONES -->
+                <div class="grid grid-cols-1 gap-2">
+                    <div v-if="pedido.FechaEntrega" class="bg-primary-50 rounded-lg p-2.5 border border-primary-100 flex items-center gap-2">
+                        <div class="w-8 h-8 rounded-lg bg-primary-100 text-primary-600 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-truck text-sm"></i>
+                        </div>
+                        <div>
+                            <span class="text-[9px] text-gray-500 font-medium uppercase block">Fecha de Entrega</span>
+                            <span class="text-xs font-semibold text-primary-700">{{ formatearFecha(pedido.FechaEntrega) }}</span>
+                        </div>
+                    </div>
+
+                    <div v-if="pedido.Observaciones" class="bg-amber-50 rounded-lg p-2.5 border border-amber-100">
+                        <div class="flex items-start gap-2">
+                            <i class="fas fa-comment-alt text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
+                            <div>
+                                <span class="text-[9px] font-semibold text-amber-800 uppercase block mb-0.5">Observaciones</span>
+                                <p class="text-xs text-gray-700 leading-relaxed">{{ pedido.Observaciones }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LISTA DE CONTENEDORES -->
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                            <i class="fas fa-layer-group text-primary-500 text-[10px]"></i>
+                            Contenedores y Productos
+                        </h4>
+                        <span class="text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+                            {{ detallesAgrupados.length }} grupo(s)
+                        </span>
+                    </div>
+
+                    <div v-if="detallesAgrupados.length === 0" class="text-center text-gray-400 py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+                        <i class="fas fa-inbox text-2xl mb-2 block text-gray-300"></i>
+                        <p class="text-sm">No hay productos registrados</p>
+                    </div>
+
+                    <div v-else class="space-y-2">
+                        <div 
+                            v-for="(item, idx) in detallesAgrupados" 
+                            :key="idx"
+                            class="border border-gray-200 rounded-lg overflow-hidden bg-white"
+                        >
+                            <div class="flex items-center justify-between px-3 py-2 bg-primary-50 border-b border-primary-100">
+                                <div class="flex items-center gap-2 min-w-0 flex-1">
+                                    <span class="font-mono bg-primary-600 text-white px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0">
+                                        #{{ idx + 1 }}
+                                    </span>
+                                    <span class="font-semibold text-gray-800 text-xs truncate">{{ item.Codigo }}</span>
+                                    <span class="text-[9px] text-gray-500 bg-white px-1.5 py-0.5 rounded border border-primary-200 flex-shrink-0">
+                                        Cap: {{ formatearNumero(item.CapacidadTotal) }} und
+                                    </span>
                                 </div>
-                                <span class="font-semibold text-gray-900 bg-gray-100 px-2 py-0.5 rounded text-[11px] flex-shrink-0">
-                                    {{ formatearNumero(producto.Cantidad) }}
+                                <span class="font-bold text-primary-700 text-xs flex-shrink-0 ml-2">
+                                    {{ formatearNumero(item.total_unidades) }} und
                                 </span>
+                            </div>
+
+                            <div class="divide-y divide-gray-100">
+                                <div 
+                                    v-for="(producto, pIdx) in item.productos" 
+                                    :key="pIdx"
+                                    class="flex justify-between items-center py-2 px-3 hover:bg-gray-50 transition"
+                                >
+                                    <div class="flex items-center gap-2 min-w-0 flex-1 pr-2">
+                                        <span class="font-mono text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">
+                                            {{ producto.Codigo }}
+                                        </span>
+                                        <span class="text-xs text-gray-700 truncate" :title="producto.Descripcion">
+                                            {{ producto.Descripcion }}
+                                        </span>
+                                    </div>
+                                    <span class="font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded text-xs flex-shrink-0 tabular-nums">
+                                        {{ formatearNumero(producto.Cantidad) }} und
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- FOOTER FIJO -->
-        <div class="px-4 py-2.5 border-t border-gray-100 bg-gray-50 flex justify-between items-center flex-shrink-0">
-            <button 
-                @click="cerrarModal"
-                class="px-3.5 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-lg font-medium transition shadow-2xs cursor-pointer"
-            >
-                Cerrar
-            </button>
-            
-            <button 
-                v-if="pedido.ActivoInactivo === 1"
-                @click="abrirPdf(pedido.IdPedidoCliente)"
-                class="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition shadow-2xs flex items-center gap-1.5 cursor-pointer"
-            >
-                <i class="fas fa-file-pdf"></i>
-                <span>PDF</span>
-            </button>
+            <!-- ==================== FOOTER ==================== -->
+            <div class="border-t border-gray-200 p-3 bg-gray-50 flex justify-between items-center flex-shrink-0">
+                <button 
+                    @click="cerrarModal"
+                    class="px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-md text-xs font-medium transition flex items-center gap-1.5"
+                >
+                    <i class="fas fa-times text-[10px]"></i>
+                    Cerrar
+                </button>
+                
+                <button 
+                    v-if="pedido.ActivoInactivo === 1"
+                    @click="abrirPdf(pedido.IdPedidoCliente)"
+                    class="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5"
+                >
+                    <i class="fas fa-file-pdf text-[10px]"></i>
+                    Descargar PDF
+                </button>
+            </div>
         </div>
     </div>
 </template>
 
 <style scoped>
-/* Asegura que el scroll funcione perfectamente en navegadores webkit */
-.custom-scroll {
-    overflow-y: auto;
-    max-height: 55vh;
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
 }
-.custom-scroll::-webkit-scrollbar {
-    width: 5px;
-}
-.custom-scroll::-webkit-scrollbar-track {
+
+.overflow-y-auto::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 4px;
 }
-.custom-scroll::-webkit-scrollbar-thumb {
-    body { background: #cbd5e1; }
-    background: #cbd5e1;
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
     border-radius: 4px;
 }
-.custom-scroll::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+
+@media (min-width: 1024px) {
+    input, button {
+        font-size: 13px !important;
+    }
 }
 </style>

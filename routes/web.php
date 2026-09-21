@@ -1423,6 +1423,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // ✅ NUEVO: Cambiar tipo de precio del borrador
                     Route::post('/carrito/cambiar-tipo-precio', [PedidoClienteController::class, 'cambiarTipoPrecio'])
                         ->name('operacion.pedidos-clientes.api.carrito.cambiar-tipo-precio');
+
+                    // ✅ NUEVO: Recalcular tipo de precio y devolver datos frescos (para Review)
+                    Route::post('/{id}/recalcular-tipo-precio', [PedidoClienteController::class, 'recalcularTipoPrecio'])
+                        ->name('operacion.pedidos-clientes.pedidos.recalcular-tipo-precio');
+
                     // API: Eliminar del carrito
                     Route::delete('/carrito/detalle/{id}', [PedidoClienteController::class, 'eliminarDelCarrito'])
                         ->name('operacion.pedidos-clientes.api.carrito.eliminar');
