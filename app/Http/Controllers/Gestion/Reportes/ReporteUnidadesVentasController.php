@@ -14,7 +14,7 @@ class ReporteUnidadesVentasController extends Controller
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         $empresa = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente')
             ->where('IdCliente', $clienteId)
@@ -34,6 +34,64 @@ class ReporteUnidadesVentasController extends Controller
         ]);
     }
 
+    /**
+     * 🔥 NUEVO: Lista de productos disponibles para autocomplete
+     * Filtrados por cliente, y opcionalmente por sucursal y rango de fechas.
+     */
+    public function getProductos(Request $request)
+    {
+        try {
+            $clienteId = session('cliente_id');
+            $sucursalId = $request->sucursal_id;
+            $fechaInicio = $request->fecha_inicio;
+            $fechaFin = $request->fecha_fin;
+
+            $query = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('impuestos_ventas')
+                ->join('impuestos_ventas_detalle', 'impuestos_ventas.IdVentas', '=', 'impuestos_ventas_detalle.idventas')
+                ->join('inventario_relacion_ventainventario', 'impuestos_ventas_detalle.idrelacionventainventario', '=', 'inventario_relacion_ventainventario.IdDetalleProducto')
+                ->where('impuestos_ventas.IdCliente', $clienteId)
+                ->where('impuestos_ventas.IdEstado', 1);
+
+            // Filtrar por sucursal solo si viene
+            if ($sucursalId && $sucursalId !== '') {
+                $query->where('impuestos_ventas.IdClienteSucursal', $sucursalId);
+            }
+
+            // Filtrar por rango de fechas si vienen
+            if ($fechaInicio && !empty($fechaInicio)) {
+                $query->where('impuestos_ventas.FechaVenta', '>=', $fechaInicio);
+            }
+            if ($fechaFin && !empty($fechaFin)) {
+                $query->where('impuestos_ventas.FechaVenta', '<=', $fechaFin . ' 23:59:59');
+            }
+
+            $productos = $query->select('inventario_relacion_ventainventario.Detalle as nombre')
+                ->distinct()
+                ->orderBy('inventario_relacion_ventainventario.Detalle')
+                ->limit(5000)
+                ->pluck('nombre')
+                ->filter()  // quitar nulls
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'productos' => $productos,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en ReporteUnidadesVentas::getProductos', [
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
     public function getData(Request $request)
     {
         try {
@@ -41,12 +99,14 @@ class ReporteUnidadesVentasController extends Controller
                 'sucursal_id' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
                 'fecha_inicio' => 'nullable|date',
                 'fecha_fin' => 'nullable|date',
+                'producto' => 'nullable|string',
             ]);
 
             $clienteId = session('cliente_id');
             $sucursalId = $request->sucursal_id;
             $fechaInicio = $request->fecha_inicio;
             $fechaFin = $request->fecha_fin;
+            $productoFiltro = $request->producto;
 
             // Obtener todos los operadores
             $operadores = DB::connection('mysql_gestion_comercial_alimentos')
@@ -54,7 +114,6 @@ class ReporteUnidadesVentasController extends Controller
                 ->join('todos_identificador as i', 'o.IdIdentificador', '=', 'i.IdIdentificador')
                 ->pluck('i.Nombre', 'o.IdOperador');
 
-            // 🔥 CONSULTA SIMPLIFICADA - SIN leftJoin innecesarios
             $query = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->join('impuestos_ventas_detalle', 'impuestos_ventas.IdVentas', '=', 'impuestos_ventas_detalle.idventas')
@@ -70,6 +129,11 @@ class ReporteUnidadesVentasController extends Controller
                 $query->where('impuestos_ventas.FechaVenta', '<=', $fechaFin . ' 23:59:59');
             }
 
+            // 🔥 NUEVO: Filtro por producto (coincidencia exacta)
+            if ($productoFiltro && !empty($productoFiltro)) {
+                $query->where('inventario_relacion_ventainventario.Detalle', $productoFiltro);
+            }
+
             $totalRegistros = $query->count();
 
             // Calcular días del rango
@@ -82,7 +146,6 @@ class ReporteUnidadesVentasController extends Controller
 
             $esRangoGrande = ($diasRango > 90) || ($totalRegistros > 5000);
 
-            // 🔥 SELECT SIMPLIFICADO - sin descripcion_producto
             $resultados = $query->select([
                     'impuestos_ventas.FechaVenta',
                     DB::raw("DATE_FORMAT(impuestos_ventas.FechaVenta, '%d/%m/%Y') as fecha_formateada"),
@@ -102,11 +165,11 @@ class ReporteUnidadesVentasController extends Controller
             // Agrupar resultados
             $reporteAgrupado = [];
             $contadorDetalles = 0;
-            
+
             foreach ($resultados as $row) {
                 $fecha = $row->fecha_formateada;
                 $producto = $row->producto;
-                
+
                 if (!isset($reporteAgrupado[$fecha])) {
                     $reporteAgrupado[$fecha] = [
                         'fecha' => $fecha,
@@ -116,7 +179,7 @@ class ReporteUnidadesVentasController extends Controller
                         'total_ventas_fecha' => 0
                     ];
                 }
-                
+
                 if (!isset($reporteAgrupado[$fecha]['productos'][$producto])) {
                     $reporteAgrupado[$fecha]['productos'][$producto] = [
                         'producto' => $producto,
@@ -125,9 +188,9 @@ class ReporteUnidadesVentasController extends Controller
                         'total_ventas_producto' => 0
                     ];
                 }
-                
+
                 $operadorNombre = $operadores[$row->IdOperadorIngresa] ?? 'Desconocido';
-                
+
                 $detalle = [
                     'numero_factura' => $row->NumeroFactura,
                     'detalle_producto' => $row->producto,
@@ -136,7 +199,7 @@ class ReporteUnidadesVentasController extends Controller
                     'total_bolivianos' => (float) $row->totalbolivianos,
                     'operador' => $operadorNombre
                 ];
-                
+
                 $reporteAgrupado[$fecha]['productos'][$producto]['detalles'][] = $detalle;
                 $reporteAgrupado[$fecha]['productos'][$producto]['total_unidades_producto'] += (float) $row->unidades;
                 $reporteAgrupado[$fecha]['productos'][$producto]['total_ventas_producto'] += (float) $row->totalbolivianos;
@@ -144,11 +207,11 @@ class ReporteUnidadesVentasController extends Controller
                 $reporteAgrupado[$fecha]['total_ventas_fecha'] += (float) $row->totalbolivianos;
                 $contadorDetalles++;
             }
-            
+
             foreach ($reporteAgrupado as $fecha => $data) {
                 $reporteAgrupado[$fecha]['productos'] = array_values($data['productos']);
             }
-            
+
             $totalUnidadesGeneral = 0;
             $totalVentasGeneral = 0;
             foreach ($reporteAgrupado as $fecha) {
@@ -179,7 +242,7 @@ class ReporteUnidadesVentasController extends Controller
                 'line' => $e->getLine(),
                 'file' => $e->getFile()
             ]);
-            
+
             return response()->json([
                 'success' => false,
                 'error' => $e->getMessage()

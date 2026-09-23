@@ -822,8 +822,12 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // Unidades Vendidas
             Route::prefix('unidades-ventas')->group(function () {
-                Route::get('/', [ReporteUnidadesVentasController::class, 'index'])->name('gestion.reportes.unidades-ventas.index');
-                Route::get('/data', [ReporteUnidadesVentasController::class, 'getData'])->name('gestion.reportes.unidades-ventas.data');
+                Route::get('/', [ReporteUnidadesVentasController::class, 'index'])
+                    ->name('gestion.reportes.unidades-ventas.index');
+                Route::get('/data', [ReporteUnidadesVentasController::class, 'getData'])
+                    ->name('gestion.reportes.unidades-ventas.data');
+                Route::get('/productos', [ReporteUnidadesVentasController::class, 'getProductos'])
+                    ->name('gestion.reportes.unidades-ventas.productos');
             });
 
             // Ventas por Sucursal
