@@ -276,6 +276,8 @@ class MinimosPorClienteController extends Controller
 
     /**
      * ✅ EXPORTAR EXCEL REAL (.xls) usando PhpSpreadsheet
+     *    - Hoja 1: RESUMEN GENERAL
+     *    - Hojas 2..N: UNA HOJA POR CLIENTE (agrupada por Grupo de Análisis)
      */
     public function exportarExcel(Request $request)
     {
@@ -296,160 +298,322 @@ class MinimosPorClienteController extends Controller
             return redirect()->back()->with('error', 'No hay datos para exportar.');
         }
 
+        // ✅ EMPRESA + OPERADOR
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT']);
+
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', session('operador_id'))
+            ->first(['todos_identificador.Nombre as nombre']);
+
+        $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
+
         // ============================================================
-        // GENERAR EXCEL REAL CON PHPSPREADSHEET
+        // CREAR SPREADSHEET
         // ============================================================
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-        
+
         // ============================================================
-        // HOJA 1: RESUMEN
+        // ✅ HOJA 1: RESUMEN GENERAL
         // ============================================================
-        $sheet1 = $spreadsheet->getActiveSheet();
-        $sheet1->setTitle('Resumen');
+        $sheetResumen = $spreadsheet->getActiveSheet();
+        $sheetResumen->setTitle('Resumen');
 
         $fila = 1;
 
         // Título
-        $sheet1->setCellValue('A' . $fila, 'RESUMEN DE MÍNIMOS POR CLIENTE');
-        $sheet1->mergeCells('A' . $fila . ':G' . $fila);
-        $sheet1->getStyle('A' . $fila)->getFont()->setBold(true)->setSize(14);
-        $sheet1->getStyle('A' . $fila)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-        $fila++;
-        
-        // Subtítulo
-        $sheet1->setCellValue('A' . $fila, 'Fecha de impresión: ' . Carbon::now('America/La_Paz')->format('d/m/Y H:i'));
-        $sheet1->mergeCells('A' . $fila . ':G' . $fila);
-        $sheet1->getStyle('A' . $fila)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-        $fila++;
+        $sheetResumen->setCellValue('A' . $fila, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'));
+        $sheetResumen->mergeCells('A' . $fila . ':H' . $fila);
+        $sheetResumen->getStyle('A' . $fila)->getFont()->setBold(true)->setSize(14)
+            ->getColor()->setRGB('1E3C78');
+        $sheetResumen->getStyle('A' . $fila)->getAlignment()
+            ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
         $fila++;
 
-        // Encabezados
-        $sheet1->setCellValue('A' . $fila, 'N°');
-        $sheet1->setCellValue('B' . $fila, 'CI/NIT');
-        $sheet1->setCellValue('C' . $fila, 'CLIENTE');
-        $sheet1->setCellValue('D' . $fila, 'SUCURSAL');
-        $sheet1->setCellValue('E' . $fila, 'GRUPO');
-        $sheet1->setCellValue('F' . $fila, 'MÍNIMO');
-        $sheet1->setCellValue('G' . $fila, 'ESTADO');
+        if (!empty($empresa->NIT)) {
+            $sheetResumen->setCellValue('A' . $fila, 'NIT: ' . $empresa->NIT);
+            $sheetResumen->mergeCells('A' . $fila . ':H' . $fila);
+            $sheetResumen->getStyle('A' . $fila)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $fila++;
+        }
 
-        $sheet1->getStyle('A' . $fila . ':G' . $fila)->getFont()->setBold(true);
-        $sheet1->getStyle('A' . $fila . ':G' . $fila)->getFill()
+        $sheetResumen->setCellValue('A' . $fila, 'RESUMEN DE MÍNIMOS POR CLIENTE');
+        $sheetResumen->mergeCells('A' . $fila . ':H' . $fila);
+        $sheetResumen->getStyle('A' . $fila)->getFont()->setBold(true)->setSize(13)
+            ->getColor()->setRGB('1E3C78');
+        $sheetResumen->getStyle('A' . $fila)->getAlignment()
+            ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $fila++;
+
+        $sheetResumen->setCellValue('A' . $fila, 'Fecha: ' . $fechaImpresion . '   ·   Generado por: ' . ($operador->nombre ?? '-'));
+        $sheetResumen->mergeCells('A' . $fila . ':H' . $fila);
+        $sheetResumen->getStyle('A' . $fila)->getFont()->setItalic(true)->setSize(9)
+            ->getColor()->setRGB('666666');
+        $sheetResumen->getStyle('A' . $fila)->getAlignment()
+            ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $fila += 2;
+
+        // Contadores
+        $sheetResumen->setCellValue('A' . $fila, 'Clientes: ' . $datos['contadores']['total_clientes']
+            . '  ·  Grupos: ' . $datos['contadores']['total_grupos']
+            . '  ·  Productos: ' . $datos['contadores']['total_productos']
+            . '  ·  Sin mínimo: ' . $datos['contadores']['total_sin_minimo']
+            . '  ·  Sin precio: ' . $datos['contadores']['total_sin_precio']);
+        $sheetResumen->mergeCells('A' . $fila . ':H' . $fila);
+        $sheetResumen->getStyle('A' . $fila)->getFont()->setBold(true)->setSize(9)
+            ->getColor()->setRGB('1E3C78');
+        $sheetResumen->getStyle('A' . $fila)->getFill()
             ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-            ->getStartColor()->setRGB('D9E1F2');
+            ->getStartColor()->setRGB('F0F5FF');
+        $sheetResumen->getStyle('A' . $fila)->getAlignment()
+            ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+        $fila += 2;
+
+        // Encabezados del resumen
+        $headersResumen = ['N°', 'CI/NIT', 'CLIENTE', 'SUCURSAL', 'GRUPO', 'MÍNIMO', 'PRODUCTOS', 'ESTADO'];
+        $col = 'A';
+        foreach ($headersResumen as $h) {
+            $sheetResumen->setCellValue($col . $fila, $h);
+            $sheetResumen->getStyle($col . $fila)->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
+            $sheetResumen->getStyle($col . $fila)->getFill()
+                ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                ->getStartColor()->setRGB('1E3C78');
+            $sheetResumen->getStyle($col . $fila)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $col++;
+        }
         $fila++;
 
-        // Datos
         $contador = 0;
         foreach ($datos['clientes'] as $cli) {
+            $primerGrupoDelCliente = true;
+
             foreach ($cli['Grupos'] as $grp) {
                 $contador++;
-                $minimo = $grp['Configurado'] ? number_format($grp['CantidadMinimaGrupo'], 0, ',', '.') : '-';
+                $minimo = $grp['Configurado']
+                    ? number_format($grp['CantidadMinimaGrupo'], 0, ',', '.') . ' und'
+                    : '-';
                 $estado = $grp['Configurado'] ? 'Configurado' : 'Sin configurar';
+                $cantProd = count($grp['Productos']);
 
-                $sheet1->setCellValue('A' . $fila, $contador);
-                $sheet1->setCellValue('B' . $fila, $cli['CI_NIT'] ?? '');
-                $sheet1->setCellValue('C' . $fila, $cli['Nombre'] ?? '');
-                $sheet1->setCellValue('D' . $fila, $cli['Sucursal'] ?? '');
-                $sheet1->setCellValue('E' . $fila, $grp['NombreGrupo'] ?? '');
-                $sheet1->setCellValue('F' . $fila, $minimo);
-                $sheet1->setCellValue('G' . $fila, $estado);
+                $sheetResumen->setCellValue('A' . $fila, $contador);
+                $sheetResumen->setCellValue('B' . $fila, $cli['CI_NIT'] ?? '');
+                $sheetResumen->setCellValue('C' . $fila, $primerGrupoDelCliente ? ($cli['Nombre'] ?? '') : '');
+                $sheetResumen->setCellValue('D' . $fila, $primerGrupoDelCliente ? ($cli['Sucursal'] ?? '') : '');
+                $sheetResumen->setCellValue('E' . $fila, $grp['NombreGrupo'] ?? '');
+                $sheetResumen->setCellValue('F' . $fila, $minimo);
+                $sheetResumen->setCellValue('G' . $fila, $cantProd);
+                $sheetResumen->setCellValue('H' . $fila, $estado);
 
                 // Colorear estado
                 if ($grp['Configurado']) {
-                    $sheet1->getStyle('G' . $fila)->getFont()->getColor()->setRGB('1B5E20');
+                    $sheetResumen->getStyle('H' . $fila)->getFont()->getColor()->setRGB('1B5E20');
+                    $sheetResumen->getStyle('H' . $fila)->getFont()->setBold(true);
                 } else {
-                    $sheet1->getStyle('G' . $fila)->getFont()->getColor()->setRGB('E65100');
+                    $sheetResumen->getStyle('H' . $fila)->getFont()->getColor()->setRGB('E65100');
+                    $sheetResumen->getStyle('H' . $fila)->getFont()->setBold(true);
+                }
+
+                // Fondo suave para agrupar visualmente al cliente
+                if ($primerGrupoDelCliente) {
+                    $sheetResumen->getStyle('A' . $fila . ':D' . $fila)->getFill()
+                        ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('F5F7FC');
                 }
 
                 $fila++;
+                $primerGrupoDelCliente = false;
             }
+
+            // Fila separadora entre clientes
+            $sheetResumen->setCellValue('A' . $fila, '');
+            $fila++;
         }
 
-        // Autoajustar columnas
-        foreach (range('A', 'G') as $col) {
-            $sheet1->getColumnDimension($col)->setAutoSize(true);
+        // Autoajustar
+        foreach (range('A', 'H') as $col) {
+            $sheetResumen->getColumnDimension($col)->setAutoSize(true);
         }
 
         // ============================================================
-        // HOJA 2: DETALLE
+        // ✅ HOJA POR CADA CLIENTE
         // ============================================================
-        $sheet2 = $spreadsheet->createSheet();
-        $sheet2->setTitle('Detalle');
-
-        $fila2 = 1;
-
-        $sheet2->setCellValue('A' . $fila2, 'DETALLE DE PRODUCTOS CON PRECIOS Y MÍNIMOS');
-        $sheet2->mergeCells('A' . $fila2 . ':J' . $fila2);
-        $sheet2->getStyle('A' . $fila2)->getFont()->setBold(true)->setSize(14);
-        $sheet2->getStyle('A' . $fila2)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-        $fila2++;
-        
-        $sheet2->setCellValue('A' . $fila2, 'Fecha de impresión: ' . Carbon::now('America/La_Paz')->format('d/m/Y H:i'));
-        $sheet2->mergeCells('A' . $fila2 . ':J' . $fila2);
-        $sheet2->getStyle('A' . $fila2)->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
-        $fila2++;
-        $fila2++;
-
-        // Encabezados
-        $sheet2->setCellValue('A' . $fila2, 'N°');
-        $sheet2->setCellValue('B' . $fila2, 'CI/NIT');
-        $sheet2->setCellValue('C' . $fila2, 'CLIENTE');
-        $sheet2->setCellValue('D' . $fila2, 'GRUPO');
-        $sheet2->setCellValue('E' . $fila2, 'MÍN GRUPO');
-        $sheet2->setCellValue('F' . $fila2, 'PRODUCTO');
-        $sheet2->setCellValue('G' . $fila2, 'S/F');
-        $sheet2->setCellValue('H' . $fila2, 'C/F');
-        $sheet2->setCellValue('I' . $fila2, 'MÍN PROD');
-        $sheet2->setCellValue('J' . $fila2, 'ESTADO');
-
-        $sheet2->getStyle('A' . $fila2 . ':J' . $fila2)->getFont()->setBold(true);
-        $sheet2->getStyle('A' . $fila2 . ':J' . $fila2)->getFill()
-            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-            ->getStartColor()->setRGB('D9E1F2');
-        $fila2++;
-
-        $contador2 = 0;
         foreach ($datos['clientes'] as $cli) {
+            // Nombre de hoja: máx 31 caracteres, sin caracteres inválidos
+            $nombreHoja = $this->generarNombreHoja($cli['Nombre']);
+
+            $sheetCliente = $spreadsheet->createSheet();
+            $sheetCliente->setTitle($nombreHoja);
+
+            $f = 1;
+
+            // ============ HEADER DEL CLIENTE ============
+            $sheetCliente->setCellValue('A' . $f, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'));
+            $sheetCliente->mergeCells('A' . $f . ':H' . $f);
+            $sheetCliente->getStyle('A' . $f)->getFont()->setBold(true)->setSize(12)
+                ->getColor()->setRGB('1E3C78');
+            $sheetCliente->getStyle('A' . $f)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $f++;
+
+            $sheetCliente->setCellValue('A' . $f, 'MÍNIMOS Y PRECIOS - ' . mb_strtoupper($cli['Nombre'], 'UTF-8'));
+            $sheetCliente->mergeCells('A' . $f . ':H' . $f);
+            $sheetCliente->getStyle('A' . $f)->getFont()->setBold(true)->setSize(11)
+                ->getColor()->setRGB('1E3C78');
+            $sheetCliente->getStyle('A' . $f)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $f++;
+
+            if (!empty($cli['CI_NIT'])) {
+                $sheetCliente->setCellValue('A' . $f, 'CI/NIT: ' . $cli['CI_NIT'] . '   ·   Sucursal: ' . ($cli['Sucursal'] ?? '-'));
+                $sheetCliente->mergeCells('A' . $f . ':H' . $f);
+                $sheetCliente->getStyle('A' . $f)->getFont()->setItalic(true)->setSize(9)
+                    ->getColor()->setRGB('666666');
+                $sheetCliente->getStyle('A' . $f)->getAlignment()
+                    ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $f++;
+            }
+
+            $sheetCliente->setCellValue('A' . $f, 'Fecha: ' . $fechaImpresion . '   ·   Generado por: ' . ($operador->nombre ?? '-'));
+            $sheetCliente->mergeCells('A' . $f . ':H' . $f);
+            $sheetCliente->getStyle('A' . $f)->getFont()->setItalic(true)->setSize(9)
+                ->getColor()->setRGB('666666');
+            $sheetCliente->getStyle('A' . $f)->getAlignment()
+                ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+            $f += 2;
+
+            // ============ RECORRER GRUPOS ============
             foreach ($cli['Grupos'] as $grp) {
-                $minGrupo = $grp['Configurado'] ? number_format($grp['CantidadMinimaGrupo'], 0, ',', '.') : '-';
+                // ✅ Título del GRUPO
+                $minimoGrupo = $grp['Configurado']
+                    ? 'Mínimo del grupo: ' . number_format($grp['CantidadMinimaGrupo'], 0, ',', '.') . ' und'
+                    : 'Mínimo del grupo: SIN CONFIGURAR';
+
+                $estadoGrupo = $grp['Configurado'] ? 'CONFIGURADO' : 'SIN CONFIGURAR';
+
+                $sheetCliente->setCellValue('A' . $f, '  [' . $grp['NombreGrupo'] . ']   ·   ' . $minimoGrupo . '   ·   ' . $estadoGrupo);
+                $sheetCliente->mergeCells('A' . $f . ':H' . $f);
+                $sheetCliente->getStyle('A' . $f)->getFont()->setBold(true)->setSize(10)
+                    ->getColor()->setRGB('1E3C78');
+                $sheetCliente->getStyle('A' . $f)->getFill()
+                    ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('E8EAF6');
+                $f++;
+
+                // ============ ENCABEZADOS PRODUCTOS ============
+                $headers = ['Nº', 'CÓDIGO', 'PRODUCTO', 'SIN FACTURA', 'CON FACTURA', 'MÍN. PRODUCTO', 'ESTADO', 'OBS.'];
+                $col = 'A';
+                foreach ($headers as $h) {
+                    $sheetCliente->setCellValue($col . $f, $h);
+                    $sheetCliente->getStyle($col . $f)->getFont()->setBold(true)->setSize(9)
+                        ->getColor()->setRGB('FFFFFF');
+                    $sheetCliente->getStyle($col . $f)->getFill()
+                        ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                        ->getStartColor()->setRGB('1E3C78');
+                    $sheetCliente->getStyle($col . $f)->getAlignment()
+                        ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                    $col++;
+                }
+                $f++;
+
+                // ============ PRODUCTOS DEL GRUPO ============
+                $i = 0;
+                $sumaSF = 0;
+                $sumaCF = 0;
+                $sumaMin = 0;
 
                 foreach ($grp['Productos'] as $prod) {
-                    $contador2++;
-                    $sf = $prod['TienePrecio'] ? number_format($prod['PrecioSinFactura'], 2, ',', '.') : '0.00';
-                    $cf = $prod['TienePrecio'] ? number_format($prod['PrecioConFactura'], 2, ',', '.') : '0.00';
-                    $minProd = $prod['TienePrecio'] ? number_format($prod['PedidoMinimo'], 0, ',', '.') : '0';
-                    $estado = $prod['TienePrecio'] ? 'OK' : 'Sin precio';
+                    $i++;
 
-                    $sheet2->setCellValue('A' . $fila2, $contador2);
-                    $sheet2->setCellValue('B' . $fila2, $cli['CI_NIT'] ?? '');
-                    $sheet2->setCellValue('C' . $fila2, $cli['Nombre'] ?? '');
-                    $sheet2->setCellValue('D' . $fila2, $grp['NombreGrupo'] ?? '');
-                    $sheet2->setCellValue('E' . $fila2, $minGrupo);
-                    $sheet2->setCellValue('F' . $fila2, $prod['Descripcion'] ?? '');
-                    $sheet2->setCellValue('G' . $fila2, $sf);
-                    $sheet2->setCellValue('H' . $fila2, $cf);
-                    $sheet2->setCellValue('I' . $fila2, $minProd);
-                    $sheet2->setCellValue('J' . $fila2, $estado);
+                    $sf  = $prod['TienePrecio'] ? (float) $prod['PrecioSinFactura'] : 0;
+                    $cf  = $prod['TienePrecio'] ? (float) $prod['PrecioConFactura'] : 0;
+                    $min = $prod['TienePrecio'] ? (int)   $prod['PedidoMinimo']    : 0;
+                    $estado = $prod['TienePrecio'] ? 'OK' : 'SIN PRECIO';
 
+                    $sumaSF  += $sf;
+                    $sumaCF  += $cf;
+                    $sumaMin += $min;
+
+                    $sheetCliente->setCellValue('A' . $f, $i);
+                    $sheetCliente->setCellValue('B' . $f, $prod['Codigo'] ?? '-');
+                    $sheetCliente->setCellValue('C' . $f, $prod['Descripcion'] ?? '-');
+                    $sheetCliente->setCellValue('D' . $f, $sf);
+                    $sheetCliente->setCellValue('E' . $f, $cf);
+                    $sheetCliente->setCellValue('F' . $f, $min);
+                    $sheetCliente->setCellValue('G' . $f, $estado);
+                    $sheetCliente->setCellValue('H' . $f, '');
+
+                    // Moneda
+                    $sheetCliente->getStyle('D' . $f . ':E' . $f)
+                        ->getNumberFormat()->setFormatCode('"Bs. "#,##0.00');
+
+                    // Centrar columnas numéricas
+                    $sheetCliente->getStyle('A' . $f)
+                        ->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                    $sheetCliente->getStyle('F' . $f . ':G' . $f)
+                        ->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+                    // Color del estado
                     if ($prod['TienePrecio']) {
-                        $sheet2->getStyle('J' . $fila2)->getFont()->getColor()->setRGB('1B5E20');
+                        $sheetCliente->getStyle('G' . $f)->getFont()->setBold(true)->getColor()->setRGB('1B5E20');
                     } else {
-                        $sheet2->getStyle('J' . $fila2)->getFont()->getColor()->setRGB('E65100');
+                        $sheetCliente->getStyle('G' . $f)->getFont()->setBold(true)->getColor()->setRGB('E65100');
+                        // Fondo rosado claro en toda la fila
+                        $sheetCliente->getStyle('A' . $f . ':H' . $f)->getFill()
+                            ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                            ->getStartColor()->setRGB('FFF5F5');
                     }
 
-                    $fila2++;
+                    $f++;
                 }
-            }
-        }
 
-        foreach (range('A', 'J') as $col) {
-            $sheet2->getColumnDimension($col)->setAutoSize(true);
+                // ============ SUBTOTAL DEL GRUPO ============
+                $sheetCliente->setCellValue('A' . $f, 'Subtotal ' . $grp['NombreGrupo']);
+                $sheetCliente->mergeCells('A' . $f . ':C' . $f);
+                $sheetCliente->getStyle('A' . $f)->getFont()->setBold(true)
+                    ->getColor()->setRGB('1E3C78');
+                $sheetCliente->getStyle('A' . $f)->getAlignment()
+                    ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_RIGHT);
+
+                $sheetCliente->setCellValue('D' . $f, $sumaSF);
+                $sheetCliente->setCellValue('E' . $f, $sumaCF);
+                $sheetCliente->setCellValue('F' . $f, $sumaMin);
+                $sheetCliente->setCellValue('G' . $f, $i . ' prod.');
+                $sheetCliente->setCellValue('H' . $f, '');
+
+                $sheetCliente->getStyle('D' . $f . ':E' . $f)
+                    ->getNumberFormat()->setFormatCode('"Bs. "#,##0.00');
+                $sheetCliente->getStyle('D' . $f . ':F' . $f)
+                    ->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+                $sheetCliente->getStyle('G' . $f)
+                    ->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
+
+                $sheetCliente->getStyle('A' . $f . ':H' . $f)->getFill()
+                    ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
+                    ->getStartColor()->setRGB('F5F7FC');
+                $sheetCliente->getStyle('A' . $f . ':H' . $f)->getFont()->setBold(true);
+
+                $f += 2;
+            }
+
+            // Autoajustar
+            foreach (range('A', 'H') as $col) {
+                $sheetCliente->getColumnDimension($col)->setAutoSize(true);
+            }
+
+            // Congelar la primera fila del header
+            $sheetCliente->freezePane('A2');
         }
 
         // ============================================================
         // DESCARGAR
         // ============================================================
-        $nombreArchivo = 'Minimos_Clientes_' . Carbon::now('America/La_Paz')->format('Y-m-d') . '.xls';
+        $nombreArchivo = 'Minimos_Clientes_' . Carbon::now('America/La_Paz')->format('Y-m-d_His') . '.xls';
 
         if (ob_get_length()) {
             ob_end_clean();
@@ -462,6 +626,28 @@ class MinimosPorClienteController extends Controller
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xls($spreadsheet);
         $writer->save('php://output');
         exit();
+    }
+
+    /**
+     * ✅ HELPER: Generar nombre de hoja válido (máx 31 caracteres, sin caracteres inválidos)
+     */
+    private function generarNombreHoja($nombre, $indice = null)
+    {
+        // Caracteres inválidos en Excel: \ / ? * [ ] :
+        $nombre = str_replace(['\\', '/', '?', '*', '[', ']', ':'], '', $nombre);
+        $nombre = trim($nombre);
+
+        // Máximo 31 caracteres
+        if (mb_strlen($nombre, 'UTF-8') > 31) {
+            $nombre = mb_substr($nombre, 0, 28, 'UTF-8') . '...';
+        }
+
+        // Si quedó vacío, usar genérico
+        if (empty($nombre)) {
+            $nombre = 'Cliente_' . ($indice ?? rand(1000, 9999));
+        }
+
+        return $nombre;
     }
 
     // ============================================================

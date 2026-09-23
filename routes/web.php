@@ -132,6 +132,8 @@ use App\Http\Controllers\Gestion\Inventario\ReporteProductosBaseController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoClientesController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ClienteGrupoController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\MinimosPorClienteController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePreciosMinimosController;
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================

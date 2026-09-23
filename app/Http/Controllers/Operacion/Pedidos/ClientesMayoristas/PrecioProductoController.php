@@ -927,4 +927,7 @@ class PrecioProductoController extends Controller
         $pdf->Output($nombreArchivo, 'D');
         exit;
     }
+    
+
+
 }

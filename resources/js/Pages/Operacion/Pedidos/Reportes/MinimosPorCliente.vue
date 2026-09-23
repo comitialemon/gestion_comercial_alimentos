@@ -450,13 +450,6 @@ const formatearNumero = (valor, decimales = 0) => {
                                 <span class="text-[10px] bg-white text-primary-700 px-2 py-0.5 rounded-full border border-primary-200 font-medium">
                                     {{ cliente.TotalGrupos }} grupo(s)
                                 </span>
-                                <button
-                                    @click.stop="abrirModalMinimos(cliente)"
-                                    class="text-[10px] bg-primary-600 text-white px-2 py-0.5 rounded-md font-medium hover:bg-primary-700 transition flex items-center gap-1"
-                                >
-                                    <i class="fas fa-cog text-[9px]"></i>
-                                    Configurar
-                                </button>
                             </div>
                         </button>
 
