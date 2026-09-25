@@ -2,8 +2,8 @@
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { ref, watch, onMounted, onUnmounted, computed, inject } from 'vue'
-import axios from 'axios'
 import ShowModal from './ShowModal.vue'
+import AsignarGruposModalContenedor from './AsignarGruposModalContenedor.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -39,6 +39,22 @@ const abrirModal = (contenedor) => {
 const cerrarModal = () => {
     modalVisible.value = false
     contenedorSeleccionado.value = null
+}
+
+// =============================================
+// MODAL DE ASIGNAR GRUPOS
+// =============================================
+const modalGruposVisible = ref(false)
+const contenedorParaGrupos = ref(null)
+
+const abrirModalGrupos = (contenedor) => {
+    contenedorParaGrupos.value = contenedor
+    modalGruposVisible.value = true
+}
+
+const cerrarModalGrupos = () => {
+    modalGruposVisible.value = false
+    contenedorParaGrupos.value = null
 }
 
 // =============================================
@@ -122,16 +138,8 @@ const actualizarExpandidas = () => {
 }
 
 // =============================================
-// ACCIONES
+// ACTUALIZAR DATOS
 // =============================================
-const irANuevo = () => {
-    router.get('/operacion/pedidos/clientes-mayoristas/contenedores/create')
-}
-
-const irAEditar = (contenedor) => {
-    router.get(`/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}/edit`)
-}
-
 const actualizarDatosLocales = () => {
     const params = {
         sucursal_id: sucursalId.value || undefined,
@@ -139,7 +147,7 @@ const actualizarDatosLocales = () => {
         buscar: buscador.value || undefined
     }
     
-    router.get('/operacion/pedidos/clientes-mayoristas/contenedores', params, {
+    router.get('/operacion/pedidos/clientes-mayoristas/contenedores/supervisor', params, {
         preserveState: true,
         preserveScroll: true,
         replace: true,
@@ -150,8 +158,28 @@ const actualizarDatosLocales = () => {
     })
 }
 
-const aplicarFiltros = () => {
+const handleActualizar = () => {
     actualizarDatosLocales()
+}
+
+// =============================================
+// ACCIONES
+// =============================================
+const aplicarFiltros = () => {
+    const params = {
+        sucursal_id: sucursalId.value || undefined,
+        estado: estadoFiltro.value || undefined,
+        buscar: buscador.value || undefined
+    }
+    
+    router.get('/operacion/pedidos/clientes-mayoristas/contenedores/supervisor', params, {
+        preserveState: true,
+        replace: true,
+        onSuccess: (page) => {
+            contenedoresData.value = page.props.contenedores
+            setTimeout(() => actualizarExpandidas(), 100)
+        }
+    })
 }
 
 let timeoutBuscador
@@ -181,64 +209,6 @@ const construirUrlConFiltros = (url) => {
     } catch (error) {
         console.error('Error construyendo URL:', error)
         return url
-    }
-}
-
-// =============================================
-// CAMBIAR ESTADO
-// =============================================
-const cambiando = ref({})
-
-const cambiarEstado = async (contenedor) => {
-    const accion = contenedor.ActivoInactivo === 1 ? 'desactivar' : 'activar'
-    
-    if (!confirm(`¿Estás seguro de ${accion} el contenedor "${contenedor.Codigo}"?`)) {
-        return
-    }
-    
-    cambiando.value[contenedor.IdContenedor] = true
-    
-    try {
-        const response = await axios.post(
-            `/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}/cambiar-estado`
-        )
-        
-        if (response.data.success) {
-            toast?.success('Éxito', response.data.message)
-            actualizarDatosLocales()
-        } else {
-            toast?.error('Error', response.data.message || 'Error al cambiar estado')
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al cambiar estado')
-    } finally {
-        cambiando.value[contenedor.IdContenedor] = false
-    }
-}
-
-// =============================================
-// ELIMINAR
-// =============================================
-const eliminarContenedor = async (contenedor) => {
-    if (!confirm(`¿Eliminar el contenedor "${contenedor.Codigo}"?`)) {
-        return
-    }
-    
-    try {
-        const response = await axios.delete(
-            `/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}`
-        )
-        
-        if (response.data.success) {
-            toast?.success('Éxito', 'Contenedor eliminado correctamente')
-            actualizarDatosLocales()
-        } else {
-            toast?.error('Error', response.data.message || 'Error al eliminar')
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al eliminar')
     }
 }
 
@@ -290,21 +260,12 @@ watch(() => props.contenedores, (newVal) => {
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
                     <div class="flex items-center gap-2">
                         <div class="w-8 h-8 bg-primary-100 rounded-lg flex items-center justify-center">
-                            <i class="fas fa-boxes text-primary-600 text-sm"></i>
+                            <i class="fas fa-layer-group text-primary-600 text-sm"></i>
                         </div>
                         <div>
-                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Gestión de Contenedores</h1>
-                            <p class="text-[10px] text-gray-500">Administra los contenedores por sucursal</p>
+                            <h1 class="text-base sm:text-lg font-bold text-gray-800">Asignar Grupos a Contenedores</h1>
+                            <p class="text-[10px] text-gray-500">Asigna grupos completos de clientes a cada contenedor</p>
                         </div>
-                    </div>
-                    <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
-                            @click="irANuevo"
-                            class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
-                        >
-                            <i class="fas fa-plus text-[10px]"></i>
-                            Nuevo Contenedor
-                        </button>
                     </div>
                 </div>
 
@@ -360,8 +321,7 @@ watch(() => props.contenedores, (newVal) => {
                     
                     <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
                         <i class="fas fa-info-circle"></i> 
-                        <span class="text-green-600">● Activo</span> = Contenedor listo para usar | 
-                        <span class="text-yellow-600">● Borrador</span> = En edición
+                        Asigna <span class="font-medium">grupos completos</span> a cada contenedor
                     </div>
                 </div>
 
@@ -414,59 +374,29 @@ watch(() => props.contenedores, (newVal) => {
                                         <thead class="bg-gray-50">
                                             <tr>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Tipo</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Asignar Grupos</th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
                                             <tr v-for="item in grupo.contenedores" :key="item.IdContenedor" class="hover:bg-gray-50">
                                                 <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ item.Codigo }}</td>
-                                                <td class="px-3 py-2 text-center text-xs">{{ item.TipoContenedor }}</td>
                                                 <td class="px-3 py-2 text-center text-xs">{{ formatearNumero(item.CapacidadTotal) }}</td>
                                                 <td class="px-3 py-2 text-center">
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoBadge(item.ActivoInactivo)">
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
                                                 </td>
-                                                <td class="px-3 py-2">
-                                                    <div class="flex justify-center gap-1">
-                                                        <button 
-                                                            @click="abrirModal(item)" 
-                                                            class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded" 
-                                                            title="Ver detalle"
-                                                        >
-                                                            <i class="fas fa-eye text-xs"></i>
-                                                        </button>
-                                                        <button 
-                                                            @click="irAEditar(item)" 
-                                                            class="text-amber-500 hover:text-amber-700 transition p-1 hover:bg-amber-50 rounded" 
-                                                            title="Editar"
-                                                        >
-                                                            <i class="fas fa-edit text-xs"></i>
-                                                        </button>
-                                                        <button 
-                                                            @click="cambiarEstado(item)"
-                                                            :disabled="cambiando[item.IdContenedor]"
-                                                            class="transition p-1 rounded disabled:opacity-50"
-                                                            :class="item.ActivoInactivo === 1 
-                                                                ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
-                                                                : 'text-green-600 hover:text-green-800 hover:bg-green-50'"
-                                                            :title="item.ActivoInactivo === 1 ? 'Desactivar' : 'Activar'"
-                                                        >
-                                                            <i v-if="cambiando[item.IdContenedor]" class="fas fa-spinner fa-spin text-xs"></i>
-                                                            <i v-else :class="item.ActivoInactivo === 1 ? 'fas fa-pause-circle text-xs' : 'fas fa-play-circle text-xs'"></i>
-                                                        </button>
-                                                        <button 
-                                                            v-if="item.ActivoInactivo === 0"
-                                                            @click="eliminarContenedor(item)" 
-                                                            class="text-red-500 hover:text-red-700 transition p-1 hover:bg-red-50 rounded" 
-                                                            title="Eliminar"
-                                                        >
-                                                            <i class="fas fa-trash-alt text-xs"></i>
-                                                        </button>
-                                                    </div>
+                                                <td class="px-3 py-2 text-center">
+                                                    <button 
+                                                        @click="abrirModalGrupos(item)" 
+                                                        class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded text-xs" 
+                                                        title="Asignar grupos"
+                                                    >
+                                                        <i class="fas fa-layer-group"></i>
+                                                        <span class="ml-1 text-[10px]">Grupos</span>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -480,7 +410,6 @@ watch(() => props.contenedores, (newVal) => {
                                             <div class="min-w-0 flex-1">
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <span class="font-bold text-primary-700 text-sm font-mono">{{ item.Codigo }}</span>
-                                                    <span class="text-xs text-gray-500">{{ item.TipoContenedor }}</span>
                                                 </div>
                                                 <div class="flex items-center gap-3 mt-1">
                                                     <span class="text-xs text-gray-500">Cap: {{ formatearNumero(item.CapacidadTotal) }}</span>
@@ -492,35 +421,11 @@ watch(() => props.contenedores, (newVal) => {
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
                                                 <div class="flex gap-2">
                                                     <button 
-                                                        @click="abrirModal(item)" 
-                                                        class="text-blue-500 hover:text-blue-700" 
-                                                        title="Ver detalle"
+                                                        @click="abrirModalGrupos(item)" 
+                                                        class="text-blue-500 hover:text-blue-700 text-xs" 
+                                                        title="Asignar grupos"
                                                     >
-                                                        <i class="fas fa-eye text-sm"></i>
-                                                    </button>
-                                                    <button 
-                                                        @click="irAEditar(item)" 
-                                                        class="text-amber-500 hover:text-amber-700" 
-                                                        title="Editar"
-                                                    >
-                                                        <i class="fas fa-edit text-sm"></i>
-                                                    </button>
-                                                    <button 
-                                                        @click="cambiarEstado(item)"
-                                                        :disabled="cambiando[item.IdContenedor]"
-                                                        class="disabled:opacity-50"
-                                                        :class="item.ActivoInactivo === 1 ? 'text-red-500' : 'text-green-600'"
-                                                    >
-                                                        <i v-if="cambiando[item.IdContenedor]" class="fas fa-spinner fa-spin"></i>
-                                                        <i v-else :class="item.ActivoInactivo === 1 ? 'fas fa-pause-circle' : 'fas fa-play-circle'"></i>
-                                                    </button>
-                                                    <button 
-                                                        v-if="item.ActivoInactivo === 0"
-                                                        @click="eliminarContenedor(item)" 
-                                                        class="text-red-500 hover:text-red-700" 
-                                                        title="Eliminar"
-                                                    >
-                                                        <i class="fas fa-trash-alt text-sm"></i>
+                                                        <i class="fas fa-layer-group"></i>
                                                     </button>
                                                 </div>
                                             </div>
@@ -562,25 +467,19 @@ watch(() => props.contenedores, (newVal) => {
                         <span v-if="buscador">No hay contenedores que coincidan con "{{ buscador }}"</span>
                         <span v-else>No hay contenedores en esta sucursal</span>
                     </p>
-                    <div class="mt-4">
-                        <button 
-                            @click="irANuevo"
-                            class="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800"
-                        >
-                            <i class="fas fa-plus"></i> Crear nuevo contenedor
-                        </button>
-                    </div>
                 </div>
 
             </div>
         </div>
 
-        <!-- MODAL DETALLE -->
-        <ShowModal 
-            :visible="modalVisible" 
-            :contenedor="contenedorSeleccionado"
-            @close="cerrarModal"
+        <!-- MODAL ASIGNAR GRUPOS -->
+        <AsignarGruposModalContenedor
+            :visible="modalGruposVisible"
+            :contenedor="contenedorParaGrupos"
+            @close="cerrarModalGrupos"
+            @actualizar="handleActualizar"
         />
+
     </div>
 </template>
 

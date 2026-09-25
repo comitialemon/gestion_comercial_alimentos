@@ -237,24 +237,6 @@ const getColorConcepto = (nombre, index) => {
                     </div>
                 </div>
 
-                <!-- INFO DE SESIÓN -->
-                <div class="mt-4 flex flex-wrap items-center gap-2 text-[10px] text-gray-400 px-1">
-                    <span class="flex items-center gap-1">
-                        <i class="fas fa-building text-[9px]"></i>
-                        Empresa: {{ facturacion?.empresa_id || '—' }}
-                    </span>
-                    <span class="text-gray-300">·</span>
-                    <span class="flex items-center gap-1">
-                        <i class="fas fa-store text-[9px]"></i>
-                        Sucursal: {{ facturacion?.sucursal_id || '—' }}
-                    </span>
-                    <span class="text-gray-300">·</span>
-                    <span class="flex items-center gap-1">
-                        <i class="fas fa-user text-[9px]"></i>
-                        Cliente: {{ gestion?.cliente_id || '—' }}
-                    </span>
-                </div>
-
             </div>
         </div>
     </div>
