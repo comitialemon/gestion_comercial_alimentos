@@ -128,10 +128,6 @@ const irANuevo = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/contenedores/create')
 }
 
-const irAEditar = (contenedor) => {
-    router.get(`/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}/edit`)
-}
-
 const actualizarDatosLocales = () => {
     const params = {
         sucursal_id: sucursalId.value || undefined,
@@ -185,12 +181,12 @@ const construirUrlConFiltros = (url) => {
 }
 
 // =============================================
-// CAMBIAR ESTADO
+// CAMBIAR ESTADO (ÚNICA ACCIÓN DISPONIBLE)
 // =============================================
 const cambiando = ref({})
 
 const cambiarEstado = async (contenedor) => {
-    const accion = contenedor.ActivoInactivo === 1 ? 'desactivar' : 'activar'
+    const accion = contenedor.ActivoInactivo === 1 ? 'inactivar' : 'activar'
     
     if (!confirm(`¿Estás seguro de ${accion} el contenedor "${contenedor.Codigo}"?`)) {
         return
@@ -214,31 +210,6 @@ const cambiarEstado = async (contenedor) => {
         toast?.error('Error', error.response?.data?.message || 'Error al cambiar estado')
     } finally {
         cambiando.value[contenedor.IdContenedor] = false
-    }
-}
-
-// =============================================
-// ELIMINAR
-// =============================================
-const eliminarContenedor = async (contenedor) => {
-    if (!confirm(`¿Eliminar el contenedor "${contenedor.Codigo}"?`)) {
-        return
-    }
-    
-    try {
-        const response = await axios.delete(
-            `/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}`
-        )
-        
-        if (response.data.success) {
-            toast?.success('Éxito', 'Contenedor eliminado correctamente')
-            actualizarDatosLocales()
-        } else {
-            toast?.error('Error', response.data.message || 'Error al eliminar')
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al eliminar')
     }
 }
 
@@ -417,7 +388,7 @@ watch(() => props.contenedores, (newVal) => {
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Tipo</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
-                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Acciones</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cambiar Estado</th>
                                             </tr>
                                         </thead>
                                         <tbody class="bg-white divide-y divide-gray-200">
@@ -430,43 +401,23 @@ watch(() => props.contenedores, (newVal) => {
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
                                                 </td>
-                                                <td class="px-3 py-2">
-                                                    <div class="flex justify-center gap-1">
-                                                        <button 
-                                                            @click="abrirModal(item)" 
-                                                            class="text-blue-500 hover:text-blue-700 transition p-1 hover:bg-blue-50 rounded" 
-                                                            title="Ver detalle"
-                                                        >
-                                                            <i class="fas fa-eye text-xs"></i>
-                                                        </button>
-                                                        <button 
-                                                            @click="irAEditar(item)" 
-                                                            class="text-amber-500 hover:text-amber-700 transition p-1 hover:bg-amber-50 rounded" 
-                                                            title="Editar"
-                                                        >
-                                                            <i class="fas fa-edit text-xs"></i>
-                                                        </button>
-                                                        <button 
-                                                            @click="cambiarEstado(item)"
-                                                            :disabled="cambiando[item.IdContenedor]"
-                                                            class="transition p-1 rounded disabled:opacity-50"
-                                                            :class="item.ActivoInactivo === 1 
-                                                                ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
-                                                                : 'text-green-600 hover:text-green-800 hover:bg-green-50'"
-                                                            :title="item.ActivoInactivo === 1 ? 'Desactivar' : 'Activar'"
-                                                        >
-                                                            <i v-if="cambiando[item.IdContenedor]" class="fas fa-spinner fa-spin text-xs"></i>
-                                                            <i v-else :class="item.ActivoInactivo === 1 ? 'fas fa-pause-circle text-xs' : 'fas fa-play-circle text-xs'"></i>
-                                                        </button>
-                                                        <button 
-                                                            v-if="item.ActivoInactivo === 0"
-                                                            @click="eliminarContenedor(item)" 
-                                                            class="text-red-500 hover:text-red-700 transition p-1 hover:bg-red-50 rounded" 
-                                                            title="Eliminar"
-                                                        >
-                                                            <i class="fas fa-trash-alt text-xs"></i>
-                                                        </button>
-                                                    </div>
+
+                                                <td class="px-3 py-2 text-center">
+                                                    <button 
+                                                        @click="cambiarEstado(item)"
+                                                        :disabled="cambiando[item.IdContenedor]"
+                                                        class="transition p-1.5 rounded disabled:opacity-50 inline-flex items-center gap-1 text-xs"
+                                                        :class="item.ActivoInactivo === 1 
+                                                            ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
+                                                            : 'text-green-600 hover:text-green-800 hover:bg-green-50'"
+                                                        :title="item.ActivoInactivo === 1 ? 'Inactivar' : 'Activar'"
+                                                    >
+                                                        <i v-if="cambiando[item.IdContenedor]" class="fas fa-spinner fa-spin text-xs"></i>
+                                                        <i v-else :class="item.ActivoInactivo === 1 ? 'fas fa-pause-circle text-xs' : 'fas fa-play-circle text-xs'"></i>
+                                                        <span class="text-[10px]">
+                                                            {{ item.ActivoInactivo === 1 ? 'Inactivar' : 'Activar' }}
+                                                        </span>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         </tbody>
@@ -499,28 +450,14 @@ watch(() => props.contenedores, (newVal) => {
                                                         <i class="fas fa-eye text-sm"></i>
                                                     </button>
                                                     <button 
-                                                        @click="irAEditar(item)" 
-                                                        class="text-amber-500 hover:text-amber-700" 
-                                                        title="Editar"
-                                                    >
-                                                        <i class="fas fa-edit text-sm"></i>
-                                                    </button>
-                                                    <button 
                                                         @click="cambiarEstado(item)"
                                                         :disabled="cambiando[item.IdContenedor]"
                                                         class="disabled:opacity-50"
                                                         :class="item.ActivoInactivo === 1 ? 'text-red-500' : 'text-green-600'"
+                                                        :title="item.ActivoInactivo === 1 ? 'Inactivar' : 'Activar'"
                                                     >
                                                         <i v-if="cambiando[item.IdContenedor]" class="fas fa-spinner fa-spin"></i>
                                                         <i v-else :class="item.ActivoInactivo === 1 ? 'fas fa-pause-circle' : 'fas fa-play-circle'"></i>
-                                                    </button>
-                                                    <button 
-                                                        v-if="item.ActivoInactivo === 0"
-                                                        @click="eliminarContenedor(item)" 
-                                                        class="text-red-500 hover:text-red-700" 
-                                                        title="Eliminar"
-                                                    >
-                                                        <i class="fas fa-trash-alt text-sm"></i>
                                                     </button>
                                                 </div>
                                             </div>
