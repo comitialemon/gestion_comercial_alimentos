@@ -126,13 +126,13 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteContr
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorTipoController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePedidosClientesMayoristasController;
-use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\PrecioProductoController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorClienteController;
 use App\Http\Controllers\Gestion\Inventario\ReporteProductosBaseController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoClientesController;
-use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ClienteGrupoController;
-use App\Http\Controllers\Operacion\Pedidos\Reportes\MinimosPorClienteController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePreciosMinimosController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\GrupoClienteController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorGrupoClienteController;
+use App\Http\Controllers\Operacion\Pedidos\Reportes\GrupoClienteReporteController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1367,16 +1367,18 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/{id}/productos', [ContenedorController::class, 'getProductos'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.productos');
                     
-                    // ✅ CLIENTES ASIGNADOS (con {contenedorId})
-                    Route::get('/{contenedorId}/clientes-asignados', [ContenedorClienteController::class, 'getClientesAsignados'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.clientes-asignados');
-                    
-                    Route::post('/{contenedorId}/clientes', [ContenedorClienteController::class, 'asignarCliente'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-cliente');
-                    
-                    Route::delete('/clientes/{id}', [ContenedorClienteController::class, 'eliminarCliente'])
-                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.eliminar-cliente');
-                    
+                    // ✅ NUEVAS RUTAS - GRUPOS EN CONTENEDOR
+                    Route::get('/{contenedorId}/grupos-asignados', [ContenedorGrupoClienteController::class, 'getGruposAsignados'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.grupos-asignados');
+
+                    Route::get('/{contenedorId}/grupos-disponibles', [ContenedorGrupoClienteController::class, 'getGruposDisponibles'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.grupos-disponibles');
+
+                    Route::post('/{contenedorId}/grupos', [ContenedorGrupoClienteController::class, 'asignarGrupo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-grupo');
+
+                    Route::delete('/grupos/{id}', [ContenedorGrupoClienteController::class, 'eliminarGrupo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.contenedores.eliminar-grupo');
                     // TIPOS DE CONTENEDOR
                     Route::prefix('tipos')->group(function () {
                         Route::get('/', [ContenedorTipoController::class, 'index'])
@@ -1470,42 +1472,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
                         ->name('operacion.pedidos-clientes.pedidos.pdf');
                 });
-
-                // ============================================================
-                // PRECIOS - CLIENTES MAYORISTAS
-                // ============================================================
-                Route::prefix('precios')->group(function () {
-                    // Vista para asignar precios (Supervisor)
-                    Route::get('/', [PrecioProductoController::class, 'index'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.index');
-                    
-                    // Guardar precio
-                    Route::post('/', [PrecioProductoController::class, 'store'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.store');
-                    
-                    // Obtener precio de un producto (API)
-                    Route::get('/get-precio', [PrecioProductoController::class, 'getPrecio'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.get-precio');
-                    
-                    // ✅ VISTA DE BITÁCORA
-                    Route::get('/bitacora', [PrecioProductoController::class, 'bitacoraIndex'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora');
-
-                    // ✅ NUEVO: Exportar PDF de la bitácora
-                    Route::get('/bitacora/exportar-pdf', [PrecioProductoController::class, 'exportarPdfBitacora'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.exportar-pdf');
-                    
-                    // ✅ Autocompletes de la bitácora
-                    Route::get('/bitacora/buscar-clientes', [PrecioProductoController::class, 'buscarClientesBitacora'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.buscar-clientes');
-                    
-                    Route::get('/bitacora/buscar-productos', [PrecioProductoController::class, 'buscarProductosBitacora'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.bitacora.buscar-productos');
-                    
-                    // Eliminar precio
-                    Route::delete('/{productoId}/{identificadorId}', [PrecioProductoController::class, 'destroy'])
-                        ->name('operacion.pedidos.clientes-mayoristas.precios.destroy');
-                });
                 
                 // ============================================================
                 // OPERADORES PEDIDOCLIENTES
@@ -1547,38 +1513,58 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/disponibles', [OperadorPedidoClientesController::class, 'getDisponibles'])
                         ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.disponibles');
                 });
-                
+
                 // ============================================================
-                // ✅ MÍNIMOS POR CLIENTE + GRUPO DE ANÁLISIS
+                // GRUPOS DE CLIENTES (TARIFAS)
                 // ============================================================
-                Route::prefix('clientes/{identificadorId}/minimos')->group(function () {
-                    // Listar grupos (con filtro opcional por contenedor vía query param)
-                    Route::get('/', [ClienteGrupoController::class, 'index'])
-                        ->name('operacion.pedidos.clientes-mayoristas.clientes.minimos.index');
-                    
-                    // Guardar/actualizar varios mínimos a la vez
-                    Route::post('/', [ClienteGrupoController::class, 'store'])
-                        ->name('operacion.pedidos.clientes-mayoristas.clientes.minimos.store');
-                    
-                    // Actualizar un mínimo específico
-                    Route::put('/{idClienteGrupo}', [ClienteGrupoController::class, 'update'])
-                        ->name('operacion.pedidos.clientes-mayoristas.clientes.minimos.update');
-                    
-                    // Inactivar un mínimo
-                    Route::delete('/{idClienteGrupo}', [ClienteGrupoController::class, 'destroy'])
-                        ->name('operacion.pedidos.clientes-mayoristas.clientes.minimos.destroy');
+                Route::prefix('grupos-clientes')->group(function () {
+                    Route::get('/', [GrupoClienteController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.index');
+
+                    Route::get('/create', [GrupoClienteController::class, 'create'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.create');
+
+                    Route::post('/', [GrupoClienteController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.store');
+
+                    Route::get('/{id}/edit', [GrupoClienteController::class, 'edit'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.edit');
+
+                    Route::put('/{id}', [GrupoClienteController::class, 'update'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.update');
+
+                    Route::post('/{id}/cambiar-estado', [GrupoClienteController::class, 'cambiarEstado'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.cambiar-estado');
+
+                    Route::delete('/{id}', [GrupoClienteController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.destroy');
+
+                    // Pestaña 2: Clientes
+                    Route::get('/{id}/clientes-disponibles', [GrupoClienteController::class, 'getClientesDisponibles'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.clientes-disponibles');
+
+                    Route::post('/{id}/asignar-clientes', [GrupoClienteController::class, 'asignarClientes'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.asignar-clientes');
+
+                    // Pestaña 3: Productos y precios
+                    Route::get('/{id}/productos', [GrupoClienteController::class, 'getProductos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.productos');
+
+                    Route::post('/{id}/asignar-productos', [GrupoClienteController::class, 'asignarProductos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.asignar-productos');
+
+                    Route::delete('/{id}/productos/{idProducto}', [GrupoClienteController::class, 'eliminarProducto'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.eliminar-producto');
+
+                    // Pestaña 4: Mínimos
+                    Route::get('/{id}/minimos', [GrupoClienteController::class, 'getMinimos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.minimos');
+
+                    Route::post('/{id}/asignar-minimos', [GrupoClienteController::class, 'asignarMinimos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.asignar-minimos');
                 });
-
-                // Endpoint adicional: solo los grupos con mínimos
-                Route::prefix('clientes/{identificadorId}')->group(function () {
-                    Route::get('/grupos-minimos', [ClienteGrupoController::class, 'gruposDelCliente'])
-                        ->name('operacion.pedidos.clientes-mayoristas.clientes.grupos-minimos');
-                });
-                // ✅ Endpoint adicional: solo los grupos (con mínimos)
-                Route::get('clientes/{identificadorId}/grupos-minimos', [ClienteGrupoController::class, 'gruposDelCliente'])
-                    ->name('operacion.pedidos.clientes-mayoristas.clientes.grupos-minimos');
-
-
+            
+            
             });
 
             // ============================================================
@@ -1644,26 +1630,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/exportar-pdf-detalle', [InformePedidosClientesMayoristasController::class, 'exportarPdfDetalle'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-detalle');
                 });
-                // ============================================================
-                // ✅ NUEVO: MÍNIMOS Y PRECIOS POR CLIENTE
-                // ============================================================
-                Route::prefix('minimos-por-cliente')->group(function () {
-                    // Vista principal
-                    Route::get('/', [MinimosPorClienteController::class, 'index'])
-                        ->name('operacion.pedidos.reportes.minimos-por-cliente.index');
-                    
-                    // ✅ Búsqueda de clientes (autocomplete)
-                    Route::get('/buscar-clientes', [MinimosPorClienteController::class, 'buscarClientes'])
-                        ->name('operacion.pedidos.reportes.minimos-por-cliente.buscar-clientes');
-                    
-                    // Exportar PDF
-                    Route::get('/exportar-pdf', [MinimosPorClienteController::class, 'exportarPdf'])
-                        ->name('operacion.pedidos.reportes.minimos-por-cliente.exportar-pdf');
-                    
-                    // Exportar Excel
-                    Route::get('/exportar-excel', [MinimosPorClienteController::class, 'exportarExcel'])
-                        ->name('operacion.pedidos.reportes.minimos-por-cliente.exportar-excel');
-                });
+                // ✅ EXPORTAR GRUPOS CLIENTES A EXCEL
+                    Route::get('/grupos-clientes/exportar-excel', [GrupoClienteReporteController::class, 'exportarExcel'])
+                        ->name('operacion.pedidos.reportes.grupos-clientes.exportar-excel');
 
             });
             

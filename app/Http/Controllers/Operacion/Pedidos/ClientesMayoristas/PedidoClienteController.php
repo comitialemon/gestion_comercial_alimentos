@@ -6,9 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Contenedor;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalle;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\PrecioProducto;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\ClienteGrupo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\ClienteSucursal;
@@ -21,6 +22,10 @@ use Carbon\Carbon;
 
 class PedidoClienteController extends Controller
 {
+    // ============================================================
+    // HELPERS PRIVADOS
+    // ============================================================
+
     /**
      * ✅ OBTENER IdIdentificador DEL OPERADOR LOGUEADO (CON CACHÉ)
      */
@@ -73,41 +78,64 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ OBTENER MÍNIMOS POR GRUPO DEL CLIENTE
+     * ✅ OBTENER EL GRUPO CLIENTE DEL OPERADOR LOGUEADO
+     * 
+     * Un operador solo puede estar en 1 grupo.
      */
-    private function obtenerMinimosGruposCliente($idIdentificador, $clienteId, $sucursalId)
+    private function getGrupoDelOperador()
     {
-        return ClienteGrupo::where('IdIdentificador', $idIdentificador)
-            ->where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId)
-            ->where('ActivoInactivo', 1)
-            ->with('grupoAnalisis')
-            ->get()
-            ->map(function($item) {
-                return [
-                    'IdGrupoAnalisis' => $item->IdGrupoAnalisis,
-                    'NombreGrupo' => $item->grupoAnalisis ? $item->grupoAnalisis->Grupo : 'Sin grupo',
-                    'CantidadMinimaGrupo' => (float) $item->CantidadMinimaGrupo,
-                ];
-            })
-            ->values()
-            ->toArray();
+        $idIdentificador = $this->getIdIdentificadorOperador();
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        
+        if (!$idIdentificador) return null;
+        
+        $cacheKey = "grupo_operador_{$idIdentificador}_{$clienteId}_{$sucursalId}";
+        
+        return cache()->remember($cacheKey, 1800, function () use ($idIdentificador, $clienteId, $sucursalId) {
+            return GrupoCliente::obtenerGrupoDeIdentificador(
+                $idIdentificador,
+                $clienteId,
+                $sucursalId
+            );
+        });
     }
 
     /**
-     * ✅ CALCULAR PROGRESO DE GRUPOS
-     * 
-     * ⚠️ IMPORTANTE: Solo se muestran y validan los grupos que tengan
-     * al menos 1 producto en el carrito. Los grupos configurados
-     * que no tengan productos NO se cuentan (no obligan al cliente).
+     * ✅ OBTENER MÍNIMOS DEL GRUPO CLIENTE
      */
-    private function calcularProgresoGrupos($pedidoBorrador, $idIdentificador, $clienteId, $sucursalId)
+    private function obtenerMinimosDelGrupo($idGrupoCliente)
     {
-        if (!$pedidoBorrador) {
+        return cache()->remember("minimos_grupo_{$idGrupoCliente}", 1800, function () use ($idGrupoCliente) {
+            return GrupoClienteMinimo::where('IdGrupoCliente', $idGrupoCliente)
+                ->where('ActivoInactivo', 1)
+                ->where('CantidadMinimaGrupo', '>', 0)
+                ->with('grupoAnalisis')
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'IdGrupoAnalisis' => $item->IdGrupoAnalisis,
+                        'NombreGrupo' => $item->grupoAnalisis ? $item->grupoAnalisis->Grupo : 'Sin grupo',
+                        'CantidadMinimaGrupo' => (float) $item->CantidadMinimaGrupo,
+                    ];
+                })
+                ->values()
+                ->toArray();
+        });
+    }
+
+    /**
+     * ✅ CALCULAR PROGRESO DE GRUPOS (basado en el grupo cliente)
+     * 
+     * Solo valida los grupos que tengan al menos 1 producto en el carrito.
+     */
+    private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente)
+    {
+        if (!$pedidoBorrador || !$idGrupoCliente) {
             return [];
         }
 
-        // 1. Obtener detalles con el grupo del producto
+        // 1. Detalles con grupo de análisis
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('pedidos_clientes_detalle as d')
             ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
@@ -125,19 +153,18 @@ class PedidoClienteController extends Controller
             $acumulado[$grupoId] += (float) $detalle->Cantidad;
         }
 
-        // ✅ 3. SI NO HAY PRODUCTOS, NO HAY PROGRESO
+        // 3. Si no hay productos, no hay progreso
         if (empty($acumulado)) {
             return [];
         }
 
-        // ✅ 4. SOLO LOS GRUPOS QUE TIENEN PRODUCTOS
         $gruposConProductos = array_keys($acumulado);
 
-        $minimos = ClienteGrupo::where('IdIdentificador', $idIdentificador)
-            ->where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId)
-            ->whereIn('IdGrupoAnalisis', $gruposConProductos)  // ✅ ESTO ES CLAVE
+        // 4. Mínimos del grupo cliente (solo los que tienen productos)
+        $minimos = GrupoClienteMinimo::where('IdGrupoCliente', $idGrupoCliente)
+            ->whereIn('IdGrupoAnalisis', $gruposConProductos)
             ->where('ActivoInactivo', 1)
+            ->where('CantidadMinimaGrupo', '>', 0)
             ->with('grupoAnalisis')
             ->get();
 
@@ -160,17 +187,10 @@ class PedidoClienteController extends Controller
 
         return $progreso;
     }
-    /**
-     * ✅ OBTENER EL PRECIO SEGÚN EL TIPO
-     */
-    private function obtenerPrecioSegunTipo($precio, $tipoPrecio)
-    {
-        if (!$precio) return null;
 
-        return $tipoPrecio === 'con_factura' 
-            ? $precio->PrecioConFactura 
-            : $precio->PrecioSinFactura;
-    }
+    // ============================================================
+    // LISTA DE PEDIDOS
+    // ============================================================
 
     /**
      * Lista de pedidos del operador logueado
@@ -192,21 +212,22 @@ class PedidoClienteController extends Controller
         ]);
     }
 
+    // ============================================================
+    // NUEVO PEDIDO - MENÚ DE CONTENEDORES
+    // ============================================================
+
     /**
      * ✅ NUEVO PEDIDO - Menú de contenedores
      * 
-     * Recibe tipo_precio del query (default: sin_factura)
+     * Ahora busca contenedores por GRUPO del operador.
      */
     public function create(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        $operadorId = session('operador_id');
         
-        // ✅ Leer tipo de precio del query
+        // ✅ Tipo de precio
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
-        
-        // ✅ Validar
         if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
             $tipoPrecio = 'sin_factura';
         }
@@ -218,66 +239,79 @@ class PedidoClienteController extends Controller
                 'No se encontró el perfil del operador. Contacte al administrador.'
             );
         }
-
-        // ✅ OBTENER SOLO CONTENEDORES ASIGNADOS A ESTE OPERADOR
-        $contenedores = Contenedor::where('IdCliente', $clienteId)
+        
+        // ✅ PASO 1: Grupo del operador
+        $grupoCliente = $this->getGrupoDelOperador();
+        
+        if (!$grupoCliente) {
+            return redirect()->back()->with('error', 
+                'Tu usuario no tiene un Grupo de Clientes asignado. Contacte al administrador.'
+            );
+        }
+        
+        // ✅ PASO 2: Contenedores con ese grupo asignado (con JOIN directo)
+        $contenedores = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('operacion_pedidos_clientes_contenedor as c')
+            ->join('operacion_pedidos_clientes_contenedor_grupo_cliente as cgc', 'cgc.IdContenedor', '=', 'c.IdContenedor')
+            ->leftJoin('operacion_pedidos_clientes_contenedor_tipo as t', 't.IdTipoContenedor', '=', 'c.IdTipoContenedor')
+            ->where('c.IdCliente', $clienteId)
+            ->where('c.ActivoInactivo', 1)
+            ->where('cgc.IdGrupoCliente', $grupoCliente->IdGrupoCliente)
+            ->where('cgc.ActivoInactivo', 1)
+            ->select(
+                'c.IdContenedor',
+                'c.Codigo',
+                'c.CapacidadTotal',
+                'c.IdTipoContenedor',
+                't.Nombre as TipoContenedor'
+            )
+            ->orderBy('c.Codigo')
+            ->get();
+        
+        if ($contenedores->isEmpty()) {
+            return redirect()->back()->with('error', 
+                "Tu grupo '{$grupoCliente->Nombre}' no tiene contenedores asignados. Contacte al administrador."
+            );
+        }
+        
+        // ✅ PASO 3: Total productos del grupo (1 sola query)
+        $totalProductosDelGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
-            ->whereExists(function($query) use ($idIdentificador, $clienteId, $sucursalId) {
-                $query->select(DB::raw(1))
-                    ->from('operacion_pedidos_clientes_contenedor_cliente as cc')
-                    ->whereColumn('cc.IdContenedor', 'operacion_pedidos_clientes_contenedor.IdContenedor')
-                    ->where('cc.IdIdentificador', $idIdentificador)
-                    ->where('cc.IdCliente', $clienteId)
-                    ->where('cc.IdSucursal', $sucursalId)
-                    ->where('cc.ActivoInactivo', 1);
+            ->where(function ($q) {
+                $q->where('PrecioSinFactura', '>', 0)
+                  ->orWhere('PrecioConFactura', '>', 0);
             })
-            ->with(['tipoContenedor', 'gruposAnalisis'])
-            ->orderBy('Codigo')
-            ->get()
-            ->filter(function($contenedor) use ($idIdentificador, $clienteId, $sucursalId) {
-                $gruposIds = $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis')->toArray();
-                
-                if (empty($gruposIds)) return false;
-
-                $tieneMinimo = ClienteGrupo::where('IdIdentificador', $idIdentificador)
-                    ->where('IdCliente', $clienteId)
-                    ->where('IdSucursal', $sucursalId)
-                    ->whereIn('IdGrupoAnalisis', $gruposIds)
-                    ->where('ActivoInactivo', 1)
-                    ->exists();
-
-                return $tieneMinimo;
-            })
-            ->map(function($contenedor) {
-                return [
-                    'IdContenedor' => $contenedor->IdContenedor,
-                    'Codigo' => $contenedor->Codigo,
-                    'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                    'CapacidadTotal' => $contenedor->CapacidadTotal,
-                    'CapacidadTotalFormateada' => number_format($contenedor->CapacidadTotal, 0, ',', '.'),
-                    'total_productos' => $contenedor->contarProductosActivos(),
-                    'grupos' => $contenedor->gruposAnalisis->pluck('Grupo')->implode(', '),
-                ];
-            })
-            ->values();
-
+            ->count();
+        
+        // ✅ PASO 4: Formatear contenedores
+        $contenedoresFormateados = $contenedores->map(function ($c) use ($totalProductosDelGrupo, $grupoCliente) {
+            return [
+                'IdContenedor' => $c->IdContenedor,
+                'Codigo' => $c->Codigo,
+                'TipoContenedor' => $c->TipoContenedor ?: '-',
+                'CapacidadTotal' => $c->CapacidadTotal,
+                'CapacidadTotalFormateada' => number_format($c->CapacidadTotal, 0, ',', '.'),
+                'total_productos' => $totalProductosDelGrupo,
+                'grupos' => $grupoCliente->Nombre,
+            ];
+        });
+        
         // ✅ Obtener clientes (empresas)
         $clientes = Cliente::where('IdCliente', $clienteId)
             ->get(['IdCliente as id', 'Nombre']);
-
+        
         // ✅ Obtener sucursales
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre']);
-
+        
         // ✅ Buscar pedido BORRADOR
         $pedidoBorrador = PedidoCliente::obtenerBorradorActivo();
-
+        
         // ✅ Cargar carrito
         $carrito = [];
         if ($pedidoBorrador) {
-            // ✅ Si el borrador tiene un tipo de precio diferente al solicitado, actualizar
             if ($pedidoBorrador->TipoPrecio !== $tipoPrecio) {
                 $pedidoBorrador->update(['TipoPrecio' => $tipoPrecio]);
             }
@@ -288,7 +322,7 @@ class PedidoClienteController extends Controller
                 ->orderBy('IdProducto')
                 ->get();
 
-            $carrito = $detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+            $carrito = $detalles->groupBy('OrdenContenedor')->map(function ($items, $orden) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
                 $total = $items->sum('Cantidad');
@@ -298,7 +332,7 @@ class PedidoClienteController extends Controller
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
-                    'productos' => $items->map(function($item) {
+                    'productos' => $items->map(function ($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
                             'Codigo' => $item->producto ? $item->producto->Codigo : '-',
@@ -314,15 +348,15 @@ class PedidoClienteController extends Controller
                 ];
             })->values();
         }
-
-        // ✅ MÍNIMOS POR GRUPO
-        $minimosGrupos = $this->obtenerMinimosGruposCliente($idIdentificador, $clienteId, $sucursalId);
-
-        // ✅ PROGRESO INICIAL
-        $progresoInicial = $this->calcularProgresoGrupos($pedidoBorrador, $idIdentificador, $clienteId, $sucursalId);
-
+        
+        // ✅ Mínimos del grupo
+        $minimosGrupos = $this->obtenerMinimosDelGrupo($grupoCliente->IdGrupoCliente);
+        
+        // ✅ Progreso inicial
+        $progresoInicial = $this->calcularProgresoGrupos($pedidoBorrador, $grupoCliente->IdGrupoCliente);
+        
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Create', [
-            'contenedores' => $contenedores,
+            'contenedores' => $contenedoresFormateados,
             'clientes' => $clientes,
             'sucursales' => $sucursales,
             'pedidoBorrador' => $pedidoBorrador,
@@ -330,27 +364,28 @@ class PedidoClienteController extends Controller
             'sucursalDefault' => $sucursalId,
             'idIdentificador' => $idIdentificador,
             'nombreOperador' => $this->getNombreOperador(),
+            'grupoCliente' => [
+                'IdGrupoCliente' => $grupoCliente->IdGrupoCliente,
+                'Nombre' => $grupoCliente->Nombre,
+            ],
             'minimosGrupos' => $minimosGrupos,
             'progresoInicial' => $progresoInicial,
-            'tipoPrecio' => $tipoPrecio,   // ✅ NUEVO
+            'tipoPrecio' => $tipoPrecio,
         ]);
     }
 
+    // ============================================================
+    // PRODUCTOS DEL CONTENEDOR CON PRECIOS DEL GRUPO
+    // ============================================================
+
     /**
-     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR CON PRECIOS
-     * 
-     * Recibe tipo_precio del query.
-     * Filtra productos que tengan precio del tipo elegido.
-     * Devuelve el precio según el tipo.
+     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR CON PRECIOS DEL GRUPO
      */
     public function getProductosContenedorConPrecios(Request $request, $id)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
         
-        // ✅ Leer tipo de precio
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
-        
         if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
             $tipoPrecio = 'sin_factura';
         }
@@ -363,24 +398,42 @@ class PedidoClienteController extends Controller
                 'message' => 'No se encontró el perfil del operador.'
             ], 400);
         }
-
+        
+        // ✅ PASO 1: Grupo del operador
+        $grupoCliente = $this->getGrupoDelOperador();
+        
+        if (!$grupoCliente) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+            ], 400);
+        }
+        
+        // ✅ PASO 2: Verificar contenedor asignado al grupo
         $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
-            ->with(['gruposAnalisis', 'tipoContenedor'])
-            ->findOrFail($id);
-
-        // ✅ 1. OBTENER LOS GRUPOS DEL CONTENEDOR CON MÍNIMO
-        $gruposIds = $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis')->toArray();
-
-        $gruposConMinimo = ClienteGrupo::where('IdIdentificador', $idIdentificador)
-            ->where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId)
-            ->whereIn('IdGrupoAnalisis', $gruposIds)
+            ->where('IdContenedor', $id)
+            ->whereHas('gruposClientesActivos', function ($q) use ($grupoCliente) {
+                $q->where('IdGrupoCliente', $grupoCliente->IdGrupoCliente);
+            })
+            ->with(['tipoContenedor'])
+            ->first();
+        
+        if (!$contenedor) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este contenedor no está asignado a tu grupo.'
+            ], 400);
+        }
+        
+        // ✅ PASO 3: Grupos de análisis ACTIVOS (mínimo > 0)
+        $gruposActivosIds = GrupoClienteMinimo::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
+            ->where('CantidadMinimaGrupo', '>', 0)
             ->pluck('IdGrupoAnalisis')
             ->toArray();
-
-        if (empty($gruposConMinimo)) {
+        
+        if (empty($gruposActivosIds)) {
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -390,46 +443,46 @@ class PedidoClienteController extends Controller
                     'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                     'productos_agrupados' => [],
                     'total_productos' => 0,
-                    'idIdentificador' => $idIdentificador,
                     'tipoPrecio' => $tipoPrecio,
-                    'mensaje' => 'Este contenedor no tiene grupos con mínimo configurado',
+                    'grupoCliente' => $grupoCliente->Nombre,
+                    'mensaje' => 'Tu grupo no tiene mínimos configurados',
                 ]
             ]);
         }
-
-        // ✅ 2. OBTENER TODOS LOS PRODUCTOS DE LOS GRUPOS CON MÍNIMO
+        
+        // ✅ PASO 4: Productos CON PRECIO del grupo
+        $productosConPrecio = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
+            ->where('ActivoInactivo', 1)
+            ->get()
+            ->keyBy('IdProducto');
+        
+        // ✅ PASO 5: Filtrar productos (grupos activos + con precio)
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
-            ->whereIn('IdGrupoAnalisis', $gruposConMinimo)
+            ->whereIn('IdGrupoAnalisis', $gruposActivosIds)
+            ->whereIn('IdProducto', $productosConPrecio->keys())
             ->where('ActivoInactivo', 0)
             ->orderBy('IdGrupoAnalisis')
             ->orderBy('Descripcion')
             ->get();
-
-        // ✅ 3. OBTENER PRECIOS
-        $precios = PrecioProducto::where('IdCliente', $clienteId)
-            ->where('IdSucursal', $sucursalId)
-            ->where('IdIdentificador', $idIdentificador)
-            ->where('ActivoInactivo', 1)
-            ->get()
-            ->keyBy('IdProducto');
-
-        // ✅ 4. AGRUPAR POR GRUPO (todos los productos, con o sin precio)
-        $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function($items, $grupoId) use ($precios, $contenedor, $tipoPrecio) {
+        
+        // ✅ PASO 6: Agrupar
+        $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function ($items, $grupoId) use ($productosConPrecio, $contenedor, $tipoPrecio) {
             $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
+            
             return [
                 'grupo_id' => $grupoId,
                 'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
-                'productos' => $items->map(function($producto) use ($precios, $contenedor, $tipoPrecio) {
-                    $precio = $precios[$producto->IdProducto] ?? null;
+                'productos' => $items->map(function ($producto) use ($productosConPrecio, $contenedor, $tipoPrecio) {
+                    $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
                     
-                    // ✅ Determinar el precio según el tipo
                     $precioFinal = null;
-                    $tienePrecio = false;
-                    
-                    if ($precio) {
-                        $precioFinal = $this->obtenerPrecioSegunTipo($precio, $tipoPrecio);
-                        $tienePrecio = $precioFinal !== null && $precioFinal > 0;
+                    if ($precioGrupo) {
+                        $precioFinal = $tipoPrecio === 'con_factura' 
+                            ? $precioGrupo->PrecioConFactura 
+                            : $precioGrupo->PrecioSinFactura;
                     }
+                    
+                    $tienePrecio = $precioFinal !== null && $precioFinal > 0;
                     
                     return [
                         'IdProducto' => $producto->IdProducto,
@@ -443,15 +496,18 @@ class PedidoClienteController extends Controller
                 })->values(),
             ];
         })->values();
-
-        // Contar cuántos tienen precio
-        $totalConPrecio = $productos->filter(function($producto) use ($precios, $tipoPrecio) {
-            $precio = $precios[$producto->IdProducto] ?? null;
-            if (!$precio) return false;
-            $precioFinal = $this->obtenerPrecioSegunTipo($precio, $tipoPrecio);
+        
+        $totalConPrecio = $productos->filter(function ($producto) use ($productosConPrecio, $tipoPrecio) {
+            $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
+            if (!$precioGrupo) return false;
+            
+            $precioFinal = $tipoPrecio === 'con_factura' 
+                ? $precioGrupo->PrecioConFactura 
+                : $precioGrupo->PrecioSinFactura;
+            
             return $precioFinal !== null && $precioFinal > 0;
         })->count();
-
+        
         return response()->json([
             'success' => true,
             'data' => [
@@ -462,12 +518,15 @@ class PedidoClienteController extends Controller
                 'productos_agrupados' => $productosAgrupados,
                 'total_productos' => $totalConPrecio,
                 'total_sin_precio' => $productos->count() - $totalConPrecio,
-                'idIdentificador' => $idIdentificador,
                 'tipoPrecio' => $tipoPrecio,
-                'mensaje' => $totalConPrecio === 0 ? 'No hay productos con precio para el tipo seleccionado' : null,
+                'grupoCliente' => $grupoCliente->Nombre,
             ]
         ]);
     }
+
+    // ============================================================
+    // CARRITO
+    // ============================================================
 
     /**
      * ✅ AGREGAR PRODUCTOS AL CARRITO
@@ -480,16 +539,14 @@ class PedidoClienteController extends Controller
             'productos.*.IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
             'productos.*.Cantidad' => 'required|numeric|min:0.01',
             'productos.*.Precio' => 'required|numeric|min:0',
-            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',   // ✅ NUEVO
+            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',
         ]);
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        $operadorId = session('operador_id');
 
         $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
-            ->with(['gruposAnalisis'])
             ->findOrFail($request->IdContenedor);
 
         $totalUnidades = array_sum(array_column($request->productos, 'Cantidad'));
@@ -501,27 +558,12 @@ class PedidoClienteController extends Controller
             ], 400);
         }
 
-        $gruposIds = $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis')->toArray();
-        $productosIds = array_column($request->productos, 'IdProducto');
-        
-        $productosValidos = ProductoDetalle::whereIn('IdProducto', $productosIds)
-            ->whereIn('IdGrupoAnalisis', $gruposIds)
-            ->where('ActivoInactivo', 0)
-            ->count();
-
-        if ($productosValidos != count($productosIds)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Uno o más productos no pertenecen a los grupos de este contenedor'
-            ], 400);
-        }
-
         DB::beginTransaction();
 
         try {
             $pedido = PedidoCliente::obtenerOCrearBorrador([
                 'IdSucursal' => $sucursalId,
-                'TipoPrecio' => $request->TipoPrecio ?? 'sin_factura',   // ✅ NUEVO
+                'TipoPrecio' => $request->TipoPrecio ?? 'sin_factura',
             ]);
 
             $maxOrden = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
@@ -759,6 +801,10 @@ class PedidoClienteController extends Controller
         }
     }
 
+    // ============================================================
+    // REVISAR PEDIDO
+    // ============================================================
+
     /**
      * ✅ REVISAR PEDIDO
      */
@@ -786,6 +832,14 @@ class PedidoClienteController extends Controller
             if ($totalDetalles === 0) {
                 return redirect()->route('operacion.pedidos-clientes.pedidos.create')
                     ->with('error', 'El pedido no tiene productos.');
+            }
+
+            // ✅ Grupo del operador
+            $grupoCliente = $this->getGrupoDelOperador();
+            
+            if (!$grupoCliente) {
+                return redirect()->route('operacion.pedidos-clientes.pedidos.create')
+                    ->with('error', 'Tu usuario no tiene un Grupo de Clientes asignado.');
             }
 
             $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
@@ -839,8 +893,8 @@ class PedidoClienteController extends Controller
                 return $item->Cantidad * $item->Precio;
             });
 
-            // ✅ Calcular progreso de grupos
-            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $idIdentificador, $clienteId, $sucursalId);
+            // ✅ Progreso de grupos (con grupo del operador)
+            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
 
             $cumpleMinimos = collect($progresoGrupos)->every(function($item) {
                 return $item['Cumple'];
@@ -854,9 +908,13 @@ class PedidoClienteController extends Controller
                 'operadorNombre' => $operador->nombre ?? 'Sin operador',
                 'totalGeneral' => $totalGeneral,
                 'idIdentificador' => $idIdentificador,
+                'grupoCliente' => [
+                    'IdGrupoCliente' => $grupoCliente->IdGrupoCliente,
+                    'Nombre' => $grupoCliente->Nombre,
+                ],
                 'progresoGrupos' => $progresoGrupos,
                 'cumpleMinimos' => $cumpleMinimos,
-                'tipoPrecio' => $pedido->TipoPrecio,   // ✅ NUEVO
+                'tipoPrecio' => $pedido->TipoPrecio,
             ]);
 
         } catch (\Exception $e) {
@@ -866,240 +924,12 @@ class PedidoClienteController extends Controller
         }
     }
 
-    /**
-     * ✅ CAMBIAR TIPO DE PRECIO DEL PEDIDO
-     * 
-     * Recalcula los precios de todos los productos del carrito
-     * según el nuevo tipo.
-     */
-    public function cambiarTipoPrecio(Request $request)
-    {
-        $request->validate([
-            'IdPedidoCliente' => 'required|exists:pedidos_clientes,IdPedidoCliente',
-            'TipoPrecio' => 'required|in:sin_factura,con_factura',
-        ]);
-
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-        $idIdentificador = $this->getIdIdentificadorOperador();
-
-        $pedido = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('IdPedidoCliente', $request->IdPedidoCliente)
-            ->where('ActivoInactivo', 0)
-            ->first();
-
-        if (!$pedido) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pedido no encontrado o ya finalizado.'
-            ], 404);
-        }
-
-        if ($pedido->TipoPrecio === $request->TipoPrecio) {
-            return response()->json([
-                'success' => true,
-                'message' => 'El tipo de precio no cambió',
-                'pedido' => $pedido,
-            ]);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            // ✅ Obtener todos los precios
-            $precios = PrecioProducto::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('IdIdentificador', $idIdentificador)
-                ->where('ActivoInactivo', 1)
-                ->get()
-                ->keyBy('IdProducto');
-
-            // ✅ Recalcular precios de todos los detalles
-            $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->get();
-            $totalGeneral = 0;
-            $productosSinPrecio = [];
-
-            foreach ($detalles as $detalle) {
-                $precio = $precios[$detalle->IdProducto] ?? null;
-                
-                if (!$precio) {
-                    // No hay precio configurado
-                    $productosSinPrecio[] = $detalle->IdProducto;
-                    continue;
-                }
-
-                $nuevoPrecio = $this->obtenerPrecioSegunTipo($precio, $request->TipoPrecio);
-                
-                if ($nuevoPrecio === null || $nuevoPrecio <= 0) {
-                    $productosSinPrecio[] = $detalle->IdProducto;
-                    continue;
-                }
-
-                $detalle->update(['Precio' => $nuevoPrecio]);
-                $totalGeneral += $detalle->Cantidad * $nuevoPrecio;
-            }
-
-            // ✅ Actualizar pedido
-            $pedido->update([
-                'TipoPrecio' => $request->TipoPrecio,
-                'TotalGeneral' => $totalGeneral,
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Precios recalculados correctamente',
-                'pedido' => $pedido,
-                'productos_sin_precio' => $productosSinPrecio,
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error al cambiar tipo de precio: ' . $e->getMessage());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al cambiar tipo de precio: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-        /**
-     * ✅ RECALCULAR TIPO DE PRECIO Y DEVOLVER DATOS FRESCOS
-     * 
-     * Se usa desde Review.vue para actualizar los precios en pantalla
-     * sin recargar la página.
-     */
-    public function recalcularTipoPrecio(Request $request, $id)
-    {
-        $request->validate([
-            'TipoPrecio' => 'required|in:sin_factura,con_factura',
-        ]);
-
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-        $idIdentificador = $this->getIdIdentificadorOperador();
-
-        $pedido = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('IdPedidoCliente', $id)
-            ->where('ActivoInactivo', 0)
-            ->first();
-
-        if (!$pedido) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Pedido no encontrado o ya finalizado.'
-            ], 404);
-        }
-
-        if ($pedido->TipoPrecio === $request->TipoPrecio) {
-            // Igual devolvemos los datos frescos por si acaso
-            $pedido->load(['detalles.producto', 'detalles.contenedor']);
-        } else {
-            DB::beginTransaction();
-
-            try {
-                // ✅ Obtener todos los precios configurados
-                $precios = PrecioProducto::where('IdCliente', $clienteId)
-                    ->where('IdSucursal', $sucursalId)
-                    ->where('IdIdentificador', $idIdentificador)
-                    ->where('ActivoInactivo', 1)
-                    ->get()
-                    ->keyBy('IdProducto');
-
-                // ✅ Recalcular precios de todos los detalles
-                $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->get();
-                $totalGeneral = 0;
-                $productosSinPrecio = [];
-
-                foreach ($detalles as $detalle) {
-                    $precio = $precios[$detalle->IdProducto] ?? null;
-
-                    if (!$precio) {
-                        $productosSinPrecio[] = $detalle->IdProducto;
-                        continue;
-                    }
-
-                    $nuevoPrecio = $this->obtenerPrecioSegunTipo($precio, $request->TipoPrecio);
-
-                    if ($nuevoPrecio === null || $nuevoPrecio <= 0) {
-                        $productosSinPrecio[] = $detalle->IdProducto;
-                        continue;
-                    }
-
-                    $detalle->update(['Precio' => $nuevoPrecio]);
-                    $totalGeneral += $detalle->Cantidad * $nuevoPrecio;
-                }
-
-                $pedido->update([
-                    'TipoPrecio' => $request->TipoPrecio,
-                    'TotalGeneral' => $totalGeneral,
-                ]);
-
-                DB::commit();
-            } catch (\Exception $e) {
-                DB::rollBack();
-                Log::error('Error al recalcular tipo precio: ' . $e->getMessage());
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Error al recalcular: ' . $e->getMessage()
-                ], 500);
-            }
-        }
-
-        // ✅ Recargar detalles frescos para devolver al frontend
-        $pedido->load(['detalles.producto', 'detalles.contenedor']);
-
-        $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
-            $primerItem = $items->first();
-            $contenedor = $primerItem->contenedor;
-            $total = $items->sum('Cantidad');
-            $subtotal = $items->sum(function($item) {
-                return $item->Cantidad * $item->Precio;
-            });
-
-            return [
-                'IdContenedor' => $primerItem->IdContenedor,
-                'Codigo' => $contenedor ? $contenedor->Codigo : '-',
-                'Orden' => intval($orden),
-                'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
-                'productos' => $items->map(function($item) {
-                    return [
-                        'IdProducto' => $item->IdProducto,
-                        'Codigo' => $item->producto ? $item->producto->Codigo : '-',
-                        'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
-                        'Cantidad' => (float) $item->Cantidad,
-                        'Precio' => (float) $item->Precio,
-                        'Subtotal' => (float) ($item->Cantidad * $item->Precio),
-                        'IdGrupoAnalisis' => $item->producto ? $item->producto->IdGrupoAnalisis : null,
-                        'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
-                    ];
-                }),
-                'total_unidades' => (float) $total,
-                'subtotal' => (float) $subtotal,
-            ];
-        })->values();
-
-        $totalGeneralFinal = $pedido->detalles->sum(function($item) {
-            return $item->Cantidad * $item->Precio;
-        });
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Precios recalculados correctamente',
-            'tipo_precio' => $pedido->TipoPrecio,
-            'detalles_agrupados' => $detallesAgrupados,
-            'total_general' => (float) $totalGeneralFinal,
-        ]);
-    }
+    // ============================================================
+    // FINALIZAR PEDIDO
+    // ============================================================
 
     /**
      * ✅ FINALIZAR PEDIDO
-     * 
-     * ⚠️ IMPORTANTE: La sucursal es SIEMPRE la de la sesión (session('cliente_sucursal_id')).
-     * No se permite cambiarla desde el frontend porque el operador trabaja
-     * con una sucursal fija asignada en su login.
      */
     public function finalizarPedido(Request $request, $idPedido)
     {
@@ -1109,15 +939,13 @@ class PedidoClienteController extends Controller
         $request->validate([
             'IdCliente' => 'required|exists:todos_cliente,IdCliente',
             'Observaciones' => 'nullable|string|max:500',
-            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',   // ✅ NUEVO
+            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',
         ]);
 
-        // ✅ La sucursal SIEMPRE viene de la sesión, NO del request
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');  // ✅ FIX: Variable definida desde la sesión
+        $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ✅ Validar que la sucursal de sesión exista y pertenezca al cliente
         $sucursalValida = ClienteSucursal::where('IdClienteSucursal', $sucursalId)
             ->where('IdCliente', $clienteId)
             ->exists();
@@ -1171,7 +999,15 @@ class PedidoClienteController extends Controller
         }
 
         try {
-            $idIdentificador = $this->getIdIdentificadorOperador();
+            // ✅ Grupo del operador
+            $grupoCliente = $this->getGrupoDelOperador();
+            
+            if (!$grupoCliente) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+                ], 400);
+            }
 
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $idPedido)
@@ -1203,8 +1039,7 @@ class PedidoClienteController extends Controller
             }
 
             // ✅ 2. VALIDAR MÍNIMOS POR GRUPO
-            // ✅ AHORA $sucursalId ESTÁ DEFINIDO CORRECTAMENTE
-            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $idIdentificador, $clienteId, $sucursalId);
+            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
 
             $gruposQueNoCumplen = collect($progresoGrupos)->filter(function($item) {
                 return !$item['Cumple'];
@@ -1262,11 +1097,10 @@ class PedidoClienteController extends Controller
             }
 
             // ✅ 5. ACTUALIZAR PEDIDO
-            // ⚠️ La sucursal y el cliente son los de la sesión (no se permiten cambios)
             $pedido->update([
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $sucursalId,
-                'TipoPrecio' => $request->TipoPrecio ?? $pedido->TipoPrecio,   // ✅ NUEVO
+                'TipoPrecio' => $request->TipoPrecio ?? $pedido->TipoPrecio,
                 'NumeroPedido' => $numeroPedidoFormateado,
                 'FechaEntrega' => $fechaEntregaFormateada,
                 'Observaciones' => $request->Observaciones,
@@ -1304,6 +1138,10 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
+
+    // ============================================================
+    // MOSTRAR PEDIDO
+    // ============================================================
 
     /**
      * ✅ MOSTRAR DETALLE DEL PEDIDO
@@ -1440,6 +1278,10 @@ class PedidoClienteController extends Controller
         }
     }
 
+    // ============================================================
+    // PDF
+    // ============================================================
+
     /**
      * ✅ GENERAR PDF DEL PEDIDO
      */
@@ -1484,7 +1326,6 @@ class PedidoClienteController extends Controller
                 ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
 
-            // ✅ Obtener configuración de ubicación del operador
             $configOperador = OperadorPedidoCliente::where('IdOperador', $pedido->IdOperador)
                 ->where('ActivoInactivo', 1)
                 ->first();
@@ -1493,14 +1334,12 @@ class PedidoClienteController extends Controller
             $tipoUbicacion = null;
 
             if ($configOperador) {
-                // ✅ Ciudad y Provincia son VARCHAR con "0" o "1"
                 $ubicaciones = [];
                 if ($configOperador->Ciudad == 1) $ubicaciones[] = 'Ciudad';
                 if ($configOperador->Provincia == 1) $ubicaciones[] = 'Provincia';
                 
                 $tipoUbicacion = !empty($ubicaciones) ? implode(' / ', $ubicaciones) : null;
                 
-                // ✅ Destino: leer y limpiar
                 $destinoRaw = $configOperador->getAttribute('Destino');
                 $destino = trim((string) ($destinoRaw ?? ''));
                 if ($destino === '') {
@@ -1664,7 +1503,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
             $yInfoDer += $altoFila;
 
-            // ✅ Mostrar tipo de precio
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetXY($colDer_label, $yInfoDer);
             $pdf->Cell(30, $altoFila, 'Tipo Precio:', 0, 0, 'L');
@@ -1673,7 +1511,6 @@ class PedidoClienteController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->TipoPrecioTexto, 0, 0, 'L');
             $yInfoDer += $altoFila;
 
-            // ✅ Mostrar Ciudad / Provincia
             if (!empty($tipoUbicacion)) {
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetXY($colDer_label, $yInfoDer);
@@ -1684,7 +1521,6 @@ class PedidoClienteController extends Controller
                 $yInfoDer += $altoFila;
             }
 
-            // ✅ Mostrar Destino
             if (!empty($destino)) {
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetXY($colDer_label, $yInfoDer);
@@ -1900,6 +1736,10 @@ class PedidoClienteController extends Controller
         }
     }
 
+    // ============================================================
+    // HELPERS FINALES
+    // ============================================================
+
     /**
      * ✅ CALCULAR TOTALES
      */
@@ -1918,5 +1758,152 @@ class PedidoClienteController extends Controller
             'total_contenedores' => $totalContenedores,
             'total_general' => $totalGeneral,
         ];
+    }
+    /**
+     * ✅ CAMBIAR TIPO DE PRECIO Y RECALCULAR
+     * 
+     * El operador puede cambiar de "sin factura" a "con factura" (o viceversa)
+     * en el Review. Se recalculan los precios de TODOS los productos del pedido
+     * usando los precios del GRUPO.
+     */
+    public function recalcularTipoPrecio(Request $request, $id)
+    {
+        $request->validate([
+            'TipoPrecio' => 'required|in:sin_factura,con_factura',
+        ]);
+
+        $clienteId = session('cliente_id');
+        
+        try {
+            // ✅ Grupo del operador
+            $grupoCliente = $this->getGrupoDelOperador();
+            
+            if (!$grupoCliente) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+                ], 400);
+            }
+            
+            // ✅ Pedido
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdPedidoCliente', $id)
+                ->where('ActivoInactivo', 0)
+                ->first();
+
+            if (!$pedido) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado o ya finalizado.'
+                ], 404);
+            }
+
+            $tipoPrecioNuevo = $request->TipoPrecio;
+
+            // ✅ Si no cambió el tipo, devolver datos frescos
+            if ($pedido->TipoPrecio === $tipoPrecioNuevo) {
+                $pedido->load(['detalles.producto', 'detalles.contenedor']);
+            } else {
+                DB::beginTransaction();
+
+                try {
+                    // ✅ Obtener precios del grupo
+                    $preciosGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
+                        ->where('ActivoInactivo', 1)
+                        ->get()
+                        ->keyBy('IdProducto');
+
+                    // ✅ Recalcular precios
+                    $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->get();
+                    $totalGeneral = 0;
+                    $productosSinPrecio = [];
+
+                    foreach ($detalles as $detalle) {
+                        $precioGrupo = $preciosGrupo[$detalle->IdProducto] ?? null;
+
+                        if (!$precioGrupo) {
+                            $productosSinPrecio[] = $detalle->IdProducto;
+                            continue;
+                        }
+
+                        $nuevoPrecio = $tipoPrecioNuevo === 'con_factura' 
+                            ? $precioGrupo->PrecioConFactura 
+                            : $precioGrupo->PrecioSinFactura;
+
+                        if ($nuevoPrecio === null || $nuevoPrecio <= 0) {
+                            $productosSinPrecio[] = $detalle->IdProducto;
+                            continue;
+                        }
+
+                        $detalle->update(['Precio' => $nuevoPrecio]);
+                        $totalGeneral += $detalle->Cantidad * $nuevoPrecio;
+                    }
+
+                    // ✅ Actualizar pedido
+                    $pedido->update([
+                        'TipoPrecio' => $tipoPrecioNuevo,
+                        'TotalGeneral' => $totalGeneral,
+                    ]);
+
+                    DB::commit();
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    throw $e;
+                }
+            }
+
+            // ✅ Recargar datos frescos
+            $pedido->load(['detalles.producto', 'detalles.contenedor']);
+
+            // ✅ Agrupar detalles
+            $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
+                $primerItem = $items->first();
+                $contenedor = $primerItem->contenedor;
+                $total = $items->sum('Cantidad');
+                $subtotal = $items->sum(function($item) {
+                    return $item->Cantidad * $item->Precio;
+                });
+
+                return [
+                    'IdContenedor' => $primerItem->IdContenedor,
+                    'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                    'Orden' => intval($orden),
+                    'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'productos' => $items->map(function($item) {
+                        return [
+                            'IdProducto' => $item->IdProducto,
+                            'Codigo' => $item->producto ? $item->producto->Codigo : '-',
+                            'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
+                            'Cantidad' => (float) $item->Cantidad,
+                            'Precio' => (float) $item->Precio,
+                            'Subtotal' => (float) ($item->Cantidad * $item->Precio),
+                            'IdGrupoAnalisis' => $item->producto ? $item->producto->IdGrupoAnalisis : null,
+                            'IdPedidoClienteDetalle' => $item->IdPedidoClienteDetalle,
+                        ];
+                    }),
+                    'total_unidades' => (float) $total,
+                    'subtotal' => (float) $subtotal,
+                ];
+            })->values();
+
+            $totalGeneralFinal = $pedido->detalles->sum(function($item) {
+                return $item->Cantidad * $item->Precio;
+            });
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Precios recalculados correctamente',
+                'tipo_precio' => $pedido->TipoPrecio,
+                'detalles_agrupados' => $detallesAgrupados,
+                'total_general' => (float) $totalGeneralFinal,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al recalcular tipo precio: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al recalcular: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

@@ -95,59 +95,46 @@ class Contenedor extends Model
 
     // ==================== RELACIONES ====================
 
-    /**
-     * Relación con el tipo de contenedor
-     */
     public function tipoContenedor()
     {
         return $this->belongsTo(ContenedorTipo::class, 'IdTipoContenedor', 'IdTipoContenedor');
     }
 
-    /**
-     * Relación con grupos de análisis (N:N)
-     */
-    public function gruposAnalisis()
-    {
-        return $this->belongsToMany(
-            \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::class,
-            'operacion_pedidos_clientes_contenedor_grupo',
-            'IdContenedor',
-            'IdGrupoAnalisis'
-        );
-    }
-
-    /**
-     * Relación con sucursal
-     */
     public function sucursal()
     {
         return $this->belongsTo(\App\Models\Gestion\Todos\ClienteSucursal::class, 'IdSucursal', 'IdClienteSucursal');
     }
 
-    /**
-     * Relación con cliente
-     */
     public function cliente()
     {
         return $this->belongsTo(\App\Models\Gestion\Todos\Cliente::class, 'IdCliente', 'IdCliente');
     }
 
-    /**
-     * Relación con operador que insertó
-     */
     public function operadorInserta()
     {
         return $this->belongsTo(\App\Models\Gestion\Todos\Operador::class, 'IdOperadorInserta', 'IdOperador');
     }
 
-    // ==================== RELACIONES CON PEDIDOS ====================
-
-    /**
-     * Relación con los detalles de pedidos (para saber en qué pedidos se usa este contenedor)
-     */
     public function pedidosDetalles()
     {
         return $this->hasMany(PedidoClienteDetalle::class, 'IdContenedor', 'IdContenedor');
+    }
+
+    /**
+     * ✅ NUEVA RELACIÓN: Grupos de clientes asignados al contenedor
+     */
+    public function gruposClientes()
+    {
+        return $this->hasMany(ContenedorGrupoCliente::class, 'IdContenedor', 'IdContenedor');
+    }
+
+    /**
+     * ✅ NUEVA RELACIÓN: Grupos de clientes activos
+     */
+    public function gruposClientesActivos()
+    {
+        return $this->hasMany(ContenedorGrupoCliente::class, 'IdContenedor', 'IdContenedor')
+            ->where('ActivoInactivo', 1);
     }
 
     // ==================== ACCESORS ====================
@@ -172,134 +159,28 @@ class Contenedor extends Model
         return $this->tipoContenedor ? $this->tipoContenedor->Nombre : '-';
     }
 
-    public function getGruposNombresAttribute()
-    {
-        return $this->gruposAnalisis->pluck('Grupo')->implode(', ');
-    }
-
-    public function getTotalProductosAttribute()
-    {
-        return $this->contarProductosActivos();
-    }
-
-    // ==================== MÉTODOS PARA PRODUCTOS ====================
-
     /**
-     * OBTENER TODOS LOS PRODUCTOS ACTIVOS DE TODOS LOS GRUPOS ASOCIADOS
-     * Útil para el modal de pedidos
+     * ✅ Total de grupos asignados
      */
-    public function getProductosAttribute()
+    public function getTotalGruposAttribute()
     {
-        return \App\Models\Gestion\Inventario\ProductoDetalle::where('IdCliente', $this->IdCliente)
-            ->whereIn('IdGrupoAnalisis', $this->gruposAnalisis->pluck('IdGrupoAnalisis'))
-            ->where('ActivoInactivo', 0)
-            ->orderBy('Descripcion')
-            ->get();
+        return $this->gruposClientesActivos()->count();
     }
 
     /**
-     * CONTAR PRODUCTOS ACTIVOS DE TODOS LOS GRUPOS ASOCIADOS
+     * ✅ Total de clientes (sumando los de todos los grupos)
      */
-    public function contarProductosActivos()
+    public function getTotalClientesAttribute()
     {
-        return \App\Models\Gestion\Inventario\ProductoDetalle::where('IdCliente', $this->IdCliente)
-            ->whereIn('IdGrupoAnalisis', $this->gruposAnalisis->pluck('IdGrupoAnalisis'))
-            ->where('ActivoInactivo', 0)
-            ->count();
-    }
-
-    /**
-     * OBTENER PRODUCTOS AGRUPADOS POR GRUPO DE ANÁLISIS
-     * Útil para mostrar en el modal de pedidos con separación por grupos
-     */
-    public function getProductosAgrupadosAttribute()
-    {
-        $productos = $this->productos;
-        
-        if ($productos->isEmpty()) {
-            return collect([]);
+        $total = 0;
+        foreach ($this->gruposClientesActivos as $grupoContenedor) {
+            $grupo = $grupoContenedor->grupoCliente;
+            if ($grupo) {
+                $total += GrupoClienteDetalle::where('IdGrupoCliente', $grupo->IdGrupoCliente)
+                    ->where('ActivoInactivo', 1)
+                    ->count();
+            }
         }
-        
-        return $productos->groupBy('IdGrupoAnalisis')->map(function($items, $grupoId) {
-            $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
-            return [
-                'grupo_id' => $grupoId,
-                'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
-                'productos' => $items->map(function($producto) {
-                    return [
-                        'IdProducto' => $producto->IdProducto,
-                        'Codigo' => $producto->Codigo,
-                        'Descripcion' => $producto->Descripcion,
-                        'Precio' => $producto->Precio,
-                    ];
-                })->values(),
-            ];
-        })->values();
-    }
-
-    /**
-     * OBTENER PRODUCTOS CON CANTIDAD MÁXIMA (para el modal de pedidos)
-     * La cantidad máxima es la CapacidadTotal del contenedor
-     */
-    public function getProductosConMaximoAttribute()
-    {
-        return $this->productos->map(function($producto) {
-            return [
-                'IdProducto' => $producto->IdProducto,
-                'Codigo' => $producto->Codigo,
-                'Descripcion' => $producto->Descripcion,
-                'Precio' => $producto->Precio,
-                'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
-                'CantidadMaxima' => $this->CapacidadTotal, // La capacidad total del contenedor
-            ];
-        });
-    }
-
-    // ==================== MÉTODO PARA DEBUG ====================
-
-    /**
-     * OBTENER GRUPOS CON SUS PRODUCTOS (para debug)
-     */
-    public function getGruposConProductosAttribute()
-    {
-        $result = [];
-        foreach ($this->gruposAnalisis as $grupo) {
-            $productos = \App\Models\Gestion\Inventario\ProductoDetalle::where('IdCliente', $this->IdCliente)
-                ->where('IdGrupoAnalisis', $grupo->IdGrupoAnalisis)
-                ->where('ActivoInactivo', 0)
-                ->count();
-            
-            $result[] = [
-                'grupo' => $grupo->Grupo,
-                'total_productos' => $productos,
-            ];
-        }
-        return $result;
-    }
-    // app/Models/Operacion/Pedidos/ClientesMayoristas/Contenedor.php
-
-    public function clientesHabilitados()
-    {
-        return $this->belongsToMany(
-            Identificador::class,
-            'operacion_pedidos_clientes_contenedor_cliente',
-            'IdContenedor',
-            'IdIdentificador'
-        )->withPivot('ActivoInactivo');
-    }
-
-    // Scope para obtener contenedores por cliente
-    public function scopeHabilitadosParaCliente($query, $idIdentificador, $clienteId, $sucursalId)
-    {
-        return $query->where('ActivoInactivo', 1)
-            ->whereExists(function($q) use ($idIdentificador, $clienteId, $sucursalId) {
-                $q->select(DB::raw(1))
-                    ->from('operacion_pedidos_clientes_contenedor_cliente')
-                    ->whereColumn('operacion_pedidos_clientes_contenedor_cliente.IdContenedor', 'operacion_pedidos_clientes_contenedor.IdContenedor')
-                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdIdentificador', $idIdentificador)
-                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdCliente', $clienteId)
-                    ->where('operacion_pedidos_clientes_contenedor_cliente.IdSucursal', $sucursalId)
-                    ->where('operacion_pedidos_clientes_contenedor_cliente.ActivoInactivo', 1);
-            });
+        return $total;
     }
 }

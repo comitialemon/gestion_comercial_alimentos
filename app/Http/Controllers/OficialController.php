@@ -5,8 +5,6 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Models\Gestion\Impuestos\VentaLiquidacionConcepto;
-use App\Models\Gestion\Todos\Fecha;
-use Carbon\Carbon;
 
 class OficialController extends Controller
 {
@@ -19,32 +17,69 @@ class OficialController extends Controller
         $operadorId = session('operador_id');
 
         // =============================================
+        // 🔥 VERIFICAR TIPO DE OPERADOR
+        // =============================================
+        $tipoOperadorId = null;
+        $esVentaMostrador = false;
+
+        if ($operadorId) {
+            $tipoOperadorId = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->where('IdOperador', $operadorId)
+                ->value('IdOperadorTipo');
+
+            // 🔥 SOLO VentaMostrador (ID 6)
+            $esVentaMostrador = ($tipoOperadorId == 6);
+        }
+
+        // Si NO es VentaMostrador, devolvemos la vista sin datos
+        if (!$esVentaMostrador) {
+            return Inertia::render('Oficial/Index', [
+                'gestion' => [
+                    'cliente_id'          => session('cliente_id'),
+                    'cliente_sucursal_id' => session('cliente_sucursal_id'),
+                    'empresa_nombre'      => session('global_empresa_nombre'),
+                    'sucursal_nombre'     => session('global_sucursal_nombre'),
+                    'sucursal_numero'     => session('global_sucursal_numero'),
+                ],
+                'facturacion' => [
+                    'empresa_id'  => session('empresa_id'),
+                    'sucursal_id' => session('sucursal_id'),
+                    'completo'    => $hasFact,
+                ],
+                'esVentaMostrador' => false,
+                'diaActual'        => null,
+                'fechasPendientes' => [],
+                'flash' => [
+                    'ok'   => session('ok'),
+                    'warn' => session('warn'),
+                ],
+            ]);
+        }
+
+        // =============================================
         // 🔥 1. OBTENER TODAS LAS FECHAS PENDIENTES
         // =============================================
-        $todasFechasPendientes = collect();
-
-        if ($clienteId && $sucursalId && $operadorId) {
-            $todasFechasPendientes = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('impuestos_ventas')
-                ->join('todos_fecha', DB::raw('DATE(impuestos_ventas.FechaVenta)'), '=', 'todos_fecha.Fecha')
-                ->where('impuestos_ventas.IdCliente', $clienteId)
-                ->where('impuestos_ventas.IdClienteSucursal', $sucursalId)
-                ->where('impuestos_ventas.IdOperadorIngresa', $operadorId)
-                ->where('impuestos_ventas.LiquidadoVendedor', 0)
-                ->where('impuestos_ventas.IdEstado', 1)
-                ->where('impuestos_ventas.ActivoInactivo', 1)
-                ->where('impuestos_ventas.NumeroFactura', '>', 0)
-                ->select(
-                    'todos_fecha.IdFecha as id',
-                    'todos_fecha.Fecha as fecha_raw',
-                    DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha"),
-                    DB::raw('SUM(impuestos_ventas.ImporteVenta) as total_ventas'),
-                    DB::raw('COUNT(impuestos_ventas.IdVentas) as cantidad_ventas')
-                )
-                ->groupBy('todos_fecha.IdFecha', 'todos_fecha.Fecha')
-                ->orderBy('todos_fecha.Fecha', 'desc')
-                ->get();
-        }
+        $todasFechasPendientes = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('impuestos_ventas')
+            ->join('todos_fecha', DB::raw('DATE(impuestos_ventas.FechaVenta)'), '=', 'todos_fecha.Fecha')
+            ->where('impuestos_ventas.IdCliente', $clienteId)
+            ->where('impuestos_ventas.IdClienteSucursal', $sucursalId)
+            ->where('impuestos_ventas.IdOperadorIngresa', $operadorId)
+            ->where('impuestos_ventas.LiquidadoVendedor', 0)
+            ->where('impuestos_ventas.IdEstado', 1)
+            ->where('impuestos_ventas.ActivoInactivo', 1)
+            ->where('impuestos_ventas.NumeroFactura', '>', 0)
+            ->select(
+                'todos_fecha.IdFecha as id',
+                'todos_fecha.Fecha as fecha_raw',
+                DB::raw("DATE_FORMAT(todos_fecha.Fecha, '%d/%m/%Y') as fecha"),
+                DB::raw('SUM(impuestos_ventas.ImporteVenta) as total_ventas'),
+                DB::raw('COUNT(impuestos_ventas.IdVentas) as cantidad_ventas')
+            )
+            ->groupBy('todos_fecha.IdFecha', 'todos_fecha.Fecha')
+            ->orderBy('todos_fecha.Fecha', 'desc')
+            ->get();
 
         // =============================================
         // 🔥 2. LA FECHA MÁS RECIENTE ES LA "ACTUAL"
@@ -65,12 +100,10 @@ class OficialController extends Controller
 
         // =============================================
         // 🔥 3. TRAER CONCEPTOS Y CALCULAR DIFERENCIA
-        //     (misma lógica que getDatos de LiquidacionVendedorController)
         // =============================================
-        if ($fechaActual && $clienteId && $sucursalId && $operadorId) {
+        if ($fechaActual) {
             $fechaStr = $fechaActual->fecha_raw;
 
-            // 3.1 Total de ventas del día (SOLO ACTIVAS)
             $totalVentas = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('impuestos_ventas')
                 ->where('IdCliente', $clienteId)
@@ -85,12 +118,10 @@ class OficialController extends Controller
 
             $totalVentas = round($totalVentas, 2);
 
-            // 3.2 Obtener TODOS los conceptos activos del cliente
             $conceptosBase = VentaLiquidacionConcepto::porContexto()
                 ->activos()
                 ->get();
 
-            // 3.3 Calcular montos del sistema para cada concepto
             $conceptos = [];
             $sumaMontos = 0;
 
@@ -121,7 +152,6 @@ class OficialController extends Controller
                 ];
             }
 
-            // 3.4 Calcular diferencia
             $diferencia = round($totalVentas - $sumaMontos, 2);
 
             $diaActual['totalVentas'] = $totalVentas;
@@ -143,6 +173,7 @@ class OficialController extends Controller
                 'sucursal_id' => session('sucursal_id'),
                 'completo'    => $hasFact,
             ],
+            'esVentaMostrador' => true,
             'diaActual'        => $diaActual,
             'fechasPendientes' => $otrasFechas,
             'flash' => [

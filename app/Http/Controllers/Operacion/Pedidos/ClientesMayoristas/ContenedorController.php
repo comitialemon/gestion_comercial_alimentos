@@ -4,9 +4,6 @@ namespace App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas;
 
 use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Contenedor;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\ContenedorGrupo;
-use App\Models\Gestion\Inventario\ProductoDetalle;
-use App\Models\Gestion\Inventario\ProductoGrupoAnalisis;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -33,7 +30,7 @@ class ContenedorController extends Controller
         $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
         
         $query = Contenedor::porCliente()
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+            ->with(['tipoContenedor', 'sucursal']);
         
         if ($sucursalFiltro) {
             $query->where('IdSucursal', $sucursalFiltro);
@@ -55,7 +52,6 @@ class ContenedorController extends Controller
         }
         
         // ✅ ORDENAMIENTO NATURAL: alfabético por prefijo + numérico por sufijo
-        // Ejemplo: TERMO-20, TERMO-30, TERMO-80, TERMO-100
         $contenedores = $query
             ->orderByRaw("
                 LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
@@ -70,10 +66,8 @@ class ContenedorController extends Controller
                 'Codigo' => $contenedor->Codigo,
                 'IdTipoContenedor' => $contenedor->IdTipoContenedor,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                'GruposAnalisis' => $contenedor->gruposNombres,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
-                'TotalProductos' => $contenedor->totalProductos,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
                 'EstadoTexto' => $contenedor->EstadoTexto,
                 'EstadoColor' => $contenedor->EstadoColor,
@@ -110,7 +104,7 @@ class ContenedorController extends Controller
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
         
         $query = Contenedor::porCliente()
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+            ->with(['tipoContenedor', 'sucursal']);
         
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
             $query->where('IdSucursal', $request->sucursal_id);
@@ -141,10 +135,8 @@ class ContenedorController extends Controller
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                'GruposAnalisis' => $contenedor->gruposNombres,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
-                'TotalProductos' => $contenedor->totalProductos,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
                 'EstadoTexto' => $contenedor->EstadoTexto,
                 'EstadoColor' => $contenedor->EstadoColor,
@@ -180,7 +172,8 @@ class ContenedorController extends Controller
         }
 
         $clienteId = session('cliente_id');
-        
+        $sucursalId = session('cliente_sucursal_id');   // ✅
+
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
@@ -195,16 +188,22 @@ class ContenedorController extends Controller
             ->orderBy('Nombre')
             ->get(['IdTipoContenedor as id', 'Nombre as nombre']);
 
-        $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
-            ->orderBy('Grupo')
-            ->get(['IdGrupoAnalisis as id', 'Grupo as nombre']);
+        // ✅ Obtener nombre de la sucursal actual
+        $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first(['Nombre', 'NumeroSucursal']);
+
+        $sucursalActualNombre = $sucursalActual 
+            ? $sucursalActual->Nombre . ($sucursalActual->NumeroSucursal ? ' (N° ' . $sucursalActual->NumeroSucursal . ')' : '')
+            : 'Sucursal Actual';
 
         return Inertia::render('Operacion/ClientesMayoristas/Contenedores/Create', [
             'contenedor' => null,
             'sucursales' => $sucursales,
             'tiposContenedor' => $tiposContenedor,
-            'gruposAnalisis' => $gruposAnalisis,
-            'gruposSeleccionados' => [],
+            'sucursalActual' => $sucursalId,               // ✅
+            'sucursalActualNombre' => $sucursalActualNombre, // ✅
         ]);
     }
 
@@ -222,20 +221,16 @@ class ContenedorController extends Controller
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
 
-        // Obtener el nombre del tipo para generar el código
         $tipo = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_contenedor_tipo')
             ->where('IdTipoContenedor', $request->IdTipoContenedor)
             ->value('Nombre');
 
-        // Generar código automáticamente
         $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
 
-        // Verificar si ya existe un borrador para este operador
         $borradorExistente = Contenedor::borradorPorOperador()->first();
 
         if ($borradorExistente) {
-            // Actualizar borrador existente
             $borradorExistente->update([
                 'IdSucursal' => $request->IdSucursal,
                 'IdTipoContenedor' => $request->IdTipoContenedor,
@@ -299,17 +294,15 @@ class ContenedorController extends Controller
 
     /**
      * PASO 2: Mostrar formulario de edición
-     * ✅ MODIFICADO: 
-     *  - Ya NO filtra por IdOperadorInserta (cualquier operador puede editar)
-     *  - Si el contenedor está ACTIVO, lo pasa automáticamente a BORRADOR
      */
     public function edit($id)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');   // ✅
         
         $contenedor = Contenedor::porCliente($clienteId)
             ->where('IdContenedor', $id)
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal'])
+            ->with(['tipoContenedor', 'sucursal'])
             ->firstOrFail();
 
         // ✅ Si está activo, lo pasamos automáticamente a BORRADOR
@@ -335,18 +328,22 @@ class ContenedorController extends Controller
             ->orderBy('Nombre')
             ->get(['IdTipoContenedor as id', 'Nombre as nombre']);
 
-        $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
-            ->orderBy('Grupo')
-            ->get(['IdGrupoAnalisis as id', 'Grupo as nombre']);
+        // ✅ Obtener nombre de la sucursal actual
+        $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente_sucursal')
+            ->where('IdClienteSucursal', $sucursalId)
+            ->first(['Nombre', 'NumeroSucursal']);
 
-        $gruposSeleccionados = $contenedor->gruposAnalisis->pluck('IdGrupoAnalisis')->toArray();
+        $sucursalActualNombre = $sucursalActual 
+            ? $sucursalActual->Nombre . ($sucursalActual->NumeroSucursal ? ' (N° ' . $sucursalActual->NumeroSucursal . ')' : '')
+            : 'Sucursal Actual';
 
         return Inertia::render('Operacion/ClientesMayoristas/Contenedores/Create', [
             'contenedor' => $contenedor,
             'sucursales' => $sucursales,
             'tiposContenedor' => $tiposContenedor,
-            'gruposAnalisis' => $gruposAnalisis,
-            'gruposSeleccionados' => $gruposSeleccionados,
+            'sucursalActual' => $sucursalId,               // ✅
+            'sucursalActualNombre' => $sucursalActualNombre, // ✅
         ]);
     }
 
@@ -372,16 +369,13 @@ class ContenedorController extends Controller
             ], 400);
         }
 
-        // Obtener el nombre del tipo
         $tipo = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_contenedor_tipo')
             ->where('IdTipoContenedor', $request->IdTipoContenedor)
             ->value('Nombre');
 
-        // Regenerar código
         $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
 
-        // Verificar que no exista otro con el mismo código
         $existe = Contenedor::where('IdCliente', session('cliente_id'))
             ->where('IdContenedor', '!=', $id)
             ->where('Codigo', $codigo)
@@ -411,93 +405,12 @@ class ContenedorController extends Controller
     }
 
     /**
-     * ✅ ASIGNAR GRUPOS DE ANÁLISIS AL CONTENEDOR
-     * 🔥 CORREGIDO: Ya no requiere 'grupos' como campo obligatorio
-     */
-    public function asignarGrupos(Request $request, $id)
-    {
-        // ✅ ELIMINAR 'required' del campo grupos
-        $request->validate([
-            'grupos' => 'array',  // Puede ser un array vacío
-            'grupos.*' => 'exists:inventario_productogrupoanalisis,IdGrupoAnalisis',
-        ]);
-
-        $contenedor = Contenedor::porCliente()
-            ->where('IdContenedor', $id)
-            ->firstOrFail();
-
-        if ($contenedor->ActivoInactivo == 1) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se puede modificar un contenedor activo'
-            ], 400);
-        }
-
-        // Sincronizar grupos (si el array está vacío, elimina todos)
-        $contenedor->gruposAnalisis()->sync($request->grupos ?? []);
-
-        // Contar productos activos
-        $totalProductos = $contenedor->contarProductosActivos();
-
-        return response()->json([
-            'success' => true,
-            'message' => $totalProductos > 0 
-                ? 'Grupos actualizados correctamente' 
-                : 'Todos los grupos fueron eliminados',
-            'total_productos' => $totalProductos
-        ]);
-    }
-
-    /**
-     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR
-     */
-    public function getProductos($id)
-    {
-        $contenedor = Contenedor::porCliente()
-            ->where('IdContenedor', $id)
-            ->with(['gruposAnalisis', 'tipoContenedor'])
-            ->firstOrFail();
-
-        if ($contenedor->ActivoInactivo != 1) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El contenedor no está activo'
-            ], 400);
-        }
-
-        $productos = $contenedor->productos;
-
-        return response()->json([
-            'success' => true,
-            'contenedor' => [
-                'IdContenedor' => $contenedor->IdContenedor,
-                'Codigo' => $contenedor->Codigo,
-                'Tipo' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                'CapacidadTotal' => $contenedor->CapacidadTotal,
-                'Grupos' => $contenedor->gruposNombres,
-            ],
-            'productos' => $productos->map(function($producto) {
-                return [
-                    'IdProducto' => $producto->IdProducto,
-                    'Codigo' => $producto->Codigo,
-                    'Descripcion' => $producto->Descripcion,
-                    'Precio' => $producto->Precio,
-                    'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
-                    'GrupoAnalisis' => $producto->grupoAnalisis ? $producto->grupoAnalisis->Grupo : '-',
-                ];
-            }),
-        ]);
-    }
-
-    /**
      * PASO 3: Finalizar contenedor (cambiar estado a ACTIVO)
-     * 🔥 CORREGIDO: Ya no valida si los grupos tienen productos activos
      */
     public function finalizar($id)
     {
         $contenedor = Contenedor::porCliente()
             ->where('IdContenedor', $id)
-            ->with(['gruposAnalisis'])
             ->firstOrFail();
 
         if ($contenedor->ActivoInactivo == 1) {
@@ -507,15 +420,6 @@ class ContenedorController extends Controller
             ], 400);
         }
 
-        // ✅ SOLO verificar que tenga grupos asignados (no importa si tienen productos)
-        if ($contenedor->gruposAnalisis->count() == 0) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Asigne al menos un grupo de análisis al contenedor'
-            ], 400);
-        }
-
-        // ✅ ACTIVAR sin validar productos activos
         $contenedor->update([
             'ActivoInactivo' => 1,
             'IdOperadorActualiza' => session('operador_id'),
@@ -525,20 +429,17 @@ class ContenedorController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Contenedor activado correctamente',
-            'total_productos' => $contenedor->contarProductosActivos() // Solo informativo
         ]);
     }
 
     /**
      * CAMBIAR ESTADO (Activo ↔ Inactivo)
-     * 🔥 CORREGIDO: Ya no valida si los grupos tienen productos activos
      */
     public function cambiarEstado($id)
     {
         try {
             $contenedor = Contenedor::porCliente()
                 ->where('IdContenedor', $id)
-                ->with(['gruposAnalisis'])
                 ->firstOrFail();
             
             if ($contenedor->ActivoInactivo == 1) {
@@ -557,15 +458,6 @@ class ContenedorController extends Controller
                 
             } else {
                 // Activar (Borrador → Activo)
-                // ✅ SOLO verificar que tenga grupos asignados
-                if ($contenedor->gruposAnalisis->count() == 0) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'El contenedor no tiene grupos asignados. Asigne grupos primero.'
-                    ], 400);
-                }
-                
-                // ✅ ACTIVAR sin validar productos activos
                 $contenedor->update([
                     'ActivoInactivo' => 1,
                     'IdOperadorActualiza' => session('operador_id'),
@@ -576,7 +468,6 @@ class ContenedorController extends Controller
                     'success' => true,
                     'message' => 'Contenedor activado correctamente',
                     'nuevo_estado' => 1,
-                    'total_productos' => $contenedor->contarProductosActivos() // Solo informativo
                 ]);
             }
             
@@ -604,10 +495,8 @@ class ContenedorController extends Controller
     {
         $contenedor = Contenedor::porCliente()
             ->where('IdContenedor', $id)
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal', 'cliente'])
+            ->with(['tipoContenedor', 'sucursal', 'cliente'])
             ->firstOrFail();
-
-        $productos = $contenedor->productos;
 
         return response()->json([
             'success' => true,
@@ -615,23 +504,12 @@ class ContenedorController extends Controller
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                'GruposAnalisis' => $contenedor->gruposNombres,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
-                'TotalProductos' => $productos->count(),
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
                 'EstadoTexto' => $contenedor->EstadoTexto,
                 'Sucursal' => $contenedor->sucursal ? $contenedor->sucursal->Nombre : '-',
-                'productos' => $productos->map(function($producto) {
-                    return [
-                        'IdProducto' => $producto->IdProducto,
-                        'Codigo' => $producto->Codigo,
-                        'Descripcion' => $producto->Descripcion,
-                        'Precio' => $producto->Precio,
-                        'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
-                        'GrupoAnalisis' => $producto->grupoAnalisis ? $producto->grupoAnalisis->Grupo : '-',
-                    ];
-                }),
+                'detalles' => [],
             ]
         ]);
     }
@@ -653,7 +531,6 @@ class ContenedorController extends Controller
                 ], 400);
             }
 
-            $contenedor->gruposAnalisis()->detach();
             $contenedor->delete();
 
             return response()->json([
@@ -669,8 +546,9 @@ class ContenedorController extends Controller
             ], 500);
         }
     }
+
     /**
-     * ✅ EXPORTAR PDF: Contenedores con sus grupos y productos
+     * ✅ EXPORTAR PDF: Contenedores con su cabecera
      */
     public function exportarPdf(Request $request)
     {
@@ -734,7 +612,7 @@ class ContenedorController extends Controller
         $pdf->SetFont('helvetica', 'B', 13);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(10, $y);
-        $pdf->Cell(196, 6, 'REPORTE DE CONTENEDORES Y GRUPOS', 0, 1, 'C');
+        $pdf->Cell(196, 6, 'REPORTE DE CONTENEDORES', 0, 1, 'C');
         $y += 6;
 
         $pdf->SetFont('helvetica', '', 7.5);
@@ -745,19 +623,11 @@ class ContenedorController extends Controller
 
         // ============ CONTADORES ============
         $totalContenedores = $contenedores->count();
-        $totalGrupos = 0;
-        $totalProductos = 0;
-        foreach ($contenedores as $c) {
-            $totalGrupos += $c->gruposAnalisis->count();
-            $totalProductos += $c->productos->count();
-        }
 
         $pdf->SetFont('helvetica', 'B', 8);
         $pdf->SetFillColor(240, 245, 255);
         $pdf->SetTextColor(30, 60, 120);
-        $textoContadores = 'Contenedores: ' . $totalContenedores
-            . '  ·  Grupos: ' . $totalGrupos
-            . '  ·  Productos: ' . $totalProductos;
+        $textoContadores = 'Total Contenedores: ' . $totalContenedores;
         $pdf->SetXY(10, $y);
         $pdf->Cell(196, 5, $textoContadores, 1, 1, 'C', 1);
         $y += 7;
@@ -774,10 +644,10 @@ class ContenedorController extends Controller
             $pdf->SetFillColor(230, 240, 255);
             $pdf->SetTextColor(20, 50, 110);
             $pdf->SetXY(10, $y);
-            $pdf->Cell(196, 5.5, '  ' . $contenedor->Codigo, 'LTR', 1, 'L', 1);
+            $pdf->Cell(196, 5.5, '  ' . $contenedor->Codigo, 'LTRB', 1, 'L', 1);
             $y += 5.5;
 
-            // Info del contenedor (una sola línea, sin sucursal)
+            // Info del contenedor
             $pdf->SetFont('helvetica', '', 7.5);
             $pdf->SetTextColor(80, 80, 80);
             $pdf->SetXY(10, $y);
@@ -785,106 +655,17 @@ class ContenedorController extends Controller
             $tipo = $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-';
             $info = '  Tipo: ' . $tipo
                 . ' · Capacidad: ' . number_format($contenedor->CapacidadTotal, 2, ',', '.') . ' und'
-                . ' · Estado: ' . $estado
-                . ' - ' . $contenedor->gruposAnalisis->count() . ' grupo(s)'
-                . ' · ' . $contenedor->productos->count() . ' producto(s)';
+                . ' · Estado: ' . $estado;
             $pdf->Cell(196, 4.5, $info, 'LRB', 1, 'L', 1);
-            $y += 5.5;
-
-            // Recorrer grupos
-            foreach ($contenedor->gruposAnalisis as $grupo) {
-                if ($y > 250) {
-                    $pdf->AddPage();
-                    $y = 15;
-                }
-
-                // Header del grupo
-                $pdf->SetFont('helvetica', 'B', 8.5);
-                $pdf->SetFillColor(245, 248, 255);
-                $pdf->SetTextColor(20, 50, 110);
-                $pdf->SetXY(12, $y);
-                $pdf->Cell(192, 5, '[' . $grupo->Grupo . ']', 'LR', 1, 'L', 1);
-                $y += 4;
-
-                // Productos del grupo
-                $productos = \App\Models\Gestion\Inventario\ProductoDetalle::where('IdCliente', $clienteId)
-                    ->where('IdGrupoAnalisis', $grupo->IdGrupoAnalisis)
-                    ->where('ActivoInactivo', 0)
-                    ->orderBy('Descripcion')
-                    ->get(['IdProducto', 'Codigo', 'Descripcion']);
-
-                if ($productos->isEmpty()) {
-                    $pdf->SetFont('helvetica', 'I', 7);
-                    $pdf->SetTextColor(150, 150, 150);
-                    $pdf->SetXY(14, $y);
-                    $pdf->Cell(190, 4, '  (Sin productos en este grupo)', 'LR', 1, 'L');
-                    $y += 4;
-                } else {
-                    // ✅ ENCABEZADOS: CÓDIGO y PRODUCTO al 50% cada uno
-                    // Total: 10 + 91 + 91 = 192mm
-                    $pdf->SetFont('helvetica', 'B', 7.5);
-                    $pdf->SetFillColor(245, 245, 245);
-                    $pdf->SetTextColor(80, 80, 80);
-                    $pdf->SetXY(14, $y);
-                    $pdf->Cell(10, 4.5, '#', 'TB', 0, 'C', 1);
-                    $pdf->Cell(91, 4.5, 'CÓDIGO', 'TB', 0, 'C', 1);
-                    $pdf->Cell(91, 4.5, 'PRODUCTO', 'TB', 1, 'L', 1);
-                    $y += 4.5;
-
-                    // Filas
-                    $pdf->SetFont('helvetica', '', 7.5);
-                    $pdf->SetTextColor(60, 60, 60);
-                    $fill = false;
-                    $contador = 0;
-
-                    foreach ($productos as $producto) {
-                        if ($y > 260) {
-                            $pdf->AddPage();
-                            $y = 15;
-
-                            // Re-imprimir encabezados
-                            $pdf->SetFont('helvetica', 'B', 7.5);
-                            $pdf->SetFillColor(245, 245, 245);
-                            $pdf->SetTextColor(80, 80, 80);
-                            $pdf->SetXY(14, $y);
-                            $pdf->Cell(10, 4.5, '#', 'TB', 0, 'C', 1);
-                            $pdf->Cell(91, 4.5, 'CÓDIGO', 'TB', 0, 'C', 1);
-                            $pdf->Cell(91, 4.5, 'PRODUCTO', 'TB', 1, 'L', 1);
-                            $y += 4.5;
-
-                            $pdf->SetFont('helvetica', '', 7.5);
-                            $pdf->SetTextColor(60, 60, 60);
-                        }
-
-                        $contador++;
-                        $nombreProducto = $producto->Descripcion ?? '-';
-                        if (mb_strlen($nombreProducto, 'UTF-8') > 55) {
-                            $nombreProducto = mb_substr($nombreProducto, 0, 53, 'UTF-8') . '...';
-                        }
-
-                        $pdf->SetXY(14, $y);
-                        $pdf->Cell(10, 4.5, $contador, 'LR', 0, 'C', $fill);
-                        $pdf->Cell(91, 4.5, ' ' . $producto->Codigo, 'LR', 0, 'L', $fill);
-                        $pdf->Cell(91, 4.5, ' ' . $nombreProducto, 'LR', 1, 'L', $fill);
-                        $y += 4.5;
-                        $fill = !$fill;
-                    }
-
-                    // Línea final
-                    $pdf->SetXY(14, $y);
-                    $pdf->Cell(192, 0.3, '', 'T', 1);
-                    $y += 2;
-                }
-            }
-
-            $y += 2;
+            $y += 7;
         }
 
         $nombreArchivo = 'Contenedores_' . Carbon::now('America/La_Paz')->format('Y-m-d') . '.pdf';
         $pdf->Output($nombreArchivo, 'D');
         exit;
     }
-        /**
+
+    /**
      * ✅ HELPER PRIVADO: Obtener contenedores aplicando los mismos filtros del index
      */
     private function obtenerContenedoresParaReporte(Request $request, $clienteId, $sucursalId)
@@ -892,7 +673,7 @@ class ContenedorController extends Controller
         $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
 
         $query = Contenedor::porCliente()
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+            ->with(['tipoContenedor', 'sucursal']);
 
         if ($sucursalFiltro) {
             $query->where('IdSucursal', $sucursalFiltro);
@@ -920,6 +701,7 @@ class ContenedorController extends Controller
             ")
             ->get();
     }
+
     /**
      * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")
      */
@@ -938,7 +720,7 @@ class ContenedorController extends Controller
         $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
         
         $query = Contenedor::porCliente()
-            ->with(['tipoContenedor', 'gruposAnalisis', 'sucursal']);
+            ->with(['tipoContenedor', 'sucursal']);
         
         if ($sucursalFiltro) {
             $query->where('IdSucursal', $sucursalFiltro);
@@ -959,16 +741,10 @@ class ContenedorController extends Controller
             });
         }
         
-        // ✅ ORDENAMIENTO NATURAL: alfabético por prefijo + numérico por sufijo
-        // Ejemplo: termo20, termo30, termo80, termo100
         $contenedores = $query
             ->orderByRaw("
-                LOWER(
-                    REGEXP_REPLACE(Codigo, '[0-9]+', '')
-                ) ASC,
-                CAST(
-                    REGEXP_REPLACE(Codigo, '[^0-9]+', '') AS UNSIGNED
-                ) ASC
+                LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
+                CAST(SUBSTRING_INDEX(Codigo, '-', -1) AS UNSIGNED) ASC
             ")
             ->paginate(20)
             ->appends($request->all());
@@ -979,10 +755,8 @@ class ContenedorController extends Controller
                 'Codigo' => $contenedor->Codigo,
                 'IdTipoContenedor' => $contenedor->IdTipoContenedor,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
-                'GruposAnalisis' => $contenedor->gruposNombres,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
-                'TotalProductos' => $contenedor->totalProductos,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
                 'EstadoTexto' => $contenedor->EstadoTexto,
                 'EstadoColor' => $contenedor->EstadoColor,
