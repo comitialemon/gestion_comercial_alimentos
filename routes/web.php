@@ -1442,7 +1442,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Crear nuevo pedido
                     Route::get('/create', [PedidoClienteController::class, 'create'])
                         ->name('operacion.pedidos-clientes.pedidos.create');
-                    
+                        // ✅ NUEVO: API Validar hora límite para pedidos clientes mayoristas
+                    Route::post('/api/validar-hora-limite', [PedidoClienteController::class, 'apiValidarHoraLimite'])
+                        ->name('operacion.pedidos-clientes.api.validar-hora-limite');
                     // ✅ API: Actualizar contenedor del carrito
                     Route::put('/carrito/contenedor', [PedidoClienteController::class, 'actualizarContenedor'])
                         ->name('operacion.pedidos-clientes.api.carrito.actualizar-contenedor');

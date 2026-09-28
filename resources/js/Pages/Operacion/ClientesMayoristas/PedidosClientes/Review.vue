@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, watch } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -21,6 +21,8 @@ const props = defineProps({
     cumpleMinimos: { type: Boolean, default: true },
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
+    horaLimite: { type: [Number, String], default: null },
+    horaLimiteFormateada: { type: String, default: null },
 })
 
 // ==================== ESTADO ====================
@@ -32,6 +34,9 @@ const errorFechaEntrega = ref('')
 
 const tipoPrecioLocal = ref(props.tipoPrecio || 'sin_factura')
 const cambiandoTipoPrecio = ref(false)
+
+const horaActualCliente = ref(new Date())
+const validandoHoraLimite = ref(false)
 
 const detallesLocal = ref(
     (props.detallesAgrupados || []).map(item => ({
@@ -48,16 +53,188 @@ const detallesLocal = ref(
 const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 
-// ==================== COMPUTED ====================
-const fechaMinima = computed(() => {
-    const hoy = new Date()
-    hoy.setDate(hoy.getDate() + 1)
-    const year = hoy.getFullYear()
-    const month = String(hoy.getMonth() + 1).padStart(2, '0')
-    const day = String(hoy.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
+// ==================== HELPERS DE FECHAS ====================
+// Convierte cualquier valor a YYYY-MM-DD
+const normalizarFecha = (fecha) => {
+    if (!fecha) return null
+    if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+        return fecha
+    }
+    const d = new Date(fecha)
+    if (isNaN(d.getTime())) return null
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
+// Compara dos fechas por timestamp (a las 00:00)
+const compararFechas = (a, b) => {
+    const tsA = new Date(a + 'T00:00:00').getTime()
+    const tsB = new Date(b + 'T00:00:00').getTime()
+    return tsA - tsB  // negativo: a < b | 0: iguales | positivo: a > b
+}
+
+// YYYY-MM-DD → DD/MM/YYYY
+const formatearFechaLocal = (fecha) => {
+    if (!fecha) return ''
+    const partes = fecha.split('-')
+    if (partes.length !== 3) return fecha
+    return `${partes[2]}/${partes[1]}/${partes[0]}`
+}
+
+// ==================== FECHAS BASE ====================
+const fechaHoy = computed(() => normalizarFecha(new Date()))
+
+const fechaManana = computed(() => {
+    const m = new Date()
+    m.setDate(m.getDate() + 1)
+    return normalizarFecha(m)
 })
 
+const fechaMinima = computed(() => fechaManana.value)
+
+// ==================== HORA ====================
+const horaActualTexto = computed(() => {
+    const h = horaActualCliente.value.getHours()
+    const m = String(horaActualCliente.value.getMinutes()).padStart(2, '0')
+    return `${String(h).padStart(2, '0')}:${m}`
+})
+
+const horaFormateada = computed(() => {
+    if (props.horaLimiteFormateada) return props.horaLimiteFormateada
+    if (props.horaLimite) return `${String(props.horaLimite).padStart(2, '0')}:00`
+    return ''
+})
+
+// ==================== ESTADOS DE FECHA ====================
+const fechaVacia = computed(() => !fechaEntrega.value)
+
+const fechaEsInvalida = computed(() => {
+    if (!fechaEntrega.value) return false
+    const fSel = normalizarFecha(fechaEntrega.value)
+    if (!fSel) return false
+    // Inválida si es HOY o antes
+    return compararFechas(fSel, fechaHoy.value) <= 0
+})
+
+const fechaEsManana = computed(() => {
+    if (!fechaEntrega.value) return false
+    const fSel = normalizarFecha(fechaEntrega.value)
+    if (!fSel) return false
+    return compararFechas(fSel, fechaManana.value) === 0
+})
+
+const fechaEsLejana = computed(() => {
+    if (!fechaEntrega.value) return false
+    const fSel = normalizarFecha(fechaEntrega.value)
+    if (!fSel) return false
+    // Lejana si es estrictamente mayor a mañana
+    return compararFechas(fSel, fechaManana.value) > 0
+})
+
+// ==================== ESTADOS DE HORA ====================
+const fueraDeHoraLimite = computed(() => {
+    if (!props.horaLimite) return false
+    const hora = parseInt(props.horaLimite)
+    if (isNaN(hora)) return false
+    return horaActualCliente.value.getHours() >= hora
+})
+
+const cercaDeHoraLimite = computed(() => {
+    if (!props.horaLimite) return false
+    const hora = parseInt(props.horaLimite)
+    if (isNaN(hora)) return false
+
+    const minutosActuales = horaActualCliente.value.getHours() * 60 + horaActualCliente.value.getMinutes()
+    const minutosLimite = hora * 60
+    const diferencia = minutosLimite - minutosActuales
+
+    return diferencia > 0 && diferencia <= 60
+})
+
+// ==================== ESTADO UNIFICADO DEL BANNER ====================
+const estadoBanner = computed(() => {
+    // 1. Fecha vacía → informativo
+    if (fechaVacia.value) return 'sinFecha'
+
+    // 2. Fecha inválida (hoy o pasada) → error 🔴
+    if (fechaEsInvalida.value) return 'fechaInvalida'
+
+    // 3. Fecha lejana (> mañana) → azul informativo
+    if (fechaEsLejana.value) return 'lejana'
+
+    // 4. Fecha = mañana → evaluar hora
+    if (fueraDeHoraLimite.value) return 'bloqueado'
+    if (cercaDeHoraLimite.value) return 'cerca'
+    return 'ok'
+})
+
+// ==================== BLOQUEO ====================
+const bloqueaFinalizar = computed(() => {
+    return estadoBanner.value === 'fechaInvalida' || estadoBanner.value === 'bloqueado'
+})
+
+// ==================== PROPS DEL BANNER ====================
+const iconoBanner = computed(() => ({
+    sinFecha: '⏰',
+    fechaInvalida: '⚠️',
+    lejana: '📅',
+    ok: '✅',
+    cerca: '⚠️',
+    bloqueado: '⛔'
+}[estadoBanner.value] || '⏰'))
+
+const tituloBanner = computed(() => ({
+    sinFecha: 'Hora límite de pedidos',
+    fechaInvalida: 'Fecha de entrega inválida',
+    lejana: 'Sin restricción de hora',
+    ok: 'Aún puedes pedir para mañana',
+    cerca: 'Última hora para pedir hoy',
+    bloqueado: 'Ya no puedes pedir para mañana'
+}[estadoBanner.value] || ''))
+
+const chipBanner = computed(() => ({
+    sinFecha: 'Hasta ' + horaFormateada.value,
+    fechaInvalida: 'Fecha inválida',
+    lejana: 'Fecha lejana',
+    ok: 'Hasta ' + horaFormateada.value,
+    cerca: 'Hasta ' + horaFormateada.value,
+    bloqueado: 'Pasó ' + horaFormateada.value
+}[estadoBanner.value] || ''))
+
+const fraseBanner = computed(() => {
+    const h = horaActualTexto.value
+    const hl = horaFormateada.value
+    const fechaSel = formatearFechaLocal(fechaEntrega.value)
+    const fechaHoyFmt = formatearFechaLocal(fechaHoy.value)
+    const fechaManFmt = formatearFechaLocal(fechaManana.value)
+
+    switch (estadoBanner.value) {
+        case 'sinFecha':
+            return `Si necesitas entrega <strong>mañana</strong> (${fechaManFmt}), tu pedido debe hacerse antes de las <strong>${hl}</strong>. Después de esa hora, la entrega más próxima será <strong>pasado mañana</strong>.`
+
+        case 'fechaInvalida':
+            return `La fecha <strong>${fechaSel}</strong> no es válida. El mínimo es <strong>mañana</strong> (${fechaManFmt}). Cambia la fecha para continuar.`
+
+        case 'lejana':
+            return `Elegiste entrega para el <strong>${fechaSel}</strong>. Como es una fecha <strong>posterior a mañana</strong> (${fechaManFmt}), <strong>no aplica la hora límite</strong>. Puedes finalizar sin problema.`
+
+        case 'ok':
+            return `Son las <strong>${h}</strong>. Tienes hasta las <strong>${hl}</strong> para hacer tu pedido con entrega <strong>mañana</strong> (${fechaManFmt}). Después de esa hora, la entrega más próxima será <strong>pasado mañana</strong>.`
+
+        case 'cerca':
+            return `Son las <strong>${h}</strong>. Te queda <strong>menos de 1 hora</strong> para pedir con entrega <strong>mañana</strong> (${fechaManFmt}). Después de las <strong>${hl}</strong>, la entrega más próxima será <strong>pasado mañana</strong>.`
+
+        case 'bloqueado':
+            return `Son las <strong>${h}</strong> y ya pasó la hora límite (<strong>${hl}</strong>). Ya no se aceptan pedidos con entrega <strong>mañana</strong> (${fechaManFmt}). La fecha más próxima disponible es <strong>pasado mañana</strong>.`
+
+        default:
+            return ''
+    }
+})
+
+// ==================== TOTALES ====================
 const totalUnidades = computed(() => {
     let total = 0
     detallesLocal.value.forEach(item => {
@@ -93,18 +270,30 @@ const fechaPedido = computed(() => {
     return new Date().toLocaleString('es-BO')
 })
 
+// ==================== MÍNIMOS ====================
 const progresoLocal = computed(() => props.progresoGrupos || [])
+const gruposQueNoCumplen = computed(() => progresoLocal.value.filter(g => !g.Cumple))
+const cumpleTodos = computed(() => progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0)
 
-const gruposQueNoCumplen = computed(() => {
-    return progresoLocal.value.filter(g => !g.Cumple)
-})
-
-const cumpleTodos = computed(() => {
-    return progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0
-})
-
+// ✅ BOTÓN: Deshabilitado si cualquier regla falla
 const puedeFinalizar = computed(() => {
-    return cumpleTodos.value && detallesLocal.value.length > 0
+    if (detallesLocal.value.length === 0) return false
+    if (!cumpleTodos.value) return false
+    if (fechaVacia.value) return false
+    if (fechaEsInvalida.value) return false
+    if (fechaEsManana.value && fueraDeHoraLimite.value) return false
+    return true
+})
+
+// ✅ Texto dinámico del botón
+const textoBoton = computed(() => {
+    if (loading.value) return 'Procesando...'
+    if (validandoHoraLimite.value) return 'Validando hora...'
+    if (fechaVacia.value) return 'Selecciona fecha'
+    if (fechaEsInvalida.value) return 'Fecha inválida'
+    if (fechaEsManana.value && fueraDeHoraLimite.value) return 'Hora límite excedida'
+    if (!cumpleTodos.value) return 'Cumplir mínimos'
+    return 'Finalizar Pedido'
 })
 
 const tipoPrecioTexto = computed(() => {
@@ -124,6 +313,27 @@ const formatearPrecio = (valor) => {
     return isNaN(numero) ? '0.00' : numero.toFixed(2)
 }
 
+// ==================== WATCH: Validar al cambiar fecha ====================
+watch(fechaEntrega, (nueva) => {
+    if (!nueva) {
+        errorFechaEntrega.value = ''
+        return
+    }
+
+    const fSel = normalizarFecha(nueva)
+    if (!fSel) {
+        errorFechaEntrega.value = 'Formato de fecha inválido'
+        return
+    }
+
+    if (compararFechas(fSel, fechaHoy.value) <= 0) {
+        errorFechaEntrega.value = `La fecha debe ser mínimo 1 día después de hoy (${formatearFechaLocal(fechaHoy.value)})`
+        return
+    }
+
+    errorFechaEntrega.value = ''
+})
+
 // ==================== FUNCIONES ====================
 const irAtras = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
@@ -135,16 +345,39 @@ const validarFechaEntrega = () => {
         return false
     }
 
-    const hoy = new Date()
-    const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-
-    if (fechaEntrega.value <= hoyStr) {
-        errorFechaEntrega.value = `La fecha debe ser mínimo 1 día después de hoy (${hoy.toLocaleDateString('es-BO')})`
+    const fSel = normalizarFecha(fechaEntrega.value)
+    if (!fSel || compararFechas(fSel, fechaHoy.value) <= 0) {
+        errorFechaEntrega.value = `La fecha debe ser mínimo 1 día después de hoy (${formatearFechaLocal(fechaHoy.value)})`
         return false
     }
 
     errorFechaEntrega.value = ''
     return true
+}
+
+const validarHoraLimite = async () => {
+    if (!props.horaLimite) return true
+    if (!fechaEsManana.value) return true
+
+    validandoHoraLimite.value = true
+    try {
+        const response = await axios.post(
+            '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/api/validar-hora-limite',
+            { FechaEntrega: fechaEntrega.value }
+        )
+
+        if (response.data.success && !response.data.valido) {
+            toast?.error('Hora límite excedida', response.data.mensaje)
+            return false
+        }
+
+        return true
+    } catch (error) {
+        console.error('Error validando hora límite:', error)
+        return true
+    } finally {
+        validandoHoraLimite.value = false
+    }
 }
 
 const cambiarTipoPrecio = async (nuevoTipo) => {
@@ -185,7 +418,7 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
     }
 }
 
-const abrirModalConfirmacion = () => {
+const abrirModalConfirmacion = async () => {
     if (detallesLocal.value.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
         return
@@ -201,6 +434,9 @@ const abrirModalConfirmacion = () => {
         toast?.error('Error', errorFechaEntrega.value)
         return
     }
+
+    const horaOk = await validarHoraLimite()
+    if (!horaOk) return
 
     modalConfirmacionVisible.value = true
 }
@@ -256,7 +492,6 @@ const finalizarPedido = async () => {
     }
 }
 
-// ==================== ABRIR MODAL EDICIÓN ====================
 const abrirModalEdicion = (item) => {
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
@@ -278,7 +513,6 @@ const abrirModalEdicion = (item) => {
     modalEdicionVisible.value = true
 }
 
-// ==================== ACTUALIZAR CONTENEDOR (SIN RECARGAR) ====================
 const actualizarContenedor = async (data) => {
     loading.value = true
     try {
@@ -295,7 +529,6 @@ const actualizarContenedor = async (data) => {
         )
 
         if (response.data.success) {
-            // ✅ Actualizar el detalle local SIN recargar toda la página
             actualizarDetalleLocal(data, payload)
             toast?.success('Éxito', 'Contenedor actualizado correctamente')
         } else {
@@ -310,25 +543,19 @@ const actualizarContenedor = async (data) => {
     }
 }
 
-// ==================== ACTUALIZAR DETALLE LOCAL ====================
 const actualizarDetalleLocal = (data, payload) => {
     const orden = Number(data.OrdenContenedor)
-
-    // Buscar el contenedor en detallesLocal
     const index = detallesLocal.value.findIndex(item => Number(item.Orden) === orden)
 
     if (index === -1) return
 
     const contenedorActual = detallesLocal.value[index]
 
-    // ✅ Buscar el subcliente seleccionado para tener el nombre
     const subCliente = props.subclientes.find(
         s => Number(s.IdSubClienteOperador) === Number(payload.IdSubClienteOperador)
     )
 
-    // ✅ Reemplazar los productos con los nuevos
     const nuevosProductos = data.productos.map(p => {
-        // Buscar los datos completos del producto (descripción, código, etc.)
         const productoOriginal = contenedorActual.productos.find(
             op => op.IdProducto === p.IdProducto
         ) || {}
@@ -342,25 +569,21 @@ const actualizarDetalleLocal = (data, payload) => {
         }
     })
 
-    // ✅ Calcular totales del contenedor
-    const totalUnidades = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0), 0)
+    const totalUnidadesCalc = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0), 0)
     const subtotal = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0), 0)
 
-    // ✅ Actualizar el contenedor en el array
     detallesLocal.value[index] = {
         ...contenedorActual,
         IdSubClienteOperador: payload.IdSubClienteOperador,
         SubClienteNombre: subCliente ? subCliente.Nombre : null,
         productos: nuevosProductos,
-        total_unidades: totalUnidades,
+        total_unidades: totalUnidadesCalc,
         subtotal: subtotal
     }
 
-    // Forzar reactividad reemplazando el array completo
     detallesLocal.value = [...detallesLocal.value]
 }
 
-// ==================== ELIMINAR CONTENEDOR (SIN RECARGAR) ====================
 const eliminarContenedor = async (item) => {
     const detalleId = item.productos[0]?.IdPedidoClienteDetalle
     if (!detalleId) {
@@ -377,14 +600,12 @@ const eliminarContenedor = async (item) => {
         )
 
         if (response.data.success) {
-            // ✅ Eliminar del array local
             detallesLocal.value = detallesLocal.value.filter(
                 d => Number(d.Orden) !== Number(item.Orden)
             )
 
             toast?.success('Éxito', 'Contenedor eliminado')
 
-            // Si ya no hay contenedores, redirigir
             if (detallesLocal.value.length === 0) {
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
             }
@@ -421,6 +642,147 @@ const eliminarContenedor = async (item) => {
                             </h1>
                             <p class="text-xs text-gray-500">Confirma los productos y finaliza el pedido</p>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ==================== BANNER HORA LÍMITE ==================== -->
+                <div
+                    v-if="horaLimite"
+                    class="mb-3 rounded-xl border overflow-hidden transition-all"
+                    :class="{
+                        'bg-emerald-50 border-emerald-300': estadoBanner === 'ok',
+                        'bg-amber-50 border-amber-300': estadoBanner === 'cerca',
+                        'bg-red-50 border-red-300': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                        'bg-blue-50 border-blue-300': estadoBanner === 'lejana',
+                        'bg-slate-50 border-slate-300': estadoBanner === 'sinFecha'
+                    }"
+                >
+                    <!-- HEADER -->
+                    <div
+                        class="px-3 py-2 flex items-center justify-between gap-2 border-b"
+                        :class="{
+                            'bg-emerald-100 border-emerald-200': estadoBanner === 'ok',
+                            'bg-amber-100 border-amber-200': estadoBanner === 'cerca',
+                            'bg-red-100 border-red-200': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                            'bg-blue-100 border-blue-200': estadoBanner === 'lejana',
+                            'bg-slate-100 border-slate-200': estadoBanner === 'sinFecha'
+                        }"
+                    >
+                        <div class="flex items-center gap-2 min-w-0">
+                            <span class="text-base flex-shrink-0">{{ iconoBanner }}</span>
+                            <span
+                                class="text-xs font-bold uppercase tracking-wide truncate"
+                                :class="{
+                                    'text-emerald-800': estadoBanner === 'ok',
+                                    'text-amber-800': estadoBanner === 'cerca',
+                                    'text-red-800': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                                    'text-blue-800': estadoBanner === 'lejana',
+                                    'text-slate-700': estadoBanner === 'sinFecha'
+                                }"
+                            >
+                                {{ tituloBanner }}
+                            </span>
+                        </div>
+                        <span
+                            class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full flex-shrink-0 whitespace-nowrap"
+                            :class="{
+                                'bg-emerald-200 text-emerald-800': estadoBanner === 'ok',
+                                'bg-amber-200 text-amber-800': estadoBanner === 'cerca',
+                                'bg-red-200 text-red-800': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                                'bg-blue-200 text-blue-800': estadoBanner === 'lejana',
+                                'bg-slate-200 text-slate-700': estadoBanner === 'sinFecha'
+                            }"
+                        >
+                            {{ chipBanner }}
+                        </span>
+                    </div>
+
+                    <!-- FRASE PRINCIPAL -->
+                    <div class="px-3 py-2.5">
+                        <p
+                            class="text-[12px] leading-relaxed"
+                            :class="{
+                                'text-emerald-900': estadoBanner === 'ok',
+                                'text-amber-900': estadoBanner === 'cerca',
+                                'text-red-900': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                                'text-blue-900': estadoBanner === 'lejana',
+                                'text-slate-700': estadoBanner === 'sinFecha'
+                            }"
+                            v-html="fraseBanner"
+                        ></p>
+
+                        <!-- LEYENDA DESPLEGABLE -->
+                        <details class="mt-2 group">
+                            <summary
+                                class="text-[10px] cursor-pointer font-semibold flex items-center gap-1 opacity-90 hover:opacity-100 select-none"
+                                :class="{
+                                    'text-emerald-700': estadoBanner === 'ok',
+                                    'text-amber-700': estadoBanner === 'cerca',
+                                    'text-red-700': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                                    'text-blue-700': estadoBanner === 'lejana',
+                                    'text-slate-600': estadoBanner === 'sinFecha'
+                                }"
+                            >
+                                <i class="fas fa-chevron-right text-[8px] transition-transform group-open:rotate-90"></i>
+                                Ver cómo funciona la hora límite
+                            </summary>
+
+                            <div
+                                class="mt-2 p-2.5 bg-white/70 rounded-lg border space-y-2"
+                                :class="{
+                                    'border-emerald-200': estadoBanner === 'ok',
+                                    'border-amber-200': estadoBanner === 'cerca',
+                                    'border-red-200': estadoBanner === 'bloqueado' || estadoBanner === 'fechaInvalida',
+                                    'border-blue-200': estadoBanner === 'lejana',
+                                    'border-slate-200': estadoBanner === 'sinFecha'
+                                }"
+                            >
+                                <div class="flex items-start gap-2">
+                                    <span class="text-sm flex-shrink-0">🕐</span>
+                                    <div>
+                                        <p class="text-[10px] font-bold text-gray-700">Regla principal</p>
+                                        <p class="text-[10px] text-gray-600">
+                                            Si quieres entrega <strong>mañana</strong>, tu pedido debe hacerse
+                                            <strong>antes de las {{ horaFormateada }}</strong>.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-start gap-2">
+                                    <span class="text-sm flex-shrink-0">📅</span>
+                                    <div class="flex-1">
+                                        <p class="text-[10px] font-bold text-gray-700 mb-1">Ejemplos según la hora</p>
+                                        <div class="space-y-1">
+                                            <div class="flex items-center gap-1.5 text-[10px]">
+                                                <span class="text-emerald-600 font-bold">✅</span>
+                                                <span class="text-gray-600">
+                                                    Antes de las <strong>{{ horaFormateada }}</strong>
+                                                    → Puedes pedir para <strong>mañana</strong>
+                                                </span>
+                                            </div>
+                                            <div class="flex items-center gap-1.5 text-[10px]">
+                                                <span class="text-red-600 font-bold">❌</span>
+                                                <span class="text-gray-600">
+                                                    Después de las <strong>{{ horaFormateada }}</strong>
+                                                    → Solo para <strong>pasado mañana</strong> en adelante
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-start gap-2 pt-1.5 border-t border-gray-200">
+                                    <span class="text-sm flex-shrink-0">🆘</span>
+                                    <div>
+                                        <p class="text-[10px] font-bold text-gray-700">¿Necesitas urgencia?</p>
+                                        <p class="text-[10px] text-gray-600">
+                                            Si ya pasó la hora y necesitas entrega mañana,
+                                            <strong>contacta a tu supervisor</strong> para una excepción.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
                     </div>
                 </div>
 
@@ -554,7 +916,6 @@ const eliminarContenedor = async (item) => {
                                 :key="idx"
                                 class="border border-gray-200 rounded-lg overflow-hidden bg-white"
                             >
-                                <!-- Header contenedor -->
                                 <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200">
                                     <div class="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
                                         <span class="text-[9px] font-mono bg-primary-600 text-white px-1.5 py-0.5 rounded font-bold flex-shrink-0">
@@ -564,7 +925,6 @@ const eliminarContenedor = async (item) => {
                                         <span class="text-[9px] text-gray-500 bg-white px-1.5 py-0.5 rounded border border-gray-200 flex-shrink-0">
                                             Cap: {{ formatearNumero(item.CapacidadTotal) }}
                                         </span>
-                                        <!-- ✅ Chip del subcliente -->
                                         <span
                                             v-if="item.SubClienteNombre"
                                             class="text-[9px] text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
@@ -589,7 +949,6 @@ const eliminarContenedor = async (item) => {
                                     </div>
                                 </div>
 
-                                <!-- Tabla de productos -->
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-left border-collapse text-xs">
                                         <thead>
@@ -617,7 +976,6 @@ const eliminarContenedor = async (item) => {
                             </div>
                         </div>
 
-                        <!-- Totales -->
                         <div v-if="detallesLocal.length > 0" class="mt-3 pt-3 border-t-2 border-primary-200 flex justify-end">
                             <div class="flex items-center gap-4 sm:gap-6 flex-wrap justify-end">
                                 <div class="text-right">
@@ -650,15 +1008,26 @@ const eliminarContenedor = async (item) => {
                                     v-model="fechaEntrega"
                                     :min="fechaMinima"
                                     class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none bg-white"
-                                    :class="{'border-red-500': errorFechaEntrega}"
+                                    :class="{
+                                        'border-red-500': errorFechaEntrega || fechaEsInvalida,
+                                        'border-amber-400': fechaEsManana && !fueraDeHoraLimite && !errorFechaEntrega
+                                    }"
                                 />
                                 <p v-if="errorFechaEntrega" class="text-[9px] text-red-500 mt-0.5 flex items-center gap-1">
                                     <i class="fas fa-exclamation-circle text-[8px]"></i>
                                     {{ errorFechaEntrega }}
                                 </p>
-                                <p v-else class="text-[9px] text-gray-400 mt-0.5">
+                                <p v-else-if="fechaEsManana && fueraDeHoraLimite" class="text-[9px] text-red-500 mt-0.5 flex items-center gap-1">
+                                    <i class="fas fa-clock text-[8px]"></i>
+                                    Ya pasó la hora límite ({{ horaFormateada }}) para entrega mañana.
+                                </p>
+                                <p v-else class="text-[9px] text-gray-500 mt-0.5">
                                     <i class="fas fa-info-circle text-[8px] mr-0.5"></i>
-                                    Mínimo 1 día después de hoy
+                                    Mínimo 1 día después de hoy.
+                                    <span v-if="horaLimite" class="text-amber-600 font-medium">
+                                        Para entrega <strong>mañana</strong>, el pedido debe realizarse antes de las
+                                        <strong>{{ horaFormateada }}</strong>.
+                                    </span>
                                 </p>
                             </div>
                         </div>
@@ -689,19 +1058,22 @@ const eliminarContenedor = async (item) => {
                         </button>
                         <button
                             @click="abrirModalConfirmacion"
-                            :disabled="loading || !puedeFinalizar"
+                            :disabled="loading || !puedeFinalizar || validandoHoraLimite"
                             class="px-4 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-sm"
                             :class="puedeFinalizar
                                 ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                         >
-                            <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-if="loading || validandoHoraLimite" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else-if="fechaEsInvalida" class="fas fa-exclamation-triangle text-[10px]"></i>
+                            <i v-else-if="fechaEsManana && fueraDeHoraLimite" class="fas fa-clock text-[10px]"></i>
                             <i v-else-if="!puedeFinalizar" class="fas fa-ban text-[10px]"></i>
                             <i v-else class="fas fa-check-circle text-[10px]"></i>
-                            {{ loading ? 'Procesando...' : (puedeFinalizar ? 'Finalizar Pedido' : 'Cumplir mínimos') }}
+                            {{ textoBoton }}
                         </button>
                     </div>
                 </div>
+
             </div>
         </div>
 

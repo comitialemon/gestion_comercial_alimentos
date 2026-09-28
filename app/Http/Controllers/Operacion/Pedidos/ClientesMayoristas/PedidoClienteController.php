@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas;
 
 use App\Http\Controllers\Controller;
+use App\Models\Operacion\Pedidos\HoraLimite;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Contenedor;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalle;
@@ -41,7 +42,6 @@ class PedidoClienteController extends Controller
             ->where('IdOperador', $operadorId)
             ->first(['IdIdentificador']);
 
-        // ✅ FIX: Castear a int
         $idIdentificador = $operador && $operador->IdIdentificador !== null
             ? (int) $operador->IdIdentificador
             : null;
@@ -308,14 +308,11 @@ class PedidoClienteController extends Controller
         $minimosGrupos = $this->obtenerMinimosDelGrupo($grupoCliente->IdGrupoCliente);
         $progresoInicial = $this->calcularProgresoGrupos($pedidoBorrador, $grupoCliente->IdGrupoCliente);
 
-        // ✅ FIX: Auto-registrar al operador como subcliente ANTES de consultar
         PedidoClienteSubCliente::asegurarSubClientePropio();
 
-        // ✅ Subclientes del operador
         $subclientes = PedidoClienteSubCliente::obtenerSubClientesDelOperador();
         $idSubClienteDefault = PedidoClienteSubCliente::obtenerSubClientePorDefecto();
 
-        // ✅ FIX: Castear a int para evitar warning de Vue
         $subclientes = array_map(function ($sub) {
             return [
                 'IdSubClienteOperador' => (int) $sub['IdSubClienteOperador'],
@@ -326,6 +323,11 @@ class PedidoClienteController extends Controller
         }, $subclientes);
 
         $idSubClienteDefault = $idSubClienteDefault ? (int) $idSubClienteDefault : null;
+
+        // ✅ NUEVO: Hora límite para pedidos de clientes mayoristas
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
+        );
 
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Create', [
             'contenedores' => $contenedoresFormateados,
@@ -345,6 +347,10 @@ class PedidoClienteController extends Controller
             'tipoPrecio' => $tipoPrecio,
             'subclientes' => $subclientes,
             'idSubClienteDefault' => $idSubClienteDefault,
+
+            // ✅ NUEVO
+            'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
+            'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
         ]);
     }
 
@@ -863,7 +869,6 @@ class PedidoClienteController extends Controller
                 return $item['Cumple'];
             });
 
-            // ✅ FIX: Castear
             $subclientes = PedidoClienteSubCliente::obtenerSubClientesDelOperador();
             $subclientes = array_map(function ($sub) {
                 return [
@@ -873,6 +878,11 @@ class PedidoClienteController extends Controller
                     'CI_NIT' => $sub['CI_NIT'],
                 ];
             }, $subclientes);
+
+            // ✅ NUEVO: Hora límite para mostrar en Review
+            $horaLimite = HoraLimite::obtenerHoraActiva(
+                HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
+            );
 
             return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Review', [
                 'pedido' => $pedido,
@@ -890,6 +900,10 @@ class PedidoClienteController extends Controller
                 'cumpleMinimos' => $cumpleMinimos,
                 'tipoPrecio' => $pedido->TipoPrecio,
                 'subclientes' => $subclientes,
+
+                // ✅ NUEVO
+                'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
+                'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
             ]);
 
         } catch (\Exception $e) {
@@ -967,6 +981,24 @@ class PedidoClienteController extends Controller
                 'success' => false,
                 'message' => 'La fecha de entrega es obligatoria.'
             ], 422);
+        }
+
+        // ✅ NUEVO: VALIDACIÓN DE HORA LÍMITE PARA PEDIDOS CLIENTES MAYORISTAS
+        $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
+
+        if ($fechaEntregaFormateada === $fechaManana) {
+            $horaLimite = HoraLimite::obtenerHoraActiva(
+                HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
+            );
+
+            $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
+
+            if ($horaLimite && $horaActual >= $horaLimite->Hora) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!"
+                ], 422);
+            }
         }
 
         try {
@@ -1879,5 +1911,52 @@ class PedidoClienteController extends Controller
                 'message' => 'Error al recalcular: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    // ============================================================
+    // API: VALIDAR HORA LÍMITE PARA CLIENTES MAYORISTAS
+    // ============================================================
+
+    /**
+     * API: Validar hora límite antes de finalizar un pedido de cliente mayorista
+     * Endpoint: POST /operacion/pedidos/clientes-mayoristas/api/validar-hora-limite
+     * Body: { FechaEntrega: 'YYYY-MM-DD' }
+     */
+    public function apiValidarHoraLimite(Request $request)
+    {
+        $request->validate([
+            'FechaEntrega' => 'required|date',
+        ]);
+
+        $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
+
+        // Si la fecha de entrega NO es mañana, no aplica hora límite
+        if ($request->FechaEntrega !== $fechaManana) {
+            return response()->json([
+                'success' => true,
+                'valido' => true,
+                'fecha_manana' => false,
+            ]);
+        }
+
+        // Obtener hora límite activa del tipo MAYORISTA
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
+        );
+
+        $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
+        $valido = !$horaLimite || $horaActual < $horaLimite->Hora;
+
+        return response()->json([
+            'success' => true,
+            'valido' => $valido,
+            'fecha_manana' => true,
+            'hora_actual' => $horaActual,
+            'hora_limite' => $horaLimite ? $horaLimite->Hora : null,
+            'hora_limite_formateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
+            'mensaje' => $valido
+                ? null
+                : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
+        ]);
     }
 }

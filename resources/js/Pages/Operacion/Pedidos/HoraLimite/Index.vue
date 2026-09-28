@@ -20,6 +20,14 @@ const props = defineProps({
     horaActiva: {
         type: Object,
         default: () => null
+    },
+    tipoActual: {
+        type: String,
+        default: 'pedido_ordinario'
+    },
+    tiposDisponibles: {
+        type: Array,
+        default: () => []
     }
 })
 
@@ -38,7 +46,8 @@ const editando = ref(false)
 const editId = ref(null)
 const formData = ref({
     Hora: '',
-    ActivaControlDia: 0
+    ActivaControlDia: 0,
+    Tipo: props.tipoActual
 })
 const errors = ref({})
 const guardando = ref(false)
@@ -57,14 +66,14 @@ const existeHora = computed(() => {
 
 const horasDisponiblesFiltradas = computed(() => {
     if (!props.horasDisponibles) return []
-    
+
     if (editando.value && horaExistente.value) {
         return props.horasDisponibles.map(h => ({
             ...h,
             disponible: h.value === horaExistente.value.Hora || h.disponible
         }))
     }
-    
+
     return props.horasDisponibles.filter(h => h.disponible)
 })
 
@@ -73,26 +82,47 @@ const horaActivaTexto = computed(() => {
     return props.horaActiva.HoraFormateada || props.horaActiva.Hora + ':00'
 })
 
+const descripcionTipoActual = computed(() => {
+    const t = props.tiposDisponibles.find(x => x.value === props.tipoActual)
+    return t?.descripcion ?? ''
+})
+
+const labelTipoActual = computed(() => {
+    const t = props.tiposDisponibles.find(x => x.value === props.tipoActual)
+    return t?.label ?? 'Pedidos'
+})
+
 // ==================== FUNCIONES ====================
 const resetForm = () => {
     editando.value = false
     editId.value = null
     formData.value = {
         Hora: '',
-        ActivaControlDia: 0
+        ActivaControlDia: 0,
+        Tipo: props.tipoActual
     }
     errors.value = {}
 }
 
 const editar = () => {
     if (!horaExistente.value) return
-    
+
     editando.value = true
     editId.value = horaExistente.value.IdHoraLimite
     formData.value = {
         Hora: horaExistente.value.Hora,
-        ActivaControlDia: horaExistente.value.ActivaControlDia ? 1 : 0
+        ActivaControlDia: horaExistente.value.ActivaControlDia ? 1 : 0,
+        Tipo: horaExistente.value.Tipo || props.tipoActual
     }
+}
+
+// ✅ Helper: recarga solo las props necesarias, sin flash
+const refrescarDatos = () => {
+    router.reload({
+        only: ['horas', 'horasDisponibles', 'horaActiva'],
+        preserveScroll: true,
+        preserveState: true,
+    })
 }
 
 const guardar = async () => {
@@ -101,30 +131,40 @@ const guardar = async () => {
 
     try {
         let response
-        const dataToSend = {
-            Hora: formData.value.Hora,
-            ActivaControlDia: formData.value.ActivaControlDia
-        }
 
         if (editando.value && editId.value) {
-            response = await axios.put(`/operacion/pedidos/hora-limite/${editId.value}`, dataToSend)
-            
-            if (response.status === 200) {
+            // ✅ Actualizar con method spoofing (POST + _method=PUT)
+            const dataToSend = {
+                _method: 'PUT',
+                Hora: formData.value.Hora,
+                ActivaControlDia: formData.value.ActivaControlDia,
+                Tipo: formData.value.Tipo
+            }
+
+            response = await axios.post(
+                `/operacion/pedidos/hora-limite/${editId.value}`,
+                dataToSend
+            )
+
+            if (response.status === 200 || response.status === 201) {
                 toast?.success('Hora actualizada', `Hora límite actualizada a ${formData.value.Hora}:00`)
                 resetForm()
-                setTimeout(() => {
-                    router.reload()
-                }, 1000)
+                refrescarDatos()
             }
         } else {
+            // Crear: POST normal
+            const dataToSend = {
+                Hora: formData.value.Hora,
+                ActivaControlDia: formData.value.ActivaControlDia,
+                Tipo: formData.value.Tipo
+            }
+
             response = await axios.post('/operacion/pedidos/hora-limite', dataToSend)
-            
+
             if (response.status === 200 || response.status === 201) {
                 toast?.success('Hora guardada', `Hora límite configurada a ${formData.value.Hora}:00`)
                 resetForm()
-                setTimeout(() => {
-                    router.reload()
-                }, 1000)
+                refrescarDatos()
             }
         }
     } catch (error) {
@@ -143,6 +183,15 @@ const guardar = async () => {
 
 const cancelarEdicion = () => {
     resetForm()
+}
+
+// ✅ Cambiar tipo (recarga con query param)
+const cambiarTipo = (nuevoTipo) => {
+    router.get(
+        '/operacion/pedidos/hora-limite',
+        { tipo: nuevoTipo },
+        { preserveState: false, preserveScroll: true }
+    )
 }
 
 // ==================== LIFECYCLE ====================
@@ -171,12 +220,41 @@ onUnmounted(() => {
                     </div>
                 </div>
 
+                <!-- ==================== TABS DE TIPO ==================== -->
+                <div class="mb-4 bg-white rounded-xl shadow-sm p-1.5 border border-gray-200">
+                    <div class="flex gap-1 overflow-x-auto">
+                        <button
+                            v-for="t in tiposDisponibles"
+                            :key="t.value"
+                            @click="cambiarTipo(t.value)"
+                            :class="[
+                                'flex-1 min-w-[140px] px-3 py-2 text-xs font-medium rounded-lg transition-all whitespace-nowrap',
+                                tipoActual === t.value
+                                    ? 'bg-primary-600 text-white shadow-sm'
+                                    : 'text-gray-600 hover:bg-gray-100'
+                            ]"
+                        >
+                            <i class="fas text-[10px] mr-1"
+                               :class="t.value === 'pedido_ordinario' ? 'fa-box' : 'fa-users'"></i>
+                            {{ t.label }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Descripción del tipo -->
+                <div v-if="descripcionTipoActual" class="mb-4 p-2.5 bg-blue-50 border border-blue-100 rounded-lg">
+                    <p class="text-[11px] text-blue-700">
+                        <i class="fas fa-info-circle mr-1 text-[10px]"></i>
+                        {{ descripcionTipoActual }}
+                    </p>
+                </div>
+
                 <!-- ==================== INDICADOR DE HORA ACTIVA ==================== -->
                 <div class="mb-4 p-3 rounded-xl border" :class="props.horaActiva ? 'bg-emerald-50 border-emerald-200' : 'bg-yellow-50 border-yellow-200'">
                     <div class="flex flex-wrap items-center gap-2">
                         <i class="fas" :class="props.horaActiva ? 'fa-check-circle text-emerald-600' : 'fa-exclamation-triangle text-yellow-600'"></i>
                         <span class="text-xs font-medium">
-                            Hora límite activa: 
+                            Hora límite activa:
                             <strong class="text-base">{{ horaActivaTexto }}</strong>
                         </span>
                         <span v-if="!props.horaActiva" class="text-xs text-yellow-700">
@@ -185,7 +263,7 @@ onUnmounted(() => {
                     </div>
                     <p v-if="props.horaActiva" class="text-[10px] text-gray-500 mt-1">
                         <i class="fas fa-info-circle mr-1"></i>
-                        Solo puede existir UNA hora límite. Para cambiarla, edita la hora existente.
+                        Solo puede existir UNA hora límite por tipo. Para cambiarla, edita la hora existente.
                     </p>
                 </div>
 
@@ -195,14 +273,14 @@ onUnmounted(() => {
                     <div class="flex flex-wrap items-end gap-2">
                         <div class="flex-1 min-w-[140px] max-w-[220px]">
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Hora Límite *</label>
-                            <select 
+                            <select
                                 v-model="formData.Hora"
                                 class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.Hora }"
                             >
                                 <option value="">Seleccione una hora</option>
-                                <option 
-                                    v-for="hora in horasDisponiblesFiltradas" 
+                                <option
+                                    v-for="hora in horasDisponiblesFiltradas"
                                     :key="hora.value"
                                     :value="hora.value"
                                 >
@@ -219,8 +297,8 @@ onUnmounted(() => {
                             </select>
                         </div>
                         <div class="flex gap-1.5">
-                            <button 
-                                @click="guardar" 
+                            <button
+                                @click="guardar"
                                 :disabled="guardando || !formData.Hora"
                                 class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition disabled:opacity-50 flex items-center gap-1.5"
                             >
@@ -238,14 +316,14 @@ onUnmounted(() => {
                     <div class="flex flex-wrap items-end gap-2">
                         <div class="flex-1 min-w-[140px] max-w-[220px]">
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Hora Límite *</label>
-                            <select 
+                            <select
                                 v-model="formData.Hora"
                                 class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 :class="{ 'border-red-500': errors.Hora }"
                             >
                                 <option value="">Seleccione una hora</option>
-                                <option 
-                                    v-for="hora in horasDisponiblesFiltradas" 
+                                <option
+                                    v-for="hora in horasDisponiblesFiltradas"
                                     :key="hora.value"
                                     :value="hora.value"
                                     :disabled="!hora.disponible && hora.value !== horaExistente?.Hora"
@@ -264,8 +342,8 @@ onUnmounted(() => {
                             </select>
                         </div>
                         <div class="flex gap-1.5">
-                            <button 
-                                @click="guardar" 
+                            <button
+                                @click="guardar"
                                 :disabled="guardando || !formData.Hora"
                                 class="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 transition disabled:opacity-50 flex items-center gap-1.5"
                             >
@@ -273,8 +351,8 @@ onUnmounted(() => {
                                 <i v-else class="fas fa-pencil-alt text-[10px]"></i>
                                 {{ guardando ? 'Guardando...' : 'Actualizar' }}
                             </button>
-                            <button 
-                                @click="cancelarEdicion" 
+                            <button
+                                @click="cancelarEdicion"
                                 class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1.5"
                                 :disabled="guardando"
                             >
@@ -297,7 +375,7 @@ onUnmounted(() => {
                             </div>
                             <div class="w-px h-8 bg-gray-200"></div>
                             <div>
-                                <span 
+                                <span
                                     class="px-2 py-0.5 text-[10px] rounded-full"
                                     :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
                                 >
@@ -308,8 +386,8 @@ onUnmounted(() => {
                             </div>
                         </div>
                         <div>
-                            <button 
-                                @click="editar" 
+                            <button
+                                @click="editar"
                                 class="px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-medium hover:bg-amber-700 transition flex items-center gap-1.5"
                             >
                                 <i class="fas fa-edit text-[10px]"></i>
@@ -324,7 +402,7 @@ onUnmounted(() => {
                     <div class="px-3 py-2 bg-gray-50 border-b border-gray-200">
                         <h3 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
                             <i class="fas fa-info-circle text-blue-500 text-[10px]"></i>
-                            Configuración actual
+                            Configuración actual — {{ labelTipoActual }}
                         </h3>
                     </div>
                     <div class="overflow-x-auto">
@@ -333,7 +411,7 @@ onUnmounted(() => {
                                 <tr>
                                     <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Hora</th>
                                     <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Estado</th>
-                                    <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Aplica a</th>
+                                    <th class="px-4 py-1.5 text-left text-[8px] font-medium text-gray-500 uppercase">Tipo</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -343,7 +421,7 @@ onUnmounted(() => {
                                         {{ horaExistente.HoraFormateada || horaExistente.Hora + ':00' }}
                                     </td>
                                     <td class="px-4 py-2">
-                                        <span 
+                                        <span
                                             class="px-2 py-0.5 text-[9px] rounded-full"
                                             :class="horaExistente.ActivaControlDia ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'"
                                         >
@@ -353,14 +431,14 @@ onUnmounted(() => {
                                         </span>
                                     </td>
                                     <td class="px-4 py-2 text-sm text-gray-500">
-                                        <i class="fas fa-building mr-1 text-[10px]"></i>
-                                        Todas las sucursales
+                                        <i class="fas fa-tag mr-1 text-[10px]"></i>
+                                        {{ labelTipoActual }}
                                     </td>
                                 </tr>
                                 <tr v-else>
                                     <td colspan="3" class="px-4 py-8 text-center text-gray-400 text-sm">
                                         <i class="fas fa-clock text-2xl mb-2 block"></i>
-                                        No hay hora límite configurada.
+                                        No hay hora límite configurada para {{ labelTipoActual }}.
                                     </td>
                                 </tr>
                             </tbody>
@@ -374,7 +452,8 @@ onUnmounted(() => {
                     <div>
                         <span class="font-medium">Nota:</span>
                         <ul class="list-disc list-inside mt-1 space-y-0.5 text-[11px]">
-                            <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> configurada por cliente</li>
+                            <li>Solo puede existir <strong class="text-blue-800">UNA hora límite</strong> por tipo de pedido</li>
+                            <li>Cada tipo (ordinario / clientes mayoristas) tiene su <strong>propia hora independiente</strong></li>
                             <li>La configuración aplica a <strong>TODAS las sucursales</strong> de la empresa</li>
                             <li>Si la hora está <strong class="text-emerald-700">Activa</strong>, los pedidos después de esa hora no serán permitidos</li>
                             <li>Si la hora está <strong class="text-red-700">Inactiva</strong>, no hay restricción de horario</li>

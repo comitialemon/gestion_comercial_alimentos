@@ -68,11 +68,11 @@ class PedidoController extends Controller
         $tipoOrdinario = TipoPedido::porContexto()
             ->where('Detalle', 'Ordinario')
             ->first();
-        
+
         if (!$tipoOrdinario) {
             $tipoOrdinario = TipoPedido::find(1);
         }
-        
+
         $idTipoOrdinario = $tipoOrdinario ? $tipoOrdinario->IdTipoPedido : 1;
 
         DB::beginTransaction();
@@ -81,12 +81,12 @@ class PedidoController extends Controller
             foreach ($request->pedidos as $pedidoData) {
                 $fechaPedido = $pedidoData['FechaDelPedido'];
                 $diaSemana = date('N', strtotime($fechaPedido));
-                
+
                 $mapaDias = [
                     1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves',
                     5 => 'Viernes', 6 => 'Sabado', 7 => 'Domingo',
                 ];
-                
+
                 $diaColumna = $mapaDias[$diaSemana];
 
                 // ✅ VALIDACIÓN: Producto debe estar en cronograma
@@ -98,16 +98,17 @@ class PedidoController extends Controller
                     throw new \Exception("Producto no programado para {$diaColumna}");
                 }
 
-                // ✅ VALIDACIÓN: Hora límite (SOLO por cliente)
+                // ✅ VALIDACIÓN: Hora límite (SOLO por cliente y tipo ORDINARIO)
                 $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
-                
+
                 if ($fechaPedido == $fechaManana) {
-                    $horaLimite = HoraLimite::porContexto()
-                        ->activos()  // ✅ SIN FILTRO POR SUCURSAL
-                        ->first();
-                    
+                    // 🔑 CAMBIO: obtenerHoraActiva con TIPO_PEDIDO_ORDINARIO
+                    $horaLimite = HoraLimite::obtenerHoraActiva(
+                        HoraLimite::TIPO_PEDIDO_ORDINARIO
+                    );
+
                     $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
-                    
+
                     if ($horaLimite && $horaActual >= $horaLimite->Hora) {
                         throw new \Exception("Hora máxima para realizar pedido es {$horaLimite->Hora}:00!");
                     }
@@ -123,13 +124,13 @@ class PedidoController extends Controller
                     $pedido = Pedido::porContexto()
                         ->porOperador()
                         ->find($pedidoData['id']);
-                    
+
                     if ($pedido) {
                         $pedido->update([
                             'FechaDelPedido' => $fechaPedido,
                             'IdProducto' => $pedidoData['IdProducto'],
                             'Unidades' => $pedidoData['Unidades'],
-                            'UnidadesAutoriza' => $pedidoData['Unidades'], // ✅ Se actualiza automáticamente
+                            'UnidadesAutoriza' => $pedidoData['Unidades'],
                         ]);
                     }
                 } else {
@@ -145,7 +146,7 @@ class PedidoController extends Controller
                         'IdCliente' => $clienteId,
                         'IdSucursal' => $sucursalId,
                         'idOperador' => $operadorId,
-                        'IdOperadorPedidoExtraordinario' => 0, // ✅ CAMPO OBLIGATORIO
+                        'IdOperadorPedidoExtraordinario' => 0,
                         'UnidadesAutoriza' => $pedidoData['Unidades'],
                         'IdOperadorAutoriza' => 0,
                         'IdDistribucion' => 0,
@@ -167,7 +168,7 @@ class PedidoController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error al guardar pedidos: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
@@ -181,7 +182,7 @@ class PedidoController extends Controller
             $pedido = Pedido::porContexto()
                 ->porOperador()
                 ->findOrFail($id);
-            
+
             $pedido->delete();
 
             return response()->json([
@@ -207,12 +208,12 @@ class PedidoController extends Controller
         ]);
 
         $diaSemana = date('N', strtotime($request->FechaDelPedido));
-        
+
         $mapaDias = [
             1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves',
             5 => 'Viernes', 6 => 'Sabado', 7 => 'Domingo',
         ];
-        
+
         $diaColumna = $mapaDias[$diaSemana];
 
         $cronograma = Cronograma::porContexto()
@@ -228,7 +229,7 @@ class PedidoController extends Controller
     }
 
     /**
-     * API: Validar hora límite
+     * API: Validar hora límite (tipo ORDINARIO)
      */
     public function apiValidarHoraLimite(Request $request)
     {
@@ -237,7 +238,7 @@ class PedidoController extends Controller
         ]);
 
         $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
-        
+
         if ($request->FechaDelPedido != $fechaManana) {
             return response()->json([
                 'success' => true,
@@ -246,11 +247,11 @@ class PedidoController extends Controller
             ]);
         }
 
-        // ✅ SIN FILTRO POR SUCURSAL
-        $horaLimite = HoraLimite::porContexto()
-            ->activos()
-            ->first();
-        
+        // 🔑 CAMBIO: obtenerHoraActiva con TIPO_PEDIDO_ORDINARIO
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_ORDINARIO
+        );
+
         $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
 
         $valido = true;

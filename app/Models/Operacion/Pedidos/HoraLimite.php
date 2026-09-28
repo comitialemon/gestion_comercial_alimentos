@@ -11,11 +11,16 @@ class HoraLimite extends Model
     protected $primaryKey = 'IdHoraLimite';
     public $timestamps = false;
 
+    // ==================== CONSTANTES DE TIPO ====================
+    public const TIPO_PEDIDO_ORDINARIO         = 'pedido_ordinario';
+    public const TIPO_PEDIDO_CLIENTE_MAYORISTA = 'pedido_cliente_mayorista';
+
     protected $fillable = [
         'Hora',
         'ActivaControlDia',
         'IdCliente',
         'IdSucursal',
+        'Tipo',
     ];
 
     protected $casts = [
@@ -24,41 +29,88 @@ class HoraLimite extends Model
         'IdSucursal' => 'integer',
     ];
 
+    // ==================== HELPERS ESTÁTICOS ====================
+
     /**
-     * Scope para filtrar por cliente actual
+     * Mapa de tipos disponibles (para frontend y validaciones)
      */
+    public static function tiposDisponibles(): array
+    {
+        return [
+            self::TIPO_PEDIDO_ORDINARIO => [
+                'value' => self::TIPO_PEDIDO_ORDINARIO,
+                'label' => 'Pedidos Ordinarios',
+                'descripcion' => 'Pedidos de producción/distribución diaria',
+            ],
+            self::TIPO_PEDIDO_CLIENTE_MAYORISTA => [
+                'value' => self::TIPO_PEDIDO_CLIENTE_MAYORISTA,
+                'label' => 'Pedidos Clientes Mayoristas',
+                'descripcion' => 'Pedidos por contenedores',
+            ],
+        ];
+    }
+
+    /**
+     * Obtiene la hora activa para un tipo específico
+     */
+    public static function obtenerHoraActiva(string $tipo): ?self
+    {
+        return static::porContexto()
+            ->porTipo($tipo)
+            ->activos()
+            ->first();
+    }
+
+    /**
+     * Obtiene todas las horas de un tipo
+     */
+    public static function obtenerHorasPorTipo(string $tipo)
+    {
+        return static::porContexto()
+            ->porTipo($tipo)
+            ->ordenado()
+            ->get();
+    }
+
+    // ==================== SCOPES ====================
+
     public function scopePorContexto($query)
     {
         return $query->where('IdCliente', session('cliente_id'));
     }
 
-    /**
-     * Scope para horas activas (0 = Activo, 1 = Inactivo)
-     */
+    public function scopePorTipo($query, string $tipo)
+    {
+        return $query->where('Tipo', $tipo);
+    }
+
+    public function scopeParaPedidosOrdinarios($query)
+    {
+        return $query->where('Tipo', self::TIPO_PEDIDO_ORDINARIO);
+    }
+
+    public function scopeParaPedidosClientesMayoristas($query)
+    {
+        return $query->where('Tipo', self::TIPO_PEDIDO_CLIENTE_MAYORISTA);
+    }
+
     public function scopeActivos($query)
     {
         return $query->where('ActivaControlDia', 0);
     }
 
-    /**
-     * Scope para ordenar por hora
-     */
     public function scopeOrdenado($query)
     {
         return $query->orderBy('Hora');
     }
 
-    /**
-     * Accesor para mostrar hora formateada (ej: 14 → 14:00)
-     */
+    // ==================== ACCESORS ====================
+
     public function getHoraFormateadaAttribute()
     {
         return str_pad($this->Hora, 2, '0', STR_PAD_LEFT) . ':00';
     }
 
-    /**
-     * Accesor para estado (Activo/Inactivo)
-     */
     public function getEstadoTextoAttribute()
     {
         return $this->ActivaControlDia ? 'Inactivo' : 'Activo';
@@ -67,5 +119,11 @@ class HoraLimite extends Model
     public function getEstadoColorAttribute()
     {
         return $this->ActivaControlDia ? 'red' : 'green';
+    }
+
+    public function getTipoTextoAttribute()
+    {
+        $tipos = self::tiposDisponibles();
+        return $tipos[$this->Tipo]['label'] ?? 'Desconocido';
     }
 }

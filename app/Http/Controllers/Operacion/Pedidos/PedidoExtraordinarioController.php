@@ -65,10 +65,10 @@ class PedidoExtraordinarioController extends Controller
         $tiposPedido = TipoPedido::porContexto()
             ->get(['IdTipoPedido as id', 'Detalle as nombre']);
 
-        // Obtener hora límite activa
-        $horaLimite = HoraLimite::porContexto()
-            ->activos()
-            ->first();
+        // 🔑 CAMBIO: hora límite para ORDINARIOS
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_ORDINARIO
+        );
 
         // Hora límite + 2 horas para extraordinarios
         $horaLimiteExtra = null;
@@ -101,14 +101,15 @@ class PedidoExtraordinarioController extends Controller
      */
     private function validarCronograma($fechaPedido, $productoId)
     {
-        $horaLimite = HoraLimite::porContexto()
-            ->activos()
-            ->first();
-        
+        // 🔑 CAMBIO: hora límite para ORDINARIOS
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_ORDINARIO
+        );
+
         if (!$horaLimite) {
             return true;
         }
-        
+
         $diaSemana = date('N', strtotime($fechaPedido));
         $mapaDias = [
             1 => 'Lunes', 2 => 'Martes', 3 => 'Miercoles', 4 => 'Jueves',
@@ -146,7 +147,7 @@ class PedidoExtraordinarioController extends Controller
 
         $fechaPedido = $request->FechaDelPedido;
         $fechaActual = Carbon::now('America/La_Paz')->format('Y-m-d');
-        
+
         if ($fechaPedido <= $fechaActual) {
             return response()->json([
                 'success' => false,
@@ -164,20 +165,21 @@ class PedidoExtraordinarioController extends Controller
         }
 
         $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
-        
+
         if ($fechaPedido == $fechaManana) {
-            $horaLimite = HoraLimite::porContexto()
-                ->activos()
-                ->first();
-            
+            // 🔑 CAMBIO: hora límite para ORDINARIOS
+            $horaLimite = HoraLimite::obtenerHoraActiva(
+                HoraLimite::TIPO_PEDIDO_ORDINARIO
+            );
+
             $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
-            
+
             if ($horaLimite) {
                 $horaLimiteExtra = $horaLimite->Hora + 2;
                 if ($horaLimiteExtra > 24) {
                     $horaLimiteExtra = 24;
                 }
-                
+
                 if ($horaActual >= $horaLimiteExtra) {
                     return response()->json([
                         'success' => false,
@@ -197,11 +199,11 @@ class PedidoExtraordinarioController extends Controller
         $tipoOrdinario = TipoPedido::porContexto()
             ->where('Detalle', 'Ordinario')
             ->first();
-        
+
         if (!$tipoOrdinario) {
             $tipoOrdinario = TipoPedido::find(1);
         }
-        
+
         $idTipoOrdinario = $tipoOrdinario ? $tipoOrdinario->IdTipoPedido : 1;
 
         DB::beginTransaction();
@@ -261,7 +263,7 @@ class PedidoExtraordinarioController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error en pedido extraordinario: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage()
@@ -296,9 +298,9 @@ class PedidoExtraordinarioController extends Controller
                     'FechaDelPedido' => $pedido->FechaDelPedido,
                     'IdProducto' => $pedido->IdProducto,
                     'Unidades' => $pedido->Unidades,
-                    'producto_texto' => $pedido->producto ? 
+                    'producto_texto' => $pedido->producto ?
                         $pedido->producto->Codigo . ' - ' . $pedido->producto->Descripcion : '',
-                    'sucursal_texto' => $pedido->sucursal ? 
+                    'sucursal_texto' => $pedido->sucursal ?
                         $pedido->sucursal->NumeroSucursal . ' - ' . $pedido->sucursal->Nombre : '',
                 ]
             ]);
@@ -354,10 +356,11 @@ class PedidoExtraordinarioController extends Controller
             'FechaDelPedido' => 'required|date',
         ]);
 
-        $horaLimite = HoraLimite::porContexto()
-            ->activos()
-            ->first();
-        
+        // 🔑 CAMBIO: hora límite para ORDINARIOS
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_ORDINARIO
+        );
+
         if (!$horaLimite) {
             return response()->json([
                 'success' => true,
@@ -398,7 +401,7 @@ class PedidoExtraordinarioController extends Controller
         ]);
 
         $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
-        
+
         if ($request->FechaDelPedido != $fechaManana) {
             return response()->json([
                 'success' => true,
@@ -407,10 +410,11 @@ class PedidoExtraordinarioController extends Controller
             ]);
         }
 
-        $horaLimite = HoraLimite::porContexto()
-            ->activos()
-            ->first();
-        
+        // 🔑 CAMBIO: hora límite para ORDINARIOS
+        $horaLimite = HoraLimite::obtenerHoraActiva(
+            HoraLimite::TIPO_PEDIDO_ORDINARIO
+        );
+
         $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
 
         $valido = true;
@@ -422,7 +426,7 @@ class PedidoExtraordinarioController extends Controller
             if ($horaLimiteExtra > 24) {
                 $horaLimiteExtra = 24;
             }
-            
+
             if ($horaActual >= $horaLimiteExtra) {
                 $valido = false;
                 $mensaje = "Hora maxima para realiar pedido es {$horaLimiteExtra}:00...! comuníquece con supervisor...";

@@ -10,16 +10,25 @@ use Inertia\Inertia;
 class HoraLimiteController extends Controller
 {
     /**
-     * Mostrar listado de horas límite
+     * Mostrar listado de horas límite (con filtro por tipo)
      */
-    public function index()
+    public function index(Request $request)
     {
+        $tiposDisponibles = HoraLimite::tiposDisponibles();
+
+        $tipo = $request->get('tipo', HoraLimite::TIPO_PEDIDO_ORDINARIO);
+
+        if (!array_key_exists($tipo, $tiposDisponibles)) {
+            $tipo = HoraLimite::TIPO_PEDIDO_ORDINARIO;
+        }
+
         $horas = HoraLimite::porContexto()
+            ->porTipo($tipo)
             ->ordenado()
             ->get();
 
-        // Obtener la hora activa (solo una)
         $horaActiva = HoraLimite::porContexto()
+            ->porTipo($tipo)
             ->activos()
             ->first();
 
@@ -27,6 +36,8 @@ class HoraLimiteController extends Controller
             'horas' => $horas,
             'horasDisponibles' => $this->getHorasDisponibles($horas),
             'horaActiva' => $horaActiva,
+            'tipoActual' => $tipo,
+            'tiposDisponibles' => array_values($tiposDisponibles),
         ]);
     }
 
@@ -35,19 +46,22 @@ class HoraLimiteController extends Controller
      */
     public function store(Request $request)
     {
+        $tiposValidos = implode(',', array_keys(HoraLimite::tiposDisponibles()));
+
         $request->validate([
             'Hora' => 'required|integer|min:1|max:24',
             'ActivaControlDia' => 'boolean',
+            'Tipo' => "required|in:{$tiposValidos}",
         ]);
 
-        // Verificar si ya existe esa hora
         $existe = HoraLimite::porContexto()
+            ->porTipo($request->Tipo)
             ->where('Hora', $request->Hora)
             ->exists();
 
         if ($existe) {
             return redirect()->back()->withErrors([
-                'Hora' => 'Ya existe una configuración para la hora ' . $request->Hora . ':00'
+                'Hora' => 'Ya existe una configuración para la hora ' . $request->Hora . ':00 en este tipo de pedido'
             ])->withInput();
         }
 
@@ -55,21 +69,18 @@ class HoraLimiteController extends Controller
             'Hora' => $request->Hora,
             'ActivaControlDia' => $request->ActivaControlDia ? 1 : 0,
             'IdCliente' => session('cliente_id'),
-            'IdSucursal' => 0, // 0 = aplica a todas las sucursales
+            'IdSucursal' => 0,
+            'Tipo' => $request->Tipo,
         ]);
 
         return redirect()->back()->with('success', 'Hora límite agregada correctamente');
     }
 
     /**
-     * Actualizar hora límite (usando POST con _method=PUT)
+     * Actualizar hora límite
      */
     public function update(Request $request, $id)
     {
-        \Log::info('=== UPDATE HORA LÍMITE ===');
-        \Log::info('ID: ' . $id);
-        \Log::info('Data: ', $request->all());
-        
         $hora = HoraLimite::porContexto()->findOrFail($id);
 
         $request->validate([
@@ -77,8 +88,8 @@ class HoraLimiteController extends Controller
             'ActivaControlDia' => 'boolean',
         ]);
 
-        // Verificar si ya existe otra hora con el mismo valor
         $existe = HoraLimite::porContexto()
+            ->porTipo($hora->Tipo)
             ->where('Hora', $request->Hora)
             ->where('IdHoraLimite', '!=', $id)
             ->exists();
@@ -119,7 +130,7 @@ class HoraLimiteController extends Controller
     }
 
     /**
-     * Obtener horas disponibles (1-24 que no están ya configuradas)
+     * Horas disponibles (1-24 que no están configuradas para ese tipo)
      */
     private function getHorasDisponibles($horasExistentes)
     {
@@ -138,16 +149,25 @@ class HoraLimiteController extends Controller
     }
 
     /**
-     * API: Obtener hora límite ACTIVA (solo una)
+     * API: Obtener hora límite ACTIVA por tipo
      */
-    public function apiGetActivas()
+    public function apiGetActivas(Request $request)
     {
+        $tiposDisponibles = HoraLimite::tiposDisponibles();
+        $tipo = $request->get('tipo', HoraLimite::TIPO_PEDIDO_ORDINARIO);
+
+        if (!array_key_exists($tipo, $tiposDisponibles)) {
+            $tipo = HoraLimite::TIPO_PEDIDO_ORDINARIO;
+        }
+
         $horaActiva = HoraLimite::porContexto()
+            ->porTipo($tipo)
             ->activos()
             ->first();
 
         return response()->json([
             'success' => true,
+            'tipo' => $tipo,
             'hora_activa' => $horaActiva ? [
                 'id' => $horaActiva->IdHoraLimite,
                 'hora' => $horaActiva->Hora,
