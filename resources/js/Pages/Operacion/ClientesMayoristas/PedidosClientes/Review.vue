@@ -16,10 +16,11 @@ const props = defineProps({
     clienteNombre: { type: String, default: '' },
     sucursalNombre: { type: String, default: '' },
     operadorNombre: { type: String, default: '' },
-    idIdentificador: { type: Number, default: null },
+    idIdentificador: { type: [Number, String], default: null },
     progresoGrupos: { type: Array, default: () => [] },
     cumpleMinimos: { type: Boolean, default: true },
     tipoPrecio: { type: String, default: 'sin_factura' },
+    subclientes: { type: Array, default: () => [] },
 })
 
 // ==================== ESTADO ====================
@@ -133,33 +134,33 @@ const validarFechaEntrega = () => {
         errorFechaEntrega.value = 'La fecha de entrega es obligatoria'
         return false
     }
-    
+
     const hoy = new Date()
     const hoyStr = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
-    
+
     if (fechaEntrega.value <= hoyStr) {
         errorFechaEntrega.value = `La fecha debe ser mínimo 1 día después de hoy (${hoy.toLocaleDateString('es-BO')})`
         return false
     }
-    
+
     errorFechaEntrega.value = ''
     return true
 }
 
 const cambiarTipoPrecio = async (nuevoTipo) => {
     if (nuevoTipo === tipoPrecioLocal.value) return
-    
+
     cambiandoTipoPrecio.value = true
-    
+
     try {
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/recalcular-tipo-precio`,
             { TipoPrecio: nuevoTipo }
         )
-        
+
         if (response.data.success) {
             tipoPrecioLocal.value = response.data.tipo_precio || nuevoTipo
-            
+
             if (Array.isArray(response.data.detalles_agrupados)) {
                 detallesLocal.value = response.data.detalles_agrupados.map(item => ({
                     ...item,
@@ -171,7 +172,7 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
                     })),
                 }))
             }
-            
+
             toast?.success('Éxito', 'Precios recalculados correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al cambiar tipo de precio')
@@ -195,19 +196,19 @@ const abrirModalConfirmacion = () => {
         toast?.error('Mínimos incompletos', `No se puede finalizar:\n${grupos}`)
         return
     }
-    
+
     if (!validarFechaEntrega()) {
         toast?.error('Error', errorFechaEntrega.value)
         return
     }
-    
+
     modalConfirmacionVisible.value = true
 }
 
 const finalizarPedido = async () => {
     modalConfirmacionVisible.value = false
     loading.value = true
-    
+
     try {
         let fechaEntregaFormateada = null
         if (fechaEntrega.value) {
@@ -216,7 +217,7 @@ const finalizarPedido = async () => {
                 fechaEntregaFormateada = `${partes[2]}/${partes[1]}/${partes[0]}`
             }
         }
-        
+
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`,
             {
@@ -227,14 +228,14 @@ const finalizarPedido = async () => {
                 TipoPrecio: tipoPrecioLocal.value
             }
         )
-        
+
         if (response.data.success) {
             toast?.success('Pedido finalizado', `Pedido N° ${response.data.numero_pedido} creado correctamente`)
-            
+
             if (response.data.pdf_url) {
                 window.open(response.data.pdf_url, '_blank')
             }
-            
+
             setTimeout(() => {
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
             }, 1500)
@@ -255,6 +256,7 @@ const finalizarPedido = async () => {
     }
 }
 
+// ==================== ABRIR MODAL EDICIÓN ====================
 const abrirModalEdicion = (item) => {
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
@@ -265,6 +267,7 @@ const abrirModalEdicion = (item) => {
             IdPedidoCliente: props.pedido.IdPedidoCliente,
             IdContenedor: item.IdContenedor,
             OrdenContenedor: item.Orden,
+            IdSubClienteOperador: item.IdSubClienteOperador,
             productos: item.productos.map(p => ({
                 IdProducto: p.IdProducto,
                 Cantidad: p.Cantidad,
@@ -275,13 +278,28 @@ const abrirModalEdicion = (item) => {
     modalEdicionVisible.value = true
 }
 
+// ==================== ACTUALIZAR CONTENEDOR (SIN RECARGAR) ====================
 const actualizarContenedor = async (data) => {
     loading.value = true
     try {
-        const response = await axios.put('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/contenedor', data)
+        const payload = {
+            ...data,
+            IdSubClienteOperador: data.IdSubClienteOperador
+                ? Number(data.IdSubClienteOperador)
+                : null
+        }
+
+        const response = await axios.put(
+            '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/contenedor',
+            payload
+        )
+
         if (response.data.success) {
+            // ✅ Actualizar el detalle local SIN recargar toda la página
+            actualizarDetalleLocal(data, payload)
             toast?.success('Éxito', 'Contenedor actualizado correctamente')
-            router.reload()
+        } else {
+            toast?.error('Error', response.data.message || 'Error al actualizar')
         }
     } catch (error) {
         console.error('Error:', error)
@@ -292,24 +310,83 @@ const actualizarContenedor = async (data) => {
     }
 }
 
+// ==================== ACTUALIZAR DETALLE LOCAL ====================
+const actualizarDetalleLocal = (data, payload) => {
+    const orden = Number(data.OrdenContenedor)
+
+    // Buscar el contenedor en detallesLocal
+    const index = detallesLocal.value.findIndex(item => Number(item.Orden) === orden)
+
+    if (index === -1) return
+
+    const contenedorActual = detallesLocal.value[index]
+
+    // ✅ Buscar el subcliente seleccionado para tener el nombre
+    const subCliente = props.subclientes.find(
+        s => Number(s.IdSubClienteOperador) === Number(payload.IdSubClienteOperador)
+    )
+
+    // ✅ Reemplazar los productos con los nuevos
+    const nuevosProductos = data.productos.map(p => {
+        // Buscar los datos completos del producto (descripción, código, etc.)
+        const productoOriginal = contenedorActual.productos.find(
+            op => op.IdProducto === p.IdProducto
+        ) || {}
+
+        return {
+            ...productoOriginal,
+            IdProducto: p.IdProducto,
+            Cantidad: Number(p.Cantidad),
+            Precio: Number(p.Precio),
+            Subtotal: Number(p.Cantidad) * Number(p.Precio)
+        }
+    })
+
+    // ✅ Calcular totales del contenedor
+    const totalUnidades = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0), 0)
+    const subtotal = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0), 0)
+
+    // ✅ Actualizar el contenedor en el array
+    detallesLocal.value[index] = {
+        ...contenedorActual,
+        IdSubClienteOperador: payload.IdSubClienteOperador,
+        SubClienteNombre: subCliente ? subCliente.Nombre : null,
+        productos: nuevosProductos,
+        total_unidades: totalUnidades,
+        subtotal: subtotal
+    }
+
+    // Forzar reactividad reemplazando el array completo
+    detallesLocal.value = [...detallesLocal.value]
+}
+
+// ==================== ELIMINAR CONTENEDOR (SIN RECARGAR) ====================
 const eliminarContenedor = async (item) => {
     const detalleId = item.productos[0]?.IdPedidoClienteDetalle
     if (!detalleId) {
         toast?.error('Error', 'No se pudo identificar el contenedor')
         return
     }
-    
+
     if (!confirm('¿Eliminar este contenedor del pedido?')) return
-    
+
     loading.value = true
     try {
-        const response = await axios.delete(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/detalle/${detalleId}`)
+        const response = await axios.delete(
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/detalle/${detalleId}`
+        )
+
         if (response.data.success) {
+            // ✅ Eliminar del array local
+            detallesLocal.value = detallesLocal.value.filter(
+                d => Number(d.Orden) !== Number(item.Orden)
+            )
+
             toast?.success('Éxito', 'Contenedor eliminado')
-            if (response.data.carrito_vacio) {
+
+            // Si ya no hay contenedores, redirigir
+            if (detallesLocal.value.length === 0) {
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
-            } else {
-                router.reload()
             }
         }
     } catch (error) {
@@ -329,8 +406,8 @@ const eliminarContenedor = async (item) => {
                 <!-- ==================== HEADER ==================== -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
-                        <button 
-                            @click="irAtras" 
+                        <button
+                            @click="irAtras"
                             class="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-primary-600 hover:border-primary-300 transition flex-shrink-0"
                         >
                             <i class="fas fa-arrow-left text-xs"></i>
@@ -359,8 +436,8 @@ const eliminarContenedor = async (item) => {
                                 @click="cambiarTipoPrecio('sin_factura')"
                                 :disabled="cambiandoTipoPrecio || tipoPrecioLocal === 'sin_factura'"
                                 class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5"
-                                :class="tipoPrecioLocal === 'sin_factura' 
-                                    ? 'bg-primary-600 text-white shadow-sm' 
+                                :class="tipoPrecioLocal === 'sin_factura'
+                                    ? 'bg-primary-600 text-white shadow-sm'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                             >
                                 <i class="fas fa-receipt text-[10px]"></i>
@@ -370,8 +447,8 @@ const eliminarContenedor = async (item) => {
                                 @click="cambiarTipoPrecio('con_factura')"
                                 :disabled="cambiandoTipoPrecio || tipoPrecioLocal === 'con_factura'"
                                 class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5"
-                                :class="tipoPrecioLocal === 'con_factura' 
-                                    ? 'bg-primary-600 text-white shadow-sm' 
+                                :class="tipoPrecioLocal === 'con_factura'
+                                    ? 'bg-primary-600 text-white shadow-sm'
                                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'"
                             >
                                 <i class="fas fa-file-invoice-dollar text-[10px]"></i>
@@ -441,8 +518,8 @@ const eliminarContenedor = async (item) => {
                                 <p><span class="font-medium">Fecha:</span> {{ fechaPedido }}</p>
                                 <p class="mt-0.5">
                                     <span class="px-2 py-0.5 rounded-full text-[9px] font-bold"
-                                        :class="tipoPrecioLocal === 'con_factura' 
-                                            ? 'bg-primary-100 text-primary-700' 
+                                        :class="tipoPrecioLocal === 'con_factura'
+                                            ? 'bg-primary-100 text-primary-700'
                                             : 'bg-gray-200 text-gray-700'">
                                         {{ tipoPrecioTexto }}
                                     </span>
@@ -472,8 +549,8 @@ const eliminarContenedor = async (item) => {
                         </div>
 
                         <div v-else class="space-y-2">
-                            <div 
-                                v-for="(item, idx) in detallesLocal" 
+                            <div
+                                v-for="(item, idx) in detallesLocal"
                                 :key="idx"
                                 class="border border-gray-200 rounded-lg overflow-hidden bg-white"
                             >
@@ -486,6 +563,14 @@ const eliminarContenedor = async (item) => {
                                         <span class="font-semibold text-gray-800 text-xs truncate">{{ item.Codigo }}</span>
                                         <span class="text-[9px] text-gray-500 bg-white px-1.5 py-0.5 rounded border border-gray-200 flex-shrink-0">
                                             Cap: {{ formatearNumero(item.CapacidadTotal) }}
+                                        </span>
+                                        <!-- ✅ Chip del subcliente -->
+                                        <span
+                                            v-if="item.SubClienteNombre"
+                                            class="text-[9px] text-blue-700 bg-blue-100 px-1.5 py-0.5 rounded-full font-medium flex-shrink-0"
+                                        >
+                                            <i class="fas fa-user-tag mr-0.5"></i>
+                                            {{ item.SubClienteNombre }}
                                         </span>
                                     </div>
                                     <div class="flex items-center gap-1.5 flex-shrink-0">
@@ -560,7 +645,7 @@ const eliminarContenedor = async (item) => {
                                 </label>
                             </div>
                             <div class="flex-1 w-full">
-                                <input 
+                                <input
                                     type="date"
                                     v-model="fechaEntrega"
                                     :min="fechaMinima"
@@ -583,7 +668,7 @@ const eliminarContenedor = async (item) => {
                                 <label class="text-[10px] font-medium text-gray-500">Observaciones</label>
                             </div>
                             <div class="flex-1 w-full">
-                                <textarea 
+                                <textarea
                                     v-model="observaciones"
                                     rows="2"
                                     placeholder="Notas adicionales (opcional)..."
@@ -595,19 +680,19 @@ const eliminarContenedor = async (item) => {
 
                     <!-- FOOTER -->
                     <div class="p-3 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row justify-end gap-2">
-                        <button 
-                            @click="irAtras" 
+                        <button
+                            @click="irAtras"
                             class="px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5"
                         >
                             <i class="fas fa-arrow-left text-[10px]"></i>
                             Seguir agregando
                         </button>
-                        <button 
+                        <button
                             @click="abrirModalConfirmacion"
                             :disabled="loading || !puedeFinalizar"
                             class="px-4 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-sm"
-                            :class="puedeFinalizar 
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white' 
+                            :class="puedeFinalizar
+                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                         >
                             <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
@@ -637,6 +722,9 @@ const eliminarContenedor = async (item) => {
             :idIdentificador="idIdentificador"
             :modoEdicion="true"
             :datosEdicion="contenedorSeleccionado?._datosEdicion || null"
+            :subclientes="subclientes"
+            :nombreOperador="operadorNombre"
+            :idSubClienteOperadorDefault="contenedorSeleccionado?._datosEdicion?.IdSubClienteOperador || null"
             @close="modalEdicionVisible = false"
             @actualizar="actualizarContenedor"
         />

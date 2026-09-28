@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, inject, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, inject, nextTick, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
@@ -113,7 +113,7 @@ const subClientesFiltrados = computed(() => {
         const nombre = String(s.Nombre || '').toLowerCase()
         const ciNit = String(s.CI_NIT || '').toLowerCase()
         const alias = String(s.Alias || '').toLowerCase()
-        
+
         return nombre.includes(termino) ||
                ciNit.includes(termino) ||
                alias.includes(termino)
@@ -128,25 +128,47 @@ const formatearNumero = (valor) => {
     return numero.toFixed(0)
 }
 
-// ✅ Inicializar subcliente
+// ✅ Inicializar subcliente (REFORZADO)
 const inicializarSubCliente = () => {
+    console.log('🔄 [MODAL] inicializarSubCliente')
+    console.log('   modoEdicion:', props.modoEdicion)
+    console.log('   datosEdicion.IdSubClienteOperador:', props.datosEdicion?.IdSubClienteOperador)
+    console.log('   idSubClienteOperadorDefault:', props.idSubClienteOperadorDefault)
+    console.log('   subClientePropio:', subClientePropio.value)
+
+    // 1. Modo edición: usar el subcliente existente desde datosEdicion
     if (props.modoEdicion && props.datosEdicion?.IdSubClienteOperador) {
         subClienteSeleccionado.value = Number(props.datosEdicion.IdSubClienteOperador)
         busquedaSubCliente.value = ''
+        console.log('✅ [MODAL] Aplicado (edición):', subClienteSeleccionado.value)
         return
     }
 
+    // 2. Modo edición: fallback con idSubClienteOperadorDefault
+    if (props.modoEdicion && props.idSubClienteOperadorDefault) {
+        subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
+        busquedaSubCliente.value = ''
+        console.log('✅ [MODAL] Aplicado (default en edición):', subClienteSeleccionado.value)
+        return
+    }
+
+    // 3. Modo agregar: usar el default del backend
     if (props.idSubClienteOperadorDefault) {
         subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
         busquedaSubCliente.value = ''
+        console.log('✅ [MODAL] Aplicado (default):', subClienteSeleccionado.value)
         return
     }
 
+    // 4. Fallback: subcliente propio del operador
     if (subClientePropio.value) {
         subClienteSeleccionado.value = Number(subClientePropio.value.IdSubClienteOperador)
         busquedaSubCliente.value = ''
+        console.log('✅ [MODAL] Aplicado (propio):', subClienteSeleccionado.value)
         return
     }
+
+    console.log('⚠️ [MODAL] No se pudo auto-seleccionar')
 }
 
 // ✅ Seleccionar un subcliente
@@ -355,21 +377,30 @@ const agregarAlCarrito = () => {
             Precio: p.PrecioFinal
         }))
 
+    // ✅ DEBUG
+    console.log('🚀 [MODAL] EMITIENDO:')
+    console.log('   modoEdicion:', props.modoEdicion)
+    console.log('   subClienteSeleccionado:', subClienteSeleccionado.value)
+
     if (props.modoEdicion && props.datosEdicion) {
-        emit('actualizar', {
+        const payload = {
             IdPedidoCliente: props.datosEdicion.IdPedidoCliente,
             IdContenedor: contenedorData.value.IdContenedor,
             OrdenContenedor: props.datosEdicion.OrdenContenedor,
             productos: productosAgregar,
             IdSubClienteOperador: subClienteSeleccionado.value
-        })
+        }
+        console.log('   payload (actualizar):', payload)
+        emit('actualizar', payload)
     } else {
-        emit('agregar', {
+        const payload = {
             IdContenedor: contenedorData.value.IdContenedor,
             productos: productosAgregar,
             TipoPrecio: props.tipoPrecio,
             IdSubClienteOperador: subClienteSeleccionado.value
-        })
+        }
+        console.log('   payload (agregar):', payload)
+        emit('agregar', payload)
     }
 
     cerrarModal()
@@ -426,12 +457,30 @@ watch(() => props.subclientes, (newVal) => {
     }
 }, { deep: true })
 
+// ✅ FIX: reaccionar cuando cambie datosEdicion (para modo edición)
+watch(() => props.datosEdicion, (newVal) => {
+    if (newVal && props.modoEdicion && props.visible) {
+        console.log('🔄 [MODAL] datosEdicion cambió, re-inicializando...')
+        nextTick(() => {
+            inicializarSubCliente()
+        })
+    }
+}, { deep: true, immediate: true })
+
+// ✅ FIX: reaccionar cuando se abre el modal en modo edición
+watch(() => props.modoEdicion, (newVal) => {
+    if (newVal && props.visible) {
+        nextTick(() => {
+            inicializarSubCliente()
+        })
+    }
+})
+
 onMounted(() => {
     inicializarSubCliente()
     document.addEventListener('click', cerrarDropdownSiAfuera)
 })
 
-import { onUnmounted } from 'vue'
 onUnmounted(() => {
     document.removeEventListener('click', cerrarDropdownSiAfuera)
 })
