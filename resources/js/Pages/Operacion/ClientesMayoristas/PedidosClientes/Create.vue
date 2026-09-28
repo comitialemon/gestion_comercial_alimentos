@@ -15,12 +15,16 @@ const props = defineProps({
     sucursales: { type: Array, default: () => [] },
     pedidoBorrador: { type: Object, default: null },
     carrito: { type: Array, default: () => [] },
-    sucursalDefault: { type: Number, default: null },
-    idIdentificador: { type: Number, default: null },
+    // ✅ FIX: Acepta Number o String
+    sucursalDefault: { type: [Number, String], default: null },
+    idIdentificador: { type: [Number, String], default: null },
     nombreOperador: { type: String, default: '' },
     minimosGrupos: { type: Array, default: () => [] },
     progresoInicial: { type: Array, default: () => [] },
     tipoPrecio: { type: String, default: 'sin_factura' },
+    subclientes: { type: Array, default: () => [] },
+    // ✅ FIX: Acepta Number o String
+    idSubClienteDefault: { type: [Number, String], default: null },
 })
 
 // ==================== ESTADO ====================
@@ -65,12 +69,8 @@ const contenedoresFiltrados = computed(() => {
 
 /**
  * ✅ PROGRESO CALCULADO LOCALMENTE
- * 
- * ⚠️ SOLO muestra los grupos que tienen al menos 1 producto en el carrito.
- * Los grupos configurados sin productos NO se muestran (no obligan al cliente).
  */
 const progresoGrupos = computed(() => {
-    // 1. Acumular cantidades por grupo (solo grupos con productos)
     const acumulado = {}
 
     carritoItems.value.forEach(item => {
@@ -82,12 +82,10 @@ const progresoGrupos = computed(() => {
         })
     })
 
-    // ✅ 2. Si no hay productos, no hay progreso
     if (Object.keys(acumulado).length === 0) {
         return []
     }
 
-    // ✅ 3. Solo iterar los grupos que TIENEN productos
     return minimos.value
         .filter(minimo => acumulado[minimo.IdGrupoAnalisis] !== undefined)
         .map(minimo => {
@@ -115,8 +113,8 @@ const tipoPrecioLabel = computed(() => {
 })
 
 const tipoPrecioColor = computed(() => {
-    return tipoPrecioActual.value === 'con_factura' 
-        ? 'bg-blue-100 text-blue-700 border-blue-300' 
+    return tipoPrecioActual.value === 'con_factura'
+        ? 'bg-blue-100 text-blue-700 border-blue-300'
         : 'bg-gray-100 text-gray-700 border-gray-300'
 })
 
@@ -150,25 +148,22 @@ const cerrarModal = () => {
 // ==================== TIPO DE PRECIO ====================
 const abrirModalCambiarTipo = (nuevoTipo) => {
     if (nuevoTipo === tipoPrecioActual.value) return
-    
+
     tipoPrecioSeleccionado.value = nuevoTipo
-    
-    // Si no hay carrito, cambiar directo
+
     if (!hayProductosEnCarrito.value) {
         aplicarCambioTipo()
         return
     }
-    
-    // Si hay carrito, abrir modal de confirmación
+
     modalCambiarTipoVisible.value = true
 }
 
 const aplicarCambioTipo = async () => {
     cambiandoTipo.value = true
-    
+
     try {
         if (pedidoId.value && hayProductosEnCarrito.value) {
-            // ✅ Hay carrito → Recalcular precios en el backend
             const response = await axios.post(
                 '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/cambiar-tipo-precio',
                 {
@@ -179,16 +174,14 @@ const aplicarCambioTipo = async () => {
 
             if (response.data.success) {
                 toast?.success('Éxito', 'Tipo de precio actualizado y precios recalculados')
-                
-                // Si hay productos sin precio, avisar
+
                 if (response.data.productos_sin_precio?.length > 0) {
                     toast?.warning(
-                        'Atención', 
+                        'Atención',
                         `${response.data.productos_sin_precio.length} producto(s) no tienen precio asignado para este tipo`
                     )
                 }
 
-                // Recargar
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
                     tipo_precio: tipoPrecioSeleccionado.value
                 }, {
@@ -202,7 +195,6 @@ const aplicarCambioTipo = async () => {
                 toast?.error('Error', response.data.message || 'Error al cambiar tipo')
             }
         } else {
-            // No hay carrito → Solo recargar con el nuevo tipo
             router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
                 tipo_precio: tipoPrecioSeleccionado.value
             }, {
@@ -232,12 +224,11 @@ const cerrarModalCambiarTipo = () => {
 const agregarContenedorAlCarrito = async (data) => {
     loading.value = true
     try {
-        // ✅ Enviar TipoPrecio
         const payload = {
             ...data,
             TipoPrecio: tipoPrecioActual.value
         }
-        
+
         const response = await axios.post(
             '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/agregar',
             payload
@@ -311,7 +302,6 @@ onMounted(() => {
                 </div>
 
                 <div class="flex items-center gap-3">
-                    <!-- Info del carrito -->
                     <div v-if="hayProductosEnCarrito" class="hidden sm:flex items-center gap-3 text-xs">
                         <div class="flex items-center gap-1.5 text-gray-500">
                             <i class="fas fa-shopping-cart text-primary-500"></i>
@@ -323,7 +313,6 @@ onMounted(() => {
                         </div>
                     </div>
 
-                    <!-- Botón Revisar -->
                     <button
                         @click="irARevisarPedido"
                         :disabled="!hayProductosEnCarrito"
@@ -384,7 +373,6 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <!-- Info del tipo seleccionado -->
                 <div class="mt-2 flex items-center gap-2 text-[10px]" :class="tipoPrecioColor">
                     <i :class="tipoPrecioActual === 'con_factura' ? 'fas fa-file-invoice' : 'fas fa-receipt'" class="text-[9px]"></i>
                     <span>
@@ -399,13 +387,13 @@ onMounted(() => {
             <!-- ==================== PROGRESO DE GRUPOS ==================== -->
             <div v-if="progresoGrupos.length > 0 && hayProductosEnCarrito" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4"
                  :class="cumpleTodosMinimos ? 'border-green-500' : 'border-orange-500'">
-                
+
                 <div class="flex items-center justify-between mb-3">
                     <h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-chart-line" :class="cumpleTodosMinimos ? 'text-green-500' : 'text-orange-500'"></i>
                         Progreso del Pedido
                     </h2>
-                    <span 
+                    <span
                         class="text-[10px] px-2 py-1 rounded-full font-medium"
                         :class="cumpleTodosMinimos ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
                     >
@@ -415,12 +403,12 @@ onMounted(() => {
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div 
-                        v-for="grupo in progresoGrupos" 
+                    <div
+                        v-for="grupo in progresoGrupos"
                         :key="grupo.IdGrupoAnalisis"
                         class="p-3 rounded-lg border-2 transition-all"
-                        :class="grupo.Cumple 
-                            ? 'border-green-200 bg-green-50/50' 
+                        :class="grupo.Cumple
+                            ? 'border-green-200 bg-green-50/50'
                             : 'border-orange-200 bg-orange-50/50'"
                     >
                         <div class="flex items-center justify-between mb-2">
@@ -434,7 +422,7 @@ onMounted(() => {
                         </div>
 
                         <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div 
+                            <div
                                 class="h-full transition-all duration-300 rounded-full"
                                 :class="grupo.Cumple ? 'bg-green-500' : 'bg-orange-500'"
                                 :style="{ width: grupo.Porcentaje + '%' }"
@@ -463,7 +451,7 @@ onMounted(() => {
 
                     <div class="relative w-full sm:w-64">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input 
+                        <input
                             type="text"
                             v-model="busquedaContenedor"
                             placeholder="Buscar contenedor..."
@@ -473,8 +461,8 @@ onMounted(() => {
                 </div>
 
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    <div 
-                        v-for="contenedor in contenedoresFiltrados" 
+                    <div
+                        v-for="contenedor in contenedoresFiltrados"
                         :key="contenedor.IdContenedor"
                         @click="abrirModal(contenedor)"
                         class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden border-2 border-transparent hover:border-primary-300"
@@ -518,19 +506,21 @@ onMounted(() => {
             :modoEdicion="false"
             :datosEdicion="null"
             :tipoPrecio="tipoPrecioActual"
+            :subclientes="subclientes"
+            :idSubClienteOperadorDefault="idSubClienteDefault"
             @close="cerrarModal"
             @agregar="agregarContenedorAlCarrito"
             @actualizar="agregarContenedorAlCarrito"
         />
 
         <!-- ==================== MODAL CONFIRMAR CAMBIO DE TIPO ==================== -->
-        <div 
+        <div
             v-if="modalCambiarTipoVisible"
             class="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
             @click.self="cerrarModalCambiarTipo"
         >
             <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-fade-in-up">
-                
+
                 <!-- Header -->
                 <div class="p-4 border-b bg-orange-50 flex items-center gap-3">
                     <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
@@ -571,14 +561,14 @@ onMounted(() => {
 
                 <!-- Footer -->
                 <div class="p-3 bg-gray-50 flex justify-end gap-2">
-                    <button 
+                    <button
                         @click="cerrarModalCambiarTipo"
                         :disabled="cambiandoTipo"
                         class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium transition"
                     >
                         Cancelar
                     </button>
-                    <button 
+                    <button
                         @click="aplicarCambioTipo"
                         :disabled="cambiandoTipo"
                         class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5 disabled:opacity-50"

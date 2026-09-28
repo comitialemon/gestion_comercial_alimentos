@@ -1,32 +1,17 @@
 <script setup>
-import { ref, computed, watch, inject } from 'vue'
+import { ref, computed, watch, inject, nextTick, onMounted } from 'vue'
 import axios from 'axios'
 
 const props = defineProps({
-    visible: {
-        type: Boolean,
-        default: false
-    },
-    contenedor: {
-        type: Object,
-        default: null
-    },
-    idIdentificador: {
-        type: Number,
-        default: null
-    },
-    modoEdicion: {
-        type: Boolean,
-        default: false
-    },
-    datosEdicion: {
-        type: Object,
-        default: null
-    },
-    tipoPrecio: { // ✅ NUEVO
-        type: String,
-        default: 'sin_factura'
-    }
+    visible: { type: Boolean, default: false },
+    contenedor: { type: Object, default: null },
+    idIdentificador: { type: [Number, String], default: null },
+    modoEdicion: { type: Boolean, default: false },
+    datosEdicion: { type: Object, default: null },
+    tipoPrecio: { type: String, default: 'sin_factura' },
+    subclientes: { type: Array, default: () => [] },
+    idSubClienteOperadorDefault: { type: [Number, String], default: null },
+    nombreOperador: { type: String, default: '' }
 })
 
 const emit = defineEmits(['close', 'agregar', 'actualizar'])
@@ -42,6 +27,14 @@ const errorMensaje = ref('')
 const excedeCapacidad = ref(false)
 const errorCarga = ref(false)
 
+// ✅ Subcliente seleccionado
+const subClienteSeleccionado = ref(null)
+
+// ✅ Autocomplete subcliente
+const busquedaSubCliente = ref('')
+const mostrarDropdownSubCliente = ref(false)
+const subClienteDropdownRef = ref(null)
+
 const toast = inject('toast', null)
 
 // ==================== COMPUTADOS ====================
@@ -50,7 +43,7 @@ const productosFiltrados = computed(() => {
         return productosSeleccionados.value
     }
     const termino = busquedaProducto.value.toLowerCase()
-    return productosSeleccionados.value.filter(p => 
+    return productosSeleccionados.value.filter(p =>
         p.Descripcion?.toLowerCase().includes(termino) ||
         p.Codigo?.toLowerCase().includes(termino)
     )
@@ -69,9 +62,9 @@ const estaCompleto = computed(() => {
 })
 
 const puedeAgregar = computed(() => {
-    return !loading.value && 
-           productosAgregados.value.length > 0 && 
-           !excedeCapacidad.value && 
+    return !loading.value &&
+           productosAgregados.value.length > 0 &&
+           !excedeCapacidad.value &&
            totalUnidadesSeleccionadas.value > 0
 })
 
@@ -87,6 +80,47 @@ const colorBarra = computed(() => {
     return 'bg-primary-500'
 })
 
+// ✅ Subcliente propio del operador
+const subClientePropio = computed(() => {
+    if (!props.subclientes?.length || !props.idIdentificador) return null
+    return props.subclientes.find(
+        s => Number(s.IdIdentificador) === Number(props.idIdentificador)
+    ) || null
+})
+
+// ✅ ¿Es el propio operador?
+const esPropioOperador = computed(() => {
+    if (!subClienteSeleccionado.value || !subClientePropio.value) return false
+    return Number(subClienteSeleccionado.value) === Number(subClientePropio.value.IdSubClienteOperador)
+})
+
+// ✅ Nombre del subcliente seleccionado
+const subClienteNombreActual = computed(() => {
+    if (!subClienteSeleccionado.value) return 'Sin subcliente'
+    const sub = props.subclientes.find(
+        s => Number(s.IdSubClienteOperador) === Number(subClienteSeleccionado.value)
+    )
+    return sub ? sub.Nombre : 'Sin subcliente'
+})
+
+// ✅ Filtrar subclientes por búsqueda
+const subClientesFiltrados = computed(() => {
+    if (!busquedaSubCliente.value || busquedaSubCliente.value.length < 1) {
+        return props.subclientes
+    }
+    const termino = busquedaSubCliente.value.toLowerCase().trim()
+    return props.subclientes.filter(s => {
+        const nombre = String(s.Nombre || '').toLowerCase()
+        const ciNit = String(s.CI_NIT || '').toLowerCase()
+        const alias = String(s.Alias || '').toLowerCase()
+        
+        return nombre.includes(termino) ||
+               ciNit.includes(termino) ||
+               alias.includes(termino)
+    })
+})
+
+// ==================== FUNCIONES ====================
 const formatearNumero = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0'
     const numero = parseInt(valor)
@@ -94,20 +128,62 @@ const formatearNumero = (valor) => {
     return numero.toFixed(0)
 }
 
+// ✅ Inicializar subcliente
+const inicializarSubCliente = () => {
+    if (props.modoEdicion && props.datosEdicion?.IdSubClienteOperador) {
+        subClienteSeleccionado.value = Number(props.datosEdicion.IdSubClienteOperador)
+        busquedaSubCliente.value = ''
+        return
+    }
+
+    if (props.idSubClienteOperadorDefault) {
+        subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
+        busquedaSubCliente.value = ''
+        return
+    }
+
+    if (subClientePropio.value) {
+        subClienteSeleccionado.value = Number(subClientePropio.value.IdSubClienteOperador)
+        busquedaSubCliente.value = ''
+        return
+    }
+}
+
+// ✅ Seleccionar un subcliente
+const seleccionarSubCliente = (sub) => {
+    subClienteSeleccionado.value = Number(sub.IdSubClienteOperador)
+    busquedaSubCliente.value = ''
+    mostrarDropdownSubCliente.value = false
+}
+
+// ✅ Abrir dropdown
+const abrirDropdownSubCliente = () => {
+    mostrarDropdownSubCliente.value = true
+    busquedaSubCliente.value = ''
+}
+
+// ✅ Cerrar dropdown al hacer click afuera
+const cerrarDropdownSiAfuera = (event) => {
+    if (subClienteDropdownRef.value && !subClienteDropdownRef.value.contains(event.target)) {
+        mostrarDropdownSubCliente.value = false
+        busquedaSubCliente.value = ''
+    }
+}
+
 // ==================== FUNCIONES DE CANTIDAD ====================
 const actualizarCantidad = (producto, event) => {
     const input = event.target
     let valor = input.value.replace(/,/g, '.').trim()
-    
+
     if (valor === '' || valor === '-') {
         producto.Cantidad = 0
         recalcularTotal()
         validarCapacidad()
         return
     }
-    
+
     let cantidad = parseInt(valor)
-    
+
     if (isNaN(cantidad) || cantidad < 0) {
         producto.Cantidad = 0
         input.value = 0
@@ -115,16 +191,16 @@ const actualizarCantidad = (producto, event) => {
         validarCapacidad()
         return
     }
-    
+
     const otrasUnidades = totalUnidadesSeleccionadas.value - (producto.Cantidad || 0)
     const disponible = capacidadTotalContenedor.value - otrasUnidades
-    
+
     if (cantidad > disponible) {
         cantidad = disponible
         input.value = disponible
         if (cantidad < 0) cantidad = 0
     }
-    
+
     producto.Cantidad = cantidad
     recalcularTotal()
     validarCapacidad()
@@ -134,7 +210,7 @@ const incrementarCantidad = (producto) => {
     const actual = producto.Cantidad || 0
     const otrasUnidades = totalUnidadesSeleccionadas.value - actual
     const disponible = capacidadTotalContenedor.value - otrasUnidades
-    
+
     if (actual < disponible) {
         producto.Cantidad = Math.min(actual + 1, disponible)
         recalcularTotal()
@@ -182,7 +258,7 @@ const cargarProductos = async () => {
         errorMensaje.value = '⚠️ Selecciona un cliente'
         return
     }
-    
+
     loading.value = true
     errorCarga.value = false
     contenedorData.value = props.contenedor
@@ -194,19 +270,16 @@ const cargarProductos = async () => {
     excedeCapacidad.value = false
 
     try {
-        // ✅ Pasar tipo_precio como query param
         const tipoPrecioParam = props.tipoPrecio || 'sin_factura'
-        
+
         const response = await axios.get(
             `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/contenedor/${props.contenedor.IdContenedor}/productos-precios`,
-            {
-                params: { tipo_precio: tipoPrecioParam } // ✅ NUEVO
-            }
+            { params: { tipo_precio: tipoPrecioParam } }
         )
-        
+
         if (response.data.success) {
             let productosRaw = []
-            
+
             if (response.data.data && response.data.data.productos_agrupados) {
                 const agrupados = response.data.data.productos_agrupados
                 agrupados.forEach(grupo => {
@@ -216,7 +289,6 @@ const cargarProductos = async () => {
                                 IdProducto: p.IdProducto,
                                 Codigo: p.Codigo,
                                 Descripcion: p.Descripcion,
-                                // ✅ Usar PrecioFinal del backend
                                 PrecioFinal: p.PrecioFinal || 0,
                                 tiene_precio: p.tiene_precio || false,
                                 IdGrupoAnalisis: p.IdGrupoAnalisis,
@@ -227,38 +299,37 @@ const cargarProductos = async () => {
                     }
                 })
             }
-            
+
             if (!productosRaw || productosRaw.length === 0) {
                 productosSeleccionados.value = []
                 return
             }
-            
+
             productosSeleccionados.value = productosRaw.map(p => {
                 let cantidad = 0
                 let precio = p.PrecioFinal
-                
+
                 if (props.modoEdicion && props.datosEdicion) {
                     const existente = props.datosEdicion.productos.find(
                         ep => ep.IdProducto === p.IdProducto
                     )
                     if (existente) {
                         cantidad = parseInt(existente.Cantidad) || 0
-                        // ✅ Usar el precio existente si está en edición
                         precio = existente.Precio || p.PrecioFinal
                     }
                 }
-                
+
                 return {
                     ...p,
                     Cantidad: cantidad,
-                    PrecioFinal: precio, // ✅ Precio correcto
+                    PrecioFinal: precio,
                     CantidadMaxima: capacidadTotalContenedor.value
                 }
             })
-            
+
             recalcularTotal()
             validarCapacidad()
-            
+
         } else {
             errorCarga.value = true
             errorMensaje.value = response.data.data?.mensaje || '❌ Error al cargar'
@@ -281,7 +352,7 @@ const agregarAlCarrito = () => {
         .map(p => ({
             IdProducto: p.IdProducto,
             Cantidad: p.Cantidad,
-            Precio: p.PrecioFinal // ✅ Usar PrecioFinal
+            Precio: p.PrecioFinal
         }))
 
     if (props.modoEdicion && props.datosEdicion) {
@@ -289,16 +360,18 @@ const agregarAlCarrito = () => {
             IdPedidoCliente: props.datosEdicion.IdPedidoCliente,
             IdContenedor: contenedorData.value.IdContenedor,
             OrdenContenedor: props.datosEdicion.OrdenContenedor,
-            productos: productosAgregar
+            productos: productosAgregar,
+            IdSubClienteOperador: subClienteSeleccionado.value
         })
     } else {
         emit('agregar', {
             IdContenedor: contenedorData.value.IdContenedor,
             productos: productosAgregar,
-            TipoPrecio: props.tipoPrecio // ✅ NUEVO
+            TipoPrecio: props.tipoPrecio,
+            IdSubClienteOperador: subClienteSeleccionado.value
         })
     }
-    
+
     cerrarModal()
 }
 
@@ -310,6 +383,12 @@ const cerrarModal = () => {
 watch(() => props.visible, (newVal) => {
     if (newVal && props.contenedor) {
         cargarProductos()
+        nextTick(() => {
+            inicializarSubCliente()
+        })
+    } else if (!newVal) {
+        mostrarDropdownSubCliente.value = false
+        busquedaSubCliente.value = ''
     }
 }, { immediate: true })
 
@@ -325,22 +404,47 @@ watch(() => props.idIdentificador, (newVal) => {
     }
 })
 
-// ✅ Recargar cuando cambie tipo_precio
 watch(() => props.tipoPrecio, (newVal) => {
     if (newVal && props.visible && props.contenedor) {
         cargarProductos()
     }
 })
+
+watch(() => props.idSubClienteOperadorDefault, (newVal) => {
+    if (newVal && !props.modoEdicion) {
+        nextTick(() => {
+            subClienteSeleccionado.value = Number(newVal)
+        })
+    }
+})
+
+watch(() => props.subclientes, (newVal) => {
+    if (newVal?.length > 0 && !subClienteSeleccionado.value) {
+        nextTick(() => {
+            inicializarSubCliente()
+        })
+    }
+}, { deep: true })
+
+onMounted(() => {
+    inicializarSubCliente()
+    document.addEventListener('click', cerrarDropdownSiAfuera)
+})
+
+import { onUnmounted } from 'vue'
+onUnmounted(() => {
+    document.removeEventListener('click', cerrarDropdownSiAfuera)
+})
 </script>
+
 <template>
-    <!-- Modal Overlay -->
-    <div 
+    <div
         v-if="visible"
         class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
         @click.self="cerrarModal"
     >
-        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up flex flex-col">
-            
+        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up flex flex-col relative z-10">
+
             <!-- HEADER -->
             <div class="px-4 py-3 border-b bg-primary-50 flex items-center justify-between flex-shrink-0">
                 <div class="min-w-0 flex-1">
@@ -354,21 +458,111 @@ watch(() => props.tipoPrecio, (newVal) => {
                     <p class="text-[10px] text-gray-400">
                         {{ modoEdicion ? 'Modifica las cantidades de los productos' : 'Selecciona las cantidades a pedir' }}
                     </p>
-                    <!-- ✅ Mostrar tipo de precio -->
                     <span class="text-[9px] px-2 py-0.5 rounded-full font-medium mt-1 inline-block"
-                        :class="tipoPrecio === 'con_factura' 
-                            ? 'bg-blue-100 text-blue-700' 
-                            : 'bg-gray-100 text-gray-600'">
+                        :class="tipoPrecio === 'con_factura' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'">
                         <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-1"></i>
                         {{ tipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}
                     </span>
                 </div>
-                <button 
-                    @click="cerrarModal"
-                    class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0"
-                >
+                <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0">
                     <i class="fas fa-times"></i>
                 </button>
+            </div>
+
+            <!-- ✅ AUTOCOMPLETE SUBCLIENTE -->
+            <div class="px-4 py-2 border-b flex items-center gap-2 flex-shrink-0 transition-colors"
+                 :class="esPropioOperador ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'">
+
+                <label class="text-[10px] font-medium text-gray-600 whitespace-nowrap">
+                    <i class="fas fa-user-tag mr-1" :class="esPropioOperador ? 'text-green-500' : 'text-blue-500'"></i>
+                    Pedido para:
+                </label>
+
+                <div class="flex-1 min-w-0 relative" ref="subClienteDropdownRef">
+                    <!-- Input con autocomplete -->
+                    <div
+                        @click="abrirDropdownSubCliente"
+                        class="w-full border rounded-lg px-2 py-1 text-xs bg-white font-medium cursor-pointer flex items-center justify-between gap-1 transition"
+                        :class="esPropioOperador
+                            ? 'border-green-300 hover:border-green-400 text-green-800'
+                            : 'border-blue-300 hover:border-blue-400 text-blue-800'"
+                    >
+                        <span class="truncate flex-1">
+                            {{ subClienteNombreActual }}
+                            {{ esPropioOperador ? ' — (Tú)' : '' }}
+                        </span>
+                        <i class="fas fa-chevron-down text-[9px] opacity-60 flex-shrink-0"></i>
+                    </div>
+
+                    <!-- Dropdown -->
+                    <div
+                        v-if="mostrarDropdownSubCliente"
+                        class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-72 overflow-hidden flex flex-col"
+                    >
+                        <!-- Buscador -->
+                        <div class="p-2 border-b bg-gray-50">
+                            <div class="relative">
+                                <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                                <input
+                                    type="text"
+                                    v-model="busquedaSubCliente"
+                                    placeholder="Buscar subcliente..."
+                                    class="w-full border border-gray-200 rounded pl-7 pr-2 py-1 text-xs focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none bg-white"
+                                    autofocus
+                                    @click.stop
+                                />
+                            </div>
+                        </div>
+
+                        <!-- Lista -->
+                        <div class="overflow-y-auto flex-1 max-h-56">
+                            <div v-if="subClientesFiltrados.length === 0" class="text-center py-4 text-xs text-gray-400">
+                                <i class="fas fa-search mr-1"></i>
+                                No se encontraron subclientes
+                            </div>
+                            <div
+                                v-else
+                                v-for="sub in subClientesFiltrados"
+                                :key="sub.IdSubClienteOperador"
+                                @click="seleccionarSubCliente(sub)"
+                                class="px-3 py-1.5 hover:bg-primary-50 cursor-pointer transition flex items-center justify-between gap-2 border-b border-gray-50 last:border-0"
+                                :class="Number(sub.IdSubClienteOperador) === Number(subClienteSeleccionado) ? 'bg-primary-50' : ''"
+                            >
+                                <div class="min-w-0 flex-1">
+                                    <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                                        {{ sub.Nombre }}
+                                        <span v-if="Number(sub.IdIdentificador) === Number(idIdentificador)"
+                                              class="text-[8px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                                            <i class="fas fa-user-check mr-0.5"></i>
+                                            Tú
+                                        </span>
+                                    </div>
+                                    <div class="text-[9px] text-gray-500 mt-0.5">
+                                        <i class="fas fa-id-card mr-1"></i>
+                                        {{ sub.CI_NIT || 'Sin NIT' }}
+                                        <span v-if="sub.Alias" class="ml-2 text-blue-600">
+                                            <i class="fas fa-tag mr-0.5"></i>
+                                            {{ sub.Alias }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <i v-if="Number(sub.IdSubClienteOperador) === Number(subClienteSeleccionado)"
+                                   class="fas fa-check text-primary-600 text-[10px]"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <span v-if="esPropioOperador"
+                      class="text-[8px] bg-green-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                    <i class="fas fa-user-check mr-0.5"></i>
+                    Operador
+                </span>
+                <span v-else
+                      class="text-[8px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                    <i class="fas fa-user-tag mr-0.5"></i>
+                    Subcliente
+                </span>
             </div>
 
             <!-- BARRA DE PROGRESO -->
@@ -380,11 +574,8 @@ watch(() => props.tipoPrecio, (newVal) => {
                         <span>Máx: <strong>{{ formatearNumero(capacidadTotalContenedor) }}</strong></span>
                     </div>
                     <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
-                        <div 
-                            class="h-full transition-all duration-300 rounded-full"
-                            :class="colorBarra"
-                            :style="{ width: Math.min(porcentajeCompletado, 100) + '%' }"
-                        ></div>
+                        <div class="h-full transition-all duration-300 rounded-full" :class="colorBarra"
+                            :style="{ width: Math.min(porcentajeCompletado, 100) + '%' }"></div>
                     </div>
                 </div>
                 <span v-if="estaCompleto" class="text-[10px] text-green-600 font-medium whitespace-nowrap">
@@ -394,8 +585,6 @@ watch(() => props.tipoPrecio, (newVal) => {
 
             <!-- CUERPO -->
             <div class="p-3 overflow-y-auto flex-1">
-                
-                <!-- Alertas -->
                 <div v-if="!idIdentificador" class="mb-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded text-xs text-yellow-700">
                     <i class="fas fa-exclamation-triangle mr-1"></i> Selecciona un cliente para ver los precios
                 </div>
@@ -413,42 +602,28 @@ watch(() => props.tipoPrecio, (newVal) => {
                     <i class="fas fa-info-circle mr-1"></i> No hay productos con precio para los grupos configurados
                 </div>
 
-                <!-- Buscador -->
                 <div class="relative mb-3">
                     <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                    <input 
-                        type="text"
-                        v-model="busquedaProducto"
-                        placeholder="Buscar producto..."
+                    <input type="text" v-model="busquedaProducto" placeholder="Buscar producto..."
                         class="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-gray-50 focus:bg-white"
-                        :disabled="loading || errorCarga || !idIdentificador"
-                    />
+                        :disabled="loading || errorCarga || !idIdentificador" />
                 </div>
 
-                <!-- Loading -->
                 <div v-if="loading" class="flex justify-center items-center py-8">
                     <div class="w-8 h-8 border-3 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
                 </div>
 
-                <!-- Sin productos -->
                 <div v-else-if="!errorCarga && productosSeleccionados.length === 0" class="text-center py-8 text-gray-400">
                     <i class="fas fa-box-open text-2xl block mb-2"></i>
                     <p class="text-xs">No hay productos disponibles</p>
                     <p class="text-[10px] text-gray-400 mt-1">Los grupos sin mínimo configurado no se muestran</p>
                 </div>
 
-                <!-- Lista de productos -->
                 <div v-else-if="!errorCarga && productosSeleccionados.length > 0" class="space-y-1.5">
-                    <div 
-                        v-for="producto in productosFiltrados" 
-                        :key="producto.IdProducto"
+                    <div v-for="producto in productosFiltrados" :key="producto.IdProducto"
                         class="bg-gray-50 hover:bg-gray-100 rounded-lg p-2 transition-all duration-200 text-xs"
-                        :class="{
-                            'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio
-                        }"
-                    >
+                        :class="{ 'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio }">
                         <div class="grid grid-cols-12 gap-1 items-center">
-                            <!-- Producto -->
                             <div class="col-span-12 sm:col-span-5 min-w-0">
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <span class="text-[9px] font-mono text-gray-400 bg-white px-1.5 py-0.5 rounded">{{ producto.Codigo }}</span>
@@ -466,7 +641,6 @@ watch(() => props.tipoPrecio, (newVal) => {
                                 </div>
                             </div>
 
-                            <!-- Precio - ✅ Corregido a PrecioFinal -->
                             <div class="col-span-3 sm:col-span-2 text-center">
                                 <span v-if="producto.tiene_precio" class="text-green-600 font-medium text-xs">
                                     Bs. {{ Number(producto.PrecioFinal).toFixed(2) }}
@@ -474,20 +648,12 @@ watch(() => props.tipoPrecio, (newVal) => {
                                 <span v-else class="text-red-400 text-[9px]">Sin precio</span>
                             </div>
 
-                            <!-- Cantidad -->
                             <div class="col-span-6 sm:col-span-3 flex items-center gap-0.5">
-                                <button 
-                                    @click="decrementarCantidad(producto)"
-                                    :disabled="!producto.tiene_precio || producto.Cantidad <= 0"
-                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition"
-                                >
+                                <button @click="decrementarCantidad(producto)" :disabled="!producto.tiene_precio || producto.Cantidad <= 0"
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition">
                                     <i class="fas fa-minus text-[8px]"></i>
                                 </button>
-                                <input 
-                                    type="number"
-                                    step="1"
-                                    min="0"
-                                    :max="capacidadTotalContenedor"
+                                <input type="number" step="1" min="0" :max="capacidadTotalContenedor"
                                     :value="producto.Cantidad || 0"
                                     @input="actualizarCantidad(producto, $event)"
                                     @focus="$event.target.select()"
@@ -497,18 +663,13 @@ watch(() => props.tipoPrecio, (newVal) => {
                                         'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio,
                                         'border-gray-200': producto.Cantidad === 0 || !producto.tiene_precio
                                     }"
-                                    placeholder="0"
-                                />
-                                <button 
-                                    @click="incrementarCantidad(producto)"
-                                    :disabled="!producto.tiene_precio"
-                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition"
-                                >
+                                    placeholder="0" />
+                                <button @click="incrementarCantidad(producto)" :disabled="!producto.tiene_precio"
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition">
                                     <i class="fas fa-plus text-[8px]"></i>
                                 </button>
                             </div>
 
-                            <!-- Total - ✅ Corregido a PrecioFinal -->
                             <div class="col-span-3 sm:col-span-2 text-right font-bold text-xs">
                                 <span v-if="producto.tiene_precio && producto.Cantidad > 0" class="text-primary-600">
                                     Bs. {{ (producto.Cantidad * producto.PrecioFinal).toFixed(2) }}
@@ -531,21 +692,20 @@ watch(() => props.tipoPrecio, (newVal) => {
                     </span>
                     <span v-else class="text-green-600">
                         <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s) · {{ totalUnidadesSeleccionadas }} und
+                        <span v-if="subClienteSeleccionado" class="text-blue-600 ml-1">
+                            · {{ subClienteNombreActual }}
+                        </span>
                     </span>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
-                    <button 
-                        @click="limpiarTodo"
+                    <button @click="limpiarTodo"
                         class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-[10px] transition flex-1 sm:flex-none"
-                        :disabled="loading || errorCarga"
-                    >
+                        :disabled="loading || errorCarga">
                         <i class="fas fa-eraser text-[8px] mr-1"></i> Limpiar
                     </button>
-                    <button 
-                        @click="agregarAlCarrito"
+                    <button @click="agregarAlCarrito"
                         :disabled="!puedeAgregar || errorCarga || !idIdentificador"
-                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none"
-                    >
+                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none">
                         <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
                         <i v-else class="fas fa-save text-[10px]"></i>
                         {{ loading ? 'Cargando...' : (modoEdicion ? 'Actualizar' : 'Agregar') }}

@@ -133,6 +133,7 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\InformePreciosMinimosControl
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\GrupoClienteController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ContenedorGrupoClienteController;
 use App\Http\Controllers\Operacion\Pedidos\Reportes\GrupoClienteReporteController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\SubClienteOperadorController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1407,7 +1408,29 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     });
                 });
                 
+                // ============================================================
+                // SUB CLIENTES PEDIDOS CLIENTES
+                // ============================================================
+                Route::prefix('subclientes')->group(function () {
+                    Route::get('/', [SubClienteOperadorController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.index');
 
+                    Route::get('/mis-subclientes', [SubClienteOperadorController::class, 'getSubClientes'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.mis-subclientes');
+
+                    Route::get('/buscar-identificadores', [SubClienteOperadorController::class, 'buscarIdentificadores'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.buscar-identificadores');
+                    Route::post('/crear-identificador', [SubClienteOperadorController::class, 'storeIdentificador'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.crear-identificador');
+                    Route::post('/', [SubClienteOperadorController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.store');
+
+                    Route::put('/{id}', [SubClienteOperadorController::class, 'update'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.update');
+
+                    Route::delete('/{id}', [SubClienteOperadorController::class, 'destroy'])
+                        ->name('operacion.pedidos.clientes-mayoristas.subclientes.destroy');
+                });
                 // ============================================================
                 // PEDIDOS CLIENTES
                 // ============================================================

@@ -16,18 +16,19 @@ class PedidoClienteDetalle extends Model
         'IdPedidoCliente',
         'IdContenedor',
         'IdProducto',
+        'IdSubClienteOperador',  // ✅ NUEVO
         'Cantidad',
-        'Precio',           // ✅ NUEVO: Precio unitario al momento del pedido
+        'Precio',
         'OrdenContenedor',
     ];
 
     protected $casts = [
         'Cantidad' => 'decimal:2',
-        'Precio' => 'decimal:2',    // ✅ NUEVO
+        'Precio' => 'decimal:2',
     ];
 
     // ==================== RELACIONES ====================
-    
+
     public function pedido()
     {
         return $this->belongsTo(PedidoCliente::class, 'IdPedidoCliente', 'IdPedidoCliente');
@@ -43,8 +44,18 @@ class PedidoClienteDetalle extends Model
         return $this->belongsTo(ProductoDetalle::class, 'IdProducto', 'IdProducto');
     }
 
+    // ✅ NUEVA RELACIÓN
+    public function subClienteOperador()
+    {
+        return $this->belongsTo(
+            PedidoClienteSubCliente::class,
+            'IdSubClienteOperador',
+            'IdSubClienteOperador'
+        );
+    }
+
     // ==================== ACCESORS ====================
-    
+
     public function getCantidadFormateadaAttribute()
     {
         return number_format($this->Cantidad, 0, ',', '.');
@@ -66,7 +77,7 @@ class PedidoClienteDetalle extends Model
     }
 
     // ==================== SCOPES ====================
-    
+
     public function scopePorPedido($query, $idPedido)
     {
         return $query->where('IdPedidoCliente', $idPedido);

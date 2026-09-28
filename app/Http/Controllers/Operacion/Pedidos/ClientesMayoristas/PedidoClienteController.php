@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Contenedor;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalle;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteSubCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
@@ -26,84 +27,66 @@ class PedidoClienteController extends Controller
     // HELPERS PRIVADOS
     // ============================================================
 
-    /**
-     * ✅ OBTENER IdIdentificador DEL OPERADOR LOGUEADO (CON CACHÉ)
-     */
     private function getIdIdentificadorOperador()
     {
         $operadorId = session('operador_id');
-        
         $cacheKey = 'operador_identificador_' . $operadorId;
-        
+
         if (cache()->has($cacheKey)) {
             return cache()->get($cacheKey);
         }
-        
+
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador')
             ->where('IdOperador', $operadorId)
             ->first(['IdIdentificador']);
-        
-        $idIdentificador = $operador ? $operador->IdIdentificador : null;
-        
+
+        // ✅ FIX: Castear a int
+        $idIdentificador = $operador && $operador->IdIdentificador !== null
+            ? (int) $operador->IdIdentificador
+            : null;
+
         cache()->put($cacheKey, $idIdentificador, 3600);
-        
+
         return $idIdentificador;
     }
 
-    /**
-     * ✅ OBTENER NOMBRE DEL OPERADOR
-     */
     private function getNombreOperador()
     {
         $operadorId = session('operador_id');
-        
         $cacheKey = 'operador_nombre_' . $operadorId;
-        
+
         if (cache()->has($cacheKey)) {
             return cache()->get($cacheKey);
         }
-        
+
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador')
             ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
             ->where('todos_operador.IdOperador', $operadorId)
             ->first(['todos_identificador.Nombre']);
-        
+
         $nombre = $operador ? $operador->Nombre : 'Sin nombre';
-        
         cache()->put($cacheKey, $nombre, 3600);
-        
+
         return $nombre;
     }
 
-    /**
-     * ✅ OBTENER EL GRUPO CLIENTE DEL OPERADOR LOGUEADO
-     * 
-     * Un operador solo puede estar en 1 grupo.
-     */
     private function getGrupoDelOperador()
     {
         $idIdentificador = $this->getIdIdentificadorOperador();
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         if (!$idIdentificador) return null;
-        
+
         $cacheKey = "grupo_operador_{$idIdentificador}_{$clienteId}_{$sucursalId}";
-        
+
         return cache()->remember($cacheKey, 1800, function () use ($idIdentificador, $clienteId, $sucursalId) {
-            return GrupoCliente::obtenerGrupoDeIdentificador(
-                $idIdentificador,
-                $clienteId,
-                $sucursalId
-            );
+            return GrupoCliente::obtenerGrupoDeIdentificador($idIdentificador, $clienteId, $sucursalId);
         });
     }
 
-    /**
-     * ✅ OBTENER MÍNIMOS DEL GRUPO CLIENTE
-     */
     private function obtenerMinimosDelGrupo($idGrupoCliente)
     {
         return cache()->remember("minimos_grupo_{$idGrupoCliente}", 1800, function () use ($idGrupoCliente) {
@@ -124,18 +107,12 @@ class PedidoClienteController extends Controller
         });
     }
 
-    /**
-     * ✅ CALCULAR PROGRESO DE GRUPOS (basado en el grupo cliente)
-     * 
-     * Solo valida los grupos que tengan al menos 1 producto en el carrito.
-     */
     private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente)
     {
         if (!$pedidoBorrador || !$idGrupoCliente) {
             return [];
         }
 
-        // 1. Detalles con grupo de análisis
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('pedidos_clientes_detalle as d')
             ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
@@ -143,7 +120,6 @@ class PedidoClienteController extends Controller
             ->select('d.Cantidad', 'p.IdGrupoAnalisis')
             ->get();
 
-        // 2. Acumular por grupo
         $acumulado = [];
         foreach ($detalles as $detalle) {
             $grupoId = $detalle->IdGrupoAnalisis;
@@ -153,14 +129,12 @@ class PedidoClienteController extends Controller
             $acumulado[$grupoId] += (float) $detalle->Cantidad;
         }
 
-        // 3. Si no hay productos, no hay progreso
         if (empty($acumulado)) {
             return [];
         }
 
         $gruposConProductos = array_keys($acumulado);
 
-        // 4. Mínimos del grupo cliente (solo los que tienen productos)
         $minimos = GrupoClienteMinimo::where('IdGrupoCliente', $idGrupoCliente)
             ->whereIn('IdGrupoAnalisis', $gruposConProductos)
             ->where('ActivoInactivo', 1)
@@ -168,7 +142,6 @@ class PedidoClienteController extends Controller
             ->with('grupoAnalisis')
             ->get();
 
-        // 5. Combinar
         $progreso = [];
         foreach ($minimos as $minimo) {
             $grupoId = $minimo->IdGrupoAnalisis;
@@ -192,15 +165,12 @@ class PedidoClienteController extends Controller
     // LISTA DE PEDIDOS
     // ============================================================
 
-    /**
-     * Lista de pedidos del operador logueado
-     */
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
-        
+
         $pedidos = PedidoCliente::porContexto()
             ->where('IdOperador', $operadorId)
             ->with(['cliente', 'sucursal', 'operador'])
@@ -216,40 +186,32 @@ class PedidoClienteController extends Controller
     // NUEVO PEDIDO - MENÚ DE CONTENEDORES
     // ============================================================
 
-    /**
-     * ✅ NUEVO PEDIDO - Menú de contenedores
-     * 
-     * Ahora busca contenedores por GRUPO del operador.
-     */
     public function create(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
-        // ✅ Tipo de precio
+
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
         if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
             $tipoPrecio = 'sin_factura';
         }
-        
+
         $idIdentificador = $this->getIdIdentificadorOperador();
-        
+
         if (!$idIdentificador) {
-            return redirect()->back()->with('error', 
+            return redirect()->back()->with('error',
                 'No se encontró el perfil del operador. Contacte al administrador.'
             );
         }
-        
-        // ✅ PASO 1: Grupo del operador
+
         $grupoCliente = $this->getGrupoDelOperador();
-        
+
         if (!$grupoCliente) {
-            return redirect()->back()->with('error', 
+            return redirect()->back()->with('error',
                 'Tu usuario no tiene un Grupo de Clientes asignado. Contacte al administrador.'
             );
         }
-        
-        // ✅ PASO 2: Contenedores con ese grupo asignado (con JOIN directo)
+
         $contenedores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_contenedor as c')
             ->join('operacion_pedidos_clientes_contenedor_grupo_cliente as cgc', 'cgc.IdContenedor', '=', 'c.IdContenedor')
@@ -258,23 +220,16 @@ class PedidoClienteController extends Controller
             ->where('c.ActivoInactivo', 1)
             ->where('cgc.IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('cgc.ActivoInactivo', 1)
-            ->select(
-                'c.IdContenedor',
-                'c.Codigo',
-                'c.CapacidadTotal',
-                'c.IdTipoContenedor',
-                't.Nombre as TipoContenedor'
-            )
+            ->select('c.IdContenedor', 'c.Codigo', 'c.CapacidadTotal', 'c.IdTipoContenedor', 't.Nombre as TipoContenedor')
             ->orderBy('c.Codigo')
             ->get();
-        
+
         if ($contenedores->isEmpty()) {
-            return redirect()->back()->with('error', 
+            return redirect()->back()->with('error',
                 "Tu grupo '{$grupoCliente->Nombre}' no tiene contenedores asignados. Contacte al administrador."
             );
         }
-        
-        // ✅ PASO 3: Total productos del grupo (1 sola query)
+
         $totalProductosDelGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
             ->where(function ($q) {
@@ -282,8 +237,7 @@ class PedidoClienteController extends Controller
                   ->orWhere('PrecioConFactura', '>', 0);
             })
             ->count();
-        
-        // ✅ PASO 4: Formatear contenedores
+
         $contenedoresFormateados = $contenedores->map(function ($c) use ($totalProductosDelGrupo, $grupoCliente) {
             return [
                 'IdContenedor' => $c->IdContenedor,
@@ -295,29 +249,24 @@ class PedidoClienteController extends Controller
                 'grupos' => $grupoCliente->Nombre,
             ];
         });
-        
-        // ✅ Obtener clientes (empresas)
-        $clientes = Cliente::where('IdCliente', $clienteId)
-            ->get(['IdCliente as id', 'Nombre']);
-        
-        // ✅ Obtener sucursales
+
+        $clientes = Cliente::where('IdCliente', $clienteId)->get(['IdCliente as id', 'Nombre']);
+
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre']);
-        
-        // ✅ Buscar pedido BORRADOR
+
         $pedidoBorrador = PedidoCliente::obtenerBorradorActivo();
-        
-        // ✅ Cargar carrito
+
         $carrito = [];
         if ($pedidoBorrador) {
             if ($pedidoBorrador->TipoPrecio !== $tipoPrecio) {
                 $pedidoBorrador->update(['TipoPrecio' => $tipoPrecio]);
             }
-            
+
             $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
-                ->with(['producto', 'contenedor'])
+                ->with(['producto', 'contenedor', 'subClienteOperador.identificador'])
                 ->orderBy('OrdenContenedor')
                 ->orderBy('IdProducto')
                 ->get();
@@ -326,12 +275,19 @@ class PedidoClienteController extends Controller
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
                 $total = $items->sum('Cantidad');
-                
+
+                $subCliente = $primerItem->subClienteOperador;
+                $subClienteNombre = $subCliente
+                    ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                    : null;
+
                 return [
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'IdSubClienteOperador' => $primerItem->IdSubClienteOperador,
+                    'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function ($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
@@ -348,21 +304,37 @@ class PedidoClienteController extends Controller
                 ];
             })->values();
         }
-        
-        // ✅ Mínimos del grupo
+
         $minimosGrupos = $this->obtenerMinimosDelGrupo($grupoCliente->IdGrupoCliente);
-        
-        // ✅ Progreso inicial
         $progresoInicial = $this->calcularProgresoGrupos($pedidoBorrador, $grupoCliente->IdGrupoCliente);
-        
+
+        // ✅ FIX: Auto-registrar al operador como subcliente ANTES de consultar
+        PedidoClienteSubCliente::asegurarSubClientePropio();
+
+        // ✅ Subclientes del operador
+        $subclientes = PedidoClienteSubCliente::obtenerSubClientesDelOperador();
+        $idSubClienteDefault = PedidoClienteSubCliente::obtenerSubClientePorDefecto();
+
+        // ✅ FIX: Castear a int para evitar warning de Vue
+        $subclientes = array_map(function ($sub) {
+            return [
+                'IdSubClienteOperador' => (int) $sub['IdSubClienteOperador'],
+                'IdIdentificador' => (int) $sub['IdIdentificador'],
+                'Nombre' => $sub['Nombre'],
+                'CI_NIT' => $sub['CI_NIT'],
+            ];
+        }, $subclientes);
+
+        $idSubClienteDefault = $idSubClienteDefault ? (int) $idSubClienteDefault : null;
+
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Create', [
             'contenedores' => $contenedoresFormateados,
             'clientes' => $clientes,
             'sucursales' => $sucursales,
             'pedidoBorrador' => $pedidoBorrador,
             'carrito' => $carrito,
-            'sucursalDefault' => $sucursalId,
-            'idIdentificador' => $idIdentificador,
+            'sucursalDefault' => (int) $sucursalId,
+            'idIdentificador' => (int) $idIdentificador,
             'nombreOperador' => $this->getNombreOperador(),
             'grupoCliente' => [
                 'IdGrupoCliente' => $grupoCliente->IdGrupoCliente,
@@ -371,6 +343,8 @@ class PedidoClienteController extends Controller
             'minimosGrupos' => $minimosGrupos,
             'progresoInicial' => $progresoInicial,
             'tipoPrecio' => $tipoPrecio,
+            'subclientes' => $subclientes,
+            'idSubClienteDefault' => $idSubClienteDefault,
         ]);
     }
 
@@ -378,38 +352,33 @@ class PedidoClienteController extends Controller
     // PRODUCTOS DEL CONTENEDOR CON PRECIOS DEL GRUPO
     // ============================================================
 
-    /**
-     * ✅ OBTENER PRODUCTOS DE UN CONTENEDOR CON PRECIOS DEL GRUPO
-     */
     public function getProductosContenedorConPrecios(Request $request, $id)
     {
         $clienteId = session('cliente_id');
-        
+
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
         if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
             $tipoPrecio = 'sin_factura';
         }
-        
+
         $idIdentificador = $this->getIdIdentificadorOperador();
-        
+
         if (!$idIdentificador) {
             return response()->json([
                 'success' => false,
                 'message' => 'No se encontró el perfil del operador.'
             ], 400);
         }
-        
-        // ✅ PASO 1: Grupo del operador
+
         $grupoCliente = $this->getGrupoDelOperador();
-        
+
         if (!$grupoCliente) {
             return response()->json([
                 'success' => false,
                 'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
             ], 400);
         }
-        
-        // ✅ PASO 2: Verificar contenedor asignado al grupo
+
         $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->where('IdContenedor', $id)
@@ -418,21 +387,20 @@ class PedidoClienteController extends Controller
             })
             ->with(['tipoContenedor'])
             ->first();
-        
+
         if (!$contenedor) {
             return response()->json([
                 'success' => false,
                 'message' => 'Este contenedor no está asignado a tu grupo.'
             ], 400);
         }
-        
-        // ✅ PASO 3: Grupos de análisis ACTIVOS (mínimo > 0)
+
         $gruposActivosIds = GrupoClienteMinimo::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
             ->where('CantidadMinimaGrupo', '>', 0)
             ->pluck('IdGrupoAnalisis')
             ->toArray();
-        
+
         if (empty($gruposActivosIds)) {
             return response()->json([
                 'success' => true,
@@ -449,14 +417,12 @@ class PedidoClienteController extends Controller
                 ]
             ]);
         }
-        
-        // ✅ PASO 4: Productos CON PRECIO del grupo
+
         $productosConPrecio = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
             ->get()
             ->keyBy('IdProducto');
-        
-        // ✅ PASO 5: Filtrar productos (grupos activos + con precio)
+
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdGrupoAnalisis', $gruposActivosIds)
             ->whereIn('IdProducto', $productosConPrecio->keys())
@@ -464,26 +430,25 @@ class PedidoClienteController extends Controller
             ->orderBy('IdGrupoAnalisis')
             ->orderBy('Descripcion')
             ->get();
-        
-        // ✅ PASO 6: Agrupar
+
         $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function ($items, $grupoId) use ($productosConPrecio, $contenedor, $tipoPrecio) {
             $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
-            
+
             return [
                 'grupo_id' => $grupoId,
                 'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
                 'productos' => $items->map(function ($producto) use ($productosConPrecio, $contenedor, $tipoPrecio) {
                     $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
-                    
+
                     $precioFinal = null;
                     if ($precioGrupo) {
-                        $precioFinal = $tipoPrecio === 'con_factura' 
-                            ? $precioGrupo->PrecioConFactura 
+                        $precioFinal = $tipoPrecio === 'con_factura'
+                            ? $precioGrupo->PrecioConFactura
                             : $precioGrupo->PrecioSinFactura;
                     }
-                    
+
                     $tienePrecio = $precioFinal !== null && $precioFinal > 0;
-                    
+
                     return [
                         'IdProducto' => $producto->IdProducto,
                         'Codigo' => $producto->Codigo,
@@ -496,18 +461,18 @@ class PedidoClienteController extends Controller
                 })->values(),
             ];
         })->values();
-        
+
         $totalConPrecio = $productos->filter(function ($producto) use ($productosConPrecio, $tipoPrecio) {
             $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
             if (!$precioGrupo) return false;
-            
-            $precioFinal = $tipoPrecio === 'con_factura' 
-                ? $precioGrupo->PrecioConFactura 
+
+            $precioFinal = $tipoPrecio === 'con_factura'
+                ? $precioGrupo->PrecioConFactura
                 : $precioGrupo->PrecioSinFactura;
-            
+
             return $precioFinal !== null && $precioFinal > 0;
         })->count();
-        
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -528,9 +493,6 @@ class PedidoClienteController extends Controller
     // CARRITO
     // ============================================================
 
-    /**
-     * ✅ AGREGAR PRODUCTOS AL CARRITO
-     */
     public function agregarAlCarrito(Request $request)
     {
         $request->validate([
@@ -540,6 +502,7 @@ class PedidoClienteController extends Controller
             'productos.*.Cantidad' => 'required|numeric|min:0.01',
             'productos.*.Precio' => 'required|numeric|min:0',
             'TipoPrecio' => 'nullable|in:sin_factura,con_factura',
+            'IdSubClienteOperador' => 'nullable|exists:pedidos_clientes_subclientes,IdSubClienteOperador',
         ]);
 
         $clienteId = session('cliente_id');
@@ -575,6 +538,7 @@ class PedidoClienteController extends Controller
                     'IdPedidoCliente' => $pedido->IdPedidoCliente,
                     'IdContenedor' => $request->IdContenedor,
                     'IdProducto' => $producto['IdProducto'],
+                    'IdSubClienteOperador' => $request->IdSubClienteOperador,
                     'Cantidad' => $producto['Cantidad'],
                     'Precio' => $producto['Precio'],
                     'OrdenContenedor' => $nuevoOrden,
@@ -600,7 +564,7 @@ class PedidoClienteController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error al agregar al carrito: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al agregar al carrito: ' . $e->getMessage()
@@ -608,9 +572,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    /**
-     * ✅ ACTUALIZAR CONTENEDOR DEL CARRITO
-     */
     public function actualizarContenedor(Request $request)
     {
         $request->validate([
@@ -621,6 +582,7 @@ class PedidoClienteController extends Controller
             'productos.*.IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
             'productos.*.Cantidad' => 'required|numeric|min:0',
             'productos.*.Precio' => 'required|numeric|min:0',
+            'IdSubClienteOperador' => 'nullable|exists:pedidos_clientes_subclientes,IdSubClienteOperador',
         ]);
 
         $clienteId = session('cliente_id');
@@ -673,6 +635,7 @@ class PedidoClienteController extends Controller
                         'IdPedidoCliente' => $request->IdPedidoCliente,
                         'IdContenedor' => $request->IdContenedor,
                         'IdProducto' => $producto['IdProducto'],
+                        'IdSubClienteOperador' => $request->IdSubClienteOperador,
                         'Cantidad' => $producto['Cantidad'],
                         'Precio' => $producto['Precio'],
                         'OrdenContenedor' => $request->OrdenContenedor,
@@ -699,7 +662,7 @@ class PedidoClienteController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error al actualizar contenedor: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al actualizar contenedor: ' . $e->getMessage()
@@ -707,9 +670,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    /**
-     * ✅ ELIMINAR CONTENEDOR DEL CARRITO
-     */
     public function eliminarDelCarrito($idDetalle)
     {
         try {
@@ -752,7 +712,7 @@ class PedidoClienteController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error al eliminar del carrito: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al eliminar del carrito: ' . $e->getMessage()
@@ -760,9 +720,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    /**
-     * ✅ VACIAR CARRITO COMPLETO
-     */
     public function vaciarCarrito($idPedido)
     {
         try {
@@ -776,7 +733,7 @@ class PedidoClienteController extends Controller
             }
 
             PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->delete();
-            
+
             $pedido->update([
                 'TotalUnidades' => 0,
                 'TotalContenedores' => 0,
@@ -793,7 +750,7 @@ class PedidoClienteController extends Controller
 
         } catch (\Exception $e) {
             Log::error('Error al vaciar carrito: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al vaciar carrito: ' . $e->getMessage()
@@ -805,22 +762,23 @@ class PedidoClienteController extends Controller
     // REVISAR PEDIDO
     // ============================================================
 
-    /**
-     * ✅ REVISAR PEDIDO
-     */
     public function review($id)
     {
         try {
             $clienteId = session('cliente_id');
             $sucursalId = session('cliente_sucursal_id');
             $operadorId = session('operador_id');
-            
+
             $idIdentificador = $this->getIdIdentificadorOperador();
-            
+
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->where('ActivoInactivo', 0)
-                ->with(['detalles.producto', 'detalles.contenedor'])
+                ->with([
+                    'detalles.producto',
+                    'detalles.contenedor',
+                    'detalles.subClienteOperador.identificador'
+                ])
                 ->first();
 
             if (!$pedido) {
@@ -834,9 +792,8 @@ class PedidoClienteController extends Controller
                     ->with('error', 'El pedido no tiene productos.');
             }
 
-            // ✅ Grupo del operador
             $grupoCliente = $this->getGrupoDelOperador();
-            
+
             if (!$grupoCliente) {
                 return redirect()->route('operacion.pedidos-clientes.pedidos.create')
                     ->with('error', 'Tu usuario no tiene un Grupo de Clientes asignado.');
@@ -849,12 +806,19 @@ class PedidoClienteController extends Controller
                 $subtotal = $items->sum(function($item) {
                     return $item->Cantidad * $item->Precio;
                 });
-                
+
+                $subCliente = $primerItem->subClienteOperador;
+                $subClienteNombre = $subCliente
+                    ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                    : null;
+
                 return [
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'IdSubClienteOperador' => $primerItem->IdSubClienteOperador,
+                    'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
@@ -877,12 +841,12 @@ class PedidoClienteController extends Controller
                 ->table('todos_cliente')
                 ->where('IdCliente', $clienteId)
                 ->first(['Nombre']);
-            
+
             $sucursal = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_cliente_sucursal')
                 ->where('IdClienteSucursal', $sucursalId)
                 ->first(['Nombre']);
-            
+
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
@@ -893,12 +857,22 @@ class PedidoClienteController extends Controller
                 return $item->Cantidad * $item->Precio;
             });
 
-            // ✅ Progreso de grupos (con grupo del operador)
             $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
 
             $cumpleMinimos = collect($progresoGrupos)->every(function($item) {
                 return $item['Cumple'];
             });
+
+            // ✅ FIX: Castear
+            $subclientes = PedidoClienteSubCliente::obtenerSubClientesDelOperador();
+            $subclientes = array_map(function ($sub) {
+                return [
+                    'IdSubClienteOperador' => (int) $sub['IdSubClienteOperador'],
+                    'IdIdentificador' => (int) $sub['IdIdentificador'],
+                    'Nombre' => $sub['Nombre'],
+                    'CI_NIT' => $sub['CI_NIT'],
+                ];
+            }, $subclientes);
 
             return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Review', [
                 'pedido' => $pedido,
@@ -907,7 +881,7 @@ class PedidoClienteController extends Controller
                 'sucursalNombre' => $sucursal->Nombre ?? 'Sin sucursal',
                 'operadorNombre' => $operador->nombre ?? 'Sin operador',
                 'totalGeneral' => $totalGeneral,
-                'idIdentificador' => $idIdentificador,
+                'idIdentificador' => (int) $idIdentificador,
                 'grupoCliente' => [
                     'IdGrupoCliente' => $grupoCliente->IdGrupoCliente,
                     'Nombre' => $grupoCliente->Nombre,
@@ -915,6 +889,7 @@ class PedidoClienteController extends Controller
                 'progresoGrupos' => $progresoGrupos,
                 'cumpleMinimos' => $cumpleMinimos,
                 'tipoPrecio' => $pedido->TipoPrecio,
+                'subclientes' => $subclientes,
             ]);
 
         } catch (\Exception $e) {
@@ -928,9 +903,6 @@ class PedidoClienteController extends Controller
     // FINALIZAR PEDIDO
     // ============================================================
 
-    /**
-     * ✅ FINALIZAR PEDIDO
-     */
     public function finalizarPedido(Request $request, $idPedido)
     {
         \Log::info('=== 🚀 FINALIZAR PEDIDO ===');
@@ -957,13 +929,12 @@ class PedidoClienteController extends Controller
             ], 400);
         }
 
-        // ✅ Validar fecha de entrega
         $fechaEntrega = $request->input('FechaEntrega');
         $fechaEntregaFormateada = null;
-        
+
         if (!empty($fechaEntrega)) {
             $fechaEntrega = trim($fechaEntrega);
-            
+
             if (!preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $fechaEntrega, $matches)) {
                 return response()->json([
                     'success' => false,
@@ -974,12 +945,12 @@ class PedidoClienteController extends Controller
             $dia = (int)$matches[1];
             $mes = (int)$matches[2];
             $anio = (int)$matches[3];
-            
+
             $timestampEntrega = mktime(0, 0, 0, $mes, $dia, $anio);
-            
+
             date_default_timezone_set('America/La_Paz');
             $timestampHoy = mktime(0, 0, 0, date('m'), date('d'), date('Y'));
-            
+
             $diferenciaDias = ($timestampEntrega - $timestampHoy) / 86400;
             $diferenciaDias = floor($diferenciaDias);
 
@@ -999,9 +970,8 @@ class PedidoClienteController extends Controller
         }
 
         try {
-            // ✅ Grupo del operador
             $grupoCliente = $this->getGrupoDelOperador();
-            
+
             if (!$grupoCliente) {
                 return response()->json([
                     'success' => false,
@@ -1021,15 +991,14 @@ class PedidoClienteController extends Controller
                 ], 404);
             }
 
-            // ✅ 1. VALIDAR CAPACIDAD POR CONTENEDOR
             $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->get();
             $ordenes = $detalles->groupBy('OrdenContenedor');
-            
+
             foreach ($ordenes as $orden => $items) {
                 $total = $items->sum('Cantidad');
                 $contenedor = Contenedor::find($items->first()->IdContenedor);
                 $capacidad = $contenedor ? $contenedor->CapacidadTotal : 0;
-                
+
                 if ((float) $total > (float) $capacidad) {
                     return response()->json([
                         'success' => false,
@@ -1038,7 +1007,6 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ 2. VALIDAR MÍNIMOS POR GRUPO
             $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
 
             $gruposQueNoCumplen = collect($progresoGrupos)->filter(function($item) {
@@ -1057,10 +1025,8 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
-            // ✅ 3. CALCULAR TOTALES
             $totales = $this->calcularTotales($pedido->IdPedidoCliente);
 
-            // ✅ 4. GENERAR NÚMERO DE PEDIDO
             $maxNumero = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('NumeroPedido', '!=', '0')
@@ -1078,12 +1044,12 @@ class PedidoClienteController extends Controller
             if ($existe) {
                 $nuevoNumero = $nuevoNumero + 1;
                 $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
-                
+
                 $existeNuevamente = PedidoCliente::where('IdCliente', $clienteId)
                     ->where('IdSucursal', $sucursalId)
                     ->where('NumeroPedido', $numeroPedidoFormateado)
                     ->exists();
-                    
+
                 if ($existeNuevamente) {
                     do {
                         $nuevoNumero++;
@@ -1096,7 +1062,6 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ 5. ACTUALIZAR PEDIDO
             $pedido->update([
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $sucursalId,
@@ -1143,9 +1108,6 @@ class PedidoClienteController extends Controller
     // MOSTRAR PEDIDO
     // ============================================================
 
-    /**
-     * ✅ MOSTRAR DETALLE DEL PEDIDO
-     */
     public function show($id)
     {
         try {
@@ -1153,7 +1115,11 @@ class PedidoClienteController extends Controller
 
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
-                ->with(['cliente', 'sucursal', 'operador', 'detalles.producto', 'detalles.contenedor'])
+                ->with([
+                    'cliente', 'sucursal', 'operador',
+                    'detalles.producto', 'detalles.contenedor',
+                    'detalles.subClienteOperador.identificador'
+                ])
                 ->first();
 
             if (!$pedido) {
@@ -1167,12 +1133,18 @@ class PedidoClienteController extends Controller
                 $subtotal = $items->sum(function($item) {
                     return $item->Cantidad * $item->Precio;
                 });
-                
+
+                $subCliente = $primerItem->subClienteOperador;
+                $subClienteNombre = $subCliente
+                    ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                    : null;
+
                 return [
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
@@ -1216,9 +1188,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    /**
-     * ✅ OBTENER DETALLES DEL PEDIDO PARA EL MODAL
-     */
     public function getDetalles($id)
     {
         try {
@@ -1226,7 +1195,11 @@ class PedidoClienteController extends Controller
 
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
-                ->with(['detalles.producto', 'detalles.contenedor'])
+                ->with([
+                    'detalles.producto',
+                    'detalles.contenedor',
+                    'detalles.subClienteOperador.identificador'
+                ])
                 ->first();
 
             if (!$pedido) {
@@ -1242,12 +1215,18 @@ class PedidoClienteController extends Controller
                 $subtotal = $items->sum(function($item) {
                     return $item->Cantidad * $item->Precio;
                 });
-                
+
+                $subCliente = $primerItem->subClienteOperador;
+                $subClienteNombre = $subCliente
+                    ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                    : null;
+
                 return [
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
@@ -1282,9 +1261,6 @@ class PedidoClienteController extends Controller
     // PDF
     // ============================================================
 
-    /**
-     * ✅ GENERAR PDF DEL PEDIDO
-     */
     public function generarPdf($id)
     {
         try {
@@ -1293,10 +1269,14 @@ class PedidoClienteController extends Controller
             }
 
             $clienteId = session('cliente_id');
-            
+
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
-                ->with(['detalles.producto', 'detalles.contenedor.tipoContenedor'])
+                ->with([
+                    'detalles.producto',
+                    'detalles.contenedor.tipoContenedor',
+                    'detalles.subClienteOperador.identificador'
+                ])
                 ->first();
 
             if (!$pedido) {
@@ -1337,9 +1317,9 @@ class PedidoClienteController extends Controller
                 $ubicaciones = [];
                 if ($configOperador->Ciudad == 1) $ubicaciones[] = 'Ciudad';
                 if ($configOperador->Provincia == 1) $ubicaciones[] = 'Provincia';
-                
+
                 $tipoUbicacion = !empty($ubicaciones) ? implode(' / ', $ubicaciones) : null;
-                
+
                 $destinoRaw = $configOperador->getAttribute('Destino');
                 $destino = trim((string) ($destinoRaw ?? ''));
                 if ($destino === '') {
@@ -1352,17 +1332,23 @@ class PedidoClienteController extends Controller
                 ->map(function($items, $orden) {
                     $primerItem = $items->first();
                     $contenedor = $primerItem->contenedor;
-                    
+
                     $totalUnidadesContenedor = $items->sum('Cantidad');
                     $subtotal = $items->sum(function($item) {
                         return $item->Cantidad * $item->Precio;
                     });
-                    
+
+                    $subCliente = $primerItem->subClienteOperador;
+                    $subClienteNombre = $subCliente
+                        ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                        : null;
+
                     return [
                         'OrdenContenedor' => intval($orden),
                         'IdContenedor' => $primerItem->IdContenedor,
                         'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                         'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                        'SubClienteNombre' => $subClienteNombre,
                         'productos' => $items->map(function($item) {
                             return [
                                 'IdProducto' => $item->IdProducto,
@@ -1450,8 +1436,6 @@ class PedidoClienteController extends Controller
             $y += 8;
 
             // INFO PEDIDO
-            $pdf->SetFont('helvetica', '', 8);
-            
             $colIzq_label = 12;
             $colIzq_valor = 45;
             $colDer_label = 108;
@@ -1537,25 +1521,25 @@ class PedidoClienteController extends Controller
             if (!empty($pedido->Observaciones)) {
                 $pdf->SetDrawColor(251, 191, 36);
                 $pdf->SetFillColor(255, 251, 235);
-                
+
                 $pdf->SetFont('helvetica', '', 7.5);
                 $alturaTexto = $pdf->getStringHeight(180, $pedido->Observaciones);
                 $alturaCaja = max(12, 6 + $alturaTexto + 3);
-                
+
                 $pdf->RoundedRect(10, $y, 196, $alturaCaja, 1.5, '1111', 'DF');
-                
+
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetTextColor(146, 64, 14);
                 $pdf->SetXY(12, $y + 2);
                 $pdf->Cell(100, 4, 'OBSERVACIONES:', 0, 0, 'L');
-                
+
                 $pdf->SetFont('helvetica', '', 7.5);
                 $pdf->SetTextColor(80, 40, 10);
                 $pdf->SetXY(12, $y + 6.5);
                 $pdf->MultiCell(192, 3, $pedido->Observaciones, 0, 'L');
-                
+
                 $y += $alturaCaja + 4;
-                
+
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetDrawColor(0, 0, 0);
                 $pdf->SetFillColor(255, 255, 255);
@@ -1595,7 +1579,15 @@ class PedidoClienteController extends Controller
                 $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
                 $y += 6;
 
-                $pdf->SetTextColor(0, 0, 0);
+                if (!empty($grupo['SubClienteNombre'])) {
+                    $pdf->SetFont('helvetica', 'I', 7);
+                    $pdf->SetTextColor(80, 80, 80);
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell(196, 4, '  Subcliente: ' . $grupo['SubClienteNombre'], 'LR', 1, 'L', 1);
+                    $y += 4;
+                    $pdf->SetFont('helvetica', '', 7);
+                    $pdf->SetTextColor(0, 0, 0);
+                }
 
                 $pdf->SetFont('helvetica', '', 7);
                 $fill = false;
@@ -1606,7 +1598,7 @@ class PedidoClienteController extends Controller
                     if (mb_strlen($nombreProducto, 'UTF-8') > 42) {
                         $nombreProducto = mb_substr($nombreProducto, 0, 40, 'UTF-8') . '...';
                     }
-                    
+
                     $pdf->SetXY(10, $y);
                     $pdf->Cell(8, 4, $contador . '.', 'LR', 0, 'C', $fill);
                     $pdf->Cell(72, 4, ' ' . $nombreProducto, 'LR', 0, 'L', $fill);
@@ -1632,7 +1624,7 @@ class PedidoClienteController extends Controller
 
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetTextColor(0, 0, 0);
-            
+
             $pdf->SetXY(10, $y);
             $pdf->Cell(98, 5, 'Total Contenedores: ' . number_format($totalContenedores, 0, ',', '.'), 0, 0, 'L');
             $pdf->Cell(98, 5, 'Total Unidades: ' . number_format($totalUnidades, 0, ',', '.'), 0, 0, 'L');
@@ -1710,25 +1702,24 @@ class PedidoClienteController extends Controller
             $pdf->SetXY(115, $y + 1);
             $pdf->Cell(70, 4, 'Firma Recibido', 0, 1, 'C');
 
-            // SALIDA
             $nombreArchivo = 'Pedido_' . ($pedido->NumeroPedido ?? '000000') . '.pdf';
-            
+
             if (ob_get_length()) {
                 ob_end_clean();
             }
-            
+
             header('Content-Type: application/pdf');
             header('Content-Disposition: inline; filename="' . $nombreArchivo . '"');
             header('Cache-Control: private, max-age=0, must-revalidate');
             header('Pragma: public');
-            
+
             $pdf->Output($nombreArchivo, 'I');
             exit;
 
         } catch (\Exception $e) {
             Log::error('Error generando PDF: ' . $e->getMessage());
             Log::error('Stack trace: ' . $e->getTraceAsString());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al generar el PDF: ' . $e->getMessage()
@@ -1740,13 +1731,10 @@ class PedidoClienteController extends Controller
     // HELPERS FINALES
     // ============================================================
 
-    /**
-     * ✅ CALCULAR TOTALES
-     */
     private function calcularTotales($idPedido)
     {
         $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->get();
-        
+
         $totalUnidades = $detalles->sum('Cantidad');
         $totalContenedores = $detalles->groupBy('OrdenContenedor')->count();
         $totalGeneral = $detalles->sum(function($item) {
@@ -1759,13 +1747,7 @@ class PedidoClienteController extends Controller
             'total_general' => $totalGeneral,
         ];
     }
-    /**
-     * ✅ CAMBIAR TIPO DE PRECIO Y RECALCULAR
-     * 
-     * El operador puede cambiar de "sin factura" a "con factura" (o viceversa)
-     * en el Review. Se recalculan los precios de TODOS los productos del pedido
-     * usando los precios del GRUPO.
-     */
+
     public function recalcularTipoPrecio(Request $request, $id)
     {
         $request->validate([
@@ -1773,19 +1755,17 @@ class PedidoClienteController extends Controller
         ]);
 
         $clienteId = session('cliente_id');
-        
+
         try {
-            // ✅ Grupo del operador
             $grupoCliente = $this->getGrupoDelOperador();
-            
+
             if (!$grupoCliente) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
                 ], 400);
             }
-            
-            // ✅ Pedido
+
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->where('ActivoInactivo', 0)
@@ -1800,46 +1780,35 @@ class PedidoClienteController extends Controller
 
             $tipoPrecioNuevo = $request->TipoPrecio;
 
-            // ✅ Si no cambió el tipo, devolver datos frescos
             if ($pedido->TipoPrecio === $tipoPrecioNuevo) {
-                $pedido->load(['detalles.producto', 'detalles.contenedor']);
+                $pedido->load(['detalles.producto', 'detalles.contenedor', 'detalles.subClienteOperador.identificador']);
             } else {
                 DB::beginTransaction();
 
                 try {
-                    // ✅ Obtener precios del grupo
                     $preciosGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
                         ->where('ActivoInactivo', 1)
                         ->get()
                         ->keyBy('IdProducto');
 
-                    // ✅ Recalcular precios
                     $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->get();
                     $totalGeneral = 0;
-                    $productosSinPrecio = [];
 
                     foreach ($detalles as $detalle) {
                         $precioGrupo = $preciosGrupo[$detalle->IdProducto] ?? null;
 
-                        if (!$precioGrupo) {
-                            $productosSinPrecio[] = $detalle->IdProducto;
-                            continue;
-                        }
+                        if (!$precioGrupo) continue;
 
-                        $nuevoPrecio = $tipoPrecioNuevo === 'con_factura' 
-                            ? $precioGrupo->PrecioConFactura 
+                        $nuevoPrecio = $tipoPrecioNuevo === 'con_factura'
+                            ? $precioGrupo->PrecioConFactura
                             : $precioGrupo->PrecioSinFactura;
 
-                        if ($nuevoPrecio === null || $nuevoPrecio <= 0) {
-                            $productosSinPrecio[] = $detalle->IdProducto;
-                            continue;
-                        }
+                        if ($nuevoPrecio === null || $nuevoPrecio <= 0) continue;
 
                         $detalle->update(['Precio' => $nuevoPrecio]);
                         $totalGeneral += $detalle->Cantidad * $nuevoPrecio;
                     }
 
-                    // ✅ Actualizar pedido
                     $pedido->update([
                         'TipoPrecio' => $tipoPrecioNuevo,
                         'TotalGeneral' => $totalGeneral,
@@ -1852,10 +1821,8 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ✅ Recargar datos frescos
-            $pedido->load(['detalles.producto', 'detalles.contenedor']);
+            $pedido->load(['detalles.producto', 'detalles.contenedor', 'detalles.subClienteOperador.identificador']);
 
-            // ✅ Agrupar detalles
             $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
@@ -1864,11 +1831,18 @@ class PedidoClienteController extends Controller
                     return $item->Cantidad * $item->Precio;
                 });
 
+                $subCliente = $primerItem->subClienteOperador;
+                $subClienteNombre = $subCliente
+                    ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                    : null;
+
                 return [
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'IdSubClienteOperador' => $primerItem->IdSubClienteOperador,
+                    'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function($item) {
                         return [
                             'IdProducto' => $item->IdProducto,
