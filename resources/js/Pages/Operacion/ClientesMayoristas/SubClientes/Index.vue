@@ -33,14 +33,17 @@ const aliasEditar = ref('')
 const guardandoEdicion = ref(false)
 const eliminando = ref(null)
 
-// ✅ NUEVO: modal de crear identificador
+// ✅ Modal crear identificador
 const mostrarModalCrear = ref(false)
 const nuevoNombre = ref('')
 const nuevoCI_NIT = ref('')
 const guardandoNuevo = ref(false)
 const errorCrear = ref('')
 
+// ✅ NUEVO: Cache de búsquedas + AbortController
+const cacheBusquedas = new Map()
 let timeoutBusqueda = null
+let abortControllerActual = null
 
 // ==================== COMPUTED ====================
 const subclientesFiltrados = computed(() => {
@@ -49,9 +52,9 @@ const subclientesFiltrados = computed(() => {
     }
     const termino = busqueda.value.toLowerCase()
     return props.subclientes.filter(s =>
-        s.Nombre?.toLowerCase().includes(termino) ||
-        s.CI_NIT?.toLowerCase().includes(termino) ||
-        s.Alias?.toLowerCase().includes(termino)
+        String(s.Nombre || '').toLowerCase().includes(termino) ||
+        String(s.CI_NIT || '').toLowerCase().includes(termino) ||
+        String(s.Alias || '').toLowerCase().includes(termino)
     )
 })
 
@@ -66,45 +69,81 @@ const cantidadSeleccionados = computed(() => {
     return resultados.value.filter(r => r.seleccionado).length
 })
 
-// ✅ ¿Hay búsqueda activa sin resultados? → mostrar botón "Crear nuevo"
 const mostrarBotonCrear = computed(() => {
     return busqueda.value.length >= 2 && !buscando.value && resultados.value.length === 0
 })
 
-// ✅ ¿Puede guardar el nuevo identificador?
 const puedeGuardarNuevo = computed(() => {
     return nuevoNombre.value.trim().length >= 2 && !guardandoNuevo.value
 })
 
-// ==================== BÚSQUEDA ====================
+// ==================== BÚSQUEDA OPTIMIZADA ====================
 const buscarIdentificadores = () => {
     if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
 
-    if (busqueda.value.length < 2) {
+    const termino = busqueda.value.trim()
+
+    // Si borró todo
+    if (termino.length < 2) {
         resultados.value = []
         return
     }
 
+    // ✅ 1. Check cache (si ya buscaste esto, es INSTANTÁNEO)
+    const cacheKey = termino.toLowerCase()
+    if (cacheBusquedas.has(cacheKey)) {
+        resultados.value = cacheBusquedas.get(cacheKey).map(r => ({ ...r, seleccionado: false }))
+        console.log('⚡ [CACHE HIT]', cacheKey)
+        return
+    }
+
+    // ✅ 2. Debounce reducido a 150ms (era 400ms)
     timeoutBusqueda = setTimeout(async () => {
+        // Cancelar petición anterior si sigue en vuelo
+        if (abortControllerActual) {
+            abortControllerActual.abort()
+        }
+        abortControllerActual = new AbortController()
+
         buscando.value = true
         try {
             const response = await axios.get(
                 '/operacion/pedidos/clientes-mayoristas/subclientes/buscar-identificadores',
-                { params: { q: busqueda.value } }
+                {
+                    params: { q: termino },
+                    signal: abortControllerActual.signal
+                }
             )
+
             if (response.data.success) {
-                resultados.value = response.data.identificadores.map(id => ({
+                const datos = response.data.identificadores
+
+                // ✅ 3. Guardar en cache
+                cacheBusquedas.set(cacheKey, datos)
+
+                // Limitar cache a 50 entradas (evitar memory leak)
+                if (cacheBusquedas.size > 50) {
+                    const primeraKey = cacheBusquedas.keys().next().value
+                    cacheBusquedas.delete(primeraKey)
+                }
+
+                resultados.value = datos.map(id => ({
                     ...id,
                     seleccionado: false
                 }))
             }
         } catch (error) {
+            // Ignorar errores de cancelación
+            if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+                console.log('❌ [ABORT] Petición cancelada')
+                return
+            }
             console.error('Error buscando:', error)
             toast?.error('Error', 'No se pudo realizar la búsqueda')
         } finally {
             buscando.value = false
         }
-    }, 400)
+    }, 150) // ✅ 150ms (antes 400ms)
 }
 
 const toggleSeleccion = (item) => {
@@ -159,6 +198,7 @@ const agregarSeleccionados = async () => {
 
         busqueda.value = ''
         resultados.value = []
+        cacheBusquedas.clear() // ✅ Limpiar cache al agregar
         router.reload({ only: ['subclientes'] })
 
     } catch (error) {
@@ -171,7 +211,7 @@ const agregarSeleccionados = async () => {
 
 // ==================== CREAR NUEVO IDENTIFICADOR ====================
 const abrirModalCrear = () => {
-    nuevoNombre.value = busqueda.value || '' // Precargar con lo que buscó
+    nuevoNombre.value = busqueda.value || ''
     nuevoCI_NIT.value = ''
     errorCrear.value = ''
     mostrarModalCrear.value = true
@@ -204,6 +244,7 @@ const guardarNuevoIdentificador = async () => {
             cerrarModalCrear()
             busqueda.value = ''
             resultados.value = []
+            cacheBusquedas.clear() // ✅ Limpiar cache
             router.reload({ only: ['subclientes'] })
         } else {
             errorCrear.value = response.data.message || 'Error al crear'
@@ -269,6 +310,7 @@ const eliminarSubcliente = async (sub) => {
 
         if (response.data.success) {
             toast?.success('Éxito', 'Subcliente desactivado correctamente')
+            cacheBusquedas.clear()
             router.reload({ only: ['subclientes'] })
         } else {
             toast?.error('Error', response.data.message || 'Error al desactivar')
@@ -290,6 +332,7 @@ onMounted(() => {
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     if (timeoutBusqueda) clearTimeout(timeoutBusqueda)
+    if (abortControllerActual) abortControllerActual.abort()
 })
 </script>
 
@@ -343,7 +386,6 @@ onUnmounted(() => {
                                 <p class="text-[10px] text-gray-500">Busca por nombre o CI/NIT</p>
                             </div>
                         </div>
-                        <!-- ✅ BOTÓN CREAR NUEVO -->
                         <button
                             @click="abrirModalCrear"
                             class="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-md text-[11px] font-medium transition flex items-center gap-1.5 shadow-sm"
@@ -373,9 +415,9 @@ onUnmounted(() => {
                     </div>
 
                     <!-- Loading -->
-                    <div v-if="buscando" class="flex items-center gap-2 mt-3 text-xs text-gray-500">
+                    <div v-if="buscando && resultados.length === 0" class="flex items-center gap-2 mt-3 text-xs text-gray-500">
                         <i class="fas fa-spinner fa-spin text-primary-500 text-[10px]"></i>
-                        Buscando identificadores...
+                        Buscando...
                     </div>
 
                     <!-- Resultados -->
@@ -383,6 +425,9 @@ onUnmounted(() => {
                         <div class="bg-gray-50 px-3 py-1.5 flex justify-between items-center border-b border-gray-200">
                             <span class="text-[10px] font-medium text-gray-600">
                                 {{ resultados.length }} resultado(s)
+                                <span v-if="buscando" class="text-primary-500 ml-1">
+                                    <i class="fas fa-spinner fa-spin text-[9px]"></i>
+                                </span>
                             </span>
                             <button
                                 @click="seleccionarTodos"
@@ -432,7 +477,7 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- ✅ SIN RESULTADOS → sugerir crear -->
+                    <!-- Sin resultados -->
                     <div v-else-if="mostrarBotonCrear" class="mt-3 text-center py-6 text-gray-400">
                         <i class="fas fa-search text-2xl mb-1 block"></i>
                         <p class="text-xs">No se encontró "{{ busqueda }}"</p>
@@ -446,7 +491,6 @@ onUnmounted(() => {
                         </button>
                     </div>
 
-                    <!-- Ayuda -->
                     <div v-else-if="busqueda.length > 0 && busqueda.length < 2" class="mt-3 text-center py-4 text-gray-400">
                         <p class="text-[11px]">Escribe al menos 2 caracteres...</p>
                     </div>
@@ -544,7 +588,6 @@ onUnmounted(() => {
             @click.self="cerrarModalCrear"
         >
             <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-fade-in-up">
-                <!-- Header -->
                 <div class="bg-emerald-600 p-3 flex items-center gap-2.5">
                     <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
                         <i class="fas fa-user-plus text-white text-xs"></i>
@@ -558,9 +601,7 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- Body -->
                 <div class="p-4 space-y-3">
-                    <!-- Nombre -->
                     <div>
                         <label class="text-[10px] font-medium text-gray-600 block mb-0.5">
                             Nombre <span class="text-red-500">*</span>
@@ -575,7 +616,6 @@ onUnmounted(() => {
                         />
                     </div>
 
-                    <!-- CI/NIT -->
                     <div>
                         <label class="text-[10px] font-medium text-gray-600 block mb-0.5">
                             CI / NIT <span class="text-gray-400 font-normal">(opcional)</span>
@@ -594,14 +634,12 @@ onUnmounted(() => {
                         </p>
                     </div>
 
-                    <!-- Error -->
                     <div v-if="errorCrear" class="p-2 bg-red-50 border-l-4 border-red-400 rounded text-xs text-red-700">
                         <i class="fas fa-exclamation-triangle mr-1"></i>
                         {{ errorCrear }}
                     </div>
                 </div>
 
-                <!-- Footer -->
                 <div class="bg-gray-50 px-4 py-2.5 flex justify-end gap-1.5 border-t border-gray-200">
                     <button
                         @click="cerrarModalCrear"
