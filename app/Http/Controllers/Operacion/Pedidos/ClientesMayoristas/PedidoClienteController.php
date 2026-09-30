@@ -89,7 +89,22 @@ class PedidoClienteController extends Controller
     }
 
     /**
+     * ✅ NUEVO: Invalidar caché del progreso del pedido
+     * Se llama cuando se modifica un pedido (agregar/editar/eliminar).
+     */
+    private function invalidarCacheProgreso($idPedido, $clienteId = null, $sucursalId = null)
+    {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+        cache()->forget("progreso_pedido_{$idPedido}_{$clienteId}_{$sucursalId}");
+    }
+
+    /**
      * Calcular progreso de mínimos GLOBALES
+     * ✅ OPTIMIZADO:
+     *   - 1 sola query (JOIN con grupos y productos)
+     *   - Caché de 60 segundos por pedido
+     *   - Invalidación automática al modificar el pedido
      */
     private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente = null)
     {
@@ -97,118 +112,151 @@ class PedidoClienteController extends Controller
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $idPedido = $pedidoBorrador->IdPedidoCliente;
 
-        $detalles = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('pedidos_clientes_detalle as d')
-            ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
-            ->where('d.IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
-            ->select('d.IdProducto', 'd.Cantidad', 'p.IdGrupoAnalisis')
-            ->get();
+        $cacheKey = "progreso_pedido_{$idPedido}_{$clienteId}_{$sucursalId}";
 
-        $progreso = [];
+        return cache()->remember($cacheKey, 60, function () use ($pedidoBorrador, $clienteId, $sucursalId) {
+            // ✅ 1 SOLA QUERY con toda la info necesaria
+            $detalles = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('pedidos_clientes_detalle as d')
+                ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
+                ->leftJoin('inventario_productogrupoanalisis as g', 'p.IdGrupoAnalisis', '=', 'g.IdGrupoAnalisis')
+                ->where('d.IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
+                ->select(
+                    'd.IdProducto',
+                    'd.Cantidad',
+                    'p.IdGrupoAnalisis',
+                    'p.Codigo as producto_codigo',
+                    'p.Descripcion as producto_descripcion',
+                    'g.Grupo as grupo_nombre'
+                )
+                ->get();
 
-        // 1. Mínimos por grupo
-        $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
+            if ($detalles->isEmpty()) return [];
 
-        if (!empty($mapaGrupos)) {
-            $acumuladoPorGrupo = [];
-            foreach ($detalles as $d) {
-                $idG = $d->IdGrupoAnalisis;
-                $acumuladoPorGrupo[$idG] = ($acumuladoPorGrupo[$idG] ?? 0) + (float) $d->Cantidad;
+            $progreso = [];
+
+            // ============================================================
+            // 1. MÍNIMOS POR GRUPO DE ANÁLISIS
+            // ============================================================
+            $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
+
+            if (!empty($mapaGrupos)) {
+                $acumuladoPorGrupo = [];
+                $nombresGrupos = [];
+
+                foreach ($detalles as $d) {
+                    if (!$d->IdGrupoAnalisis) continue;
+                    $idG = $d->IdGrupoAnalisis;
+                    $acumuladoPorGrupo[$idG] = ($acumuladoPorGrupo[$idG] ?? 0) + (float) $d->Cantidad;
+                    $nombresGrupos[$idG] = $d->grupo_nombre;
+                }
+
+                foreach ($mapaGrupos as $idGrupo => $minimo) {
+                    if (!isset($acumuladoPorGrupo[$idGrupo])) continue;
+
+                    $pedida = $acumuladoPorGrupo[$idGrupo];
+                    $min = (float) $minimo;
+
+                    $progreso[] = [
+                        'Tipo' => 'grupo',
+                        'IdGrupoAnalisis' => $idGrupo,
+                        'NombreGrupo' => $nombresGrupos[$idGrupo] ?? 'Sin grupo',
+                        'CantidadPedida' => $pedida,
+                        'CantidadMinima' => $min,
+                        'Cumple' => $pedida >= $min,
+                        'Falta' => max(0, $min - $pedida),
+                    ];
+                }
             }
 
-            $idsGrupos = array_keys($mapaGrupos);
-            $nombresGrupos = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_productogrupoanalisis')
-                ->whereIn('IdGrupoAnalisis', $idsGrupos)
-                ->pluck('Grupo', 'IdGrupoAnalisis');
+            // ============================================================
+            // 2. MÍNIMOS POR PRODUCTO
+            // ============================================================
+            $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
 
-            foreach ($mapaGrupos as $idGrupo => $minimo) {
-                if (!isset($acumuladoPorGrupo[$idGrupo])) continue;
+            if (!empty($mapaProductos)) {
+                $acumuladoPorProducto = [];
+                $infoProductos = [];
 
-                $pedida = $acumuladoPorGrupo[$idGrupo];
-                $min = (float) $minimo;
+                foreach ($detalles as $d) {
+                    $acumuladoPorProducto[$d->IdProducto] = ($acumuladoPorProducto[$d->IdProducto] ?? 0) + (float) $d->Cantidad;
+                    $infoProductos[$d->IdProducto] = [
+                        'Codigo' => $d->producto_codigo,
+                        'Descripcion' => $d->producto_descripcion,
+                    ];
+                }
 
-                $progreso[] = [
-                    'Tipo' => 'grupo',
-                    'IdGrupoAnalisis' => $idGrupo,
-                    'NombreGrupo' => $nombresGrupos[$idGrupo] ?? 'Sin grupo',
-                    'CantidadPedida' => $pedida,
-                    'CantidadMinima' => $min,
-                    'Cumple' => $pedida >= $min,
-                    'Falta' => max(0, $min - $pedida),
-                ];
+                foreach ($mapaProductos as $idProd => $minimo) {
+                    if (!isset($acumuladoPorProducto[$idProd])) continue;
+
+                    $pedida = $acumuladoPorProducto[$idProd];
+                    $min = (float) $minimo;
+                    $info = $infoProductos[$idProd] ?? null;
+
+                    $progreso[] = [
+                        'Tipo' => 'producto',
+                        'IdProducto' => $idProd,
+                        'NombreGrupo' => $info ? ($info['Codigo'] . ' - ' . $info['Descripcion']) : 'Producto #' . $idProd,
+                        'CantidadPedida' => $pedida,
+                        'CantidadMinima' => $min,
+                        'Cumple' => $pedida >= $min,
+                        'Falta' => max(0, $min - $pedida),
+                    ];
+                }
             }
-        }
 
-        // 2. Mínimos por producto
-        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
-
-        if (!empty($mapaProductos)) {
-            $acumuladoPorProducto = [];
-            foreach ($detalles as $d) {
-                $acumuladoPorProducto[$d->IdProducto] = ($acumuladoPorProducto[$d->IdProducto] ?? 0) + (float) $d->Cantidad;
-            }
-
-            $idsProductos = array_keys($mapaProductos);
-            $infoProductos = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_productodetalle')
-                ->whereIn('IdProducto', $idsProductos)
-                ->get(['IdProducto', 'Codigo', 'Descripcion'])
-                ->keyBy('IdProducto');
-
-            foreach ($mapaProductos as $idProd => $minimo) {
-                if (!isset($acumuladoPorProducto[$idProd])) continue;
-
-                $pedida = $acumuladoPorProducto[$idProd];
-                $min = (float) $minimo;
-                $info = $infoProductos[$idProd] ?? null;
-
-                $progreso[] = [
-                    'Tipo' => 'producto',
-                    'IdProducto' => $idProd,
-                    'NombreGrupo' => $info ? ($info->Codigo . ' - ' . $info->Descripcion) : 'Producto #' . $idProd,
-                    'CantidadPedida' => $pedida,
-                    'CantidadMinima' => $min,
-                    'Cumple' => $pedida >= $min,
-                    'Falta' => max(0, $min - $pedida),
-                ];
-            }
-        }
-
-        return $progreso;
+            return $progreso;
+        });
     }
 
     /**
      * Validar que TODOS los productos del pedido tengan mínimo configurado.
+     * ✅ OPTIMIZADO: caché de 60 segundos
      */
     private function validarProductosDelPedidoTienenMinimo($pedido)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $idPedido = $pedido->IdPedidoCliente;
 
-        $idsProductosEnPedido = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-            ->pluck('IdProducto')
-            ->unique()
-            ->toArray();
+        $cacheKey = "productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}";
 
-        if (empty($idsProductosEnPedido)) return [];
+        return cache()->remember($cacheKey, 60, function () use ($pedido, $clienteId, $sucursalId) {
+            $idsProductosEnPedido = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                ->pluck('IdProducto')
+                ->unique()
+                ->toArray();
 
-        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
-        $idsSinMinimo = array_diff($idsProductosEnPedido, array_keys($mapaProductos));
+            if (empty($idsProductosEnPedido)) return [];
 
-        if (empty($idsSinMinimo)) return [];
+            $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
+            $idsSinMinimo = array_diff($idsProductosEnPedido, array_keys($mapaProductos));
 
-        $productosSinMinimo = ProductoDetalle::whereIn('IdProducto', $idsSinMinimo)
-            ->get(['IdProducto', 'Codigo', 'Descripcion']);
+            if (empty($idsSinMinimo)) return [];
 
-        return $productosSinMinimo->map(function ($p) {
-            return [
-                'IdProducto' => $p->IdProducto,
-                'Codigo' => $p->Codigo,
-                'Descripcion' => $p->Descripcion,
-            ];
-        })->toArray();
+            $productosSinMinimo = ProductoDetalle::whereIn('IdProducto', $idsSinMinimo)
+                ->get(['IdProducto', 'Codigo', 'Descripcion']);
+
+            return $productosSinMinimo->map(function ($p) {
+                return [
+                    'IdProducto' => $p->IdProducto,
+                    'Codigo' => $p->Codigo,
+                    'Descripcion' => $p->Descripcion,
+                ];
+            })->toArray();
+        });
+    }
+
+    /**
+     * ✅ NUEVO: Invalidar caché de productos sin mínimo
+     */
+    private function invalidarCacheProductosSinMinimo($idPedido, $clienteId = null, $sucursalId = null)
+    {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+        cache()->forget("productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}");
     }
 
     // ============================================================
@@ -264,7 +312,6 @@ class PedidoClienteController extends Controller
 
     public function create(Request $request)
     {
-        // ✅ LOGS DE DEBUG
         Log::info('=== 🔍 DEBUG create() ===');
         Log::info('Session cliente_id: ' . session('cliente_id'));
         Log::info('Session cliente_sucursal_id: ' . session('cliente_sucursal_id'));
@@ -274,7 +321,7 @@ class PedidoClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
 
         if (!$clienteId || !$sucursalId) {
-            Log::error('❌ FALTA SESIÓN: cliente_id o cliente_sucursal_id');
+            Log::error('❌ FALTA SESIÓN');
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', 'Tu sesión expiró. Por favor, vuelve a iniciar sesión.');
         }
@@ -284,27 +331,18 @@ class PedidoClienteController extends Controller
             $tipoPrecio = 'sin_factura';
         }
 
-        // VALIDACIÓN 1
         $idIdentificador = $this->getIdIdentificadorOperador();
-        Log::info('VALIDACIÓN 1 - idIdentificador: ' . ($idIdentificador ?? 'NULL'));
-
         if (!$idIdentificador) {
-            Log::error('❌ FALLA VALIDACIÓN 1: no hay idIdentificador');
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
-                ->with('error', 'No se encontró el perfil del operador (IdOperador: ' . session('operador_id') . '). Contacte al administrador.');
+                ->with('error', 'No se encontró el perfil del operador. Contacte al administrador.');
         }
 
-        // VALIDACIÓN 2
         $grupoCliente = $this->getGrupoDelOperador();
-        Log::info('VALIDACIÓN 2 - grupoCliente: ' . ($grupoCliente ? $grupoCliente->Nombre . ' (Id: ' . $grupoCliente->IdGrupoCliente . ')' : 'NULL'));
-
         if (!$grupoCliente) {
-            Log::error('❌ FALLA VALIDACIÓN 2: operador no tiene grupo asignado');
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
-                ->with('error', "Tu usuario (IdIdentificador: {$idIdentificador}) no tiene un Grupo de Clientes asignado en este cliente/sucursal. Contacte al administrador.");
+                ->with('error', "Tu usuario no tiene un Grupo de Clientes asignado. Contacte al administrador.");
         }
 
-        // VALIDACIÓN 3
         $contenedores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_contenedor as c')
             ->join('operacion_pedidos_clientes_contenedor_grupo_cliente as cgc', 'cgc.IdContenedor', '=', 'c.IdContenedor')
@@ -317,15 +355,10 @@ class PedidoClienteController extends Controller
             ->orderBy('c.Codigo')
             ->get();
 
-        Log::info('VALIDACIÓN 3 - contenedores count: ' . $contenedores->count());
-
         if ($contenedores->isEmpty()) {
-            Log::error('❌ FALLA VALIDACIÓN 3: grupo sin contenedores. Grupo: ' . $grupoCliente->Nombre);
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', "Tu grupo '{$grupoCliente->Nombre}' no tiene contenedores asignados. Contacte al administrador.");
         }
-
-        Log::info('✅ TODAS LAS VALIDACIONES OK. Renderizando vista Create.');
 
         $totalProductosDelGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
@@ -402,7 +435,7 @@ class PedidoClienteController extends Controller
             })->values();
         }
 
-        // ✅ MAPA DE GRUPOS CON NOMBRE (ARRAY)
+        // ✅ MAPA DE GRUPOS CON NOMBRE
         $mapaGruposRaw = GrupoAnalisisMinimo::obtenerMapa();
         $minimosGrupos = [];
 
@@ -479,9 +512,9 @@ class PedidoClienteController extends Controller
                 'IdGrupoCliente' => $grupoCliente->IdGrupoCliente,
                 'Nombre' => $grupoCliente->Nombre,
             ],
-            'minimosGrupos' => $minimosGrupos,         // ✅ ARRAY con nombre
-            'minimosProductos' => $minimosProductos,   // ✅ Mapa {IdProducto: Cantidad}
-            'infoProductos' => $infoProductos,          // ✅ NUEVO
+            'minimosGrupos' => $minimosGrupos,
+            'minimosProductos' => $minimosProductos,
+            'infoProductos' => $infoProductos,
             'progresoInicial' => $progresoInicial,
             'tipoPrecio' => $tipoPrecio,
             'subclientes' => $subclientes,
@@ -681,6 +714,10 @@ class PedidoClienteController extends Controller
 
             DB::commit();
 
+            // ✅ INVALIDAR CACHÉ
+            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Contenedor agregado al carrito correctamente',
@@ -779,6 +816,10 @@ class PedidoClienteController extends Controller
 
             DB::commit();
 
+            // ✅ INVALIDAR CACHÉ
+            $this->invalidarCacheProgreso($request->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($request->IdPedidoCliente);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Contenedor actualizado correctamente',
@@ -821,6 +862,10 @@ class PedidoClienteController extends Controller
                 'TotalContenedores' => $totales['total_contenedores'],
                 'TotalGeneral' => $totales['total_general'],
             ]);
+
+            // ✅ INVALIDAR CACHÉ
+            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 
             if ($totales['total_unidades'] == 0) {
                 $pedido->delete();
@@ -866,6 +911,10 @@ class PedidoClienteController extends Controller
                 'TotalContenedores' => 0,
                 'TotalGeneral' => 0,
             ]);
+
+            // ✅ INVALIDAR CACHÉ
+            $this->invalidarCacheProgreso($idPedido);
+            $this->invalidarCacheProductosSinMinimo($idPedido);
 
             $pedido->delete();
 
@@ -1036,6 +1085,57 @@ class PedidoClienteController extends Controller
             Log::error('Error en review: ' . $e->getMessage());
             return redirect()->route('operacion.pedidos-clientes.pedidos.create')
                 ->with('error', 'Error al cargar la revisión: ' . $e->getMessage());
+        }
+    }
+
+    // ============================================================
+    // ✅ NUEVO: Obtener progreso de mínimos del pedido actual
+    // ============================================================
+    public function getProgreso($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdPedidoCliente', $id)
+                ->where('ActivoInactivo', 0)
+                ->first();
+
+            if (!$pedido) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado o ya finalizado.'
+                ], 404);
+            }
+
+            $grupoCliente = $this->getGrupoDelOperador();
+            if (!$grupoCliente) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+                ], 400);
+            }
+
+            $progreso = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
+            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
+            $totales = $this->calcularTotales($pedido->IdPedidoCliente);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'progresoGrupos' => $progreso,
+                    'productosSinMinimo' => $productosSinMinimo,
+                    'totales' => $totales,
+                    'cumpleMinimos' => collect($progreso)->every(fn($item) => $item['Cumple']) && empty($productosSinMinimo),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en getProgreso: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al calcular el progreso: ' . $e->getMessage()
+            ], 500);
         }
     }
 
@@ -1250,6 +1350,10 @@ class PedidoClienteController extends Controller
                 'TotalContenedores' => $totales['total_contenedores'],
                 'TotalGeneral' => $totales['total_general'],
             ]);
+
+            // ✅ INVALIDAR CACHÉ al finalizar
+            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 
             \Log::info('🎉 Pedido finalizado correctamente', [
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
@@ -2029,6 +2133,10 @@ class PedidoClienteController extends Controller
                 return $item->Cantidad * $item->Precio;
             });
 
+            // ✅ INVALIDAR CACHÉ al cambiar tipo de precio
+            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Precios recalculados correctamente',
@@ -2085,61 +2193,4 @@ class PedidoClienteController extends Controller
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
         ]);
     }
-        /**
-     * ✅ NUEVO: Obtener el progreso de mínimos del pedido actual.
-     * Se llama desde el Review después de editar/eliminar un contenedor.
-     */
-    public function getProgreso($id)
-    {
-        try {
-            $clienteId = session('cliente_id');
-
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdPedidoCliente', $id)
-                ->where('ActivoInactivo', 0)
-                ->first();
-
-            if (!$pedido) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado o ya finalizado.'
-                ], 404);
-            }
-
-            $grupoCliente = $this->getGrupoDelOperador();
-            if (!$grupoCliente) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
-                ], 400);
-            }
-
-            // ✅ Reutilizar método existente
-            $progreso = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
-
-            // ✅ Productos sin mínimo
-            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
-
-            // ✅ Totales
-            $totales = $this->calcularTotales($pedido->IdPedidoCliente);
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'progresoGrupos' => $progreso,
-                    'productosSinMinimo' => $productosSinMinimo,
-                    'totales' => $totales,
-                    'cumpleMinimos' => collect($progreso)->every(fn($item) => $item['Cumple']) && empty($productosSinMinimo),
-                ],
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error en getProgreso: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al calcular el progreso: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
 }
