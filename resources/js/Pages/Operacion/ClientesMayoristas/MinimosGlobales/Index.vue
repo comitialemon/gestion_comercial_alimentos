@@ -149,14 +149,6 @@ onUnmounted(() => {
 
                     <div class="flex gap-1.5 flex-wrap">
                         <button 
-                            @click="limpiarTodo"
-                            :disabled="guardando"
-                            class="px-3 py-1.5 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-lg text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5"
-                        >
-                            <i class="fas fa-trash-alt text-[10px]"></i>
-                            Limpiar todo
-                        </button>
-                        <button 
                             @click="guardar"
                             :disabled="guardando || !tieneCambios"
                             class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5"

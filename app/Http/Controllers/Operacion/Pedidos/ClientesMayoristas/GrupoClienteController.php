@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteDetalle;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Inventario\ProductoGrupoAnalisis;
 use Illuminate\Http\Request;
@@ -458,13 +460,32 @@ class GrupoClienteController extends Controller
     public function getProductos($id)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');  // ✅ NUEVO
 
         try {
             $grupo = GrupoCliente::porCliente($clienteId)
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
+            // ✅ NUEVO: Obtener solo los grupos de análisis que aplican (mínimo > 0)
+            $gruposConMinimo = GrupoAnalisisMinimo::porContexto($clienteId, $sucursalId)
+                ->activos()
+                ->where('CantidadMinimaGrupo', '>', 0)
+                ->pluck('IdGrupoAnalisis')
+                ->toArray();
+
+            // Si no hay grupos con mínimo, devolver vacío
+            if (empty($gruposConMinimo)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                    'mensaje' => 'No hay grupos de análisis configurados para pedidos. Configura primero los mínimos globales.',
+                ]);
+            }
+
+            // ✅ MODIFICADO: Solo los grupos con mínimo
             $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
+                ->whereIn('IdGrupoAnalisis', $gruposConMinimo)  // ✅ FILTRO
                 ->orderBy('Grupo')
                 ->get(['IdGrupoAnalisis', 'Grupo']);
 
@@ -475,8 +496,21 @@ class GrupoClienteController extends Controller
 
             $resultado = [];
             foreach ($gruposAnalisis as $grupoAnalisis) {
+                // ✅ NUEVO: Solo productos que tengan mínimo configurado (cualquier valor > 0)
+                $idsProductosConMinimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
+                    ->activos()
+                    ->where('IdGrupoAnalisis', $grupoAnalisis->IdGrupoAnalisis)
+                    ->pluck('IdProducto')
+                    ->toArray();
+
+                // Si el grupo no tiene productos con mínimo, saltarlo
+                if (empty($idsProductosConMinimo)) {
+                    continue;
+                }
+
                 $productos = ProductoDetalle::where('IdCliente', $clienteId)
                     ->where('IdGrupoAnalisis', $grupoAnalisis->IdGrupoAnalisis)
+                    ->whereIn('IdProducto', $idsProductosConMinimo)  // ✅ FILTRO
                     ->where('ActivoInactivo', 0)
                     ->orderBy('Descripcion')
                     ->get(['IdProducto', 'Codigo', 'Descripcion', 'IdGrupoAnalisis']);
