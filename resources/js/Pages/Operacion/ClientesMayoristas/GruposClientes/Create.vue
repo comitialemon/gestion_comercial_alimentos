@@ -35,9 +35,8 @@ const guardar = async () => {
         })
 
         if (response.data.success) {
-            toast?.success('Éxito', 'Grupo creado correctamente. Ahora configure los mínimos.')
+            toast?.success('Éxito', 'Grupo creado correctamente. Ahora configure los precios y clientes.')
             
-            // Redirigir a edición (pestaña mínimos)
             router.get(`/operacion/pedidos/clientes-mayoristas/grupos-clientes/${response.data.grupo.IdGrupoCliente}/edit`)
         } else {
             toast?.error('Error', response.data.message || 'Error al crear el grupo')
@@ -105,7 +104,7 @@ const onEnter = (e) => {
                     <i class="fas fa-info-circle text-blue-500 text-sm flex-shrink-0 mt-0.5"></i>
                     <div class="text-xs text-blue-700">
                         <p class="font-medium mb-0.5">¿Qué es un Grupo de Clientes?</p>
-                        <p>Es una agrupación de clientes (operadores PedidoClientes) que comparten <strong>los mismos productos, precios y mínimos</strong>. Útil para configurar 500 clientes en pocos grupos.</p>
+                        <p>Es una agrupación de clientes (operadores PedidoClientes) que comparten <strong>los mismos productos y precios</strong>. Los <strong>mínimos son globales</strong> y se configuran una sola vez.</p>
                     </div>
                 </div>
 
@@ -169,7 +168,7 @@ const onEnter = (e) => {
                     <i class="fas fa-arrow-right text-amber-500 text-sm flex-shrink-0 mt-0.5"></i>
                     <div class="text-xs text-amber-700">
                         <p class="font-medium mb-0.5">Siguiente paso:</p>
-                        <p>Al guardar, podrás configurar los <strong>mínimos por grupo de análisis</strong>. Solo los grupos con mínimo tendrán productos disponibles.</p>
+                        <p>Al guardar podrás configurar los <strong>precios de productos</strong> y asignar los <strong>clientes</strong> a este grupo.</p>
                     </div>
                 </div>
 

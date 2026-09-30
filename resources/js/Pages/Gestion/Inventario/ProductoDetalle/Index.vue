@@ -2,6 +2,7 @@
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { ref, onMounted, watch, computed } from 'vue'
+import axios from 'axios'
 import ModalProducto from './ModalProducto.vue'
 import ModalFichaTecnica from './ModalFichaTecnica.vue'
 
@@ -17,6 +18,9 @@ const props = defineProps({
     unidades: Array,
     unidadId: Number,
     filtros: Object,
+    // ✅ NUEVOS: mapa de grupos con mínimo y mapa de productos con mínimo
+    gruposConMinimo: { type: Object, default: () => ({}) },
+    productosConMinimo: { type: Object, default: () => ({}) },
 })
 
 // ==================== ESTADO ====================
@@ -59,7 +63,7 @@ const aplicarFiltros = (cerrarFiltros = true) => {
         preserveState: true,
         replace: true,
     })
-    
+
     if (isMobile.value && cerrarFiltros && !escribiendo.value) {
         filtrosAbiertos.value = false
     }
@@ -80,7 +84,7 @@ const limpiarFiltros = () => {
     estadoProducto.value = ''
     filtrosAbiertos.value = false
     escribiendo.value = false
-    
+
     router.get('/gestion/inventario/productos-detalle', {}, {
         preserveState: true,
         replace: true,
@@ -94,31 +98,24 @@ const abrirModalNuevo = () => {
     modalOpen.value = true
 }
 
+// ✅ MODIFICADO: ahora hace GET al endpoint /edit para traer producto + mínimo
 const abrirModalEditar = async (producto) => {
-    console.log('📦 Producto COMPLETO:', producto)
-    console.log('📊 IdGrupoAnalisis:', producto.IdGrupoAnalisis)
-    console.log('📊 IdLineaProducto:', producto.IdLineaProducto)
-    console.log('📊 grupoAnalisis:', producto.grupoAnalisis)
-    console.log('📊 linea:', producto.linea)
-    
-    // 🔥 AHORA LOS DATOS VIENEN COMPLETOS DESDE EL CONTROLADOR
-    productoSeleccionado.value = {
-        IdProducto: producto.IdProducto,
-        Codigo: producto.Codigo,
-        Descripcion: producto.Descripcion,
-        ActivoInactivo: producto.ActivoInactivo,
-        IdGrupoAnalisis: producto.IdGrupoAnalisis || null,
-        IdLineaProducto: producto.IdLineaProducto || null,
-        IdEstadoProducto: producto.IdEstadoProducto || null,
-        IdUnidadMedida: producto.IdUnidadMedida || null,
-        OrdenInformes: producto.OrdenInformes || 0,
-        estado: producto.estado || { Estado: '' },
-        grupoAnalisis: producto.grupoAnalisis || { Grupo: '' },
-        linea: producto.linea || { Linea: '' },
-        unidadMedida: producto.unidadMedida || { UnidadMedida: '' },
+    try {
+        const response = await axios.get(`/gestion/inventario/productos-detalle/${producto.IdProducto}/edit`)
+
+        if (response.data.success) {
+            // Combinar producto + mínimo en un solo objeto
+            productoSeleccionado.value = {
+                ...response.data.producto,
+                minimo: response.data.minimo, // puede ser null si no tiene mínimo
+            }
+            editando.value = true
+            modalOpen.value = true
+        }
+    } catch (error) {
+        console.error('❌ Error al cargar producto para editar:', error)
+        alert('No se pudo cargar el producto. Intenta de nuevo.')
     }
-    editando.value = true
-    modalOpen.value = true
 }
 
 // 🔥 ABRIR MODAL FICHA TÉCNICA
@@ -188,23 +185,23 @@ onMounted(() => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
+                        <button
                             @click="toggleFiltros"
                             class="lg:hidden flex-1 sm:flex-none px-3 py-1.5 bg-white border rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
                             :style="{ borderColor: `var(--color-primary-300)` }"
                         >
                             <i class="fas fa-sliders-h text-[10px]" :style="{ color: `var(--color-primary-600)` }"></i>
                             <span class="text-gray-700">{{ filtrosAbiertos ? 'Ocultar' : 'Filtros' }}</span>
-                            <span v-if="filtrosActivos > 0" 
+                            <span v-if="filtrosActivos > 0"
                                   class="inline-flex items-center justify-center w-4 h-4 text-[8px] font-bold text-white rounded-full"
                                   :style="{ backgroundColor: `var(--color-primary-600)` }">
                                 {{ filtrosActivos }}
                             </span>
                         </button>
-                        <button 
+                        <button
                             @click="abrirModalNuevo"
                             class="flex-1 sm:flex-none bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 transition">
-                            <i class="fas fa-plus text-[10px]"></i> 
+                            <i class="fas fa-plus text-[10px]"></i>
                             <span class="hidden sm:inline">Nuevo Producto</span>
                             <span class="sm:hidden">Nuevo</span>
                         </button>
@@ -213,9 +210,9 @@ onMounted(() => {
 
                 <!-- Layout Principal -->
                 <div class="flex flex-col lg:flex-row gap-3 sm:gap-4">
-                    
+
                     <!-- FILTROS -->
-                    <div 
+                    <div
                         class="lg:w-64 flex-shrink-0 transition-all duration-300 overflow-hidden"
                         :class="{
                             'max-h-[600px] opacity-100': filtrosAbiertos || !isMobile,
@@ -224,9 +221,9 @@ onMounted(() => {
                     >
                         <div class="bg-white rounded-lg shadow-sm p-3 sticky top-2 lg:top-24">
                             <h3 class="text-xs font-semibold text-gray-800 mb-3 flex items-center gap-1">
-                                <i class="fas fa-filter text-[10px]" :style="{ color: `var(--color-primary-600)` }"></i> 
+                                <i class="fas fa-filter text-[10px]" :style="{ color: `var(--color-primary-600)` }"></i>
                                 Filtros
-                                <span v-if="filtrosActivos > 0" 
+                                <span v-if="filtrosActivos > 0"
                                       class="text-[9px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded-full ml-auto">
                                     {{ filtrosActivos }} activos
                                 </span>
@@ -237,10 +234,10 @@ onMounted(() => {
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Buscar</label>
                                 <div class="relative">
                                     <i class="fas fa-search absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-[9px]"></i>
-                                    <input 
-                                        type="text" 
-                                        v-model="search" 
-                                        placeholder="Código o nombre..." 
+                                    <input
+                                        type="text"
+                                        v-model="search"
+                                        placeholder="Código o nombre..."
                                         class="w-full border rounded-md pl-7 pr-2 py-1.5 text-[11px] focus:ring-2 focus:outline-none"
                                         :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }"
                                         @keyup.enter="aplicarFiltros(true)"
@@ -253,21 +250,21 @@ onMounted(() => {
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Estado</label>
                                 <div class="grid grid-cols-2 gap-0.5">
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)">
                                         <span class="text-[11px] text-gray-700">Todos</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="0" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="0" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)">
                                         <span class="text-[11px] text-gray-700">Activos ({{ totalActivos }})</span>
                                     </label>
                                     <label class="flex items-center gap-2 cursor-pointer py-0.5">
-                                        <input type="radio" value="1" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)"> 
+                                        <input type="radio" value="1" v-model="estadoActivo" class="w-3 h-3" :style="{ accentColor: `var(--color-primary-600)` }" @change="aplicarFiltros(true)">
                                         <span class="text-[11px] text-gray-700">Inactivos ({{ totalInactivos }})</span>
                                     </label>
                                 </div>
                             </div>
 
-                            <!-- 🔥 NUEVO: Estado del Producto (Terminado, Insumos, etc.) -->
+                            <!-- Tipo de Producto -->
                             <div class="mb-3">
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Tipo de Producto</label>
                                 <select v-model="estadoProducto" @change="aplicarFiltros(true)"
@@ -296,13 +293,13 @@ onMounted(() => {
 
                             <!-- Botonera -->
                             <div class="flex gap-2 pt-2 border-t" :style="{ borderColor: `var(--color-primary-200)` }">
-                                <button @click="aplicarFiltros(true)" 
+                                <button @click="aplicarFiltros(true)"
                                         class="flex-1 px-2 py-1.5 text-white rounded-md text-[10px] transition flex items-center justify-center gap-1"
                                         :style="{ backgroundColor: `var(--color-primary-600)` }">
                                     <i class="fas fa-search text-[8px]"></i> Filtrar
                                 </button>
-                                <button @click="limpiarFiltros" 
-                                        class="px-2 py-1.5 border border-gray-300 rounded-md text-[10px] text-gray-700 hover:bg-gray-50 transition" 
+                                <button @click="limpiarFiltros"
+                                        class="px-2 py-1.5 border border-gray-300 rounded-md text-[10px] text-gray-700 hover:bg-gray-50 transition"
                                         title="Limpiar Filtros">
                                     <i class="fas fa-eraser text-[8px]"></i>
                                 </button>
@@ -313,7 +310,7 @@ onMounted(() => {
                     <!-- TABLA DE PRODUCTOS -->
                     <div class="flex-1 min-w-0">
                         <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-                            
+
                             <!-- Indicador de filtros activos -->
                             <div class="p-2 border-b flex flex-wrap gap-1 lg:hidden"
                                 :style="{ borderColor: `var(--color-primary-200)` }">
@@ -328,7 +325,7 @@ onMounted(() => {
                                 </span>
                                 <span v-if="estadoProducto" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
                                     :style="{ color: `var(--color-primary-700)` }">
-                                    <i class="fas fa-tag text-[8px]"></i> 
+                                    <i class="fas fa-tag text-[8px]"></i>
                                     {{ estados.find(e => e.id === estadoProducto)?.nombre || 'Tipo' }}
                                 </span>
                                 <span v-if="linea" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
@@ -337,7 +334,7 @@ onMounted(() => {
                                 </span>
                             </div>
 
-                            <!-- 🔥 TABLA DESKTOP -->
+                            <!-- TABLA DESKTOP -->
                             <div class="hidden lg:block overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-primary-50" :style="{ backgroundColor: `var(--color-primary-50)` }">
@@ -375,19 +372,17 @@ onMounted(() => {
                                             </td>
                                             <td class="px-3 py-2 text-right">
                                                 <div class="flex items-center justify-end gap-1">
-                                                    <!-- Botón Editar -->
-                                                    <button @click="abrirModalEditar(producto)" 
-                                                            class="transition p-1 rounded hover:bg-primary-50" 
+                                                    <button @click="abrirModalEditar(producto)"
+                                                            class="transition p-1 rounded hover:bg-primary-50"
                                                             :style="{ color: `var(--color-primary-600)` }"
                                                             title="Editar">
                                                         <i class="fas fa-edit text-[11px]"></i>
                                                     </button>
-                                                    
-                                                    <!-- 🔥 Botón Ficha Técnica -->
-                                                    <button 
+
+                                                    <button
                                                         v-if="producto.estado?.Estado === 'Terminado'"
-                                                        @click="abrirModalFicha(producto)" 
-                                                        class="transition p-1 rounded hover:bg-amber-50" 
+                                                        @click="abrirModalFicha(producto)"
+                                                        class="transition p-1 rounded hover:bg-amber-50"
                                                         style="color: #D97706"
                                                         title="Ficha Técnica">
                                                         <i class="fas fa-clipboard-list text-[11px]"></i>
@@ -405,7 +400,7 @@ onMounted(() => {
                                 </table>
                             </div>
 
-                            <!-- 🔥 TABLA TABLET -->
+                            <!-- TABLA TABLET -->
                             <div class="hidden sm:block lg:hidden overflow-x-auto">
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-primary-50" :style="{ backgroundColor: `var(--color-primary-50)` }">
@@ -429,16 +424,16 @@ onMounted(() => {
                                             </td>
                                             <td class="px-3 py-2 text-right">
                                                 <div class="flex items-center justify-end gap-1">
-                                                    <button @click="abrirModalEditar(producto)" 
-                                                            class="transition p-1 rounded hover:bg-primary-50" 
+                                                    <button @click="abrirModalEditar(producto)"
+                                                            class="transition p-1 rounded hover:bg-primary-50"
                                                             :style="{ color: `var(--color-primary-600)` }"
                                                             title="Editar">
                                                         <i class="fas fa-edit text-[11px]"></i>
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         v-if="producto.estado?.Estado === 'Terminado'"
-                                                        @click="abrirModalFicha(producto)" 
-                                                        class="transition p-1 rounded hover:bg-amber-50" 
+                                                        @click="abrirModalFicha(producto)"
+                                                        class="transition p-1 rounded hover:bg-amber-50"
                                                         style="color: #D97706"
                                                         title="Ficha Técnica">
                                                         <i class="fas fa-clipboard-list text-[11px]"></i>
@@ -456,9 +451,9 @@ onMounted(() => {
                                 </table>
                             </div>
 
-                            <!-- 🔥 TARJETAS MÓVIL -->
+                            <!-- TARJETAS MÓVIL -->
                             <div class="sm:hidden divide-y divide-gray-100">
-                                <div v-for="producto in productos.data" :key="producto.IdProducto" 
+                                <div v-for="producto in productos.data" :key="producto.IdProducto"
                                      class="p-3 hover:bg-gray-50 transition">
                                     <div class="flex items-start justify-between gap-2">
                                         <div class="min-w-0 flex-1">
@@ -478,7 +473,7 @@ onMounted(() => {
                                                 <span class="px-1.5 py-0.5 text-[8px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
                                                     {{ estadoTexto(producto.ActivoInactivo) }}
                                                 </span>
-                                                <span v-if="producto.estado?.Estado === 'Terminado'" 
+                                                <span v-if="producto.estado?.Estado === 'Terminado'"
                                                       class="px-1.5 py-0.5 text-[8px] rounded-full bg-amber-100 text-amber-700">
                                                     <i class="fas fa-clipboard-list mr-0.5"></i>
                                                     Ficha
@@ -486,15 +481,15 @@ onMounted(() => {
                                             </div>
                                         </div>
                                         <div class="flex items-center gap-1 flex-shrink-0">
-                                            <button @click="abrirModalEditar(producto)" 
+                                            <button @click="abrirModalEditar(producto)"
                                                     class="p-1.5 rounded-lg transition flex-shrink-0"
                                                     :style="{ backgroundColor: `var(--color-primary-50)`, color: `var(--color-primary-600)` }"
                                                     title="Editar">
                                                 <i class="fas fa-edit text-sm"></i>
                                             </button>
-                                            <button 
+                                            <button
                                                 v-if="producto.estado?.Estado === 'Terminado'"
-                                                @click="abrirModalFicha(producto)" 
+                                                @click="abrirModalFicha(producto)"
                                                 class="p-1.5 rounded-lg transition flex-shrink-0"
                                                 style="background-color: #FEF3C7; color: #D97706"
                                                 title="Ficha Técnica">
@@ -516,17 +511,17 @@ onMounted(() => {
                                         Mostrando {{ productos.from || 0 }} - {{ productos.to || 0 }} de {{ productos.total || 0 }}
                                     </div>
                                     <div class="flex gap-0.5 flex-wrap justify-center">
-                                        <Link 
-                                            v-for="link in productos.links" 
-                                            :key="link.label" 
-                                            :href="link.url || '#'" 
+                                        <Link
+                                            v-for="link in productos.links"
+                                            :key="link.label"
+                                            :href="link.url || '#'"
                                             class="px-1.5 sm:px-2 py-0.5 rounded border text-[8px] sm:text-[10px] transition min-w-[22px] text-center"
                                             :style="{
                                                 borderColor: link.active ? `var(--color-primary-600)` : '#e5e7eb',
                                                 backgroundColor: link.active ? `var(--color-primary-600)` : 'white',
                                                 color: link.active ? 'white' : '#374151'
                                             }"
-                                            v-html="link.label" 
+                                            v-html="link.label"
                                         />
                                     </div>
                                 </div>
@@ -537,7 +532,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- MODAL PRODUCTO -->
+        <!-- ✅ MODAL PRODUCTO con props nuevas -->
         <ModalProducto
             v-model="modalOpen"
             :producto="productoSeleccionado"
@@ -547,11 +542,12 @@ onMounted(() => {
             :unidades="unidades"
             :unidad-id="unidadId"
             :editando="editando"
+            :grupos-con-minimo="gruposConMinimo"
+            :productos-con-minimo="productosConMinimo"
             @saved="recargarDatos"
         />
 
-        <!-- 🔥 MODAL FICHA TÉCNICA -->
-        <!-- En Index.vue -->
+        <!-- MODAL FICHA TÉCNICA -->
         <ModalFichaTecnica
             v-model="modalFichaOpen"
             :producto="productoParaFicha"

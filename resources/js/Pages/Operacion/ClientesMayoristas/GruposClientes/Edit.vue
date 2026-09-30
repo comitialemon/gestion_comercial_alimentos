@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
 import { router } from '@inertiajs/vue3'
-import { ref, computed, onMounted, onUnmounted, inject, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, inject } from 'vue'
 import axios from 'axios'
 
 defineOptions({ layout: AppLayout })
@@ -17,20 +17,16 @@ const props = defineProps({
 
 // ==================== DETECTAR DISPOSITIVO ====================
 const isMobile = ref(false)
-const isTablet = ref(false)
 
 const handleResize = () => {
-    const width = window.innerWidth
-    isMobile.value = width < 640
-    isTablet.value = width >= 640 && width < 1024
+    isMobile.value = window.innerWidth < 640
 }
 
 // ==================== ESTADO ====================
-const tabActiva = ref('minimos')
+const tabActiva = ref('productos')
 const loading = ref(false)
 const guardando = ref(false)
 
-const minimos = ref([])
 const productos = ref([])
 const clientes = ref([])
 const datosGrupo = ref({
@@ -42,14 +38,6 @@ const datosGrupo = ref({
 // ==================== COMPUTED ====================
 const grupoId = computed(() => props.grupo?.IdGrupoCliente)
 
-const gruposActivosIds = computed(() => {
-    return minimos.value
-        .filter(m => m.CantidadMinimaGrupo && parseFloat(m.CantidadMinimaGrupo) > 0)
-        .map(m => m.IdGrupoAnalisis)
-})
-
-const totalMinimos = computed(() => gruposActivosIds.value.length)
-
 const totalProductosConPrecio = computed(() => {
     let total = 0
     productos.value.forEach(g => {
@@ -60,10 +48,6 @@ const totalProductosConPrecio = computed(() => {
 
 const totalClientesAsignados = computed(() => {
     return clientes.value.filter(c => c.EnEsteGrupo).length
-})
-
-const productosDeGruposActivos = computed(() => {
-    return productos.value.filter(g => gruposActivosIds.value.includes(g.IdGrupoAnalisis))
 })
 
 // ==================== BÚSQUEDA DE CLIENTES ====================
@@ -108,23 +92,20 @@ const limpiarBusquedaCliente = () => {
 
 // ==================== BÚSQUEDA DE PRODUCTOS ====================
 const busquedaProducto = ref('')
-const filtroProducto = ref('todos') // 'todos' | 'con_precio' | 'sin_precio'
+const filtroProducto = ref('todos')
 
-// ✅ Filtrar productos dentro de cada grupo activo
 const productosFiltradosPorGrupo = computed(() => {
     const termino = busquedaProducto.value.toLowerCase().trim()
 
-    return productosDeGruposActivos.value.map(grupo => {
+    return productos.value.map(grupo => {
         let prodsFiltrados = grupo.Productos
 
-        // Filtro rápido
         if (filtroProducto.value === 'con_precio') {
             prodsFiltrados = prodsFiltrados.filter(p => p.TienePrecio)
         } else if (filtroProducto.value === 'sin_precio') {
             prodsFiltrados = prodsFiltrados.filter(p => !p.TienePrecio)
         }
 
-        // Búsqueda por texto
         if (termino) {
             prodsFiltrados = prodsFiltrados.filter(p =>
                 p.Descripcion?.toLowerCase().includes(termino) ||
@@ -135,18 +116,16 @@ const productosFiltradosPorGrupo = computed(() => {
         return {
             ...grupo,
             Productos: prodsFiltrados,
-            _totalOriginal: grupo.Productos.length,
         }
-    }).filter(g => g.Productos.length > 0) // Ocultar grupos sin productos filtrados
+    }).filter(g => g.Productos.length > 0)
 })
 
-// ✅ Contadores globales de productos
 const contadoresProductos = computed(() => {
     let todos = 0
     let conPrecio = 0
     let sinPrecio = 0
 
-    productosDeGruposActivos.value.forEach(g => {
+    productos.value.forEach(g => {
         g.Productos.forEach(p => {
             todos++
             if (p.TienePrecio) conPrecio++
@@ -157,7 +136,6 @@ const contadoresProductos = computed(() => {
     return { todos, conPrecio, sinPrecio }
 })
 
-// ✅ Contador de resultados filtrados
 const contadorProductosFiltrados = computed(() => {
     let total = 0
     productosFiltradosPorGrupo.value.forEach(g => {
@@ -171,56 +149,7 @@ const limpiarBusquedaProducto = () => {
     filtroProducto.value = 'todos'
 }
 
-// ==================== PESTAÑA 1: MÍNIMOS ====================
-const cargarMinimos = async () => {
-    try {
-        const response = await axios.get(
-            `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupoId.value}/minimos`
-        )
-        if (response.data.success) {
-            minimos.value = response.data.data.map(m => ({
-                ...m,
-                CantidadMinimaGrupo: m.CantidadMinimaGrupo !== null ? m.CantidadMinimaGrupo : ''
-            }))
-        }
-    } catch (error) {
-        console.error('Error al cargar mínimos:', error)
-        toast?.error('Error', 'No se pudieron cargar los mínimos')
-    }
-}
-
-const guardarMinimos = async () => {
-    guardando.value = true
-    try {
-        const payload = {
-            minimos: minimos.value
-                .filter(m => m.CantidadMinimaGrupo !== '' && parseFloat(m.CantidadMinimaGrupo) > 0)
-                .map(m => ({
-                    IdGrupoAnalisis: m.IdGrupoAnalisis,
-                    CantidadMinimaGrupo: parseFloat(m.CantidadMinimaGrupo)
-                }))
-        }
-
-        const response = await axios.post(
-            `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupoId.value}/asignar-minimos`,
-            payload
-        )
-
-        if (response.data.success) {
-            toast?.success('Éxito', response.data.message)
-            await cargarMinimos()
-        } else {
-            toast?.error('Error', response.data.message || 'Error al guardar mínimos')
-        }
-    } catch (error) {
-        console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al guardar mínimos')
-    } finally {
-        guardando.value = false
-    }
-}
-
-// ==================== PESTAÑA 2: PRODUCTOS ====================
+// ==================== PESTAÑA 1: PRODUCTOS ====================
 const cargarProductos = async () => {
     try {
         const response = await axios.get(
@@ -238,8 +167,6 @@ const cargarProductos = async () => {
 const guardarProductos = async () => {
     guardando.value = true
     try {
-        // ✅ CAMBIO: Enviar TODOS los productos (con o sin precio)
-        // El backend decide si guarda o elimina
         const productosAGuardar = []
         
         productos.value.forEach(grupo => {
@@ -247,7 +174,6 @@ const guardarProductos = async () => {
                 const sin = prod.PrecioSinFactura
                 const con = prod.PrecioConFactura
                 
-                // ✅ Enviar SIEMPRE (aunque no tenga precio)
                 productosAGuardar.push({
                     IdProducto: prod.IdProducto,
                     PrecioSinFactura: (sin !== '' && sin !== null && parseFloat(sin) > 0) 
@@ -256,9 +182,6 @@ const guardarProductos = async () => {
                     PrecioConFactura: (con !== '' && con !== null && parseFloat(con) > 0) 
                         ? parseFloat(con) 
                         : null,
-                    PedidoMinimo: prod.PedidoMinimo && parseInt(prod.PedidoMinimo) > 0 
-                        ? parseInt(prod.PedidoMinimo) 
-                        : 0,
                 })
             })
         })
@@ -282,7 +205,7 @@ const guardarProductos = async () => {
     }
 }
 
-// ==================== PESTAÑA 3: CLIENTES ====================
+// ==================== PESTAÑA 2: CLIENTES ====================
 const cargarClientes = async () => {
     try {
         const response = await axios.get(
@@ -331,7 +254,7 @@ const guardarClientes = async () => {
     }
 }
 
-// ==================== PESTAÑA 4: DATOS GENERALES ====================
+// ==================== PESTAÑA 3: DATOS ====================
 const guardarDatos = async () => {
     if (!datosGrupo.value.Nombre.trim()) {
         toast?.error('Validación', 'El nombre es obligatorio')
@@ -352,7 +275,6 @@ const guardarDatos = async () => {
         if (response.data.success) {
             toast?.success('Éxito', 'Datos guardados correctamente')
             
-            // ✅ Volver al Index para verificar
             setTimeout(() => {
                 router.get('/operacion/pedidos/clientes-mayoristas/grupos-clientes')
             }, 800)
@@ -369,20 +291,11 @@ const guardarDatos = async () => {
 
 // ==================== RESUMEN (Datos Generales) ====================
 const resumenGrupo = computed(() => {
-    const activos = minimos.value.filter(m => 
-        m.CantidadMinimaGrupo && parseFloat(m.CantidadMinimaGrupo) > 0
-    )
-
     return {
-        minimosActivos: activos.map(m => ({
-            nombre: m.NombreGrupo,
-            cantidad: parseFloat(m.CantidadMinimaGrupo)
-        })),
-        totalMinimos: activos.length,
         totalProductosConPrecio: totalProductosConPrecio.value,
         totalClientes: totalClientesAsignados.value,
-        tieneConfiguracion: activos.length > 0 || totalProductosConPrecio.value > 0 || totalClientesAsignados.value > 0,
-        configuracionCompleta: activos.length > 0 && totalProductosConPrecio.value > 0 && totalClientesAsignados.value > 0,
+        tieneConfiguracion: totalProductosConPrecio.value > 0 || totalClientesAsignados.value > 0,
+        configuracionCompleta: totalProductosConPrecio.value > 0 && totalClientesAsignados.value > 0,
     }
 })
 
@@ -396,7 +309,6 @@ const cargarTodo = async () => {
     loading.value = true
     try {
         await Promise.all([
-            cargarMinimos(),
             cargarProductos(),
             cargarClientes(),
         ])
@@ -439,16 +351,12 @@ onUnmounted(() => {
                                 {{ datosGrupo.Nombre || 'Grupo' }}
                             </h1>
                             <p class="text-xs text-gray-500 truncate">
-                                {{ datosGrupo.Descripcion || 'Configura mínimos, productos y clientes' }}
+                                {{ datosGrupo.Descripcion || 'Configura precios y clientes' }}
                             </p>
                         </div>
                     </div>
 
                     <div class="flex gap-1.5 flex-wrap">
-                        <span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
-                            <i class="fas fa-chart-line text-[9px]"></i>
-                            {{ totalMinimos }} mínimos
-                        </span>
                         <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
                             <i class="fas fa-box text-[9px]"></i>
                             {{ totalProductosConPrecio }} precios
@@ -464,19 +372,6 @@ onUnmounted(() => {
                 <div class="bg-white rounded-xl shadow-sm mb-4 overflow-hidden">
                     <div class="flex border-b border-gray-200 overflow-x-auto">
                         <button 
-                            @click="tabActiva = 'minimos'"
-                            class="flex-1 min-w-[140px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'minimos' 
-                                ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50' 
-                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
-                        >
-                            <i class="fas fa-chart-line text-sm"></i>
-                            <span>1. Mínimos</span>
-                            <span v-if="totalMinimos > 0" class="bg-primary-100 text-primary-700 rounded-full px-1.5 text-[9px] font-bold">
-                                {{ totalMinimos }}
-                            </span>
-                        </button>
-                        <button 
                             @click="tabActiva = 'productos'"
                             class="flex-1 min-w-[140px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
                             :class="tabActiva === 'productos' 
@@ -484,7 +379,7 @@ onUnmounted(() => {
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-box text-sm"></i>
-                            <span>2. Productos</span>
+                            <span>1. Productos</span>
                             <span v-if="totalProductosConPrecio > 0" class="bg-emerald-100 text-emerald-700 rounded-full px-1.5 text-[9px] font-bold">
                                 {{ totalProductosConPrecio }}
                             </span>
@@ -497,7 +392,7 @@ onUnmounted(() => {
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-users text-sm"></i>
-                            <span>3. Clientes</span>
+                            <span>2. Clientes</span>
                             <span v-if="totalClientesAsignados > 0" class="bg-blue-100 text-blue-700 rounded-full px-1.5 text-[9px] font-bold">
                                 {{ totalClientesAsignados }}
                             </span>
@@ -510,7 +405,7 @@ onUnmounted(() => {
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-cog text-sm"></i>
-                            <span>4. Datos</span>
+                            <span>3. Datos</span>
                         </button>
                     </div>
                 </div>
@@ -521,77 +416,7 @@ onUnmounted(() => {
                     <p class="text-sm text-gray-500 mt-2">Cargando datos...</p>
                 </div>
 
-                <!-- ==================== PESTAÑA 1: MÍNIMOS ==================== -->
-                <div v-else-if="tabActiva === 'minimos'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
-                        <div>
-                            <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                                <i class="fas fa-chart-line text-primary-500 text-[10px]"></i>
-                                Mínimos por Grupo de Análisis
-                            </h2>
-                            <p class="text-[10px] text-gray-500 mt-0.5">
-                                Define la cantidad mínima que debe pedir un cliente por categoría.
-                            </p>
-                        </div>
-                        <button 
-                            @click="guardarMinimos"
-                            :disabled="guardando"
-                            class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
-                        >
-                            <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
-                            <i v-else class="fas fa-save text-[10px]"></i>
-                            Guardar Mínimos
-                        </button>
-                    </div>
-
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3 text-[11px] text-blue-700 flex items-start gap-1.5">
-                        <i class="fas fa-info-circle text-blue-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
-                        <p>Ingresa el mínimo en las categorías que quieras vender. Las que dejes en 0 no aparecerán en el paso 2.</p>
-                    </div>
-
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                        <div 
-                            v-for="item in minimos" 
-                            :key="item.IdGrupoAnalisis"
-                            class="rounded-md border px-2 py-1.5 transition"
-                            :class="item.CantidadMinimaGrupo && parseFloat(item.CantidadMinimaGrupo) > 0 
-                                ? 'bg-emerald-50 border-emerald-300' 
-                                : 'bg-gray-50 border-gray-200'"
-                        >
-                            <div class="flex items-center justify-between mb-1 gap-1">
-                                <label class="text-[10px] font-semibold text-gray-700 truncate flex-1" :title="item.NombreGrupo">
-                                    {{ item.NombreGrupo }}
-                                </label>
-                                <span 
-                                    v-if="item.CantidadMinimaGrupo && parseFloat(item.CantidadMinimaGrupo) > 0"
-                                    class="text-[7px] bg-emerald-600 text-white px-1 py-0.5 rounded-full font-medium flex-shrink-0"
-                                >
-                                    ✓
-                                </span>
-                            </div>
-                            <div class="flex items-center gap-1">
-                                <input 
-                                    type="number"
-                                    v-model="item.CantidadMinimaGrupo"
-                                    min="0"
-                                    step="1"
-                                    placeholder="0"
-                                    class="flex-1 border rounded px-1.5 py-0.5 text-xs font-medium text-center focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none"
-                                    :class="item.CantidadMinimaGrupo && parseFloat(item.CantidadMinimaGrupo) > 0 
-                                        ? 'border-emerald-400 bg-white' 
-                                        : 'border-gray-300 bg-white'"
-                                />
-                                <span class="text-[9px] text-gray-400 font-medium">und</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p v-if="minimos.length === 0" class="text-center text-gray-400 py-6 text-xs">
-                        No hay grupos de análisis configurados
-                    </p>
-                </div>
-
-                <!-- ==================== PESTAÑA 2: PRODUCTOS ==================== -->
+                <!-- ==================== PESTAÑA 1: PRODUCTOS ==================== -->
                 <div v-else-if="tabActiva === 'productos'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
                         <div>
@@ -600,7 +425,7 @@ onUnmounted(() => {
                                 Productos y Precios
                             </h2>
                             <p class="text-[10px] text-gray-500 mt-0.5">
-                                Solo se muestran los grupos activos (mínimo &gt; 0).
+                                Define precios sin factura y con factura para cada producto.
                             </p>
                         </div>
                         <button 
@@ -614,179 +439,158 @@ onUnmounted(() => {
                         </button>
                     </div>
 
-                    <div v-if="productosDeGruposActivos.length === 0" class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 flex items-start gap-2">
-                        <i class="fas fa-exclamation-triangle text-amber-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
-                        <div>
-                            <p class="font-medium mb-0.5">No hay grupos de análisis activos</p>
-                            <p class="text-[10px]">Ve a la pestaña <strong>1. Mínimos</strong> y asigna un mínimo.</p>
-                        </div>
+                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3 text-[11px] text-blue-700 flex items-start gap-1.5">
+                        <i class="fas fa-info-circle text-blue-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
+                        <p>Configura los precios de cada producto. Los mínimos son <strong>globales</strong> y se configuran aparte en "Mínimos Globales".</p>
                     </div>
 
-                    <div v-else>
-                        <!-- ✅ BUSCADOR DE PRODUCTOS -->
-                        <div class="mb-3 space-y-2">
-                            <div class="relative">
-                                <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                                <input 
-                                    type="text"
-                                    v-model="busquedaProducto"
-                                    placeholder="Buscar producto por nombre o código..."
-                                    class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                                />
-                                <button 
-                                    v-if="busquedaProducto"
-                                    @click="busquedaProducto = ''"
-                                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
-                                    <i class="fas fa-times text-[10px]"></i>
-                                </button>
-                            </div>
-
-                            <div class="flex flex-wrap items-center gap-1.5">
-                                <button 
-                                    @click="filtroProducto = 'todos'"
-                                    class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                    :class="filtroProducto === 'todos' 
-                                        ? 'bg-emerald-600 text-white border-emerald-600' 
-                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
-                                >
-                                    Todos ({{ contadoresProductos.todos }})
-                                </button>
-                                <button 
-                                    @click="filtroProducto = 'con_precio'"
-                                    class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                    :class="filtroProducto === 'con_precio' 
-                                        ? 'bg-emerald-600 text-white border-emerald-600' 
-                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
-                                >
-                                    <i class="fas fa-check-circle text-[9px] mr-0.5"></i>
-                                    Con precio ({{ contadoresProductos.conPrecio }})
-                                </button>
-                                <button 
-                                    @click="filtroProducto = 'sin_precio'"
-                                    class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                    :class="filtroProducto === 'sin_precio' 
-                                        ? 'bg-emerald-600 text-white border-emerald-600' 
-                                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
-                                >
-                                    <i class="fas fa-minus-circle text-[9px] mr-0.5"></i>
-                                    Sin precio ({{ contadoresProductos.sinPrecio }})
-                                </button>
-
-                                <span class="ml-auto text-[10px] text-gray-500">
-                                    Mostrando <strong class="text-gray-700">{{ contadorProductosFiltrados }}</strong> de {{ contadoresProductos.todos }}
-                                </span>
-
-                                <button 
-                                    v-if="busquedaProducto || filtroProducto !== 'todos'"
-                                    @click="limpiarBusquedaProducto"
-                                    class="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium px-2 py-0.5 rounded hover:bg-emerald-50 transition"
-                                >
-                                    Limpiar
-                                </button>
-                            </div>
-                        </div>
-
-                        <!-- MENSAJE SIN RESULTADOS -->
-                        <div v-if="productosFiltradosPorGrupo.length === 0" class="text-center py-6 text-gray-400">
-                            <i class="fas fa-search text-2xl text-gray-300 block mb-1"></i>
-                            <p class="text-xs">No se encontraron productos</p>
+                    <!-- BUSCADOR DE PRODUCTOS -->
+                    <div class="mb-3 space-y-2">
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                            <input 
+                                type="text"
+                                v-model="busquedaProducto"
+                                placeholder="Buscar producto por nombre o código..."
+                                class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                            />
                             <button 
-                                @click="limpiarBusquedaProducto"
-                                class="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium underline"
+                                v-if="busquedaProducto"
+                                @click="busquedaProducto = ''"
+                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                             >
-                                Limpiar filtros
+                                <i class="fas fa-times text-[10px]"></i>
                             </button>
                         </div>
 
-                        <!-- LISTA DE PRODUCTOS FILTRADOS -->
-                        <div v-else class="space-y-3">
-                            <div 
-                                v-for="grupoProd in productosFiltradosPorGrupo" 
-                                :key="grupoProd.IdGrupoAnalisis"
-                                class="border border-gray-200 rounded-lg overflow-hidden"
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button 
+                                @click="filtroProducto = 'todos'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroProducto === 'todos' 
+                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
-                                <!-- Header grupo -->
-                                <div class="bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-3 py-1.5 border-b border-emerald-200 flex items-center justify-between">
-                                    <div class="flex items-center gap-1.5">
-                                        <i class="fas fa-tag text-emerald-600 text-[10px]"></i>
-                                        <span class="font-bold text-emerald-800 text-xs">
-                                            {{ grupoProd.NombreGrupo }}
-                                        </span>
-                                        <span class="text-[8px] bg-white text-emerald-700 px-1.5 py-0.5 rounded-full font-medium border border-emerald-200">
-                                            Activo
-                                        </span>
-                                    </div>
-                                    <span class="text-[10px] text-emerald-600 font-medium">
-                                        {{ grupoProd.Productos.filter(p => p.TienePrecio).length }} / {{ grupoProd.Productos.length }}
+                                Todos ({{ contadoresProductos.todos }})
+                            </button>
+                            <button 
+                                @click="filtroProducto = 'con_precio'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroProducto === 'con_precio' 
+                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                            >
+                                <i class="fas fa-check-circle text-[9px] mr-0.5"></i>
+                                Con precio ({{ contadoresProductos.conPrecio }})
+                            </button>
+                            <button 
+                                @click="filtroProducto = 'sin_precio'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroProducto === 'sin_precio' 
+                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                            >
+                                <i class="fas fa-minus-circle text-[9px] mr-0.5"></i>
+                                Sin precio ({{ contadoresProductos.sinPrecio }})
+                            </button>
+
+                            <span class="ml-auto text-[10px] text-gray-500">
+                                Mostrando <strong class="text-gray-700">{{ contadorProductosFiltrados }}</strong> de {{ contadoresProductos.todos }}
+                            </span>
+
+                            <button 
+                                v-if="busquedaProducto || filtroProducto !== 'todos'"
+                                @click="limpiarBusquedaProducto"
+                                class="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium px-2 py-0.5 rounded hover:bg-emerald-50 transition"
+                            >
+                                Limpiar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- MENSAJE SIN RESULTADOS -->
+                    <div v-if="productosFiltradosPorGrupo.length === 0" class="text-center py-6 text-gray-400">
+                        <i class="fas fa-search text-2xl text-gray-300 block mb-1"></i>
+                        <p class="text-xs">No se encontraron productos</p>
+                        <button 
+                            @click="limpiarBusquedaProducto"
+                            class="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium underline"
+                        >
+                            Limpiar filtros
+                        </button>
+                    </div>
+
+                    <!-- LISTA DE PRODUCTOS -->
+                    <div v-else class="space-y-3">
+                        <div 
+                            v-for="grupoProd in productosFiltradosPorGrupo" 
+                            :key="grupoProd.IdGrupoAnalisis"
+                            class="border border-gray-200 rounded-lg overflow-hidden"
+                        >
+                            <div class="bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-3 py-1.5 border-b border-emerald-200 flex items-center justify-between">
+                                <div class="flex items-center gap-1.5">
+                                    <i class="fas fa-tag text-emerald-600 text-[10px]"></i>
+                                    <span class="font-bold text-emerald-800 text-xs">
+                                        {{ grupoProd.NombreGrupo }}
                                     </span>
                                 </div>
+                                <span class="text-[10px] text-emerald-600 font-medium">
+                                    {{ grupoProd.Productos.filter(p => p.TienePrecio).length }} / {{ grupoProd.Productos.length }}
+                                </span>
+                            </div>
 
-                                <!-- Tabla productos -->
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-xs">
-                                        <thead class="bg-gray-50 text-[9px] text-gray-500 uppercase">
-                                            <tr>
-                                                <th class="px-2 py-1 text-left font-medium">Código</th>
-                                                <th class="px-2 py-1 text-left font-medium">Producto</th>
-                                                <th class="px-2 py-1 text-center font-medium w-20">S/F (Bs.)</th>
-                                                <th class="px-2 py-1 text-center font-medium w-20">C/F (Bs.)</th>
-                                                <th class="px-2 py-1 text-center font-medium w-16">Mín.</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-gray-100">
-                                            <tr 
-                                                v-for="prod in grupoProd.Productos" 
-                                                :key="prod.IdProducto"
-                                                class="hover:bg-gray-50 transition"
-                                                :class="prod.TienePrecio ? 'bg-emerald-50/30' : ''"
-                                            >
-                                                <td class="px-2 py-1 font-mono text-[10px] text-gray-500">
-                                                    {{ prod.Codigo }}
-                                                </td>
-                                                <td class="px-2 py-1 text-gray-700 text-[11px]">
-                                                    {{ prod.Descripcion }}
-                                                </td>
-                                                <td class="px-2 py-1">
-                                                    <input 
-                                                        type="number"
-                                                        v-model="prod.PrecioSinFactura"
-                                                        min="0"
-                                                        step="0.01"
-                                                        placeholder="0.00"
-                                                        class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
-                                                    />
-                                                </td>
-                                                <td class="px-2 py-1">
-                                                    <input 
-                                                        type="number"
-                                                        v-model="prod.PrecioConFactura"
-                                                        min="0"
-                                                        step="0.01"
-                                                        placeholder="0.00"
-                                                        class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
-                                                    />
-                                                </td>
-                                                <td class="px-2 py-1">
-                                                    <input 
-                                                        type="number"
-                                                        v-model="prod.PedidoMinimo"
-                                                        min="0"
-                                                        step="1"
-                                                        placeholder="0"
-                                                        class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
-                                                    />
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead class="bg-gray-50 text-[9px] text-gray-500 uppercase">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left font-medium">Código</th>
+                                            <th class="px-2 py-1 text-left font-medium">Producto</th>
+                                            <th class="px-2 py-1 text-center font-medium w-24">S/F (Bs.)</th>
+                                            <th class="px-2 py-1 text-center font-medium w-24">C/F (Bs.)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100">
+                                        <tr 
+                                            v-for="prod in grupoProd.Productos" 
+                                            :key="prod.IdProducto"
+                                            class="hover:bg-gray-50 transition"
+                                            :class="prod.TienePrecio ? 'bg-emerald-50/30' : ''"
+                                        >
+                                            <td class="px-2 py-1 font-mono text-[10px] text-gray-500">
+                                                {{ prod.Codigo }}
+                                            </td>
+                                            <td class="px-2 py-1 text-gray-700 text-[11px]">
+                                                {{ prod.Descripcion }}
+                                            </td>
+                                            <td class="px-2 py-1">
+                                                <input 
+                                                    type="number"
+                                                    v-model="prod.PrecioSinFactura"
+                                                    min="0"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
+                                                />
+                                            </td>
+                                            <td class="px-2 py-1">
+                                                <input 
+                                                    type="number"
+                                                    v-model="prod.PrecioConFactura"
+                                                    min="0"
+                                                    step="0.01"
+                                                    placeholder="0.00"
+                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
+                                                />
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ==================== PESTAÑA 3: CLIENTES ==================== -->
+                <!-- ==================== PESTAÑA 2: CLIENTES ==================== -->
                 <div v-else-if="tabActiva === 'clientes'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
                         <div>
@@ -929,7 +733,7 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ==================== PESTAÑA 4: DATOS ==================== -->
+                <!-- ==================== PESTAÑA 3: DATOS ==================== -->
                 <div v-else-if="tabActiva === 'datos'" class="space-y-4 max-w-3xl">
                     
                     <!-- RESUMEN DEL GRUPO -->
@@ -944,21 +748,7 @@ onUnmounted(() => {
                             </p>
                         </div>
 
-                        <!-- Estado general -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
-                            <div class="rounded-lg p-2.5 border" :class="totalMinimos > 0 ? 'bg-purple-50 border-purple-200' : 'bg-gray-50 border-gray-200'">
-                                <div class="flex items-center gap-1.5 mb-1">
-                                    <i class="fas fa-chart-line text-[10px]" :class="totalMinimos > 0 ? 'text-purple-600' : 'text-gray-400'"></i>
-                                    <span class="text-[10px] font-semibold" :class="totalMinimos > 0 ? 'text-purple-800' : 'text-gray-500'">Mínimos</span>
-                                </div>
-                                <p class="text-lg font-bold" :class="totalMinimos > 0 ? 'text-purple-700' : 'text-gray-400'">
-                                    {{ totalMinimos }}
-                                </p>
-                                <p class="text-[9px]" :class="totalMinimos > 0 ? 'text-purple-600' : 'text-gray-400'">
-                                    {{ totalMinimos > 0 ? 'grupos activos' : 'sin configurar' }}
-                                </p>
-                            </div>
-
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                             <div class="rounded-lg p-2.5 border" :class="totalProductosConPrecio > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'">
                                 <div class="flex items-center gap-1.5 mb-1">
                                     <i class="fas fa-box text-[10px]" :class="totalProductosConPrecio > 0 ? 'text-emerald-600' : 'text-gray-400'"></i>
@@ -986,7 +776,6 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Estado de configuración -->
                         <div v-if="resumenGrupo.configuracionCompleta" class="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-start gap-2 mb-3">
                             <i class="fas fa-check-circle text-emerald-600 text-sm flex-shrink-0 mt-0.5"></i>
                             <div class="text-xs text-emerald-700">
@@ -1001,7 +790,6 @@ onUnmounted(() => {
                                 <p class="font-semibold">Configuración incompleta</p>
                                 <p class="text-[10px]">
                                     Falta:
-                                    <span v-if="totalMinimos === 0" class="font-medium">mínimos, </span>
                                     <span v-if="totalProductosConPrecio === 0" class="font-medium">productos con precio, </span>
                                     <span v-if="totalClientesAsignados === 0" class="font-medium">clientes</span>
                                 </p>
@@ -1012,25 +800,7 @@ onUnmounted(() => {
                             <i class="fas fa-info-circle text-gray-500 text-sm flex-shrink-0 mt-0.5"></i>
                             <div class="text-xs text-gray-600">
                                 <p class="font-semibold">Sin configuración</p>
-                                <p class="text-[10px]">Aún no has configurado este grupo. Empieza por la pestaña <strong>1. Mínimos</strong>.</p>
-                            </div>
-                        </div>
-
-                        <!-- Mínimos activos -->
-                        <div v-if="resumenGrupo.minimosActivos.length > 0">
-                            <p class="text-[10px] font-semibold text-gray-600 mb-1.5">
-                                <i class="fas fa-chart-line text-purple-500 mr-0.5"></i>
-                                Mínimos configurados:
-                            </p>
-                            <div class="flex flex-wrap gap-1.5">
-                                <span 
-                                    v-for="min in resumenGrupo.minimosActivos" 
-                                    :key="min.nombre"
-                                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 border border-purple-200 text-purple-700 rounded-full text-[10px] font-medium"
-                                >
-                                    <i class="fas fa-tag text-[8px]"></i>
-                                    {{ min.nombre }}: <strong>{{ min.cantidad }}</strong>
-                                </span>
+                                <p class="text-[10px]">Aún no has configurado este grupo. Empieza por la pestaña <strong>1. Productos</strong>.</p>
                             </div>
                         </div>
                     </div>

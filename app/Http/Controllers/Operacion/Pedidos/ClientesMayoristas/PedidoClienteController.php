@@ -11,7 +11,8 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteSubCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\ClienteSucursal;
@@ -87,75 +88,107 @@ class PedidoClienteController extends Controller
         });
     }
 
-    private function obtenerMinimosDelGrupo($idGrupoCliente)
+    /**
+     * Calcular progreso de mínimos GLOBALES
+     * - Mínimos por grupo de análisis (global)
+     * - Mínimos por producto (global)
+     */
+    private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente = null)
     {
-        return cache()->remember("minimos_grupo_{$idGrupoCliente}", 1800, function () use ($idGrupoCliente) {
-            return GrupoClienteMinimo::where('IdGrupoCliente', $idGrupoCliente)
-                ->where('ActivoInactivo', 1)
-                ->where('CantidadMinimaGrupo', '>', 0)
-                ->with('grupoAnalisis')
-                ->get()
-                ->map(function ($item) {
-                    return [
-                        'IdGrupoAnalisis' => $item->IdGrupoAnalisis,
-                        'NombreGrupo' => $item->grupoAnalisis ? $item->grupoAnalisis->Grupo : 'Sin grupo',
-                        'CantidadMinimaGrupo' => (float) $item->CantidadMinimaGrupo,
-                    ];
-                })
-                ->values()
-                ->toArray();
-        });
-    }
-
-    private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente)
-    {
-        if (!$pedidoBorrador || !$idGrupoCliente) {
+        if (!$pedidoBorrador) {
             return [];
         }
 
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        // Detalles del pedido
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('pedidos_clientes_detalle as d')
             ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
             ->where('d.IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
-            ->select('d.Cantidad', 'p.IdGrupoAnalisis')
-            ->get();
-
-        $acumulado = [];
-        foreach ($detalles as $detalle) {
-            $grupoId = $detalle->IdGrupoAnalisis;
-            if (!isset($acumulado[$grupoId])) {
-                $acumulado[$grupoId] = 0;
-            }
-            $acumulado[$grupoId] += (float) $detalle->Cantidad;
-        }
-
-        if (empty($acumulado)) {
-            return [];
-        }
-
-        $gruposConProductos = array_keys($acumulado);
-
-        $minimos = GrupoClienteMinimo::where('IdGrupoCliente', $idGrupoCliente)
-            ->whereIn('IdGrupoAnalisis', $gruposConProductos)
-            ->where('ActivoInactivo', 1)
-            ->where('CantidadMinimaGrupo', '>', 0)
-            ->with('grupoAnalisis')
+            ->select('d.IdProducto', 'd.Cantidad', 'p.IdGrupoAnalisis')
             ->get();
 
         $progreso = [];
-        foreach ($minimos as $minimo) {
-            $grupoId = $minimo->IdGrupoAnalisis;
-            $cantidadPedida = $acumulado[$grupoId] ?? 0;
-            $cantidadMinima = (float) $minimo->CantidadMinimaGrupo;
 
-            $progreso[] = [
-                'IdGrupoAnalisis' => $grupoId,
-                'NombreGrupo' => $minimo->grupoAnalisis ? $minimo->grupoAnalisis->Grupo : 'Sin grupo',
-                'CantidadPedida' => $cantidadPedida,
-                'CantidadMinima' => $cantidadMinima,
-                'Cumple' => $cantidadPedida >= $cantidadMinima,
-                'Falta' => max(0, $cantidadMinima - $cantidadPedida),
-            ];
+        // ============================================================
+        // 1. MÍNIMOS POR GRUPO DE ANÁLISIS (GLOBAL)
+        // ============================================================
+        $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
+
+        if (!empty($mapaGrupos)) {
+            $acumuladoPorGrupo = [];
+            foreach ($detalles as $d) {
+                $idG = $d->IdGrupoAnalisis;
+                $acumuladoPorGrupo[$idG] = ($acumuladoPorGrupo[$idG] ?? 0) + (float) $d->Cantidad;
+            }
+
+            $idsGrupos = array_keys($mapaGrupos);
+            $nombresGrupos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productogrupoanalisis')
+                ->whereIn('IdGrupoAnalisis', $idsGrupos)
+                ->pluck('Grupo', 'IdGrupoAnalisis');
+
+            foreach ($mapaGrupos as $idGrupo => $minimo) {
+                // Solo validar si el pedido tiene al menos 1 producto de ese grupo
+                if (!isset($acumuladoPorGrupo[$idGrupo])) {
+                    continue;
+                }
+
+                $pedida = $acumuladoPorGrupo[$idGrupo];
+                $min = (float) $minimo;
+
+                $progreso[] = [
+                    'Tipo' => 'grupo',
+                    'IdGrupoAnalisis' => $idGrupo,
+                    'NombreGrupo' => $nombresGrupos[$idGrupo] ?? 'Sin grupo',
+                    'CantidadPedida' => $pedida,
+                    'CantidadMinima' => $min,
+                    'Cumple' => $pedida >= $min,
+                    'Falta' => max(0, $min - $pedida),
+                ];
+            }
+        }
+
+        // ============================================================
+        // 2. MÍNIMOS POR PRODUCTO (GLOBAL)
+        // ============================================================
+        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
+
+        if (!empty($mapaProductos)) {
+            $acumuladoPorProducto = [];
+            foreach ($detalles as $d) {
+                $acumuladoPorProducto[$d->IdProducto] = ($acumuladoPorProducto[$d->IdProducto] ?? 0) + (float) $d->Cantidad;
+            }
+
+            $idsProductos = array_keys($mapaProductos);
+            $infoProductos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle')
+                ->whereIn('IdProducto', $idsProductos)
+                ->get(['IdProducto', 'Codigo', 'Descripcion'])
+                ->keyBy('IdProducto');
+
+            foreach ($mapaProductos as $idProd => $minimo) {
+                // Solo validar si el producto está en el pedido
+                if (!isset($acumuladoPorProducto[$idProd])) {
+                    continue;
+                }
+
+                $pedida = $acumuladoPorProducto[$idProd];
+                $min = (float) $minimo;
+                $info = $infoProductos[$idProd] ?? null;
+
+                $progreso[] = [
+                    'Tipo' => 'producto',
+                    'IdProducto' => $idProd,
+                    'NombreGrupo' => $info ? ($info->Codigo . ' - ' . $info->Descripcion) : 'Producto #' . $idProd,
+                    'CantidadPedida' => $pedida,
+                    'CantidadMinima' => $min,
+                    'Cumple' => $pedida >= $min,
+                    'Falta' => max(0, $min - $pedida),
+                ];
+            }
         }
 
         return $progreso;
@@ -305,7 +338,8 @@ class PedidoClienteController extends Controller
             })->values();
         }
 
-        $minimosGrupos = $this->obtenerMinimosDelGrupo($grupoCliente->IdGrupoCliente);
+        $minimosGrupos = GrupoAnalisisMinimo::obtenerMapa();
+        $minimosProductos = ProductoMinimo::obtenerMapa();
         $progresoInicial = $this->calcularProgresoGrupos($pedidoBorrador, $grupoCliente->IdGrupoCliente);
 
         PedidoClienteSubCliente::asegurarSubClientePropio();
@@ -324,7 +358,6 @@ class PedidoClienteController extends Controller
 
         $idSubClienteDefault = $idSubClienteDefault ? (int) $idSubClienteDefault : null;
 
-        // ✅ NUEVO: Hora límite para pedidos de clientes mayoristas
         $horaLimite = HoraLimite::obtenerHoraActiva(
             HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
         );
@@ -343,12 +376,11 @@ class PedidoClienteController extends Controller
                 'Nombre' => $grupoCliente->Nombre,
             ],
             'minimosGrupos' => $minimosGrupos,
+            'minimosProductos' => $minimosProductos,
             'progresoInicial' => $progresoInicial,
             'tipoPrecio' => $tipoPrecio,
             'subclientes' => $subclientes,
             'idSubClienteDefault' => $idSubClienteDefault,
-
-            // ✅ NUEVO
             'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
             'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
         ]);
@@ -357,10 +389,10 @@ class PedidoClienteController extends Controller
     // ============================================================
     // PRODUCTOS DEL CONTENEDOR CON PRECIOS DEL GRUPO
     // ============================================================
-
     public function getProductosContenedorConPrecios(Request $request, $id)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
 
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
         if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
@@ -368,21 +400,13 @@ class PedidoClienteController extends Controller
         }
 
         $idIdentificador = $this->getIdIdentificadorOperador();
-
         if (!$idIdentificador) {
-            return response()->json([
-                'success' => false,
-                'message' => 'No se encontró el perfil del operador.'
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'No se encontró el perfil del operador.'], 400);
         }
 
         $grupoCliente = $this->getGrupoDelOperador();
-
         if (!$grupoCliente) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'], 400);
         }
 
         $contenedor = Contenedor::where('IdCliente', $clienteId)
@@ -395,19 +419,13 @@ class PedidoClienteController extends Controller
             ->first();
 
         if (!$contenedor) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Este contenedor no está asignado a tu grupo.'
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'Este contenedor no está asignado a tu grupo.'], 400);
         }
 
-        $gruposActivosIds = GrupoClienteMinimo::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
-            ->where('ActivoInactivo', 1)
-            ->where('CantidadMinimaGrupo', '>', 0)
-            ->pluck('IdGrupoAnalisis')
-            ->toArray();
+        // ✅ NUEVO: Solo productos configurados + disponibles + con mínimo > 0
+        $productosDisponibles = ProductoMinimo::obtenerIdsDisponibles($clienteId, $sucursalId);
 
-        if (empty($gruposActivosIds)) {
+        if (empty($productosDisponibles)) {
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -419,10 +437,12 @@ class PedidoClienteController extends Controller
                     'total_productos' => 0,
                     'tipoPrecio' => $tipoPrecio,
                     'grupoCliente' => $grupoCliente->Nombre,
-                    'mensaje' => 'Tu grupo no tiene mínimos configurados',
+                    'mensaje' => 'No hay productos configurados para pedidos. Contacte al administrador.',
                 ]
             ]);
         }
+
+        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
 
         $productosConPrecio = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('ActivoInactivo', 1)
@@ -430,20 +450,20 @@ class PedidoClienteController extends Controller
             ->keyBy('IdProducto');
 
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
-            ->whereIn('IdGrupoAnalisis', $gruposActivosIds)
-            ->whereIn('IdProducto', $productosConPrecio->keys())
+            ->whereIn('IdProducto', $productosDisponibles)      // ✅ Solo configurados y disponibles
+            ->whereIn('IdProducto', $productosConPrecio->keys()) // ✅ Con precio para este grupo
             ->where('ActivoInactivo', 0)
             ->orderBy('IdGrupoAnalisis')
             ->orderBy('Descripcion')
-            ->get();
+            ->get(['IdProducto', 'Codigo', 'Descripcion', 'IdGrupoAnalisis']);
 
-        $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function ($items, $grupoId) use ($productosConPrecio, $contenedor, $tipoPrecio) {
+        $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function ($items, $grupoId) use ($productosConPrecio, $contenedor, $tipoPrecio, $mapaProductos) {
             $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
 
             return [
                 'grupo_id' => $grupoId,
                 'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
-                'productos' => $items->map(function ($producto) use ($productosConPrecio, $contenedor, $tipoPrecio) {
+                'productos' => $items->map(function ($producto) use ($productosConPrecio, $contenedor, $tipoPrecio, $mapaProductos) {
                     $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
 
                     $precioFinal = null;
@@ -454,6 +474,7 @@ class PedidoClienteController extends Controller
                     }
 
                     $tienePrecio = $precioFinal !== null && $precioFinal > 0;
+                    $minimoProducto = $mapaProductos[$producto->IdProducto] ?? null;
 
                     return [
                         'IdProducto' => $producto->IdProducto,
@@ -463,6 +484,7 @@ class PedidoClienteController extends Controller
                         'tiene_precio' => $tienePrecio,
                         'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
                         'CapacidadTotal' => $contenedor->CapacidadTotal,
+                        'MinimoProducto' => $minimoProducto !== null ? (float) $minimoProducto : null,
                     ];
                 })->values(),
             ];
@@ -471,11 +493,7 @@ class PedidoClienteController extends Controller
         $totalConPrecio = $productos->filter(function ($producto) use ($productosConPrecio, $tipoPrecio) {
             $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
             if (!$precioGrupo) return false;
-
-            $precioFinal = $tipoPrecio === 'con_factura'
-                ? $precioGrupo->PrecioConFactura
-                : $precioGrupo->PrecioSinFactura;
-
+            $precioFinal = $tipoPrecio === 'con_factura' ? $precioGrupo->PrecioConFactura : $precioGrupo->PrecioSinFactura;
             return $precioFinal !== null && $precioFinal > 0;
         })->count();
 
@@ -488,7 +506,6 @@ class PedidoClienteController extends Controller
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                 'productos_agrupados' => $productosAgrupados,
                 'total_productos' => $totalConPrecio,
-                'total_sin_precio' => $productos->count() - $totalConPrecio,
                 'tipoPrecio' => $tipoPrecio,
                 'grupoCliente' => $grupoCliente->Nombre,
             ]
@@ -879,7 +896,6 @@ class PedidoClienteController extends Controller
                 ];
             }, $subclientes);
 
-            // ✅ NUEVO: Hora límite para mostrar en Review
             $horaLimite = HoraLimite::obtenerHoraActiva(
                 HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
             );
@@ -900,8 +916,6 @@ class PedidoClienteController extends Controller
                 'cumpleMinimos' => $cumpleMinimos,
                 'tipoPrecio' => $pedido->TipoPrecio,
                 'subclientes' => $subclientes,
-
-                // ✅ NUEVO
                 'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
                 'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
             ]);
@@ -983,7 +997,7 @@ class PedidoClienteController extends Controller
             ], 422);
         }
 
-        // ✅ NUEVO: VALIDACIÓN DE HORA LÍMITE PARA PEDIDOS CLIENTES MAYORISTAS
+        // Validación de hora límite
         $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
 
         if ($fechaEntregaFormateada === $fechaManana) {
@@ -1047,12 +1061,13 @@ class PedidoClienteController extends Controller
 
             if ($gruposQueNoCumplen->isNotEmpty()) {
                 $errores = $gruposQueNoCumplen->map(function($item) {
-                    return "• {$item['NombreGrupo']}: faltan {$item['Falta']} und (tienes {$item['CantidadPedida']}, mínimo {$item['CantidadMinima']})";
+                    $tipo = $item['Tipo'] === 'producto' ? 'Producto' : 'Grupo';
+                    return "• [{$tipo}] {$item['NombreGrupo']}: faltan {$item['Falta']} und (tienes {$item['CantidadPedida']}, mínimo {$item['CantidadMinima']})";
                 })->toArray();
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se puede finalizar el pedido. Faltan mínimos por grupo:',
+                    'message' => 'No se puede finalizar el pedido. Faltan mínimos:',
                     'errores' => $errores,
                 ], 400);
             }
@@ -1917,11 +1932,6 @@ class PedidoClienteController extends Controller
     // API: VALIDAR HORA LÍMITE PARA CLIENTES MAYORISTAS
     // ============================================================
 
-    /**
-     * API: Validar hora límite antes de finalizar un pedido de cliente mayorista
-     * Endpoint: POST /operacion/pedidos/clientes-mayoristas/api/validar-hora-limite
-     * Body: { FechaEntrega: 'YYYY-MM-DD' }
-     */
     public function apiValidarHoraLimite(Request $request)
     {
         $request->validate([
@@ -1930,7 +1940,6 @@ class PedidoClienteController extends Controller
 
         $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
 
-        // Si la fecha de entrega NO es mañana, no aplica hora límite
         if ($request->FechaEntrega !== $fechaManana) {
             return response()->json([
                 'success' => true,
@@ -1939,7 +1948,6 @@ class PedidoClienteController extends Controller
             ]);
         }
 
-        // Obtener hora límite activa del tipo MAYORISTA
         $horaLimite = HoraLimite::obtenerHoraActiva(
             HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
         );

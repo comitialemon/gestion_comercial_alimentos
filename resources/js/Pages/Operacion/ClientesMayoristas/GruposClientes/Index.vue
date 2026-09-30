@@ -13,15 +13,12 @@ const props = defineProps({
     filtroEstado: String,
     buscar: String,
 })
-const exportarExcel = () => {
-    window.open('/operacion/pedidos/reportes/grupos-clientes/exportar-excel', '_blank')
-}
+
 // =============================================
 // ESTADO
 // =============================================
 const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
-
 const gruposData = ref(props.grupos)
 
 // =============================================
@@ -112,7 +109,7 @@ const cambiarEstado = async (grupo) => {
 // ELIMINAR GRUPO
 // =============================================
 const eliminarGrupo = async (grupo) => {
-    if (!confirm(`¿Estás seguro de eliminar el grupo "${grupo.Nombre}"?\n\nEsta acción eliminará también:\n- Los clientes asignados\n- Los precios configurados\n- Los mínimos configurados`)) {
+    if (!confirm(`¿Estás seguro de eliminar el grupo "${grupo.Nombre}"?\n\nEsta acción eliminará también:\n- Los clientes asignados\n- Los precios configurados`)) {
         return
     }
     
@@ -207,7 +204,7 @@ watch(() => props.grupos, (newVal) => {
                         <div>
                             <h1 class="text-base sm:text-lg font-bold text-gray-800">Grupos de Clientes</h1>
                             <p class="text-[10px] text-gray-500">
-                                Agrupa clientes que comparten productos, precios y mínimos
+                                Agrupa clientes que comparten productos y precios
                             </p>
                         </div>
                     </div>
@@ -227,7 +224,7 @@ watch(() => props.grupos, (newVal) => {
                     <i class="fas fa-info-circle text-blue-500 text-sm flex-shrink-0 mt-0.5"></i>
                     <div class="text-xs text-blue-700">
                         <p class="font-medium mb-0.5">¿Cómo funciona?</p>
-                        <p>Crea un grupo, asígnale clientes (operadores PedidoClientes), define los <strong>mínimos por grupo de análisis</strong> y los <strong>precios por producto</strong>. Al hacer un pedido, se usan estos datos automáticamente.</p>
+                        <p>Crea un grupo, asígnale clientes (operadores PedidoClientes) y define los <strong>precios por producto</strong>. Los <strong>mínimos son globales</strong> y se configuran aparte.</p>
                     </div>
                 </div>
 
@@ -271,13 +268,6 @@ watch(() => props.grupos, (newVal) => {
                             <span class="font-semibold">{{ buscador }}</span>
                             <span class="ml-2">({{ grupos?.total || 0 }} resultados)</span>
                         </div>
-                        <button 
-                            @click="exportarExcel"
-                            class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center gap-1.5 transition"
-                        >
-                            <i class="fas fa-file-excel text-[10px]"></i>
-                            Exportar Excel
-                        </button>
                     </div>
                 </div>
 
@@ -292,7 +282,6 @@ watch(() => props.grupos, (newVal) => {
                                     <th class="px-3 py-2 text-left text-[10px] font-medium text-gray-500 uppercase">Grupo</th>
                                     <th class="px-3 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">Clientes</th>
                                     <th class="px-3 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">Productos</th>
-                                    <th class="px-3 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">Mínimos</th>
                                     <th class="px-3 py-2 text-center text-[10px] font-medium text-gray-500 uppercase">Estado</th>
                                     <th class="px-3 py-2 text-right text-[10px] font-medium text-gray-500 uppercase">Acciones</th>
                                 </tr>
@@ -330,13 +319,6 @@ watch(() => props.grupos, (newVal) => {
                                             :class="grupo.TotalProductos > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'">
                                             <i class="fas fa-box text-[9px]"></i>
                                             {{ grupo.TotalProductos }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2 text-center">
-                                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium"
-                                            :class="grupo.TotalMinimos > 0 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'">
-                                            <i class="fas fa-chart-line text-[9px]"></i>
-                                            {{ grupo.TotalMinimos }}
                                         </span>
                                     </td>
                                     <td class="px-3 py-2 text-center">
@@ -410,7 +392,7 @@ watch(() => props.grupos, (newVal) => {
                                 </span>
                             </div>
 
-                            <div class="grid grid-cols-3 gap-2 mb-3 text-center">
+                            <div class="grid grid-cols-2 gap-2 mb-3 text-center">
                                 <div class="bg-blue-50 rounded-lg p-1.5">
                                     <p class="text-[9px] text-blue-600 font-medium uppercase">Clientes</p>
                                     <p class="text-sm font-bold text-blue-700">{{ grupo.TotalClientes }}</p>
@@ -418,10 +400,6 @@ watch(() => props.grupos, (newVal) => {
                                 <div class="bg-emerald-50 rounded-lg p-1.5">
                                     <p class="text-[9px] text-emerald-600 font-medium uppercase">Productos</p>
                                     <p class="text-sm font-bold text-emerald-700">{{ grupo.TotalProductos }}</p>
-                                </div>
-                                <div class="bg-purple-50 rounded-lg p-1.5">
-                                    <p class="text-[9px] text-purple-600 font-medium uppercase">Mínimos</p>
-                                    <p class="text-sm font-bold text-purple-700">{{ grupo.TotalMinimos }}</p>
                                 </div>
                             </div>
 
@@ -483,7 +461,7 @@ watch(() => props.grupos, (newVal) => {
                     <h3 class="text-base font-semibold text-gray-700">No hay grupos de clientes</h3>
                     <p class="text-xs text-gray-400 mt-2 max-w-sm mx-auto">
                         <span v-if="buscador">No se encontraron grupos con "{{ buscador }}"</span>
-                        <span v-else>Crea tu primer grupo para agrupar clientes y configurar precios y mínimos en masa</span>
+                        <span v-else>Crea tu primer grupo para agrupar clientes y configurar precios en masa</span>
                     </p>
                     <button 
                         v-if="!buscador"

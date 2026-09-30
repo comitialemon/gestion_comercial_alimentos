@@ -8,6 +8,8 @@ use App\Models\Gestion\Inventario\ProductoGrupoAnalisis;
 use App\Models\Gestion\Inventario\ProductoLinea;
 use App\Models\Gestion\Inventario\ProductoEstado;
 use App\Models\Gestion\Inventario\UnidadMedida;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -16,12 +18,13 @@ use Illuminate\Support\Facades\Log;
 class ProductoDetalleController extends Controller
 {
     /**
-     * Listado de productos (GRID) - Usando JOIN para asegurar datos
+     * Listado de productos (GRID)
      */
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
-        
+        $sucursalId = session('cliente_sucursal_id');
+
         $query = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_productodetalle as p')
             ->leftJoin('inventario_productogrupoanalisis as g', 'p.IdGrupoAnalisis', '=', 'g.IdGrupoAnalisis')
@@ -40,45 +43,41 @@ class ProductoDetalleController extends Controller
                 'p.IdUnidadMedida',
                 'p.OrdenInformes',
                 'g.Grupo as grupo_nombre',
-                'g.IdGrupoAnalisis as grupo_id',
                 'l.Linea as linea_nombre',
-                'l.IdLinea as linea_id',
                 'e.Estado as estado_nombre',
-                'e.IdEstado as estado_id',
-                'u.UnidadMedida as unidad_nombre',
-                'u.IdUnidadMedida as unidad_id'
+                'u.UnidadMedida as unidad_nombre'
             );
-        
+
         // Filtros
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('p.Codigo', 'like', "%{$search}%")
                     ->orWhere('p.Descripcion', 'like', "%{$search}%");
             });
         }
-        
+
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('p.ActivoInactivo', $request->estado);
         }
-        
+
         if ($request->filled('linea')) {
             $query->where('p.IdLineaProducto', $request->linea);
         }
-        
+
         if ($request->filled('estadoProducto') && $request->estadoProducto !== '') {
             $query->where('p.IdEstadoProducto', $request->estadoProducto);
         }
-        
+
         if ($request->filled('grupo')) {
             $query->where('p.IdGrupoAnalisis', $request->grupo);
         }
-        
+
         $productosData = $query->orderBy('p.Codigo')->paginate(20);
-        
+
         $productos = new \stdClass();
         $productos->data = [];
-        
+
         foreach ($productosData as $item) {
             $productos->data[] = (object) [
                 'IdProducto' => $item->IdProducto,
@@ -108,7 +107,7 @@ class ProductoDetalleController extends Controller
                 ]
             ];
         }
-        
+
         $productos->links = $productosData->links();
         $productos->currentPage = $productosData->currentPage();
         $productos->lastPage = $productosData->lastPage();
@@ -117,36 +116,49 @@ class ProductoDetalleController extends Controller
         $productos->total = $productosData->total();
         $productos->perPage = $productosData->perPage();
         $productos->path = $productosData->path();
-        
+
         $totalActivos = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->count();
-        
+
         $totalInactivos = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->count();
-        
+
         $grupos = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
             ->orderBy('IdGrupoAnalisis')
             ->get(['IdGrupoAnalisis as id', 'Grupo as nombre']);
-        
+
         $lineas = ProductoLinea::where('IdCliente', $clienteId)
             ->orderBy('Linea')
             ->get(['IdLinea as id', 'Linea as nombre']);
-        
+
         $estados = ProductoEstado::where('IdCliente', $clienteId)
             ->orderBy('Estado')
             ->get(['IdEstado as id', 'Estado as nombre']);
-        
+
         $unidades = UnidadMedida::orderBy('IdUnidadMedida')
             ->get(['IdUnidadMedida as id', 'UnidadMedida as nombre']);
-        
+
         $unidadId = null;
         $unidad = $unidades->firstWhere('nombre', 'Unidad');
         if ($unidad) {
             $unidadId = $unidad->id;
         }
-        
+
+        // ✅ NUEVO: Mapa de grupos con mínimo (para mostrar/ocultar sección en el modal)
+        $gruposConMinimo = GrupoAnalisisMinimo::porContexto($clienteId, $sucursalId)
+            ->activos()
+            ->where('CantidadMinimaGrupo', '>', 0)
+            ->pluck('CantidadMinimaGrupo', 'IdGrupoAnalisis')
+            ->toArray();
+
+        // ✅ NUEVO: Mapa de mínimos de productos (para saber qué productos ya están configurados)
+        $productosConMinimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
+            ->activos()
+            ->pluck('CantidadMinimaProducto', 'IdProducto')
+            ->toArray();
+
         return Inertia::render('Gestion/Inventario/ProductoDetalle/Index', [
             'productos' => $productos,
             'totalActivos' => $totalActivos,
@@ -156,6 +168,8 @@ class ProductoDetalleController extends Controller
             'estados' => $estados,
             'unidades' => $unidades,
             'unidadId' => $unidadId,
+            'gruposConMinimo' => $gruposConMinimo,
+            'productosConMinimo' => $productosConMinimo,
             'filtros' => [
                 'search' => $request->search,
                 'estado' => $request->estado,
@@ -168,6 +182,7 @@ class ProductoDetalleController extends Controller
 
     /**
      * Store - Crear producto
+     * (SIN CAMBIOS: el mínimo se guarda desde el frontend con un segundo request)
      */
     public function store(Request $request)
     {
@@ -230,6 +245,7 @@ class ProductoDetalleController extends Controller
 
     /**
      * Update - Actualizar producto
+     * (SIN CAMBIOS: el mínimo se guarda desde el frontend con un segundo request)
      */
     public function update(Request $request, $id)
     {
@@ -285,22 +301,34 @@ class ProductoDetalleController extends Controller
     }
 
     /**
-     * Show the form for editing the specified product.
+     * Edit - Obtener producto + su mínimo actual
+     * ✅ MODIFICADO: ahora devuelve también el mínimo
      */
     public function edit($id)
     {
         try {
             $clienteId = session('cliente_id');
-            
+            $sucursalId = session('cliente_sucursal_id');
+
             $producto = ProductoDetalle::where('IdCliente', $clienteId)
                 ->with(['grupoAnalisis', 'linea', 'estado', 'unidadMedida'])
                 ->findOrFail($id);
-            
+
+            // ✅ NUEVO: Buscar el mínimo actual del producto
+            $minimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
+                ->where('IdProducto', $id)
+                ->where('ActivoInactivo', 1)
+                ->first(['CantidadMinimaProducto', 'DisponibleParaPedido']);
+
             return response()->json([
                 'success' => true,
-                'producto' => $producto
+                'producto' => $producto,
+                'minimo' => $minimo ? [
+                    'CantidadMinimaProducto' => (float) $minimo->CantidadMinimaProducto,
+                    'DisponibleParaPedido' => (int) $minimo->DisponibleParaPedido,
+                ] : null,
             ]);
-            
+
         } catch (\Exception $e) {
             Log::error('Error obteniendo producto para editar: ' . $e->getMessage());
             return response()->json([
@@ -342,16 +370,16 @@ class ProductoDetalleController extends Controller
         $clienteId = session('cliente_id');
         $codigo = $request->codigo;
         $id = $request->id;
-        
+
         $query = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('Codigo', $codigo);
-        
+
         if ($id) {
             $query->where('IdProducto', '!=', $id);
         }
-        
+
         $existe = $query->exists();
-        
+
         return response()->json([
             'existe' => $existe,
             'message' => $existe ? '¡El código ya existe para este cliente!' : null
@@ -366,16 +394,16 @@ class ProductoDetalleController extends Controller
         $clienteId = session('cliente_id');
         $descripcion = $request->descripcion;
         $id = $request->id;
-        
+
         $query = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('Descripcion', $descripcion);
-        
+
         if ($id) {
             $query->where('IdProducto', '!=', $id);
         }
-        
+
         $existe = $query->exists();
-        
+
         return response()->json([
             'existe' => $existe,
             'message' => $existe ? '¡La descripción ya existe para este cliente!' : null
@@ -417,22 +445,22 @@ class ProductoDetalleController extends Controller
     public function getProductos(Request $request)
     {
         $clienteId = session('cliente_id');
-        
+
         $query = ProductoDetalle::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0);
-        
+
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('Codigo', 'like', "%{$search}%")
                     ->orWhere('Descripcion', 'like', "%{$search}%");
             });
         }
-        
+
         $productos = $query->orderBy('Codigo')
             ->limit(50)
             ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
-        
+
         return response()->json($productos);
     }
 }

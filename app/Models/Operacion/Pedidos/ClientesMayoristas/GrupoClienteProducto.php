@@ -8,7 +8,7 @@ use App\Models\Gestion\Inventario\ProductoDetalle;
 class GrupoClienteProducto extends Model
 {
     protected $connection = 'mysql_gestion_comercial_alimentos';
-    protected $table = 'operacion_pedidos_clientes_grupo_cliente_producto';
+    protected $table = 'operacion_pedidos_clientes_producto_precio';
     protected $primaryKey = 'IdGrupoClienteProducto';
     public $timestamps = false;
 
@@ -17,7 +17,6 @@ class GrupoClienteProducto extends Model
         'IdProducto',
         'PrecioSinFactura',
         'PrecioConFactura',
-        'PedidoMinimo',
         'ActivoInactivo',
         'IdOperadorInserta',
         'FechaInserta',
@@ -31,7 +30,6 @@ class GrupoClienteProducto extends Model
         'IdProducto' => 'integer',
         'PrecioSinFactura' => 'decimal:2',
         'PrecioConFactura' => 'decimal:2',
-        'PedidoMinimo' => 'integer',
         'ActivoInactivo' => 'integer',
         'FechaInserta' => 'datetime',
         'FechaActualiza' => 'datetime',
@@ -39,17 +37,11 @@ class GrupoClienteProducto extends Model
 
     // ==================== RELACIONES ====================
 
-    /**
-     * Grupo al que pertenece
-     */
     public function grupoCliente()
     {
         return $this->belongsTo(GrupoCliente::class, 'IdGrupoCliente', 'IdGrupoCliente');
     }
 
-    /**
-     * Producto
-     */
     public function producto()
     {
         return $this->belongsTo(ProductoDetalle::class, 'IdProducto', 'IdProducto');
@@ -102,9 +94,6 @@ class GrupoClienteProducto extends Model
         return $this->ActivoInactivo == 1 ? 'Activo' : 'Inactivo';
     }
 
-    /**
-     * Obtener el precio según el tipo
-     */
     public function obtenerPrecio($tipoPrecio = 'sin_factura')
     {
         return $tipoPrecio === 'con_factura' 
@@ -112,9 +101,6 @@ class GrupoClienteProducto extends Model
             : $this->PrecioSinFactura;
     }
 
-    /**
-     * Verifica si tiene precio para el tipo indicado
-     */
     public function tienePrecio($tipoPrecio = 'sin_factura')
     {
         $precio = $this->obtenerPrecio($tipoPrecio);

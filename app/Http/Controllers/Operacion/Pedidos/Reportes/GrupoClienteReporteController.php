@@ -340,7 +340,7 @@ class GrupoClienteReporteController extends Controller
 
         foreach ($minimos as $minimo) {
             $productos = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_clientes_grupo_cliente_producto as gp')
+                ->table('operacion_pedidos_clientes_producto_precio as gp')
                 ->join('inventario_productodetalle as p', 'gp.IdProducto', '=', 'p.IdProducto')
                 ->where('gp.IdGrupoCliente', $idGrupoCliente)
                 ->where('p.IdGrupoAnalisis', $minimo->IdGrupoAnalisis)

@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteDetalle;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Inventario\ProductoGrupoAnalisis;
 use Illuminate\Http\Request;
@@ -62,7 +61,6 @@ class GrupoClienteController extends Controller
                 'FechaInserta' => $grupo->FechaInsertaFormateada,
                 'TotalClientes' => $grupo->total_clientes,
                 'TotalProductos' => $grupo->total_productos,
-                'TotalMinimos' => $grupo->total_minimos,
                 'sucursal' => $grupo->sucursal ? [
                     'Nombre' => $grupo->sucursal->Nombre,
                     'NumeroSucursal' => $grupo->sucursal->NumeroSucursal,
@@ -126,10 +124,6 @@ class GrupoClienteController extends Controller
                 'IdOperadorInserta' => $operadorId,
                 'FechaInserta' => Carbon::now('America/La_Paz'),
             ]);
-
-            // ✅ AUTO-ASIGNAR TODOS LOS GRUPOS DE ANÁLISIS CON MÍNIMO 0
-            // (opcional, o dejarlo vacío y que el admin los configure)
-            // De momento lo dejamos vacío.
 
             DB::commit();
 
@@ -290,7 +284,6 @@ class GrupoClienteController extends Controller
             // Eliminar detalles (FK con CASCADE debería hacerlo solo, pero por seguridad)
             GrupoClienteDetalle::where('IdGrupoCliente', $id)->delete();
             GrupoClienteProducto::where('IdGrupoCliente', $id)->delete();
-            GrupoClienteMinimo::where('IdGrupoCliente', $id)->delete();
 
             $grupo->delete();
 
@@ -315,10 +308,6 @@ class GrupoClienteController extends Controller
     // PESTAÑA 2: CLIENTES DEL GRUPO (Operadores PedidoClientes)
     // ============================================================
 
-    /**
-     * Obtener TODOS los clientes (operadores PedidoClientes) con info
-     * de si ya están en este grupo o en otro.
-     */
     public function getClientesDisponibles($id)
     {
         $clienteId = session('cliente_id');
@@ -330,13 +319,11 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // IDs que ya están en ESTE grupo
             $idsEnEsteGrupo = GrupoClienteDetalle::where('IdGrupoCliente', $id)
                 ->where('ActivoInactivo', 1)
                 ->pluck('IdIdentificador')
                 ->toArray();
 
-            // IDs que están en OTRO grupo (no se pueden asignar aquí)
             $idsEnOtroGrupo = GrupoClienteDetalle::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('IdGrupoCliente', '!=', $id)
@@ -344,7 +331,6 @@ class GrupoClienteController extends Controller
                 ->pluck('IdIdentificador')
                 ->toArray();
 
-            // Obtener todos los identificadores tipo PedidoClientes
             $clientes = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_identificador as i')
                 ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
@@ -379,9 +365,6 @@ class GrupoClienteController extends Controller
         }
     }
 
-    /**
-     * Sincronizar clientes del grupo (agregar/quitar en masa).
-     */
     public function asignarClientes(Request $request, $id)
     {
         $request->validate([
@@ -401,7 +384,6 @@ class GrupoClienteController extends Controller
 
             DB::beginTransaction();
 
-            // IDs actuales en este grupo
             $idsActuales = GrupoClienteDetalle::where('IdGrupoCliente', $id)
                 ->where('ActivoInactivo', 1)
                 ->pluck('IdIdentificador')
@@ -409,10 +391,9 @@ class GrupoClienteController extends Controller
 
             $idsNuevos = $request->identificadores;
 
-            // 🔹 Agregar los que no estaban
+            // Agregar los que no estaban
             $agregar = array_diff($idsNuevos, $idsActuales);
             foreach ($agregar as $identificadorId) {
-                // Verificar que NO esté en otro grupo
                 $enOtroGrupo = GrupoClienteDetalle::where('IdIdentificador', $identificadorId)
                     ->where('IdCliente', $clienteId)
                     ->where('IdSucursal', $sucursalId)
@@ -421,7 +402,7 @@ class GrupoClienteController extends Controller
                     ->exists();
 
                 if ($enOtroGrupo) {
-                    continue; // skip, no se puede mover
+                    continue;
                 }
 
                 GrupoClienteDetalle::create([
@@ -435,7 +416,7 @@ class GrupoClienteController extends Controller
                 ]);
             }
 
-            // 🔹 Quitar los que ya no están
+            // Quitar los que ya no están
             $quitar = array_diff($idsActuales, $idsNuevos);
             if (!empty($quitar)) {
                 GrupoClienteDetalle::where('IdGrupoCliente', $id)
@@ -467,7 +448,7 @@ class GrupoClienteController extends Controller
     }
 
     // ============================================================
-    // PESTAÑA 3: PRODUCTOS Y PRECIOS DEL GRUPO
+    // PESTAÑA 3: PRECIOS POR GRUPO
     // ============================================================
 
     /**
@@ -483,18 +464,15 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // Grupos de análisis del cliente
             $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
                 ->orderBy('Grupo')
                 ->get(['IdGrupoAnalisis', 'Grupo']);
 
-            // Precios ya guardados en este grupo
             $preciosGuardados = GrupoClienteProducto::where('IdGrupoCliente', $id)
                 ->where('ActivoInactivo', 1)
                 ->get()
                 ->keyBy('IdProducto');
 
-            // Productos por grupo de análisis
             $resultado = [];
             foreach ($gruposAnalisis as $grupoAnalisis) {
                 $productos = ProductoDetalle::where('IdCliente', $clienteId)
@@ -513,7 +491,6 @@ class GrupoClienteController extends Controller
                         'IdGrupoAnalisis' => $prod->IdGrupoAnalisis,
                         'PrecioSinFactura' => $precio?->PrecioSinFactura,
                         'PrecioConFactura' => $precio?->PrecioConFactura,
-                        'PedidoMinimo' => $precio?->PedidoMinimo ?? 0,
                         'ActivoInactivo' => $precio?->ActivoInactivo ?? 0,
                         'TienePrecio' => $precio !== null,
                     ];
@@ -553,7 +530,6 @@ class GrupoClienteController extends Controller
             'productos.*.IdProducto' => 'required|integer|exists:inventario_productodetalle,IdProducto',
             'productos.*.PrecioSinFactura' => 'nullable|numeric|min:0',
             'productos.*.PrecioConFactura' => 'nullable|numeric|min:0',
-            'productos.*.PedidoMinimo' => 'nullable|integer|min:0',
         ]);
 
         $clienteId = session('cliente_id');
@@ -572,14 +548,12 @@ class GrupoClienteController extends Controller
             foreach ($request->productos as $prod) {
                 $sinFactura = $prod['PrecioSinFactura'] ?? null;
                 $conFactura = $prod['PrecioConFactura'] ?? null;
-                $pedidoMinimo = $prod['PedidoMinimo'] ?? 0;
 
                 // Si no tiene ningún precio, se omite/elimina
                 $tieneAlgunPrecio = ($sinFactura !== null && $sinFactura > 0)
                     || ($conFactura !== null && $conFactura > 0);
 
                 if (!$tieneAlgunPrecio) {
-                    // Eliminar si existía
                     $deleted = GrupoClienteProducto::where('IdGrupoCliente', $id)
                         ->where('IdProducto', $prod['IdProducto'])
                         ->delete();
@@ -588,7 +562,7 @@ class GrupoClienteController extends Controller
                     continue;
                 }
 
-                // Upsert
+                // Upsert (solo precios, sin PedidoMinimo)
                 GrupoClienteProducto::updateOrCreate(
                     [
                         'IdGrupoCliente' => $id,
@@ -597,7 +571,6 @@ class GrupoClienteController extends Controller
                     [
                         'PrecioSinFactura' => $sinFactura,
                         'PrecioConFactura' => $conFactura,
-                        'PedidoMinimo' => $pedidoMinimo,
                         'ActivoInactivo' => 1,
                         'IdOperadorInserta' => $operadorId,
                         'FechaInserta' => Carbon::now('America/La_Paz'),
@@ -629,7 +602,7 @@ class GrupoClienteController extends Controller
     }
 
     /**
-     * Eliminar un precio específico (opcional)
+     * Eliminar un precio específico
      */
     public function eliminarProducto($id, $idProducto)
     {
@@ -650,132 +623,6 @@ class GrupoClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    // ============================================================
-    // PESTAÑA 4: MÍNIMOS POR GRUPO DE ANÁLISIS
-    // ============================================================
-
-    /**
-     * Obtener todos los grupos de análisis con su mínimo (si ya está).
-     */
-    public function getMinimos($id)
-    {
-        $clienteId = session('cliente_id');
-
-        try {
-            $grupo = GrupoCliente::porCliente($clienteId)
-                ->where('IdGrupoCliente', $id)
-                ->firstOrFail();
-
-            // Todos los grupos de análisis
-            $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
-                ->orderBy('Grupo')
-                ->get(['IdGrupoAnalisis', 'Grupo']);
-
-            // Mínimos ya guardados
-            $minimosGuardados = GrupoClienteMinimo::where('IdGrupoCliente', $id)
-                ->where('ActivoInactivo', 1)
-                ->get()
-                ->keyBy('IdGrupoAnalisis');
-
-            $resultado = $gruposAnalisis->map(function ($ga) use ($minimosGuardados) {
-                $minimo = $minimosGuardados[$ga->IdGrupoAnalisis] ?? null;
-
-                return [
-                    'IdGrupoAnalisis' => $ga->IdGrupoAnalisis,
-                    'NombreGrupo' => $ga->Grupo,
-                    'CantidadMinimaGrupo' => $minimo?->CantidadMinimaGrupo,
-                    'TieneMinimo' => $minimo !== null,
-                ];
-            });
-
-            return response()->json([
-                'success' => true,
-                'data' => $resultado,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error al obtener mínimos: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Error: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Guardar mínimos en masa.
-     */
-    public function asignarMinimos(Request $request, $id)
-    {
-        $request->validate([
-            'minimos' => 'required|array',
-            'minimos.*.IdGrupoAnalisis' => 'required|integer|exists:inventario_productogrupoanalisis,IdGrupoAnalisis',
-            'minimos.*.CantidadMinimaGrupo' => 'required|numeric|min:0',
-        ]);
-
-        $clienteId = session('cliente_id');
-        $operadorId = session('operador_id');
-
-        try {
-            $grupo = GrupoCliente::porCliente($clienteId)
-                ->where('IdGrupoCliente', $id)
-                ->firstOrFail();
-
-            DB::beginTransaction();
-
-            $guardados = 0;
-            $eliminados = 0;
-
-            foreach ($request->minimos as $min) {
-                $cantidad = $min['CantidadMinimaGrupo'] ?? 0;
-
-                // Si es 0, se elimina
-                if ($cantidad <= 0) {
-                    $deleted = GrupoClienteMinimo::where('IdGrupoCliente', $id)
-                        ->where('IdGrupoAnalisis', $min['IdGrupoAnalisis'])
-                        ->delete();
-
-                    if ($deleted) $eliminados++;
-                    continue;
-                }
-
-                GrupoClienteMinimo::updateOrCreate(
-                    [
-                        'IdGrupoCliente' => $id,
-                        'IdGrupoAnalisis' => $min['IdGrupoAnalisis'],
-                    ],
-                    [
-                        'CantidadMinimaGrupo' => $cantidad,
-                        'ActivoInactivo' => 1,
-                        'IdOperadorInserta' => $operadorId,
-                        'FechaInserta' => Carbon::now('America/La_Paz'),
-                        'IdOperadorActualiza' => $operadorId,
-                        'FechaActualiza' => Carbon::now('America/La_Paz'),
-                    ]
-                );
-
-                $guardados++;
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'success' => true,
-                'message' => "Mínimos guardados: {$guardados}, eliminados: {$eliminados}",
-                'guardados' => $guardados,
-                'eliminados' => $eliminados,
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error al asignar mínimos: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error: ' . $e->getMessage()

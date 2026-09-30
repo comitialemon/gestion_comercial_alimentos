@@ -9,7 +9,7 @@ use App\Models\Gestion\Todos\ClienteSucursal;
 class GrupoCliente extends Model
 {
     protected $connection = 'mysql_gestion_comercial_alimentos';
-    protected $table = 'operacion_pedidos_clientes_grupo_cliente';
+    protected $table = 'operacion_pedidos_clientes_grupo_cliente';  // ✅ CORREGIDO
     protected $primaryKey = 'IdGrupoCliente';
     public $timestamps = false;
 
@@ -36,70 +36,35 @@ class GrupoCliente extends Model
 
     // ==================== RELACIONES ====================
 
-    /**
-     * Cliente (empresa)
-     */
     public function cliente()
     {
         return $this->belongsTo(Cliente::class, 'IdCliente', 'IdCliente');
     }
 
-    /**
-     * Sucursal
-     */
     public function sucursal()
     {
         return $this->belongsTo(ClienteSucursal::class, 'IdSucursal', 'IdClienteSucursal');
     }
 
-    /**
-     * Detalles (clientes/identificadores del grupo)
-     */
     public function detalles()
     {
         return $this->hasMany(GrupoClienteDetalle::class, 'IdGrupoCliente', 'IdGrupoCliente');
     }
 
-    /**
-     * Detalles activos
-     */
     public function detallesActivos()
     {
         return $this->hasMany(GrupoClienteDetalle::class, 'IdGrupoCliente', 'IdGrupoCliente')
             ->where('ActivoInactivo', 1);
     }
 
-    /**
-     * Productos con precios del grupo
-     */
     public function productos()
     {
         return $this->hasMany(GrupoClienteProducto::class, 'IdGrupoCliente', 'IdGrupoCliente');
     }
 
-    /**
-     * Productos activos
-     */
     public function productosActivos()
     {
         return $this->hasMany(GrupoClienteProducto::class, 'IdGrupoCliente', 'IdGrupoCliente')
-            ->where('ActivoInactivo', 1);
-    }
-
-    /**
-     * Mínimos por grupo de análisis
-     */
-    public function minimos()
-    {
-        return $this->hasMany(GrupoClienteMinimo::class, 'IdGrupoCliente', 'IdGrupoCliente');
-    }
-
-    /**
-     * Mínimos activos
-     */
-    public function minimosActivos()
-    {
-        return $this->hasMany(GrupoClienteMinimo::class, 'IdGrupoCliente', 'IdGrupoCliente')
             ->where('ActivoInactivo', 1);
     }
 
@@ -156,17 +121,8 @@ class GrupoCliente extends Model
         return $this->productosActivos()->count();
     }
 
-    public function getTotalMinimosAttribute()
-    {
-        return $this->minimosActivos()->count();
-    }
-
     // ==================== MÉTODOS HELPER ====================
 
-    /**
-     * Buscar el grupo al que pertenece un cliente (identificador).
-     * Un cliente solo puede estar en 1 grupo.
-     */
     public static function obtenerGrupoDeIdentificador($idIdentificador, $idCliente, $idSucursal)
     {
         $detalle = GrupoClienteDetalle::where('IdIdentificador', $idIdentificador)
