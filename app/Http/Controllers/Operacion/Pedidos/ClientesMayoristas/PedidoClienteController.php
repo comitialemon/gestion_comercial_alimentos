@@ -2085,4 +2085,61 @@ class PedidoClienteController extends Controller
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
         ]);
     }
+        /**
+     * ✅ NUEVO: Obtener el progreso de mínimos del pedido actual.
+     * Se llama desde el Review después de editar/eliminar un contenedor.
+     */
+    public function getProgreso($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdPedidoCliente', $id)
+                ->where('ActivoInactivo', 0)
+                ->first();
+
+            if (!$pedido) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado o ya finalizado.'
+                ], 404);
+            }
+
+            $grupoCliente = $this->getGrupoDelOperador();
+            if (!$grupoCliente) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+                ], 400);
+            }
+
+            // ✅ Reutilizar método existente
+            $progreso = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
+
+            // ✅ Productos sin mínimo
+            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
+
+            // ✅ Totales
+            $totales = $this->calcularTotales($pedido->IdPedidoCliente);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'progresoGrupos' => $progreso,
+                    'productosSinMinimo' => $productosSinMinimo,
+                    'totales' => $totales,
+                    'cumpleMinimos' => collect($progreso)->every(fn($item) => $item['Cumple']) && empty($productosSinMinimo),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error en getProgreso: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al calcular el progreso: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
 }

@@ -19,7 +19,7 @@ const props = defineProps({
     idIdentificador: { type: [Number, String], default: null },
     progresoGrupos: { type: Array, default: () => [] },
     cumpleMinimos: { type: Boolean, default: true },
-    productosSinMinimo: { type: Array, default: () => [] }, // ✅ NUEVO
+    productosSinMinimo: { type: Array, default: () => [] },
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
     horaLimite: { type: [Number, String], default: null },
@@ -38,6 +38,12 @@ const cambiandoTipoPrecio = ref(false)
 
 const horaActualCliente = ref(new Date())
 const validandoHoraLimite = ref(false)
+
+// ✅ Progreso como REF (para poder actualizarlo)
+const progresoLocal = ref([...(props.progresoGrupos || [])])
+
+// ✅ Productos sin mínimo como REF
+const productosSinMinimoLocal = ref([...(props.productosSinMinimo || [])])
 
 const detallesLocal = ref(
     (props.detallesAgrupados || []).map(item => ({
@@ -253,8 +259,6 @@ const fechaPedido = computed(() => {
 })
 
 // ==================== MÍNIMOS ====================
-const progresoLocal = computed(() => props.progresoGrupos || [])
-
 const faltantesGrupo = computed(() =>
     progresoLocal.value.filter(g => !g.Cumple && g.Tipo === 'grupo')
 )
@@ -264,17 +268,36 @@ const faltantesProducto = computed(() =>
 )
 
 const gruposQueNoCumplen = computed(() => progresoLocal.value.filter(g => !g.Cumple))
-const cumpleTodos = computed(() => progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0)
+const cumpleTodos = computed(() =>
+    progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0
+)
 
-// ✅ Productos sin mínimo
 const tieneProductosSinMinimo = computed(() => {
-    return (props.productosSinMinimo || []).length > 0
+    return productosSinMinimoLocal.value.length > 0
 })
 
-// ✅ BOTÓN: Deshabilitado si cualquier regla falla
+/**
+ * ✅ Obtener el progreso de un producto por IdProducto
+ */
+const getProgresoProducto = (idProducto) => {
+    return progresoLocal.value.find(
+        p => p.Tipo === 'producto' && Number(p.IdProducto) === Number(idProducto)
+    ) || null
+}
+
+/**
+ * ✅ Obtener el progreso de un grupo por IdGrupoAnalisis
+ */
+const getProgresoGrupo = (idGrupo) => {
+    return progresoLocal.value.find(
+        g => g.Tipo === 'grupo' && Number(g.IdGrupoAnalisis) === Number(idGrupo)
+    ) || null
+}
+
+// ✅ BOTÓN
 const puedeFinalizar = computed(() => {
     if (detallesLocal.value.length === 0) return false
-    if (tieneProductosSinMinimo.value) return false // ✅ NUEVO
+    if (tieneProductosSinMinimo.value) return false
     if (!cumpleTodos.value) return false
     if (fechaVacia.value) return false
     if (fechaEsInvalida.value) return false
@@ -282,7 +305,6 @@ const puedeFinalizar = computed(() => {
     return true
 })
 
-// ✅ Texto dinámico del botón
 const textoBoton = computed(() => {
     if (loading.value) return 'Procesando...'
     if (validandoHoraLimite.value) return 'Validando hora...'
@@ -309,6 +331,22 @@ const formatearPrecio = (valor) => {
     if (valor === undefined || valor === null || valor === '') return '0.00'
     const numero = parseFloat(valor)
     return isNaN(numero) ? '0.00' : numero.toFixed(2)
+}
+
+// ==================== ✅ RECARGAR PROGRESO DESDE EL BACKEND ====================
+const recargarProgreso = async () => {
+    try {
+        const response = await axios.get(
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/progreso`
+        )
+
+        if (response.data.success) {
+            progresoLocal.value = response.data.data.progresoGrupos || []
+            productosSinMinimoLocal.value = response.data.data.productosSinMinimo || []
+        }
+    } catch (error) {
+        console.error('❌ Error recargando progreso:', error)
+    }
 }
 
 // ==================== WATCH: Validar al cambiar fecha ====================
@@ -404,6 +442,8 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
                 }))
             }
 
+            await recargarProgreso()
+
             toast?.success('Éxito', 'Precios recalculados correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al cambiar tipo de precio')
@@ -423,7 +463,7 @@ const abrirModalConfirmacion = async () => {
     }
 
     if (tieneProductosSinMinimo.value) {
-        const nombres = props.productosSinMinimo.map(p => `${p.Codigo} - ${p.Descripcion}`).join('\n')
+        const nombres = productosSinMinimoLocal.value.map(p => `${p.Codigo} - ${p.Descripcion}`).join('\n')
         toast?.error('Productos sin mínimo', `Los siguientes productos ya no tienen mínimo configurado:\n${nombres}`)
         return
     }
@@ -513,7 +553,8 @@ const abrirModalEdicion = (item) => {
             productos: item.productos.map(p => ({
                 IdProducto: p.IdProducto,
                 Cantidad: p.Cantidad,
-                Precio: p.Precio
+                Precio: p.Precio,
+                IdGrupoAnalisis: p.IdGrupoAnalisis || null,
             }))
         }
     }
@@ -537,6 +578,8 @@ const actualizarContenedor = async (data) => {
 
         if (response.data.success) {
             actualizarDetalleLocal(data, payload)
+            await recargarProgreso()
+
             toast?.success('Éxito', 'Contenedor actualizado correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al actualizar')
@@ -562,30 +605,39 @@ const actualizarDetalleLocal = (data, payload) => {
         s => Number(s.IdSubClienteOperador) === Number(payload.IdSubClienteOperador)
     )
 
-    const nuevosProductos = data.productos.map(p => {
-        const productoOriginal = contenedorActual.productos.find(
-            op => op.IdProducto === p.IdProducto
-        ) || {}
+    const nuevosProductos = data.productos
+        .filter(p => Number(p.Cantidad) > 0)
+        .map(p => {
+            const productoOriginal = contenedorActual.productos.find(
+                op => op.IdProducto === p.IdProducto
+            ) || {}
 
-        return {
-            ...productoOriginal,
-            IdProducto: p.IdProducto,
-            Cantidad: Number(p.Cantidad),
-            Precio: Number(p.Precio),
-            Subtotal: Number(p.Cantidad) * Number(p.Precio)
-        }
-    })
+            return {
+                ...productoOriginal,
+                IdProducto: p.IdProducto,
+                Cantidad: Number(p.Cantidad),
+                Precio: Number(p.Precio),
+                IdGrupoAnalisis: p.IdGrupoAnalisis || productoOriginal.IdGrupoAnalisis || null,
+                Subtotal: Number(p.Cantidad) * Number(p.Precio)
+            }
+        })
 
     const totalUnidadesCalc = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0), 0)
     const subtotal = nuevosProductos.reduce((sum, p) => sum + (Number(p.Cantidad) || 0) * (Number(p.Precio) || 0), 0)
 
-    detallesLocal.value[index] = {
-        ...contenedorActual,
-        IdSubClienteOperador: payload.IdSubClienteOperador,
-        SubClienteNombre: subCliente ? subCliente.Nombre : null,
-        productos: nuevosProductos,
-        total_unidades: totalUnidadesCalc,
-        subtotal: subtotal
+    if (nuevosProductos.length === 0) {
+        detallesLocal.value = detallesLocal.value.filter(
+            d => Number(d.Orden) !== orden
+        )
+    } else {
+        detallesLocal.value[index] = {
+            ...contenedorActual,
+            IdSubClienteOperador: payload.IdSubClienteOperador,
+            SubClienteNombre: subCliente ? subCliente.Nombre : null,
+            productos: nuevosProductos,
+            total_unidades: totalUnidadesCalc,
+            subtotal: subtotal
+        }
     }
 
     detallesLocal.value = [...detallesLocal.value]
@@ -610,6 +662,8 @@ const eliminarContenedor = async (item) => {
             detallesLocal.value = detallesLocal.value.filter(
                 d => Number(d.Orden) !== Number(item.Orden)
             )
+
+            await recargarProgreso()
 
             toast?.success('Éxito', 'Contenedor eliminado')
 
@@ -817,7 +871,7 @@ const eliminarContenedor = async (item) => {
                     </p>
                 </div>
 
-                <!-- ✅ ALERTA: PRODUCTOS SIN MÍNIMO -->
+                <!-- ALERTA: PRODUCTOS SIN MÍNIMO -->
                 <div v-if="tieneProductosSinMinimo" class="bg-red-50 border-l-4 border-red-600 rounded-xl p-3 mb-3">
                     <div class="flex items-start gap-2">
                         <i class="fas fa-ban text-red-600 text-base flex-shrink-0 mt-0.5"></i>
@@ -827,7 +881,7 @@ const eliminarContenedor = async (item) => {
                                 Los siguientes productos ya no tienen mínimo configurado. Contacta al administrador:
                             </p>
                             <ul class="mt-1.5 space-y-0.5">
-                                <li v-for="prod in productosSinMinimo" :key="prod.IdProducto"
+                                <li v-for="prod in productosSinMinimoLocal" :key="prod.IdProducto"
                                     class="text-[10px] text-red-700 flex items-start gap-1.5">
                                     <i class="fas fa-circle text-[5px] mt-1.5 flex-shrink-0"></i>
                                     <span><strong>{{ prod.Codigo }}</strong> - {{ prod.Descripcion }}</span>
@@ -837,7 +891,7 @@ const eliminarContenedor = async (item) => {
                     </div>
                 </div>
 
-                <!-- ✅ ALERTA DE MÍNIMOS FALTANTES -->
+                <!-- ALERTA DE MÍNIMOS FALTANTES -->
                 <div v-else-if="!cumpleTodos" class="bg-red-50 border-l-4 border-red-500 rounded-xl p-3 mb-3">
                     <div class="flex items-start gap-2">
                         <i class="fas fa-exclamation-triangle text-red-500 text-base flex-shrink-0 mt-0.5"></i>
@@ -845,7 +899,6 @@ const eliminarContenedor = async (item) => {
                             <h3 class="font-bold text-red-800 text-xs">No se puede finalizar el pedido</h3>
                             <p class="text-[10px] text-red-700 mt-0.5">Faltan cumplir los siguientes mínimos:</p>
 
-                            <!-- Mínimos de GRUPO -->
                             <div v-if="faltantesGrupo.length > 0" class="mt-2">
                                 <p class="text-[10px] font-bold text-indigo-700 mb-1">
                                     <i class="fas fa-layer-group mr-1"></i>Mínimos de Grupo:
@@ -863,7 +916,6 @@ const eliminarContenedor = async (item) => {
                                 </ul>
                             </div>
 
-                            <!-- Mínimos de PRODUCTO -->
                             <div v-if="faltantesProducto.length > 0" class="mt-2">
                                 <p class="text-[10px] font-bold text-purple-700 mb-1">
                                     <i class="fas fa-box mr-1"></i>Mínimos de Producto:
@@ -884,7 +936,7 @@ const eliminarContenedor = async (item) => {
                     </div>
                 </div>
 
-                <!-- ✅ PROGRESO OK -->
+                <!-- PROGRESO OK -->
                 <div v-else-if="progresoLocal.length > 0" class="bg-emerald-50 border-l-4 border-emerald-500 rounded-xl p-3 mb-3">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-check-circle text-emerald-500 text-base flex-shrink-0"></i>
@@ -955,6 +1007,7 @@ const eliminarContenedor = async (item) => {
                                 :key="idx"
                                 class="border border-gray-200 rounded-lg overflow-hidden bg-white"
                             >
+                                <!-- Header del contenedor -->
                                 <div class="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 border-b border-gray-200">
                                     <div class="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
                                         <span class="text-[9px] font-mono bg-primary-600 text-white px-1.5 py-0.5 rounded font-bold flex-shrink-0">
@@ -988,23 +1041,104 @@ const eliminarContenedor = async (item) => {
                                     </div>
                                 </div>
 
+                                <!-- ✅ Mínimo del grupo (si aplica) -->
+                                <div
+                                    v-if="item.productos.length > 0 && item.productos[0].IdGrupoAnalisis && getProgresoGrupo(item.productos[0].IdGrupoAnalisis)"
+                                    class="px-3 py-1.5 border-b flex items-center gap-2 flex-wrap"
+                                    :class="getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Cumple
+                                        ? 'bg-green-50/40 border-green-100'
+                                        : 'bg-indigo-50/40 border-indigo-100'"
+                                >
+                                    <i class="fas fa-layer-group text-[10px]"
+                                       :class="getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Cumple ? 'text-green-500' : 'text-indigo-500'"></i>
+                                    <span class="text-[10px] font-bold"
+                                          :class="getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Cumple ? 'text-green-700' : 'text-indigo-700'">
+                                        Mínimo del grupo:
+                                    </span>
+                                    <span class="text-[10px] font-bold tabular-nums"
+                                          :class="getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Cumple ? 'text-green-600' : 'text-indigo-600'">
+                                        {{ formatearNumero(getProgresoGrupo(item.productos[0].IdGrupoAnalisis).CantidadPedida) }}
+                                        /
+                                        {{ formatearNumero(getProgresoGrupo(item.productos[0].IdGrupoAnalisis).CantidadMinima) }}
+                                    </span>
+                                    <span v-if="!getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Cumple"
+                                          class="text-[9px] text-orange-600 font-medium bg-orange-100 px-1.5 py-0.5 rounded-full">
+                                        <i class="fas fa-exclamation-circle mr-0.5"></i>
+                                        faltan {{ formatearNumero(getProgresoGrupo(item.productos[0].IdGrupoAnalisis).Falta) }}
+                                    </span>
+                                    <span v-else class="text-[9px] text-green-600 font-medium bg-green-100 px-1.5 py-0.5 rounded-full">
+                                        <i class="fas fa-check-circle mr-0.5"></i>
+                                        Cumple
+                                    </span>
+                                </div>
+
+                                <!-- Tabla de productos -->
                                 <div class="overflow-x-auto">
                                     <table class="w-full text-left border-collapse text-xs">
                                         <thead>
                                             <tr class="border-b border-gray-200 bg-gray-50/50 text-[9px] font-semibold text-gray-400 uppercase tracking-wider">
                                                 <th class="py-1.5 px-3">Producto</th>
-                                                <th class="py-1.5 px-3 text-right w-16">Cant.</th>
+                                                <th class="py-1.5 px-3 text-right w-14">Cant.</th>
+                                                <th class="py-1.5 px-3 text-right w-14">Mín.</th>
+                                                <th class="py-1.5 px-3 text-center w-24">Estado</th>
                                                 <th class="py-1.5 px-3 text-right w-20">Precio</th>
                                                 <th class="py-1.5 px-3 text-right w-24 text-primary-600">Subtotal</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-100">
-                                            <tr v-for="producto in item.productos" :key="producto.IdProducto" class="hover:bg-gray-50/80 transition">
-                                                <td class="py-1.5 px-3 text-gray-700 truncate max-w-[300px]" :title="producto.Descripcion">
+                                            <tr
+                                                v-for="producto in item.productos"
+                                                :key="producto.IdProducto"
+                                                class="hover:bg-gray-50/80 transition"
+                                                :class="{
+                                                    'bg-orange-50/40': getProgresoProducto(producto.IdProducto) && !getProgresoProducto(producto.IdProducto).Cumple,
+                                                    'bg-green-50/20': getProgresoProducto(producto.IdProducto) && getProgresoProducto(producto.IdProducto).Cumple
+                                                }"
+                                            >
+                                                <td class="py-1.5 px-3 text-gray-700 truncate max-w-[260px]" :title="producto.Descripcion">
                                                     {{ producto.Descripcion }}
                                                 </td>
-                                                <td class="py-1.5 px-3 text-right font-medium text-gray-800 tabular-nums">{{ formatearNumero(producto.Cantidad) }}</td>
-                                                <td class="py-1.5 px-3 text-right text-gray-600 tabular-nums">Bs. {{ formatearPrecio(producto.Precio || 0) }}</td>
+
+                                                <!-- Cantidad -->
+                                                <td class="py-1.5 px-3 text-right font-medium text-gray-800 tabular-nums">
+                                                    {{ formatearNumero(producto.Cantidad) }}
+                                                </td>
+
+                                                <!-- Mínimo -->
+                                                <td class="py-1.5 px-3 text-right tabular-nums text-[11px]"
+                                                    :class="getProgresoProducto(producto.IdProducto) ? 'font-semibold text-indigo-700' : 'text-gray-300'">
+                                                    <template v-if="getProgresoProducto(producto.IdProducto)">
+                                                        {{ formatearNumero(getProgresoProducto(producto.IdProducto).CantidadMinima) }}
+                                                    </template>
+                                                    <template v-else>—</template>
+                                                </td>
+
+                                                <!-- Estado -->
+                                                <td class="py-1.5 px-3 text-center">
+                                                    <template v-if="getProgresoProducto(producto.IdProducto)">
+                                                        <span
+                                                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap"
+                                                            :class="getProgresoProducto(producto.IdProducto).Cumple
+                                                                ? 'bg-green-100 text-green-700'
+                                                                : 'bg-orange-100 text-orange-700'"
+                                                        >
+                                                            <i :class="getProgresoProducto(producto.IdProducto).Cumple ? 'fas fa-check-circle' : 'fas fa-exclamation-circle'"></i>
+                                                            {{ getProgresoProducto(producto.IdProducto).Cumple
+                                                                ? 'OK'
+                                                                : `Falta ${formatearNumero(getProgresoProducto(producto.IdProducto).Falta)}` }}
+                                                        </span>
+                                                    </template>
+                                                    <template v-else>
+                                                        <span class="text-[9px] text-gray-300">—</span>
+                                                    </template>
+                                                </td>
+
+                                                <!-- Precio -->
+                                                <td class="py-1.5 px-3 text-right text-gray-600 tabular-nums">
+                                                    Bs. {{ formatearPrecio(producto.Precio || 0) }}
+                                                </td>
+
+                                                <!-- Subtotal -->
                                                 <td class="py-1.5 px-3 text-right font-bold text-primary-600 tabular-nums">
                                                     Bs. {{ formatearPrecio((Number(producto.Cantidad) || 0) * (Number(producto.Precio) || 0)) }}
                                                 </td>

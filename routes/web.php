@@ -1501,6 +1501,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // PDF del pedido
                     Route::get('/{id}/pdf', [PedidoClienteController::class, 'generarPdf'])
                         ->name('operacion.pedidos-clientes.pedidos.pdf');
+                    Route::get('/{id}/progreso', [PedidoClienteController::class, 'getProgreso'])
+                        ->name('operacion.pedidos-clientes.pedidos.progreso');
                 });
                 
                 // ============================================================
@@ -1576,10 +1578,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
                     Route::delete('/{id}/productos/{idProducto}', [GrupoClienteController::class, 'eliminarProducto'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.eliminar-producto');
-                    
-                    // ❌ ELIMINADAS: Rutas de mínimos por grupo
-                    // Route::get('/{id}/minimos', ...) → se movió a minimos-globales
-                    // Route::post('/{id}/asignar-minimos', ...) → se movió a minimos-globales
                 });
 
                 // ============================================================
