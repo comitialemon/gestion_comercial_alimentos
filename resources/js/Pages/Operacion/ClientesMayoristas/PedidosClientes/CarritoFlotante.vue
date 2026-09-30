@@ -7,7 +7,7 @@ const props = defineProps({
     totalContenedores: { type: Number, default: 0 },
     cumpleMinimos: { type: Boolean, default: true },
     gruposFaltantes: { type: Array, default: () => [] },
-    tipoPrecio: { type: String, default: 'sin_factura' } // ✅ NUEVO
+    tipoPrecio: { type: String, default: 'sin_factura' }
 })
 
 const emit = defineEmits(['finalizar'])
@@ -34,12 +34,12 @@ const irAlCarrito = () => {
     <div v-if="hayProductos" class="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[95%] max-w-md">
         <div class="bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden animate-slide-up"
              style="box-shadow: 0 10px 40px rgba(0,0,0,0.15);">
-            
+
             <!-- Barra superior -->
-            <div 
+            <div
                 class="flex items-center justify-between px-4 py-2.5 transition-colors"
-                :class="cumpleMinimos 
-                    ? 'bg-gradient-to-r from-green-600 to-emerald-700' 
+                :class="cumpleMinimos
+                    ? 'bg-gradient-to-r from-green-600 to-emerald-700'
                     : 'bg-gradient-to-r from-orange-500 to-amber-600'"
             >
                 <div class="flex items-center gap-3 text-white">
@@ -62,10 +62,10 @@ const irAlCarrito = () => {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <!-- ✅ Badge tipo precio -->
+                    <!-- Badge tipo precio -->
                     <span class="px-2 py-0.5 rounded-full text-[9px] font-bold"
-                        :class="tipoPrecio === 'con_factura' 
-                            ? 'bg-blue-400/30 text-white' 
+                        :class="tipoPrecio === 'con_factura'
+                            ? 'bg-blue-400/30 text-white'
                             : 'bg-white/20 text-white'">
                         {{ tipoPrecioTexto }}
                     </span>
@@ -73,12 +73,12 @@ const irAlCarrito = () => {
                         <i class="fas fa-eye text-[10px]"></i>
                         Ver
                     </button>
-                    <button 
+                    <button
                         @click="finalizarPedido"
                         :disabled="!cumpleMinimos"
                         class="px-4 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-lg"
-                        :class="cumpleMinimos 
-                            ? 'bg-white text-green-700 hover:bg-gray-100' 
+                        :class="cumpleMinimos
+                            ? 'bg-white text-green-700 hover:bg-gray-100'
                             : 'bg-white/30 text-white cursor-not-allowed'"
                     >
                         <i class="fas fa-check-circle text-[10px]"></i>
@@ -87,16 +87,24 @@ const irAlCarrito = () => {
                 </div>
             </div>
 
-            <!-- Alertas de grupos faltantes -->
+            <!-- Alertas de mínimos faltantes -->
             <div v-if="!cumpleMinimos && gruposFaltantes.length > 0" class="px-4 py-2 bg-orange-50 border-t border-orange-200">
                 <p class="text-[10px] font-semibold text-orange-700 mb-1">
                     <i class="fas fa-exclamation-triangle mr-1"></i>
                     Faltan cumplir:
                 </p>
                 <div class="space-y-0.5 max-h-16 overflow-y-auto">
-                    <div v-for="grupo in gruposFaltantes.slice(0, 3)" :key="grupo.IdGrupoAnalisis" class="flex justify-between items-center text-[10px] text-orange-700">
-                        <span class="truncate">{{ grupo.NombreGrupo }}</span>
-                        <span class="font-bold whitespace-nowrap ml-2">faltan {{ grupo.Falta }} und</span>
+                    <div v-for="item in gruposFaltantes.slice(0, 3)"
+                         :key="(item.Tipo || 'g') + '-' + (item.IdGrupoAnalisis || item.IdProducto)"
+                         class="flex justify-between items-center text-[10px] text-orange-700">
+                        <span class="truncate">
+                            <span class="font-bold text-[8px] uppercase mr-1"
+                                  :class="item.Tipo === 'producto' ? 'text-purple-700' : 'text-indigo-700'">
+                                {{ item.Tipo === 'producto' ? '[Prod]' : '[Grupo]' }}
+                            </span>
+                            {{ item.NombreGrupo }}
+                        </span>
+                        <span class="font-bold whitespace-nowrap ml-2">faltan {{ item.Falta }} und</span>
                     </div>
                 </div>
             </div>

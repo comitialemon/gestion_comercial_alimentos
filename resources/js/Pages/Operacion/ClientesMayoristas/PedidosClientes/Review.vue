@@ -19,6 +19,7 @@ const props = defineProps({
     idIdentificador: { type: [Number, String], default: null },
     progresoGrupos: { type: Array, default: () => [] },
     cumpleMinimos: { type: Boolean, default: true },
+    productosSinMinimo: { type: Array, default: () => [] }, // ✅ NUEVO
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
     horaLimite: { type: [Number, String], default: null },
@@ -54,7 +55,6 @@ const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 
 // ==================== HELPERS DE FECHAS ====================
-// Convierte cualquier valor a YYYY-MM-DD
 const normalizarFecha = (fecha) => {
     if (!fecha) return null
     if (typeof fecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
@@ -68,14 +68,12 @@ const normalizarFecha = (fecha) => {
     return `${y}-${m}-${day}`
 }
 
-// Compara dos fechas por timestamp (a las 00:00)
 const compararFechas = (a, b) => {
     const tsA = new Date(a + 'T00:00:00').getTime()
     const tsB = new Date(b + 'T00:00:00').getTime()
-    return tsA - tsB  // negativo: a < b | 0: iguales | positivo: a > b
+    return tsA - tsB
 }
 
-// YYYY-MM-DD → DD/MM/YYYY
 const formatearFechaLocal = (fecha) => {
     if (!fecha) return ''
     const partes = fecha.split('-')
@@ -114,7 +112,6 @@ const fechaEsInvalida = computed(() => {
     if (!fechaEntrega.value) return false
     const fSel = normalizarFecha(fechaEntrega.value)
     if (!fSel) return false
-    // Inválida si es HOY o antes
     return compararFechas(fSel, fechaHoy.value) <= 0
 })
 
@@ -129,7 +126,6 @@ const fechaEsLejana = computed(() => {
     if (!fechaEntrega.value) return false
     const fSel = normalizarFecha(fechaEntrega.value)
     if (!fSel) return false
-    // Lejana si es estrictamente mayor a mañana
     return compararFechas(fSel, fechaManana.value) > 0
 })
 
@@ -155,22 +151,14 @@ const cercaDeHoraLimite = computed(() => {
 
 // ==================== ESTADO UNIFICADO DEL BANNER ====================
 const estadoBanner = computed(() => {
-    // 1. Fecha vacía → informativo
     if (fechaVacia.value) return 'sinFecha'
-
-    // 2. Fecha inválida (hoy o pasada) → error 🔴
     if (fechaEsInvalida.value) return 'fechaInvalida'
-
-    // 3. Fecha lejana (> mañana) → azul informativo
     if (fechaEsLejana.value) return 'lejana'
-
-    // 4. Fecha = mañana → evaluar hora
     if (fueraDeHoraLimite.value) return 'bloqueado'
     if (cercaDeHoraLimite.value) return 'cerca'
     return 'ok'
 })
 
-// ==================== BLOQUEO ====================
 const bloqueaFinalizar = computed(() => {
     return estadoBanner.value === 'fechaInvalida' || estadoBanner.value === 'bloqueado'
 })
@@ -213,22 +201,16 @@ const fraseBanner = computed(() => {
     switch (estadoBanner.value) {
         case 'sinFecha':
             return `Si necesitas entrega <strong>mañana</strong> (${fechaManFmt}), tu pedido debe hacerse antes de las <strong>${hl}</strong>. Después de esa hora, la entrega más próxima será <strong>pasado mañana</strong>.`
-
         case 'fechaInvalida':
             return `La fecha <strong>${fechaSel}</strong> no es válida. El mínimo es <strong>mañana</strong> (${fechaManFmt}). Cambia la fecha para continuar.`
-
         case 'lejana':
             return `Elegiste entrega para el <strong>${fechaSel}</strong>. Como es una fecha <strong>posterior a mañana</strong> (${fechaManFmt}), <strong>no aplica la hora límite</strong>. Puedes finalizar sin problema.`
-
         case 'ok':
             return `Son las <strong>${h}</strong>. Tienes hasta las <strong>${hl}</strong> para hacer tu pedido con entrega <strong>mañana</strong> (${fechaManFmt}). Después de esa hora, la entrega más próxima será <strong>pasado mañana</strong>.`
-
         case 'cerca':
             return `Son las <strong>${h}</strong>. Te queda <strong>menos de 1 hora</strong> para pedir con entrega <strong>mañana</strong> (${fechaManFmt}). Después de las <strong>${hl}</strong>, la entrega más próxima será <strong>pasado mañana</strong>.`
-
         case 'bloqueado':
             return `Son las <strong>${h}</strong> y ya pasó la hora límite (<strong>${hl}</strong>). Ya no se aceptan pedidos con entrega <strong>mañana</strong> (${fechaManFmt}). La fecha más próxima disponible es <strong>pasado mañana</strong>.`
-
         default:
             return ''
     }
@@ -272,12 +254,27 @@ const fechaPedido = computed(() => {
 
 // ==================== MÍNIMOS ====================
 const progresoLocal = computed(() => props.progresoGrupos || [])
+
+const faltantesGrupo = computed(() =>
+    progresoLocal.value.filter(g => !g.Cumple && g.Tipo === 'grupo')
+)
+
+const faltantesProducto = computed(() =>
+    progresoLocal.value.filter(g => !g.Cumple && g.Tipo === 'producto')
+)
+
 const gruposQueNoCumplen = computed(() => progresoLocal.value.filter(g => !g.Cumple))
 const cumpleTodos = computed(() => progresoLocal.value.length === 0 || gruposQueNoCumplen.value.length === 0)
+
+// ✅ Productos sin mínimo
+const tieneProductosSinMinimo = computed(() => {
+    return (props.productosSinMinimo || []).length > 0
+})
 
 // ✅ BOTÓN: Deshabilitado si cualquier regla falla
 const puedeFinalizar = computed(() => {
     if (detallesLocal.value.length === 0) return false
+    if (tieneProductosSinMinimo.value) return false // ✅ NUEVO
     if (!cumpleTodos.value) return false
     if (fechaVacia.value) return false
     if (fechaEsInvalida.value) return false
@@ -289,6 +286,7 @@ const puedeFinalizar = computed(() => {
 const textoBoton = computed(() => {
     if (loading.value) return 'Procesando...'
     if (validandoHoraLimite.value) return 'Validando hora...'
+    if (tieneProductosSinMinimo.value) return 'Productos sin mínimo'
     if (fechaVacia.value) return 'Selecciona fecha'
     if (fechaEsInvalida.value) return 'Fecha inválida'
     if (fechaEsManana.value && fueraDeHoraLimite.value) return 'Hora límite excedida'
@@ -424,9 +422,18 @@ const abrirModalConfirmacion = async () => {
         return
     }
 
+    if (tieneProductosSinMinimo.value) {
+        const nombres = props.productosSinMinimo.map(p => `${p.Codigo} - ${p.Descripcion}`).join('\n')
+        toast?.error('Productos sin mínimo', `Los siguientes productos ya no tienen mínimo configurado:\n${nombres}`)
+        return
+    }
+
     if (!cumpleTodos.value) {
-        const grupos = gruposQueNoCumplen.value.map(g => `${g.NombreGrupo}: faltan ${g.Falta} und`).join('\n')
-        toast?.error('Mínimos incompletos', `No se puede finalizar:\n${grupos}`)
+        const items = gruposQueNoCumplen.value.map(g => {
+            const tipo = g.Tipo === 'producto' ? 'Producto' : 'Grupo'
+            return `[${tipo}] ${g.NombreGrupo}: faltan ${g.Falta} und`
+        }).join('\n')
+        toast?.error('Mínimos incompletos', `No se puede finalizar:\n${items}`)
         return
     }
 
@@ -624,7 +631,7 @@ const eliminarContenedor = async (item) => {
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-5xl mx-auto">
 
-                <!-- ==================== HEADER ==================== -->
+                <!-- HEADER -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
                         <button
@@ -645,7 +652,7 @@ const eliminarContenedor = async (item) => {
                     </div>
                 </div>
 
-                <!-- ==================== BANNER HORA LÍMITE ==================== -->
+                <!-- BANNER HORA LÍMITE -->
                 <div
                     v-if="horaLimite"
                     class="mb-3 rounded-xl border overflow-hidden transition-all"
@@ -657,7 +664,6 @@ const eliminarContenedor = async (item) => {
                         'bg-slate-50 border-slate-300': estadoBanner === 'sinFecha'
                     }"
                 >
-                    <!-- HEADER -->
                     <div
                         class="px-3 py-2 flex items-center justify-between gap-2 border-b"
                         :class="{
@@ -697,7 +703,6 @@ const eliminarContenedor = async (item) => {
                         </span>
                     </div>
 
-                    <!-- FRASE PRINCIPAL -->
                     <div class="px-3 py-2.5">
                         <p
                             class="text-[12px] leading-relaxed"
@@ -711,7 +716,6 @@ const eliminarContenedor = async (item) => {
                             v-html="fraseBanner"
                         ></p>
 
-                        <!-- LEYENDA DESPLEGABLE -->
                         <details class="mt-2 group">
                             <summary
                                 class="text-[10px] cursor-pointer font-semibold flex items-center gap-1 opacity-90 hover:opacity-100 select-none"
@@ -770,23 +774,12 @@ const eliminarContenedor = async (item) => {
                                         </div>
                                     </div>
                                 </div>
-
-                                <div class="flex items-start gap-2 pt-1.5 border-t border-gray-200">
-                                    <span class="text-sm flex-shrink-0">🆘</span>
-                                    <div>
-                                        <p class="text-[10px] font-bold text-gray-700">¿Necesitas urgencia?</p>
-                                        <p class="text-[10px] text-gray-600">
-                                            Si ya pasó la hora y necesitas entrega mañana,
-                                            <strong>contacta a tu supervisor</strong> para una excepción.
-                                        </p>
-                                    </div>
-                                </div>
                             </div>
                         </details>
                     </div>
                 </div>
 
-                <!-- ==================== SELECTOR TIPO DE PRECIO ==================== -->
+                <!-- SELECTOR TIPO DE PRECIO -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-3 border border-gray-200">
                     <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                         <div class="flex items-center gap-2">
@@ -824,28 +817,74 @@ const eliminarContenedor = async (item) => {
                     </p>
                 </div>
 
-                <!-- ==================== ALERTA DE MÍNIMOS ==================== -->
-                <div v-if="!cumpleTodos" class="bg-red-50 border-l-4 border-red-500 rounded-xl p-3 mb-3">
+                <!-- ✅ ALERTA: PRODUCTOS SIN MÍNIMO -->
+                <div v-if="tieneProductosSinMinimo" class="bg-red-50 border-l-4 border-red-600 rounded-xl p-3 mb-3">
                     <div class="flex items-start gap-2">
-                        <i class="fas fa-exclamation-triangle text-red-500 text-base flex-shrink-0 mt-0.5"></i>
+                        <i class="fas fa-ban text-red-600 text-base flex-shrink-0 mt-0.5"></i>
                         <div class="flex-1 min-w-0">
-                            <h3 class="font-bold text-red-800 text-xs">No se puede finalizar el pedido</h3>
-                            <p class="text-[10px] text-red-700 mt-0.5">Faltan cumplir los siguientes mínimos por grupo:</p>
+                            <h3 class="font-bold text-red-800 text-xs">Productos sin mínimo configurado</h3>
+                            <p class="text-[10px] text-red-700 mt-0.5">
+                                Los siguientes productos ya no tienen mínimo configurado. Contacta al administrador:
+                            </p>
                             <ul class="mt-1.5 space-y-0.5">
-                                <li v-for="grupo in gruposQueNoCumplen" :key="grupo.IdGrupoAnalisis" class="text-[10px] text-red-700 flex items-start gap-1.5">
+                                <li v-for="prod in productosSinMinimo" :key="prod.IdProducto"
+                                    class="text-[10px] text-red-700 flex items-start gap-1.5">
                                     <i class="fas fa-circle text-[5px] mt-1.5 flex-shrink-0"></i>
-                                    <span>
-                                        <strong>{{ grupo.NombreGrupo }}:</strong>
-                                        faltan {{ grupo.Falta }} und
-                                        <span class="opacity-70">(tienes {{ grupo.CantidadPedida }}, mínimo {{ grupo.CantidadMinima }})</span>
-                                    </span>
+                                    <span><strong>{{ prod.Codigo }}</strong> - {{ prod.Descripcion }}</span>
                                 </li>
                             </ul>
                         </div>
                     </div>
                 </div>
 
-                <!-- ==================== PROGRESO OK ==================== -->
+                <!-- ✅ ALERTA DE MÍNIMOS FALTANTES -->
+                <div v-else-if="!cumpleTodos" class="bg-red-50 border-l-4 border-red-500 rounded-xl p-3 mb-3">
+                    <div class="flex items-start gap-2">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-base flex-shrink-0 mt-0.5"></i>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-bold text-red-800 text-xs">No se puede finalizar el pedido</h3>
+                            <p class="text-[10px] text-red-700 mt-0.5">Faltan cumplir los siguientes mínimos:</p>
+
+                            <!-- Mínimos de GRUPO -->
+                            <div v-if="faltantesGrupo.length > 0" class="mt-2">
+                                <p class="text-[10px] font-bold text-indigo-700 mb-1">
+                                    <i class="fas fa-layer-group mr-1"></i>Mínimos de Grupo:
+                                </p>
+                                <ul class="space-y-0.5">
+                                    <li v-for="grupo in faltantesGrupo" :key="'g-' + grupo.IdGrupoAnalisis"
+                                        class="text-[10px] text-red-700 flex items-start gap-1.5">
+                                        <i class="fas fa-circle text-[5px] mt-1.5 flex-shrink-0"></i>
+                                        <span>
+                                            <strong>{{ grupo.NombreGrupo }}:</strong>
+                                            faltan {{ grupo.Falta }} und
+                                            <span class="opacity-70">(tienes {{ grupo.CantidadPedida }}, mínimo {{ grupo.CantidadMinima }})</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- Mínimos de PRODUCTO -->
+                            <div v-if="faltantesProducto.length > 0" class="mt-2">
+                                <p class="text-[10px] font-bold text-purple-700 mb-1">
+                                    <i class="fas fa-box mr-1"></i>Mínimos de Producto:
+                                </p>
+                                <ul class="space-y-0.5">
+                                    <li v-for="prod in faltantesProducto" :key="'p-' + prod.IdProducto"
+                                        class="text-[10px] text-red-700 flex items-start gap-1.5">
+                                        <i class="fas fa-circle text-[5px] mt-1.5 flex-shrink-0"></i>
+                                        <span>
+                                            <strong>{{ prod.NombreGrupo }}:</strong>
+                                            faltan {{ prod.Falta }} und
+                                            <span class="opacity-70">(tienes {{ prod.CantidadPedida }}, mínimo {{ prod.CantidadMinima }})</span>
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ✅ PROGRESO OK -->
                 <div v-else-if="progresoLocal.length > 0" class="bg-emerald-50 border-l-4 border-emerald-500 rounded-xl p-3 mb-3">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-check-circle text-emerald-500 text-base flex-shrink-0"></i>
@@ -856,7 +895,7 @@ const eliminarContenedor = async (item) => {
                     </div>
                 </div>
 
-                <!-- ==================== CARD PRINCIPAL ==================== -->
+                <!-- CARD PRINCIPAL -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
 
                     <!-- CABECERA -->
@@ -1065,6 +1104,7 @@ const eliminarContenedor = async (item) => {
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                         >
                             <i v-if="loading || validandoHoraLimite" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else-if="tieneProductosSinMinimo" class="fas fa-ban text-[10px]"></i>
                             <i v-else-if="fechaEsInvalida" class="fas fa-exclamation-triangle text-[10px]"></i>
                             <i v-else-if="fechaEsManana && fueraDeHoraLimite" class="fas fa-clock text-[10px]"></i>
                             <i v-else-if="!puedeFinalizar" class="fas fa-ban text-[10px]"></i>
@@ -1077,7 +1117,7 @@ const eliminarContenedor = async (item) => {
             </div>
         </div>
 
-        <!-- ==================== MODALES ==================== -->
+        <!-- MODALES -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
             title="Confirmar Pedido"

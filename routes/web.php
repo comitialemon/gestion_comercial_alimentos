@@ -1747,5 +1747,12 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
     // API para movimientos de inventario
     Route::get('/inventario/reporte-movimientos', [ReporteInventarioController::class, 'getMovimientos']);
-
+    Route::get('/debug-session', function () {
+        return response()->json([
+            'cliente_id' => session('cliente_id'),
+            'cliente_sucursal_id' => session('cliente_sucursal_id'),
+            'operador_id' => session('operador_id'),
+            'session_id' => session()->getId(),
+        ]);
+    });
 }); // Fin de rutas protegidas

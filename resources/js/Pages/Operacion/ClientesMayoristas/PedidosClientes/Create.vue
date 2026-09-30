@@ -15,15 +15,15 @@ const props = defineProps({
     sucursales: { type: Array, default: () => [] },
     pedidoBorrador: { type: Object, default: null },
     carrito: { type: Array, default: () => [] },
-    // ✅ FIX: Acepta Number o String
     sucursalDefault: { type: [Number, String], default: null },
     idIdentificador: { type: [Number, String], default: null },
     nombreOperador: { type: String, default: '' },
-    minimosGrupos: { type: Array, default: () => [] },
+    minimosGrupos: { type: Array, default: () => [] },           // ✅ Ahora array
+    minimosProductos: { type: [Array, Object], default: () => ({}) },
+    infoProductos: { type: [Array, Object], default: () => ({}) }, // ✅ NUEVO
     progresoInicial: { type: Array, default: () => [] },
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
-    // ✅ FIX: Acepta Number o String
     idSubClienteDefault: { type: [Number, String], default: null },
 })
 
@@ -35,14 +35,14 @@ const carritoItems = ref([])
 const pedidoId = ref(null)
 const busquedaContenedor = ref('')
 
-// ✅ Tipo de precio
 const tipoPrecioActual = ref(props.tipoPrecio || 'sin_factura')
 const modalCambiarTipoVisible = ref(false)
 const tipoPrecioSeleccionado = ref('sin_factura')
 const cambiandoTipo = ref(false)
 
-// ✅ Mínimos
 const minimos = ref([...props.minimosGrupos])
+const minimosProd = ref({ ...props.minimosProductos })
+const productosInfo = ref({ ...props.infoProductos })
 
 // ==================== COMPUTADOS ====================
 const totalCarrito = computed(() => {
@@ -67,12 +67,8 @@ const contenedoresFiltrados = computed(() => {
     )
 })
 
-/**
- * ✅ PROGRESO CALCULADO LOCALMENTE
- */
-const progresoGrupos = computed(() => {
+const acumuladoPorGrupo = computed(() => {
     const acumulado = {}
-
     carritoItems.value.forEach(item => {
         item.productos.forEach(p => {
             const grupoId = p.IdGrupoAnalisis
@@ -81,44 +77,108 @@ const progresoGrupos = computed(() => {
             }
         })
     })
+    return acumulado
+})
 
-    if (Object.keys(acumulado).length === 0) {
-        return []
-    }
-
-    return minimos.value
-        .filter(minimo => acumulado[minimo.IdGrupoAnalisis] !== undefined)
-        .map(minimo => {
-            const pedida = acumulado[minimo.IdGrupoAnalisis] || 0
-            const minima = Number(minimo.CantidadMinimaGrupo) || 0
-
-            return {
-                IdGrupoAnalisis: minimo.IdGrupoAnalisis,
-                NombreGrupo: minimo.NombreGrupo,
-                CantidadMinima: minima,
-                CantidadPedida: pedida,
-                Cumple: pedida >= minima,
-                Falta: Math.max(0, minima - pedida),
-                Porcentaje: minima > 0 ? Math.min((pedida / minima) * 100, 100) : 100
+const acumuladoPorProducto = computed(() => {
+    const acumulado = {}
+    carritoItems.value.forEach(item => {
+        item.productos.forEach(p => {
+            const prodId = p.IdProducto
+            if (prodId) {
+                acumulado[prodId] = (acumulado[prodId] || 0) + (Number(p.Cantidad) || 0)
             }
         })
+    })
+    return acumulado
 })
 
-const gruposQueNoCumplen = computed(() => progresoGrupos.value.filter(g => !g.Cumple))
-const cumpleTodosMinimos = computed(() => progresoGrupos.value.length === 0 || gruposQueNoCumplen.value.length === 0)
+/**
+ * ✅ PROGRESO JERÁRQUICO: grupos → productos anidados
+ */
+const progresoJerarquico = computed(() => {
+    const acumG = acumuladoPorGrupo.value
+    const acumP = acumuladoPorProducto.value
+    const resultado = {}
 
-// ✅ Etiquetas de tipo de precio
-const tipoPrecioLabel = computed(() => {
-    return tipoPrecioActual.value === 'con_factura' ? 'Con Factura' : 'Sin Factura'
+    // 1. Inicializar grupos con mínimo
+    minimos.value.forEach(minimo => {
+        const idGrupo = minimo.IdGrupoAnalisis
+        if (acumG[idGrupo] === undefined) return
+
+        const pedida = acumG[idGrupo] || 0
+        const minima = Number(minimo.CantidadMinimaGrupo) || 0
+
+        resultado[idGrupo] = {
+            IdGrupoAnalisis: idGrupo,
+            NombreGrupo: minimo.NombreGrupo || `Grupo ${idGrupo}`,
+            CantidadMinima: minima,
+            CantidadPedida: pedida,
+            Cumple: pedida >= minima,
+            Falta: Math.max(0, minima - pedida),
+            Porcentaje: minima > 0 ? Math.min((pedida / minima) * 100, 100) : 100,
+            productos: [],
+        }
+    })
+
+    // 2. Agregar productos dentro de su grupo
+    Object.keys(minimosProd.value).forEach(idProd => {
+        const idProducto = Number(idProd)
+        if (acumP[idProducto] === undefined) return
+
+        const pedida = acumP[idProducto] || 0
+        const minima = Number(minimosProd.value[idProd]) || 0
+        const info = productosInfo.value[idProducto]
+
+        if (!info) return
+
+        const idGrupo = info.IdGrupoAnalisis
+        const grupo = resultado[idGrupo]
+
+        if (!grupo) return
+
+        grupo.productos.push({
+            IdProducto: idProducto,
+            Codigo: info.Codigo,
+            Descripcion: info.Descripcion,
+            CantidadMinima: minima,
+            CantidadPedida: pedida,
+            Cumple: pedida >= minima,
+            Falta: Math.max(0, minima - pedida),
+            Porcentaje: minima > 0 ? Math.min((pedida / minima) * 100, 100) : 100,
+        })
+    })
+
+    // 3. Convertir a array
+    return Object.values(resultado).filter(g => g.productos.length > 0 || g.CantidadPedida > 0)
 })
 
-const tipoPrecioColor = computed(() => {
-    return tipoPrecioActual.value === 'con_factura'
+const totalPendientes = computed(() => {
+    let count = 0
+    progresoJerarquico.value.forEach(g => {
+        if (!g.Cumple) count++
+        g.productos.forEach(p => {
+            if (!p.Cumple) count++
+        })
+    })
+    return count
+})
+
+const cumpleTodosMinimos = computed(() =>
+    progresoJerarquico.value.length === 0 || totalPendientes.value === 0
+)
+
+const tipoPrecioLabel = computed(() =>
+    tipoPrecioActual.value === 'con_factura' ? 'Con Factura' : 'Sin Factura'
+)
+
+const tipoPrecioColor = computed(() =>
+    tipoPrecioActual.value === 'con_factura'
         ? 'bg-blue-100 text-blue-700 border-blue-300'
         : 'bg-gray-100 text-gray-700 border-gray-300'
-})
+)
 
-// ==================== INICIALIZAR CARRITO ====================
+// ==================== FUNCIONES ====================
 const inicializarCarrito = () => {
     if (props.carrito && props.carrito.length > 0) {
         carritoItems.value = props.carrito.map(item => ({
@@ -134,7 +194,6 @@ const inicializarCarrito = () => {
     }
 }
 
-// ==================== ABRIR MODAL ====================
 const abrirModal = (contenedor) => {
     contenedorSeleccionado.value = contenedor
     modalVisible.value = true
@@ -145,17 +204,14 @@ const cerrarModal = () => {
     contenedorSeleccionado.value = null
 }
 
-// ==================== TIPO DE PRECIO ====================
 const abrirModalCambiarTipo = (nuevoTipo) => {
     if (nuevoTipo === tipoPrecioActual.value) return
-
     tipoPrecioSeleccionado.value = nuevoTipo
 
     if (!hayProductosEnCarrito.value) {
         aplicarCambioTipo()
         return
     }
-
     modalCambiarTipoVisible.value = true
 }
 
@@ -174,14 +230,6 @@ const aplicarCambioTipo = async () => {
 
             if (response.data.success) {
                 toast?.success('Éxito', 'Tipo de precio actualizado y precios recalculados')
-
-                if (response.data.productos_sin_precio?.length > 0) {
-                    toast?.warning(
-                        'Atención',
-                        `${response.data.productos_sin_precio.length} producto(s) no tienen precio asignado para este tipo`
-                    )
-                }
-
                 router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
                     tipo_precio: tipoPrecioSeleccionado.value
                 }, {
@@ -202,13 +250,12 @@ const aplicarCambioTipo = async () => {
                 preserveScroll: true,
                 onSuccess: () => {
                     tipoPrecioActual.value = tipoPrecioSeleccionado.value
-                    toast?.success('Éxito', `Tipo de precio: ${tipoPrecioSeleccionado.value === 'con_factura' ? 'Con Factura' : 'Sin Factura'}`)
                 }
             })
         }
     } catch (error) {
         console.error('Error:', error)
-        toast?.error('Error', error.response?.data?.message || 'Error al cambiar tipo de precio')
+        toast?.error('Error', error.response?.data?.message || 'Error al cambiar tipo')
     } finally {
         cambiandoTipo.value = false
         modalCambiarTipoVisible.value = false
@@ -220,15 +267,10 @@ const cerrarModalCambiarTipo = () => {
     tipoPrecioSeleccionado.value = tipoPrecioActual.value
 }
 
-// ==================== AGREGAR AL CARRITO ====================
 const agregarContenedorAlCarrito = async (data) => {
     loading.value = true
     try {
-        const payload = {
-            ...data,
-            TipoPrecio: tipoPrecioActual.value
-        }
-
+        const payload = { ...data, TipoPrecio: tipoPrecioActual.value }
         const response = await axios.post(
             '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/agregar',
             payload
@@ -248,7 +290,6 @@ const agregarContenedorAlCarrito = async (data) => {
     }
 }
 
-// ==================== IR A REVISAR PEDIDO ====================
 const irARevisarPedido = () => {
     if (!pedidoId.value) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de revisar')
@@ -276,6 +317,14 @@ watch(() => props.minimosGrupos, (newVal) => {
     minimos.value = [...newVal]
 }, { deep: true })
 
+watch(() => props.minimosProductos, (newVal) => {
+    minimosProd.value = { ...newVal }
+}, { deep: true })
+
+watch(() => props.infoProductos, (newVal) => {
+    productosInfo.value = { ...newVal }
+}, { deep: true })
+
 watch(() => props.tipoPrecio, (newVal) => {
     tipoPrecioActual.value = newVal
 })
@@ -289,18 +338,15 @@ onMounted(() => {
     <div class="min-h-screen bg-gray-100 pb-32">
         <div class="max-w-7xl mx-auto px-3 py-3">
 
-            <!-- ==================== HEADER ==================== -->
+            <!-- HEADER -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
                 <div>
                     <h1 class="text-lg font-bold text-gray-800">Nuevo Pedido</h1>
                     <p class="text-[10px] text-gray-400">
                         Seleccione contenedores y agregue productos
-                        <span v-if="nombreOperador" class="text-primary-600 font-medium">
-                            • {{ nombreOperador }}
-                        </span>
+                        <span v-if="nombreOperador" class="text-primary-600 font-medium">• {{ nombreOperador }}</span>
                     </p>
                 </div>
-
                 <div class="flex items-center gap-3">
                     <div v-if="hayProductosEnCarrito" class="hidden sm:flex items-center gap-3 text-xs">
                         <div class="flex items-center gap-1.5 text-gray-500">
@@ -312,15 +358,12 @@ onMounted(() => {
                             <span><strong class="text-primary-600">{{ totalCarrito }}</strong> und</span>
                         </div>
                     </div>
-
                     <button
                         @click="irARevisarPedido"
                         :disabled="!hayProductosEnCarrito"
                         class="px-5 py-2 rounded-xl text-sm font-bold transition flex items-center gap-2 shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
                         :class="hayProductosEnCarrito
-                            ? (cumpleTodosMinimos
-                                ? 'bg-green-500 hover:bg-green-600 text-white'
-                                : 'bg-orange-500 hover:bg-orange-600 text-white')
+                            ? (cumpleTodosMinimos ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-orange-500 hover:bg-orange-600 text-white')
                             : 'bg-gray-300 text-gray-500'"
                     >
                         <i :class="cumpleTodosMinimos && hayProductosEnCarrito ? 'fas fa-check-circle' : 'fas fa-clipboard-list'" class="text-sm"></i>
@@ -332,7 +375,7 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- ==================== SELECTOR TIPO DE PRECIO ==================== -->
+            <!-- SELECTOR TIPO DE PRECIO -->
             <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                     <div class="flex items-center gap-2">
@@ -344,15 +387,12 @@ onMounted(() => {
                             <p class="text-[10px] text-gray-500">Selecciona cómo se cotizará el pedido</p>
                         </div>
                     </div>
-
                     <div class="flex bg-gray-100 rounded-lg p-1 w-full sm:w-auto">
                         <button
                             @click="abrirModalCambiarTipo('sin_factura')"
                             :disabled="cambiandoTipo"
                             class="flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-medium transition flex items-center justify-center gap-2"
-                            :class="tipoPrecioActual === 'sin_factura'
-                                ? 'bg-white text-gray-800 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'"
+                            :class="tipoPrecioActual === 'sin_factura' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
                         >
                             <i class="fas fa-receipt text-[10px]"></i>
                             Sin Factura
@@ -362,9 +402,7 @@ onMounted(() => {
                             @click="abrirModalCambiarTipo('con_factura')"
                             :disabled="cambiandoTipo"
                             class="flex-1 sm:flex-none px-4 py-2 rounded-md text-xs font-medium transition flex items-center justify-center gap-2"
-                            :class="tipoPrecioActual === 'con_factura'
-                                ? 'bg-white text-gray-800 shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'"
+                            :class="tipoPrecioActual === 'con_factura' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
                         >
                             <i class="fas fa-file-invoice text-[10px]"></i>
                             Con Factura
@@ -372,75 +410,123 @@ onMounted(() => {
                         </button>
                     </div>
                 </div>
-
                 <div class="mt-2 flex items-center gap-2 text-[10px]" :class="tipoPrecioColor">
                     <i :class="tipoPrecioActual === 'con_factura' ? 'fas fa-file-invoice' : 'fas fa-receipt'" class="text-[9px]"></i>
-                    <span>
-                        Los productos se cotizarán con <strong>{{ tipoPrecioLabel }}</strong>
-                        <span v-if="hayProductosEnCarrito" class="text-orange-600 ml-1">
-                            • Si cambias el tipo, se recalcularán los precios del carrito
-                        </span>
-                    </span>
+                    <span>Los productos se cotizarán con <strong>{{ tipoPrecioLabel }}</strong></span>
                 </div>
             </div>
 
-            <!-- ==================== PROGRESO DE GRUPOS ==================== -->
-            <div v-if="progresoGrupos.length > 0 && hayProductosEnCarrito" class="bg-white rounded-xl shadow-sm p-4 mb-4 border-l-4"
+            <!-- ✅ PROGRESO JERÁRQUICO -->
+            <div v-if="progresoJerarquico.length > 0 && hayProductosEnCarrito"
+                 class="bg-white rounded-xl shadow-sm mb-4 border-l-4 overflow-hidden"
                  :class="cumpleTodosMinimos ? 'border-green-500' : 'border-orange-500'">
 
-                <div class="flex items-center justify-between mb-3">
+                <!-- Header -->
+                <div class="p-4 pb-3 flex items-center justify-between">
                     <h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-chart-line" :class="cumpleTodosMinimos ? 'text-green-500' : 'text-orange-500'"></i>
                         Progreso del Pedido
                     </h2>
-                    <span
-                        class="text-[10px] px-2 py-1 rounded-full font-medium"
-                        :class="cumpleTodosMinimos ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'"
-                    >
+                    <span class="text-[10px] px-2 py-1 rounded-full font-medium"
+                          :class="cumpleTodosMinimos ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'">
                         <i :class="cumpleTodosMinimos ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'" class="mr-1"></i>
-                        {{ cumpleTodosMinimos ? 'Todo listo' : 'Faltan mínimos' }}
+                        {{ cumpleTodosMinimos ? 'Todo listo' : `${totalPendientes} pendiente(s)` }}
                     </span>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div
-                        v-for="grupo in progresoGrupos"
-                        :key="grupo.IdGrupoAnalisis"
-                        class="p-3 rounded-lg border-2 transition-all"
-                        :class="grupo.Cumple
-                            ? 'border-green-200 bg-green-50/50'
-                            : 'border-orange-200 bg-orange-50/50'"
-                    >
-                        <div class="flex items-center justify-between mb-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                <i class="fas" :class="grupo.Cumple ? 'fa-check-circle text-green-500' : 'fa-exclamation-circle text-orange-500'"></i>
-                                <span class="font-semibold text-gray-800 text-sm truncate">{{ grupo.NombreGrupo }}</span>
+                <!-- Lista de grupos -->
+                <div class="px-4 pb-4 space-y-3">
+                    <div v-for="grupo in progresoJerarquico"
+                         :key="'g-' + grupo.IdGrupoAnalisis"
+                         class="rounded-lg border-2 overflow-hidden"
+                         :class="grupo.Cumple ? 'border-green-200 bg-green-50/30' : 'border-orange-200 bg-orange-50/30'">
+
+                        <!-- GRUPO header -->
+                        <div class="p-3">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2 min-w-0 flex-1">
+                                    <span class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-white text-[10px]"
+                                          :class="grupo.Cumple ? 'bg-green-500' : 'bg-orange-500'">
+                                        <i :class="grupo.Cumple ? 'fas fa-check' : 'fas fa-exclamation'"></i>
+                                    </span>
+                                    <span class="text-[8px] uppercase tracking-wide font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 flex-shrink-0">
+                                        Grupo
+                                    </span>
+                                    <span class="font-bold text-gray-800 text-sm truncate">{{ grupo.NombreGrupo }}</span>
+                                </div>
+                                <span class="text-sm font-bold whitespace-nowrap ml-2"
+                                      :class="grupo.Cumple ? 'text-green-600' : 'text-orange-600'">
+                                    {{ grupo.CantidadPedida }} / {{ grupo.CantidadMinima }}
+                                </span>
                             </div>
-                            <span class="text-[11px] font-bold whitespace-nowrap ml-2" :class="grupo.Cumple ? 'text-green-600' : 'text-orange-600'">
-                                {{ grupo.CantidadPedida }} / {{ grupo.CantidadMinima }}
-                            </span>
+
+                            <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                <div class="h-full transition-all duration-300 rounded-full"
+                                     :class="grupo.Cumple ? 'bg-green-500' : 'bg-orange-500'"
+                                     :style="{ width: grupo.Porcentaje + '%' }"></div>
+                            </div>
+
+                            <p v-if="!grupo.Cumple" class="text-[10px] text-orange-600 mt-1.5 flex items-center gap-1">
+                                <i class="fas fa-arrow-right"></i>
+                                Faltan <strong>{{ grupo.Falta }}</strong> und para el grupo
+                            </p>
+                            <p v-else class="text-[10px] text-green-600 mt-1.5 flex items-center gap-1">
+                                <i class="fas fa-check"></i> Mínimo del grupo alcanzado
+                            </p>
                         </div>
 
-                        <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                                class="h-full transition-all duration-300 rounded-full"
-                                :class="grupo.Cumple ? 'bg-green-500' : 'bg-orange-500'"
-                                :style="{ width: grupo.Porcentaje + '%' }"
-                            ></div>
-                        </div>
+                        <!-- PRODUCTOS dentro del grupo -->
+                        <div v-if="grupo.productos.length > 0"
+                             class="border-t border-gray-200 bg-white/50 p-2 space-y-1.5">
+                            <p class="text-[9px] uppercase tracking-wide font-bold text-gray-500 px-1 mb-1">
+                                <i class="fas fa-box mr-1"></i>
+                                Productos con mínimo ({{ grupo.productos.length }})
+                            </p>
 
-                        <p v-if="!grupo.Cumple" class="text-[10px] text-orange-600 mt-1.5 flex items-center gap-1">
-                            <i class="fas fa-arrow-right"></i>
-                            Faltan <strong>{{ grupo.Falta }}</strong> und
-                        </p>
-                        <p v-else class="text-[10px] text-green-600 mt-1.5 flex items-center gap-1">
-                            <i class="fas fa-check"></i> Mínimo alcanzado
-                        </p>
+                            <div v-for="prod in grupo.productos"
+                                 :key="'p-' + prod.IdProducto"
+                                 class="rounded-md border px-2 py-1.5"
+                                 :class="prod.Cumple ? 'border-green-200 bg-green-50/50' : 'border-orange-200 bg-orange-50/50'">
+
+                                <div class="flex items-center justify-between mb-1">
+                                    <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                                        <i class="fas text-[10px] flex-shrink-0"
+                                           :class="prod.Cumple ? 'fa-check-circle text-green-500' : 'fa-exclamation-circle text-orange-500'"></i>
+                                        <span class="font-mono text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded flex-shrink-0">
+                                            {{ prod.Codigo }}
+                                        </span>
+                                        <span class="text-xs text-gray-700 truncate">{{ prod.Descripcion }}</span>
+                                    </div>
+                                    <span class="text-[11px] font-bold whitespace-nowrap ml-2"
+                                          :class="prod.Cumple ? 'text-green-600' : 'text-orange-600'">
+                                        {{ prod.CantidadPedida }} / {{ prod.CantidadMinima }}
+                                    </span>
+                                </div>
+
+                                <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div class="h-full transition-all duration-300 rounded-full"
+                                         :class="prod.Cumple ? 'bg-green-500' : 'bg-orange-500'"
+                                         :style="{ width: prod.Porcentaje + '%' }"></div>
+                                </div>
+
+                                <p v-if="!prod.Cumple" class="text-[9px] text-orange-600 mt-1">
+                                    Faltan <strong>{{ prod.Falta }}</strong> und
+                                </p>
+                            </div>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Alerta resumen -->
+                <div v-if="!cumpleTodosMinimos" class="mx-4 mb-4 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                    <p class="text-[10px] font-semibold text-orange-800 mb-1">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Para finalizar el pedido, debes cumplir TODOS los mínimos marcados en naranja.
+                    </p>
                 </div>
             </div>
 
-            <!-- ==================== CONTENEDORES ==================== -->
+            <!-- CONTENEDORES -->
             <div class="mb-6">
                 <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-3">
                     <h2 class="text-sm font-semibold text-gray-700">
@@ -448,25 +534,18 @@ onMounted(() => {
                         Contenedores
                         <span class="text-xs text-gray-400 font-normal ml-1">({{ contenedores.length }})</span>
                     </h2>
-
                     <div class="relative w-full sm:w-64">
                         <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                        <input
-                            type="text"
-                            v-model="busquedaContenedor"
-                            placeholder="Buscar contenedor..."
-                            class="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-400 outline-none"
-                        />
+                        <input type="text" v-model="busquedaContenedor" placeholder="Buscar contenedor..."
+                               class="w-full border border-gray-200 rounded-lg pl-9 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-400 outline-none" />
                     </div>
                 </div>
 
                 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                    <div
-                        v-for="contenedor in contenedoresFiltrados"
-                        :key="contenedor.IdContenedor"
-                        @click="abrirModal(contenedor)"
-                        class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden border-2 border-transparent hover:border-primary-300"
-                    >
+                    <div v-for="contenedor in contenedoresFiltrados"
+                         :key="contenedor.IdContenedor"
+                         @click="abrirModal(contenedor)"
+                         class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden border-2 border-transparent hover:border-primary-300">
                         <div class="h-24 bg-gradient-to-br from-primary-50 to-indigo-50 flex items-center justify-center">
                             <div class="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center">
                                 <i class="fas fa-box text-primary-500 text-2xl"></i>
@@ -513,15 +592,11 @@ onMounted(() => {
             @actualizar="agregarContenedorAlCarrito"
         />
 
-        <!-- ==================== MODAL CONFIRMAR CAMBIO DE TIPO ==================== -->
-        <div
-            v-if="modalCambiarTipoVisible"
-            class="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
-            @click.self="cerrarModalCambiarTipo"
-        >
-            <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-fade-in-up">
-
-                <!-- Header -->
+        <!-- MODAL CAMBIO TIPO -->
+        <div v-if="modalCambiarTipoVisible"
+             class="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
+             @click.self="cerrarModalCambiarTipo">
+            <div class="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl">
                 <div class="p-4 border-b bg-orange-50 flex items-center gap-3">
                     <div class="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <i class="fas fa-exclamation-triangle text-orange-600 text-lg"></i>
@@ -531,48 +606,22 @@ onMounted(() => {
                         <p class="text-[10px] text-gray-500">Esta acción afectará a todo el carrito</p>
                     </div>
                 </div>
-
-                <!-- Body -->
                 <div class="p-4">
                     <p class="text-sm text-gray-700 text-center">
                         Tienes <strong class="text-primary-600">{{ totalContenedoresCarrito }} contenedor(es)</strong> en el carrito.
                     </p>
                     <p class="text-sm text-gray-700 text-center mt-2">
-                        Al cambiar a <strong class="text-blue-600">{{ tipoPrecioSeleccionado === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}</strong>:
+                        Al cambiar a <strong class="text-blue-600">{{ tipoPrecioSeleccionado === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}</strong> se recalcularán los precios.
                     </p>
-                    <ul class="mt-3 space-y-1.5 text-xs text-gray-600 bg-gray-50 p-3 rounded-lg">
-                        <li class="flex items-start gap-2">
-                            <i class="fas fa-sync-alt text-blue-500 text-[10px] mt-0.5"></i>
-                            <span>Se recalcularán los precios de todos los productos</span>
-                        </li>
-                        <li class="flex items-start gap-2">
-                            <i class="fas fa-calculator text-blue-500 text-[10px] mt-0.5"></i>
-                            <span>Los totales se actualizarán automáticamente</span>
-                        </li>
-                        <li class="flex items-start gap-2">
-                            <i class="fas fa-info-circle text-orange-500 text-[10px] mt-0.5"></i>
-                            <span>Si algún producto no tiene precio para este tipo, se te avisará</span>
-                        </li>
-                    </ul>
-                    <p class="text-xs text-center mt-3 text-gray-500">
-                        ¿Deseas continuar?
-                    </p>
+                    <p class="text-xs text-center mt-3 text-gray-500">¿Deseas continuar?</p>
                 </div>
-
-                <!-- Footer -->
                 <div class="p-3 bg-gray-50 flex justify-end gap-2">
-                    <button
-                        @click="cerrarModalCambiarTipo"
-                        :disabled="cambiandoTipo"
-                        class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium transition"
-                    >
+                    <button @click="cerrarModalCambiarTipo" :disabled="cambiandoTipo"
+                            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-medium">
                         Cancelar
                     </button>
-                    <button
-                        @click="aplicarCambioTipo"
-                        :disabled="cambiandoTipo"
-                        class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium transition flex items-center gap-1.5 disabled:opacity-50"
-                    >
+                    <button @click="aplicarCambioTipo" :disabled="cambiandoTipo"
+                            class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 disabled:opacity-50">
                         <i v-if="cambiandoTipo" class="fas fa-spinner fa-spin text-[10px]"></i>
                         <i v-else class="fas fa-check text-[10px]"></i>
                         {{ cambiandoTipo ? 'Procesando...' : 'Sí, cambiar' }}
@@ -588,18 +637,5 @@ onMounted(() => {
     from { opacity: 0; transform: translateY(10px) scale(0.97); }
     to { opacity: 1; transform: translateY(0) scale(1); }
 }
-
-.animate-fade-in-up {
-    animation: fadeInUp 0.2s ease-out;
-}
-
-.grid {
-    gap: 0.75rem;
-}
-
-@media (max-width: 640px) {
-    .grid-cols-2 {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
+.animate-fade-in-up { animation: fadeInUp 0.2s ease-out; }
 </style>
