@@ -21,11 +21,80 @@ const estadoFiltro = ref(props.filtroEstado || '')
 const buscador = ref(props.buscar || '')
 const gruposData = ref(props.grupos)
 
+// ✅ NUEVO: Buscador de clientes
+const busquedaCliente = ref('')
+const resultadosCliente = ref([])
+const buscandoCliente = ref(false)
+const mostrarResultados = ref(false)
+const dropdownRef = ref(null)
+
 // =============================================
 // COMPUTADOS
 // =============================================
 const gruposLista = computed(() => gruposData.value?.data || [])
 const hayGrupos = computed(() => gruposLista.value.length > 0)
+
+// =============================================
+// ✅ BUSCADOR DE CLIENTES
+// =============================================
+let timeoutCliente
+const buscarCliente = () => {
+    clearTimeout(timeoutCliente)
+
+    const q = busquedaCliente.value.trim()
+
+    if (q.length < 2) {
+        resultadosCliente.value = []
+        mostrarResultados.value = false
+        return
+    }
+
+    timeoutCliente = setTimeout(async () => {
+        buscandoCliente.value = true
+        mostrarResultados.value = true
+
+        try {
+            const response = await axios.get(
+                '/operacion/pedidos/clientes-mayoristas/grupos-clientes/buscar-cliente',
+                { params: { q } }
+            )
+
+            if (response.data.success) {
+                resultadosCliente.value = response.data.data
+            } else {
+                resultadosCliente.value = []
+            }
+        } catch (error) {
+            console.error('Error buscando cliente:', error)
+            resultadosCliente.value = []
+        } finally {
+            buscandoCliente.value = false
+        }
+    }, 400)
+}
+
+const limpiarBusquedaCliente = () => {
+    busquedaCliente.value = ''
+    resultadosCliente.value = []
+    mostrarResultados.value = false
+}
+
+const irAlGrupoDelCliente = (resultado) => {
+    if (!resultado.IdGrupoCliente) {
+        toast?.warning('Sin grupo', `${resultado.Nombre} no está asignado a ningún grupo`)
+        return
+    }
+
+    limpiarBusquedaCliente()
+    router.get(`/operacion/pedidos/clientes-mayoristas/grupos-clientes/${resultado.IdGrupoCliente}/edit`)
+}
+
+// Cerrar dropdown al hacer click afuera
+const cerrarDropdownSiAfuera = (event) => {
+    if (dropdownRef.value && !dropdownRef.value.contains(event.target)) {
+        mostrarResultados.value = false
+    }
+}
 
 // =============================================
 // ACCIONES
@@ -35,7 +104,7 @@ const aplicarFiltros = () => {
         estado: estadoFiltro.value || undefined,
         buscar: buscador.value || undefined,
     }
-    
+
     router.get('/operacion/pedidos/clientes-mayoristas/grupos-clientes', params, {
         preserveState: true,
         replace: true,
@@ -79,18 +148,18 @@ const cambiando = ref({})
 
 const cambiarEstado = async (grupo) => {
     const accion = grupo.ActivoInactivo === 1 ? 'desactivar' : 'activar'
-    
+
     if (!confirm(`¿Estás seguro de ${accion} el grupo "${grupo.Nombre}"?`)) {
         return
     }
-    
+
     cambiando.value[grupo.IdGrupoCliente] = true
-    
+
     try {
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupo.IdGrupoCliente}/cambiar-estado`
         )
-        
+
         if (response.data.success) {
             toast?.success('Éxito', response.data.message)
             aplicarFiltros()
@@ -109,15 +178,15 @@ const cambiarEstado = async (grupo) => {
 // ELIMINAR GRUPO
 // =============================================
 const eliminarGrupo = async (grupo) => {
-    if (!confirm(`¿Estás seguro de eliminar el grupo "${grupo.Nombre}"?\n\nEsta acción eliminará también:\n- Los clientes asignados\n- Los precios configurados`)) {
+    if (!confirm(`¿Estás seguro de eliminar el grupo "${grupo.Nombre}"?\n\nEsta acción eliminará también:\n- Los clientes asignados\n- Los precios configurados\n- Los mínimos configurados`)) {
         return
     }
-    
+
     try {
         const response = await axios.delete(
             `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupo.IdGrupoCliente}`
         )
-        
+
         if (response.data.success) {
             toast?.success('Éxito', 'Grupo eliminado correctamente')
             aplicarFiltros()
@@ -135,14 +204,14 @@ const eliminarGrupo = async (grupo) => {
 // =============================================
 const construirUrlConFiltros = (url) => {
     if (!url) return '#'
-    
+
     try {
         const urlObj = new URL(url, window.location.origin)
         const params = new URLSearchParams(urlObj.search)
-        
+
         if (estadoFiltro.value) params.set('estado', estadoFiltro.value)
         if (buscador.value) params.set('buscar', buscador.value)
-        
+
         urlObj.search = params.toString()
         return urlObj.toString()
     } catch (error) {
@@ -155,8 +224,8 @@ const construirUrlConFiltros = (url) => {
 // UTILIDADES
 // =============================================
 const getEstadoBadge = (activo) => {
-    return activo === 1 
-        ? 'bg-green-100 text-green-800 border-green-200' 
+    return activo === 1
+        ? 'bg-green-100 text-green-800 border-green-200'
         : 'bg-gray-100 text-gray-600 border-gray-200'
 }
 
@@ -176,13 +245,16 @@ const handleResize = () => { isMobile.value = window.innerWidth < 768 }
 
 onMounted(() => {
     window.addEventListener('resize', handleResize)
+    document.addEventListener('click', cerrarDropdownSiAfuera)
     handleResize()
     gruposData.value = props.grupos
 })
 
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
+    document.removeEventListener('click', cerrarDropdownSiAfuera)
     clearTimeout(timeoutBuscador)
+    clearTimeout(timeoutCliente)
 })
 
 watch(() => props.grupos, (newVal) => {
@@ -209,7 +281,15 @@ watch(() => props.grupos, (newVal) => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
+                        <a
+                            href="/operacion/pedidos/clientes-mayoristas/grupos-clientes/exportar-excel"
+                            target="_blank"
+                            class="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
+                        >
+                            <i class="fas fa-file-excel text-[10px]"></i>
+                            <span>Exportar Excel</span>
+                        </a>
+                        <button
                             @click="irACrear"
                             class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
                         >
@@ -224,7 +304,95 @@ watch(() => props.grupos, (newVal) => {
                     <i class="fas fa-info-circle text-blue-500 text-sm flex-shrink-0 mt-0.5"></i>
                     <div class="text-xs text-blue-700">
                         <p class="font-medium mb-0.5">¿Cómo funciona?</p>
-                        <p>Crea un grupo, asígnale clientes (operadores PedidoClientes) y define los <strong>precios por producto</strong>. Los <strong>mínimos son globales</strong> y se configuran aparte.</p>
+                        <p>Crea un grupo, asígnale clientes (operadores PedidoClientes), define los <strong>precios</strong> y los <strong>mínimos por grupo de análisis</strong>.</p>
+                    </div>
+                </div>
+
+                <!-- ✅ BUSCADOR DE CLIENTES -->
+                <div class="bg-white rounded-xl shadow-sm p-3 mb-4 border border-purple-200" ref="dropdownRef">
+                    <div class="flex items-center gap-2 mb-2">
+                        <div class="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-user-search text-purple-600 text-[10px]"></i>
+                        </div>
+                        <div>
+                            <p class="text-xs font-bold text-gray-800">Buscar Cliente</p>
+                            <p class="text-[9px] text-gray-500">Encuentra en qué grupo está un cliente</p>
+                        </div>
+                    </div>
+
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                        <input
+                            type="text"
+                            v-model="busquedaCliente"
+                            @input="buscarCliente"
+                            @focus="busquedaCliente.length >= 2 && (mostrarResultados = true)"
+                            placeholder="Buscar por nombre o CI/NIT (mín. 2 caracteres)..."
+                            class="w-full border border-gray-300 rounded-lg pl-9 pr-9 py-2 text-sm focus:ring-2 focus:ring-purple-400 focus:border-purple-400 outline-none"
+                        />
+                        <button
+                            v-if="busquedaCliente"
+                            @click="limpiarBusquedaCliente"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        >
+                            <i class="fas fa-times text-xs"></i>
+                        </button>
+                    </div>
+
+                    <!-- Dropdown de resultados -->
+                    <div
+                        v-if="mostrarResultados"
+                        class="mt-2 bg-white border border-gray-200 rounded-lg shadow-lg max-h-72 overflow-y-auto"
+                    >
+                        <!-- Cargando -->
+                        <div v-if="buscandoCliente" class="p-3 text-center text-xs text-gray-500">
+                            <i class="fas fa-spinner fa-spin mr-1"></i>
+                            Buscando...
+                        </div>
+
+                        <!-- Sin resultados -->
+                        <div v-else-if="resultadosCliente.length === 0" class="p-3 text-center text-xs text-gray-400">
+                            <i class="fas fa-search mr-1"></i>
+                            No se encontraron clientes
+                        </div>
+
+                        <!-- Resultados -->
+                        <div v-else class="divide-y divide-gray-100">
+                            <div
+                                v-for="c in resultadosCliente"
+                                :key="c.IdIdentificador"
+                                @click="irAlGrupoDelCliente(c)"
+                                class="px-3 py-2 hover:bg-purple-50 cursor-pointer transition flex items-center justify-between gap-2"
+                            >
+                                <div class="min-w-0 flex-1">
+                                    <p class="text-xs font-medium text-gray-800 truncate">
+                                        {{ c.Nombre }}
+                                    </p>
+                                    <p class="text-[9px] text-gray-500 font-mono">
+                                        CI/NIT: {{ c.CI_NIT || '-' }}
+                                    </p>
+                                </div>
+                                <div class="flex-shrink-0">
+                                    <span
+                                        v-if="c.IdGrupoCliente"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium"
+                                        :class="c.GrupoActivo
+                                            ? 'bg-emerald-100 text-emerald-700'
+                                            : 'bg-amber-100 text-amber-700'"
+                                    >
+                                        <i class="fas fa-layer-group text-[8px]"></i>
+                                        {{ c.NombreGrupo }}
+                                    </span>
+                                    <span
+                                        v-else
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-medium bg-gray-100 text-gray-500"
+                                    >
+                                        <i class="fas fa-minus-circle text-[8px]"></i>
+                                        Sin grupo
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -233,9 +401,9 @@ watch(() => props.grupos, (newVal) => {
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
-                            <select 
-                                v-model="estadoFiltro" 
-                                @change="aplicarFiltros" 
+                            <select
+                                v-model="estadoFiltro"
+                                @change="aplicarFiltros"
                                 class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
                                 <option value="">Todos</option>
@@ -243,20 +411,20 @@ watch(() => props.grupos, (newVal) => {
                                 <option value="inactivos">Inactivos</option>
                             </select>
                         </div>
-                        
+
                         <div class="flex items-center gap-1 flex-1 min-w-[180px] max-w-[300px]">
                             <div class="relative flex-1">
                                 <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                                <input 
-                                    type="text" 
-                                    v-model="buscador" 
+                                <input
+                                    type="text"
+                                    v-model="buscador"
                                     @input="buscarGrupos"
                                     placeholder="Buscar grupo..."
                                     class="w-full border border-gray-300 rounded-lg pl-7 pr-7 py-1 text-xs focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                                 >
-                                <button 
-                                    v-if="buscador" 
-                                    @click="limpiarBusqueda" 
+                                <button
+                                    v-if="buscador"
+                                    @click="limpiarBusqueda"
                                     class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
                                 >
                                     <i class="fas fa-times"></i>
@@ -273,7 +441,7 @@ watch(() => props.grupos, (newVal) => {
 
                 <!-- LISTA DE GRUPOS -->
                 <div v-if="hayGrupos" class="space-y-3">
-                    
+
                     <!-- DESKTOP: Tabla -->
                     <div v-if="!isMobile" class="bg-white rounded-xl shadow-sm overflow-hidden">
                         <table class="min-w-full divide-y divide-gray-200">
@@ -287,9 +455,9 @@ watch(() => props.grupos, (newVal) => {
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
-                                <tr 
-                                    v-for="grupo in gruposLista" 
-                                    :key="grupo.IdGrupoCliente" 
+                                <tr
+                                    v-for="grupo in gruposLista"
+                                    :key="grupo.IdGrupoCliente"
                                     class="hover:bg-gray-50 transition"
                                 >
                                     <td class="px-3 py-2">
@@ -330,26 +498,26 @@ watch(() => props.grupos, (newVal) => {
                                     </td>
                                     <td class="px-3 py-2 text-right">
                                         <div class="flex justify-end gap-1">
-                                            <button 
+                                            <button
                                                 @click="irAEditar(grupo)"
                                                 class="text-primary-600 hover:text-primary-800 transition p-1.5 hover:bg-primary-50 rounded"
                                                 title="Editar"
                                             >
                                                 <i class="fas fa-edit text-xs"></i>
                                             </button>
-                                            <button 
+                                            <button
                                                 @click="cambiarEstado(grupo)"
                                                 :disabled="cambiando[grupo.IdGrupoCliente]"
                                                 class="transition p-1.5 rounded disabled:opacity-50"
-                                                :class="grupo.ActivoInactivo === 1 
-                                                    ? 'text-amber-600 hover:text-amber-800 hover:bg-amber-50' 
+                                                :class="grupo.ActivoInactivo === 1
+                                                    ? 'text-amber-600 hover:text-amber-800 hover:bg-amber-50'
                                                     : 'text-green-600 hover:text-green-800 hover:bg-green-50'"
                                                 :title="grupo.ActivoInactivo === 1 ? 'Desactivar' : 'Activar'"
                                             >
                                                 <i v-if="cambiando[grupo.IdGrupoCliente]" class="fas fa-spinner fa-spin text-xs"></i>
                                                 <i v-else :class="grupo.ActivoInactivo === 1 ? 'fas fa-pause-circle text-xs' : 'fas fa-play-circle text-xs'"></i>
                                             </button>
-                                            <button 
+                                            <button
                                                 @click="eliminarGrupo(grupo)"
                                                 class="text-red-500 hover:text-red-700 transition p-1.5 hover:bg-red-50 rounded"
                                                 title="Eliminar"
@@ -365,8 +533,8 @@ watch(() => props.grupos, (newVal) => {
 
                     <!-- MÓVIL: Tarjetas -->
                     <div v-else class="space-y-2">
-                        <div 
-                            v-for="grupo in gruposLista" 
+                        <div
+                            v-for="grupo in gruposLista"
                             :key="grupo.IdGrupoCliente"
                             class="bg-white rounded-xl shadow-sm p-3 border border-gray-100"
                         >
@@ -384,7 +552,7 @@ watch(() => props.grupos, (newVal) => {
                                         </p>
                                     </div>
                                 </div>
-                                <span 
+                                <span
                                     class="px-2 py-0.5 text-[9px] rounded-full font-medium border flex-shrink-0"
                                     :class="getEstadoBadge(grupo.ActivoInactivo)"
                                 >
@@ -404,14 +572,14 @@ watch(() => props.grupos, (newVal) => {
                             </div>
 
                             <div class="flex gap-1.5 pt-2 border-t border-gray-100">
-                                <button 
+                                <button
                                     @click="irAEditar(grupo)"
                                     class="flex-1 bg-primary-600 hover:bg-primary-700 text-white rounded-md py-1.5 text-[10px] font-medium flex items-center justify-center gap-1"
                                 >
                                     <i class="fas fa-edit"></i>
                                     Editar
                                 </button>
-                                <button 
+                                <button
                                     @click="cambiarEstado(grupo)"
                                     :disabled="cambiando[grupo.IdGrupoCliente]"
                                     class="px-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md py-1.5 text-[10px] disabled:opacity-50"
@@ -419,7 +587,7 @@ watch(() => props.grupos, (newVal) => {
                                     <i v-if="cambiando[grupo.IdGrupoCliente]" class="fas fa-spinner fa-spin"></i>
                                     <i v-else :class="grupo.ActivoInactivo === 1 ? 'fas fa-pause-circle' : 'fas fa-play-circle'"></i>
                                 </button>
-                                <button 
+                                <button
                                     @click="eliminarGrupo(grupo)"
                                     class="px-3 bg-red-50 hover:bg-red-100 text-red-600 rounded-md py-1.5 text-[10px]"
                                 >
@@ -435,16 +603,16 @@ watch(() => props.grupos, (newVal) => {
                             Mostrando {{ gruposData.from || 0 }} - {{ gruposData.to || 0 }} de {{ gruposData.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
-                            <Link 
-                                v-for="link in gruposData.links" 
-                                :key="link.label" 
+                            <Link
+                                v-for="link in gruposData.links"
+                                :key="link.label"
                                 :href="construirUrlConFiltros(link.url)"
-                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
-                                :class="{ 
-                                    'bg-primary-600 text-white': link.active, 
-                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 
-                                    'opacity-50 cursor-not-allowed': !link.url 
-                                }" 
+                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition"
+                                :class="{
+                                    'bg-primary-600 text-white': link.active,
+                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url,
+                                    'opacity-50 cursor-not-allowed': !link.url
+                                }"
                                 v-html="link.label"
                                 preserve-state
                             />
@@ -463,7 +631,7 @@ watch(() => props.grupos, (newVal) => {
                         <span v-if="buscador">No se encontraron grupos con "{{ buscador }}"</span>
                         <span v-else>Crea tu primer grupo para agrupar clientes y configurar precios en masa</span>
                     </p>
-                    <button 
+                    <button
                         v-if="!buscador"
                         @click="irACrear"
                         class="mt-4 inline-flex items-center gap-1.5 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition"

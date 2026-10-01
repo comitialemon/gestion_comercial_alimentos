@@ -807,4 +807,92 @@ class GrupoClienteController extends Controller
             ], 500);
         }
     }
+    // ============================================================
+    // BUSCAR CLIENTE Y SU GRUPO
+    // ============================================================
+
+    /**
+     * Busca clientes por nombre o CI/NIT y devuelve a qué grupo pertenecen.
+     */
+    public function buscarCliente(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $termino = trim($request->get('q', ''));
+
+        if (strlen($termino) < 2) {
+            return response()->json([
+                'success' => true,
+                'data' => [],
+            ]);
+        }
+
+        try {
+            // Buscar clientes (operadores PedidoClientes)
+            $clientes = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_identificador as i')
+                ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
+                ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
+                ->where('ot.Detalle', 'PedidoClientes')
+                ->where('o.ActivoInactivo', 0)
+                ->where(function ($q) use ($termino) {
+                    $q->where('i.Nombre', 'LIKE', "%{$termino}%")
+                    ->orWhere('i.CI_NIT', 'LIKE', "%{$termino}%");
+                })
+                ->select('i.IdIdentificador', 'i.Nombre', 'i.CI_NIT')
+                ->orderBy('i.Nombre')
+                ->limit(20)
+                ->distinct()
+                ->get();
+
+            if ($clientes->isEmpty()) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [],
+                ]);
+            }
+
+            $idsIdentificadores = $clientes->pluck('IdIdentificador')->toArray();
+
+            // Buscar en qué grupo está cada uno (detalle activo)
+            $detalles = GrupoClienteDetalle::whereIn('IdIdentificador', $idsIdentificadores)
+                ->where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('ActivoInactivo', 1)
+                ->get(['IdIdentificador', 'IdGrupoCliente'])
+                ->keyBy('IdIdentificador');
+
+            // Obtener info de los grupos
+            $idsGrupos = $detalles->pluck('IdGrupoCliente')->unique()->toArray();
+            $grupos = GrupoCliente::whereIn('IdGrupoCliente', $idsGrupos)
+                ->get(['IdGrupoCliente', 'Nombre', 'ActivoInactivo'])
+                ->keyBy('IdGrupoCliente');
+
+            $resultado = $clientes->map(function ($c) use ($detalles, $grupos) {
+                $detalle = $detalles[$c->IdIdentificador] ?? null;
+                $grupo = $detalle ? ($grupos[$detalle->IdGrupoCliente] ?? null) : null;
+
+                return [
+                    'IdIdentificador' => $c->IdIdentificador,
+                    'Nombre' => $c->Nombre,
+                    'CI_NIT' => $c->CI_NIT,
+                    'IdGrupoCliente' => $grupo ? $grupo->IdGrupoCliente : null,
+                    'NombreGrupo' => $grupo ? $grupo->Nombre : null,
+                    'GrupoActivo' => $grupo ? ($grupo->ActivoInactivo == 1) : null,
+                ];
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $resultado,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al buscar cliente: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al buscar: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

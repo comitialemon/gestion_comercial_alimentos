@@ -13,7 +13,6 @@ class GrupoClienteReporteController extends Controller
 {
     /**
      * ✅ EXPORTAR EXCEL: Una hoja por cada Grupo Cliente
-     * Estructura igual al Excel original
      */
     public function exportarExcel(Request $request)
     {
@@ -57,7 +56,7 @@ class GrupoClienteReporteController extends Controller
 
                 // ✅ Cargar datos
                 $clientes = $this->obtenerClientesDelGrupo($grupo->IdGrupoCliente);
-                $gruposAnalisis = $this->obtenerGruposAnalisisConProductos($grupo->IdGrupoCliente);
+                $gruposAnalisis = $this->obtenerGruposAnalisisConProductos($grupo->IdGrupoCliente, $clienteId, $sucursalId);
 
                 $fila = 1;
 
@@ -105,7 +104,7 @@ class GrupoClienteReporteController extends Controller
                     ->getColor()->setRGB('FFFFFF');
                 $sheet->getStyle('A' . $fila)->getFill()
                     ->setFillType(\PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID)
-                    ->getStartColor()->setRGB('8B1A1A'); // Rojo oscuro (como el original)
+                    ->getStartColor()->setRGB('8B1A1A');
                 $sheet->getStyle('A' . $fila)->getAlignment()
                     ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
                 $fila++;
@@ -146,7 +145,6 @@ class GrupoClienteReporteController extends Controller
                         $sheet->getStyle('C' . $fila)
                             ->getAlignment()->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER);
 
-                        // Bordes
                         $sheet->getStyle('A' . $fila . ':C' . $fila)->getBorders()->getAllBorders()
                             ->setBorderStyle(\PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN);
 
@@ -193,7 +191,7 @@ class GrupoClienteReporteController extends Controller
 
                 // ✅ Recorrer cada Grupo de Análisis
                 foreach ($gruposAnalisis as $grupoAnalisis) {
-                    $filaInicioGrupo = $fila; // Para saber dónde empieza el grupo
+                    $filaInicioGrupo = $fila;
 
                     foreach ($grupoAnalisis->Productos as $prod) {
                         $contadorGlobal++;
@@ -203,14 +201,13 @@ class GrupoClienteReporteController extends Controller
                         $sheet->setCellValue('C' . $fila, (float) $prod->PrecioSinFactura);
                         $sheet->setCellValue('D' . $fila, (float) $prod->PrecioConFactura);
 
-                        // CONDICIONES PRODUCCIÓN: "Pedido mínimo X und"
-                        $condProduccion = $prod->PedidoMinimo > 0 
-                            ? 'Pedido mínimo ' . $prod->PedidoMinimo . ' unidades'
+                        // ✅ CONDICIONES PRODUCCIÓN: viene de producto_minimo
+                        $condProduccion = $prod->CantidadMinimaProducto > 0
+                            ? 'Pedido mínimo ' . (int) $prod->CantidadMinimaProducto . ' unidades'
                             : '';
                         $sheet->setCellValue('E' . $fila, $condProduccion);
 
                         // CONDICIÓN COMERCIAL: se agrega después (celda combinada)
-                        // Por ahora vacío
                         $sheet->setCellValue('F' . $fila, '');
 
                         // Formato moneda
@@ -232,21 +229,19 @@ class GrupoClienteReporteController extends Controller
                         $fila++;
                     }
 
-                    $filaFinGrupo = $fila - 1; // Última fila del grupo
+                    $filaFinGrupo = $fila - 1;
 
                     // ✅ CONDICIÓN COMERCIAL: celda combinada con el mínimo del grupo
                     if ($grupoAnalisis->CantidadMinimaGrupo > 0) {
-                        $textoComercial = 'Pedido total de ' 
-                            . (int) $grupoAnalisis->CantidadMinimaGrupo 
-                            . ' ' 
-                            . strtolower($grupoAnalisis->NombreGrupo) 
+                        $textoComercial = 'Pedido total de '
+                            . (int) $grupoAnalisis->CantidadMinimaGrupo
+                            . ' '
+                            . strtolower($grupoAnalisis->NombreGrupo)
                             . ' en adelante';
 
-                        // Combinar celdas de F en el rango del grupo
                         $sheet->mergeCells('F' . $filaInicioGrupo . ':F' . $filaFinGrupo);
                         $sheet->setCellValue('F' . $filaInicioGrupo, $textoComercial);
 
-                        // Estilo
                         $sheet->getStyle('F' . $filaInicioGrupo)->getAlignment()
                             ->setHorizontal(\PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER)
                             ->setVertical(\PhpOffice\PhpSpreadsheet\Style\Alignment::VERTICAL_CENTER)
@@ -297,9 +292,6 @@ class GrupoClienteReporteController extends Controller
     // HELPERS
     // ============================================================
 
-    /**
-     * ✅ Obtener clientes del grupo
-     */
     private function obtenerClientesDelGrupo($idGrupoCliente)
     {
         return DB::connection('mysql_gestion_comercial_alimentos')
@@ -314,11 +306,13 @@ class GrupoClienteReporteController extends Controller
 
     /**
      * ✅ Obtener productos AGRUPADOS por Grupo de Análisis
-     * 
-     * Devuelve una colección donde cada item es un Grupo de Análisis
-     * con sus productos y el mínimo del grupo.
+     *
+     * ✅ AHORA:
+     *   - Mínimo del grupo viene de `grupo_cliente_minimo`
+     *   - Mínimo del producto viene de `producto_minimo` (CantidadMinimaProducto)
+     *   - Solo productos con DisponibleParaPedido = 1
      */
-    private function obtenerGruposAnalisisConProductos($idGrupoCliente)
+    private function obtenerGruposAnalisisConProductos($idGrupoCliente, $clienteId, $sucursalId)
     {
         // 1. Obtener mínimos del grupo cliente
         $minimos = DB::connection('mysql_gestion_comercial_alimentos')
@@ -335,16 +329,24 @@ class GrupoClienteReporteController extends Controller
             ->orderBy('ga.Grupo')
             ->get();
 
-        // 2. Para cada grupo de análisis, obtener sus productos con precio
         $resultado = collect();
 
         foreach ($minimos as $minimo) {
+            // ✅ Productos con precio + mínimo individual + disponible
             $productos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('operacion_pedidos_clientes_producto_precio as gp')
                 ->join('inventario_productodetalle as p', 'gp.IdProducto', '=', 'p.IdProducto')
+                ->leftJoin('operacion_pedidos_clientes_producto_minimo as pm', function ($join) use ($clienteId, $sucursalId) {
+                    $join->on('pm.IdProducto', '=', 'p.IdProducto')
+                         ->where('pm.IdCliente', '=', $clienteId)
+                         ->where('pm.IdSucursal', '=', $sucursalId)
+                         ->where('pm.ActivoInactivo', '=', 1);
+                })
                 ->where('gp.IdGrupoCliente', $idGrupoCliente)
                 ->where('p.IdGrupoAnalisis', $minimo->IdGrupoAnalisis)
                 ->where('gp.ActivoInactivo', 1)
+                ->where('p.ActivoInactivo', 0)
+                ->where('pm.DisponibleParaPedido', 1) // ✅ Solo disponibles
                 ->where(function ($q) {
                     $q->where('gp.PrecioSinFactura', '>', 0)
                       ->orWhere('gp.PrecioConFactura', '>', 0);
@@ -355,7 +357,7 @@ class GrupoClienteReporteController extends Controller
                     'p.Descripcion',
                     'gp.PrecioSinFactura',
                     'gp.PrecioConFactura',
-                    'gp.PedidoMinimo'
+                    'pm.CantidadMinimaProducto' // ✅ Mínimo viene de producto_minimo
                 )
                 ->orderBy('p.Descripcion')
                 ->get();
@@ -373,9 +375,6 @@ class GrupoClienteReporteController extends Controller
         return $resultado;
     }
 
-    /**
-     * ✅ Generar nombre de hoja válido
-     */
     private function generarNombreHoja($nombre, $nombresUsados = [])
     {
         $nombre = str_replace(['\\', '/', '?', '*', '[', ']', ':'], '', $nombre);

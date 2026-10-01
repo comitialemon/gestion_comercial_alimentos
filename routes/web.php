@@ -1550,6 +1550,15 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/', [GrupoClienteController::class, 'store'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.store');
 
+                    // ✅ RUTAS FIJAS (SIN {id}) - DEBEN IR PRIMERO
+                    Route::get('/buscar-cliente', [GrupoClienteController::class, 'buscarCliente'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.buscar-cliente');
+
+                    // ✅ EXPORTAR EXCEL - ANTES DE /{id}
+                    Route::get('/exportar-excel', [GrupoClienteReporteController::class, 'exportarExcel'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.exportar-excel');
+
+                    // ✅ RUTAS CON {id} - DESPUÉS
                     Route::get('/{id}/edit', [GrupoClienteController::class, 'edit'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.edit');
 
@@ -1578,7 +1587,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
                     Route::delete('/{id}/productos/{idProducto}', [GrupoClienteController::class, 'eliminarProducto'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.eliminar-producto');
-                        // Pestaña 4: Mínimos por grupo de clientes
+
+                    // Pestaña 4: Mínimos por grupo de clientes
                     Route::get('/{id}/minimos', [GrupoClienteController::class, 'getMinimos'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.minimos');
 
