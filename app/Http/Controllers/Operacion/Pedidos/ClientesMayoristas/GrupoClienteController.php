@@ -8,6 +8,7 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteDetalle;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Inventario\ProductoGrupoAnalisis;
 use Illuminate\Http\Request;
@@ -654,6 +655,152 @@ class GrupoClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    // ============================================================
+    // PESTAÑA 4: MÍNIMOS POR GRUPO DE ANÁLISIS (POR GRUPO DE CLIENTES)
+    // ============================================================
+
+    /**
+     * Obtener los grupos de análisis ACTIVOS con su mínimo actual para este grupo de clientes.
+     */
+    public function getMinimos($id)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        try {
+            $grupo = GrupoCliente::porCliente($clienteId)
+                ->porSucursal($sucursalId)
+                ->where('IdGrupoCliente', $id)
+                ->firstOrFail();
+
+            // ✅ Solo los grupos de análisis ACTIVOS (los que activó en MinimosGlobales)
+            $gruposActivos = GrupoAnalisisMinimo::obtenerGruposActivosConNombre($clienteId, $sucursalId);
+
+            // ✅ Mapa de mínimos ya guardados para este grupo de clientes
+            $mapaGuardado = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($id, $clienteId, $sucursalId);
+
+            $resultado = [];
+            foreach ($gruposActivos as $g) {
+                $idGrupoAnalisis = $g['IdGrupoAnalisis'];
+                $cantidad = $mapaGuardado[$idGrupoAnalisis] ?? 0;
+
+                // Total de productos activos de ese grupo
+                $totalProductos = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('inventario_productodetalle')
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdGrupoAnalisis', $idGrupoAnalisis)
+                    ->where('ActivoInactivo', 0)
+                    ->count();
+
+                $resultado[] = [
+                    'IdGrupoAnalisis' => $idGrupoAnalisis,
+                    'NombreGrupo' => $g['Grupo'],
+                    'CantidadMinimaGrupo' => (float) $cantidad,
+                    'TotalProductos' => $totalProductos,
+                ];
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $resultado,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error al obtener mínimos por grupo: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Guardar mínimos por grupo de análisis para este grupo de clientes (bulk upsert).
+     */
+    public function guardarMinimos(Request $request, $id)
+    {
+        $request->validate([
+            'grupos' => 'required|array',
+            'grupos.*.IdGrupoAnalisis' => 'required|integer|exists:inventario_productogrupoanalisis,IdGrupoAnalisis',
+            'grupos.*.CantidadMinima' => 'nullable|numeric|min:0',
+        ]);
+
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
+        $ahora = Carbon::now('America/La_Paz');
+
+        try {
+            $grupo = GrupoCliente::porCliente($clienteId)
+                ->porSucursal($sucursalId)
+                ->where('IdGrupoCliente', $id)
+                ->firstOrFail();
+
+            DB::beginTransaction();
+
+            $aGuardar = [];
+            $aEliminar = [];
+
+            foreach ($request->grupos as $g) {
+                $cantidad = (float) ($g['CantidadMinima'] ?? 0);
+
+                if ($cantidad > 0) {
+                    $aGuardar[] = [
+                        'IdGrupoCliente' => $id,
+                        'IdCliente' => $clienteId,
+                        'IdSucursal' => $sucursalId,
+                        'IdGrupoAnalisis' => $g['IdGrupoAnalisis'],
+                        'CantidadMinimaGrupo' => $cantidad,
+                        'ActivoInactivo' => 1,
+                        'IdOperadorInserta' => $operadorId,
+                        'FechaInserta' => $ahora,
+                        'IdOperadorActualiza' => $operadorId,
+                        'FechaActualiza' => $ahora,
+                    ];
+                } else {
+                    $aEliminar[] = $g['IdGrupoAnalisis'];
+                }
+            }
+
+            // Bulk upsert
+            if (!empty($aGuardar)) {
+                GrupoClienteMinimo::upsert(
+                    $aGuardar,
+                    ['IdGrupoCliente', 'IdGrupoAnalisis'],
+                    ['CantidadMinimaGrupo', 'ActivoInactivo', 'IdOperadorActualiza', 'FechaActualiza']
+                );
+            }
+
+            // Eliminar los que quedaron en 0
+            if (!empty($aEliminar)) {
+                GrupoClienteMinimo::porGrupoCliente($id)
+                    ->whereIn('IdGrupoAnalisis', $aEliminar)
+                    ->delete();
+            }
+
+            DB::commit();
+
+            // Invalidar caché
+            GrupoClienteMinimo::invalidarCache($id, $clienteId, $sucursalId);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Mínimos guardados correctamente',
+                'resumen' => [
+                    'guardados' => count($aGuardar),
+                    'eliminados' => count($aEliminar),
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error al guardar mínimos por grupo: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error: ' . $e->getMessage()

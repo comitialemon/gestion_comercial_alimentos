@@ -13,6 +13,7 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteProducto;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\ClienteSucursal;
@@ -89,8 +90,7 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * ✅ NUEVO: Invalidar caché del progreso del pedido
-     * Se llama cuando se modifica un pedido (agregar/editar/eliminar).
+     * ✅ Invalidar caché del progreso del pedido
      */
     private function invalidarCacheProgreso($idPedido, $clienteId = null, $sucursalId = null)
     {
@@ -100,22 +100,63 @@ class PedidoClienteController extends Controller
     }
 
     /**
-     * Calcular progreso de mínimos GLOBALES
-     * ✅ OPTIMIZADO:
-     *   - 1 sola query (JOIN con grupos y productos)
-     *   - Caché de 60 segundos por pedido
-     *   - Invalidación automática al modificar el pedido
+     * ✅ Invalidar caché de productos sin mínimo
+     */
+    private function invalidarCacheProductosSinMinimo($idPedido, $clienteId = null, $sucursalId = null)
+    {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+        cache()->forget("productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}");
+    }
+
+    /**
+     * ✅ Validar que TODOS los productos del pedido tengan mínimo configurado.
+     */
+    private function validarProductosDelPedidoTienenMinimo($pedido)
+    {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        $idsProductosEnPedido = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+            ->pluck('IdProducto')
+            ->unique()
+            ->toArray();
+
+        if (empty($idsProductosEnPedido)) {
+            return [];
+        }
+
+        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
+        $idsSinMinimo = array_diff($idsProductosEnPedido, array_keys($mapaProductos));
+
+        if (empty($idsSinMinimo)) {
+            return [];
+        }
+
+        $productosSinMinimo = ProductoDetalle::whereIn('IdProducto', $idsSinMinimo)
+            ->get(['IdProducto', 'Codigo', 'Descripcion']);
+
+        return $productosSinMinimo->map(function ($p) {
+            return [
+                'IdProducto' => $p->IdProducto,
+                'Codigo' => $p->Codigo,
+                'Descripcion' => $p->Descripcion,
+            ];
+        })->toArray();
+    }
+
+    /**
+     * Calcular progreso de mínimos
      */
     private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente = null)
     {
-        if (!$pedidoBorrador) {
+        if (!$pedidoBorrador || !$idGrupoCliente) {
             return [];
         }
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        // Detalles del pedido
         $detalles = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('pedidos_clientes_detalle as d')
             ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
@@ -126,7 +167,45 @@ class PedidoClienteController extends Controller
         $progreso = [];
 
         // ============================================================
-        // ✅ SOLO MÍNIMOS POR PRODUCTO (el grupo ya no se valida por cantidad)
+        // 1. MÍNIMOS POR GRUPO DE ANÁLISIS (POR GRUPO DE CLIENTES)
+        // ============================================================
+        $mapaGrupos = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($idGrupoCliente, $clienteId, $sucursalId);
+
+        if (!empty($mapaGrupos)) {
+            $acumuladoPorGrupo = [];
+            foreach ($detalles as $d) {
+                $idG = $d->IdGrupoAnalisis;
+                $acumuladoPorGrupo[$idG] = ($acumuladoPorGrupo[$idG] ?? 0) + (float) $d->Cantidad;
+            }
+
+            $idsGrupos = array_keys($mapaGrupos);
+            $nombresGrupos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productogrupoanalisis')
+                ->whereIn('IdGrupoAnalisis', $idsGrupos)
+                ->pluck('Grupo', 'IdGrupoAnalisis');
+
+            foreach ($mapaGrupos as $idGrupo => $minimo) {
+                if (!isset($acumuladoPorGrupo[$idGrupo])) {
+                    continue;
+                }
+
+                $pedida = $acumuladoPorGrupo[$idGrupo];
+                $min = (float) $minimo;
+
+                $progreso[] = [
+                    'Tipo' => 'grupo',
+                    'IdGrupoAnalisis' => $idGrupo,
+                    'NombreGrupo' => $nombresGrupos[$idGrupo] ?? 'Sin grupo',
+                    'CantidadPedida' => $pedida,
+                    'CantidadMinima' => $min,
+                    'Cumple' => $pedida >= $min,
+                    'Falta' => max(0, $min - $pedida),
+                ];
+            }
+        }
+
+        // ============================================================
+        // 2. MÍNIMOS POR PRODUCTO (GLOBAL)
         // ============================================================
         $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
 
@@ -343,8 +422,8 @@ class PedidoClienteController extends Controller
             })->values();
         }
 
-        // ✅ MAPA DE GRUPOS CON NOMBRE
-        $mapaGruposRaw = GrupoAnalisisMinimo::obtenerMapa();
+        // ✅ MAPA DE GRUPOS CON NOMBRE (mínimos del grupo de clientes)
+        $mapaGruposRaw = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($grupoCliente->IdGrupoCliente, $clienteId, $sucursalId);
         $minimosGrupos = [];
 
         if (!empty($mapaGruposRaw)) {
@@ -364,7 +443,7 @@ class PedidoClienteController extends Controller
         }
 
         // ✅ MAPA DE PRODUCTOS CON INFO
-        $minimosProductos = ProductoMinimo::obtenerMapa();
+        $minimosProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
         $infoProductos = [];
 
         if (!empty($minimosProductos)) {
@@ -468,6 +547,34 @@ class PedidoClienteController extends Controller
             return response()->json(['success' => false, 'message' => 'Este contenedor no está asignado a tu grupo.'], 400);
         }
 
+        // ============================================================
+        // ✅ VALIDACIÓN NUEVA: ¿El grupo de clientes tiene mínimos?
+        // ============================================================
+        $gruposConMinimoDelCliente = GrupoClienteMinimo::obtenerMapaPorGrupoCliente(
+            $grupoCliente->IdGrupoCliente,
+            $clienteId,
+            $sucursalId
+        );
+
+        if (empty($gruposConMinimoDelCliente)) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'IdContenedor' => $contenedor->IdContenedor,
+                    'Codigo' => $contenedor->Codigo,
+                    'CapacidadTotal' => $contenedor->CapacidadTotal,
+                    'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                    'productos_agrupados' => [],
+                    'total_productos' => 0,
+                    'tipoPrecio' => $tipoPrecio,
+                    'grupoCliente' => $grupoCliente->Nombre,
+                    'mensaje' => 'Tu grupo de clientes no tiene mínimos configurados. Contacta al administrador.',
+                ]
+            ]);
+        }
+
+        $idsGruposConMinimoDelCliente = array_map('intval', array_keys($gruposConMinimoDelCliente));
+
         $productosDisponibles = ProductoMinimo::obtenerIdsDisponibles($clienteId, $sucursalId);
 
         if (empty($productosDisponibles)) {
@@ -482,7 +589,7 @@ class PedidoClienteController extends Controller
                     'total_productos' => 0,
                     'tipoPrecio' => $tipoPrecio,
                     'grupoCliente' => $grupoCliente->Nombre,
-                    'mensaje' => 'No hay productos configurados para pedidos. Contacte al administrador.',
+                    'mensaje' => 'No hay productos configurados para pedidos. Contacta al administrador.',
                 ]
             ]);
         }
@@ -496,6 +603,7 @@ class PedidoClienteController extends Controller
 
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdProducto', $productosDisponibles)
+            ->whereIn('IdGrupoAnalisis', $idsGruposConMinimoDelCliente)  // ✅ Filtro clave
             ->whereIn('IdProducto', $productosConPrecio->keys())
             ->where('ActivoInactivo', 0)
             ->orderBy('IdGrupoAnalisis')
@@ -622,7 +730,6 @@ class PedidoClienteController extends Controller
 
             DB::commit();
 
-            // ✅ INVALIDAR CACHÉ
             $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
             $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 
@@ -724,7 +831,6 @@ class PedidoClienteController extends Controller
 
             DB::commit();
 
-            // ✅ INVALIDAR CACHÉ
             $this->invalidarCacheProgreso($request->IdPedidoCliente);
             $this->invalidarCacheProductosSinMinimo($request->IdPedidoCliente);
 
@@ -771,7 +877,6 @@ class PedidoClienteController extends Controller
                 'TotalGeneral' => $totales['total_general'],
             ]);
 
-            // ✅ INVALIDAR CACHÉ
             $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
             $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 
@@ -820,7 +925,6 @@ class PedidoClienteController extends Controller
                 'TotalGeneral' => 0,
             ]);
 
-            // ✅ INVALIDAR CACHÉ
             $this->invalidarCacheProgreso($idPedido);
             $this->invalidarCacheProductosSinMinimo($idPedido);
 
@@ -997,7 +1101,7 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // ✅ NUEVO: Obtener progreso de mínimos del pedido actual
+    // ✅ Obtener progreso de mínimos del pedido actual
     // ============================================================
     public function getProgreso($id)
     {
@@ -1259,7 +1363,6 @@ class PedidoClienteController extends Controller
                 'TotalGeneral' => $totales['total_general'],
             ]);
 
-            // ✅ INVALIDAR CACHÉ al finalizar
             $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
             $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 
@@ -2041,7 +2144,6 @@ class PedidoClienteController extends Controller
                 return $item->Cantidad * $item->Precio;
             });
 
-            // ✅ INVALIDAR CACHÉ al cambiar tipo de precio
             $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
             $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
 

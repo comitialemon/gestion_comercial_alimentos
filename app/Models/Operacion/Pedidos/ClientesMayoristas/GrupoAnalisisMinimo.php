@@ -107,4 +107,33 @@ class GrupoAnalisisMinimo extends Model
     {
         return $this->ActivoInactivo == 1 ? 'Activo' : 'Inactivo';
     }
+    /**
+     * ✅ Lista de IDs de grupos de análisis activos + su nombre.
+     * Útil para mostrar la pestaña de mínimos en grupos de clientes.
+     * Retorna: [{IdGrupoAnalisis, Grupo}, ...]
+     */
+    public static function obtenerGruposActivosConNombre($clienteId = null, $sucursalId = null)
+    {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+
+        $idsActivos = self::obtenerIdsActivos($clienteId, $sucursalId);
+        $idsActivos = array_map('intval', $idsActivos);
+
+        if (empty($idsActivos)) {
+            return [];
+        }
+
+        return \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::where('IdCliente', $clienteId)
+            ->whereIn('IdGrupoAnalisis', $idsActivos)
+            ->orderBy('Grupo')
+            ->get(['IdGrupoAnalisis', 'Grupo'])
+            ->map(function ($g) {
+                return [
+                    'IdGrupoAnalisis' => (int) $g->IdGrupoAnalisis,
+                    'Grupo' => $g->Grupo,
+                ];
+            })
+            ->toArray();
+    }
 }

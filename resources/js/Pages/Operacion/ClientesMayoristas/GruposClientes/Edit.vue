@@ -29,6 +29,7 @@ const guardando = ref(false)
 
 const productos = ref([])
 const clientes = ref([])
+const minimos = ref([])
 const datosGrupo = ref({
     Nombre: props.grupo?.Nombre || '',
     Descripcion: props.grupo?.Descripcion || '',
@@ -48,6 +49,10 @@ const totalProductosConPrecio = computed(() => {
 
 const totalClientesAsignados = computed(() => {
     return clientes.value.filter(c => c.EnEsteGrupo).length
+})
+
+const totalMinimosConfigurados = computed(() => {
+    return minimos.value.filter(m => Number(m.CantidadMinimaGrupo) > 0).length
 })
 
 // ==================== BÚSQUEDA DE CLIENTES ====================
@@ -149,6 +154,46 @@ const limpiarBusquedaProducto = () => {
     filtroProducto.value = 'todos'
 }
 
+// ==================== BÚSQUEDA DE MÍNIMOS ====================
+const busquedaMinimo = ref('')
+const filtroMinimo = ref('todos')
+
+const minimosFiltrados = computed(() => {
+    let lista = minimos.value
+
+    if (filtroMinimo.value === 'con_minimo') {
+        lista = lista.filter(m => Number(m.CantidadMinimaGrupo) > 0)
+    } else if (filtroMinimo.value === 'sin_minimo') {
+        lista = lista.filter(m => Number(m.CantidadMinimaGrupo) <= 0)
+    }
+
+    if (busquedaMinimo.value.trim()) {
+        const termino = busquedaMinimo.value.toLowerCase().trim()
+        lista = lista.filter(m =>
+            m.NombreGrupo?.toLowerCase().includes(termino)
+        )
+    }
+
+    return lista
+})
+
+const contadoresMinimos = computed(() => {
+    let conMinimo = 0
+    let sinMinimo = 0
+
+    minimos.value.forEach(m => {
+        if (Number(m.CantidadMinimaGrupo) > 0) conMinimo++
+        else sinMinimo++
+    })
+
+    return { todos: minimos.value.length, conMinimo, sinMinimo }
+})
+
+const limpiarBusquedaMinimo = () => {
+    busquedaMinimo.value = ''
+    filtroMinimo.value = 'todos'
+}
+
 // ==================== PESTAÑA 1: PRODUCTOS ====================
 const cargarProductos = async () => {
     try {
@@ -168,19 +213,19 @@ const guardarProductos = async () => {
     guardando.value = true
     try {
         const productosAGuardar = []
-        
+
         productos.value.forEach(grupo => {
             grupo.Productos.forEach(prod => {
                 const sin = prod.PrecioSinFactura
                 const con = prod.PrecioConFactura
-                
+
                 productosAGuardar.push({
                     IdProducto: prod.IdProducto,
-                    PrecioSinFactura: (sin !== '' && sin !== null && parseFloat(sin) > 0) 
-                        ? parseFloat(sin) 
+                    PrecioSinFactura: (sin !== '' && sin !== null && parseFloat(sin) > 0)
+                        ? parseFloat(sin)
                         : null,
-                    PrecioConFactura: (con !== '' && con !== null && parseFloat(con) > 0) 
-                        ? parseFloat(con) 
+                    PrecioConFactura: (con !== '' && con !== null && parseFloat(con) > 0)
+                        ? parseFloat(con)
                         : null,
                 })
             })
@@ -254,7 +299,49 @@ const guardarClientes = async () => {
     }
 }
 
-// ==================== PESTAÑA 3: DATOS ====================
+// ==================== PESTAÑA 3: MÍNIMOS ====================
+const cargarMinimos = async () => {
+    try {
+        const response = await axios.get(
+            `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupoId.value}/minimos`
+        )
+        if (response.data.success) {
+            minimos.value = response.data.data
+        }
+    } catch (error) {
+        console.error('Error al cargar mínimos:', error)
+        toast?.error('Error', 'No se pudieron cargar los mínimos')
+    }
+}
+
+const guardarMinimos = async () => {
+    guardando.value = true
+    try {
+        const gruposAGuardar = minimos.value.map(m => ({
+            IdGrupoAnalisis: m.IdGrupoAnalisis,
+            CantidadMinima: Number(m.CantidadMinimaGrupo) || 0,
+        }))
+
+        const response = await axios.post(
+            `/operacion/pedidos/clientes-mayoristas/grupos-clientes/${grupoId.value}/minimos`,
+            { grupos: gruposAGuardar }
+        )
+
+        if (response.data.success) {
+            toast?.success('Éxito', response.data.message)
+            await cargarMinimos()
+        } else {
+            toast?.error('Error', response.data.message || 'Error al guardar mínimos')
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al guardar mínimos')
+    } finally {
+        guardando.value = false
+    }
+}
+
+// ==================== PESTAÑA 4: DATOS ====================
 const guardarDatos = async () => {
     if (!datosGrupo.value.Nombre.trim()) {
         toast?.error('Validación', 'El nombre es obligatorio')
@@ -274,7 +361,7 @@ const guardarDatos = async () => {
 
         if (response.data.success) {
             toast?.success('Éxito', 'Datos guardados correctamente')
-            
+
             setTimeout(() => {
                 router.get('/operacion/pedidos/clientes-mayoristas/grupos-clientes')
             }, 800)
@@ -289,13 +376,14 @@ const guardarDatos = async () => {
     }
 }
 
-// ==================== RESUMEN (Datos Generales) ====================
+// ==================== RESUMEN ====================
 const resumenGrupo = computed(() => {
     return {
         totalProductosConPrecio: totalProductosConPrecio.value,
         totalClientes: totalClientesAsignados.value,
-        tieneConfiguracion: totalProductosConPrecio.value > 0 || totalClientesAsignados.value > 0,
-        configuracionCompleta: totalProductosConPrecio.value > 0 && totalClientesAsignados.value > 0,
+        totalMinimos: totalMinimosConfigurados.value,
+        tieneConfiguracion: totalProductosConPrecio.value > 0 || totalClientesAsignados.value > 0 || totalMinimosConfigurados.value > 0,
+        configuracionCompleta: totalProductosConPrecio.value > 0 && totalClientesAsignados.value > 0 && totalMinimosConfigurados.value > 0,
     }
 })
 
@@ -311,6 +399,7 @@ const cargarTodo = async () => {
         await Promise.all([
             cargarProductos(),
             cargarClientes(),
+            cargarMinimos(),
         ])
     } finally {
         loading.value = false
@@ -334,10 +423,10 @@ onUnmounted(() => {
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
 
-                <!-- ==================== HEADER ==================== -->
+                <!-- HEADER -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3 min-w-0 flex-1">
-                        <button 
+                        <button
                             @click="volverAlListado"
                             class="w-9 h-9 rounded-xl bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:text-primary-600 hover:border-primary-300 transition flex-shrink-0"
                         >
@@ -351,87 +440,107 @@ onUnmounted(() => {
                                 {{ datosGrupo.Nombre || 'Grupo' }}
                             </h1>
                             <p class="text-xs text-gray-500 truncate">
-                                {{ datosGrupo.Descripcion || 'Configura precios y clientes' }}
+                                {{ datosGrupo.Descripcion || 'Configura precios, clientes y mínimos' }}
                             </p>
                         </div>
                     </div>
 
                     <div class="flex gap-1.5 flex-wrap">
-                        <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
+                        <span class="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
                             <i class="fas fa-box text-[9px]"></i>
                             {{ totalProductosConPrecio }} precios
                         </span>
-                        <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
+                        <span class="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
                             <i class="fas fa-users text-[9px]"></i>
                             {{ totalClientesAsignados }} clientes
+                        </span>
+                        <span class="px-2 py-0.5 bg-primary-100 text-primary-700 rounded-lg text-[10px] font-medium flex items-center gap-1">
+                            <i class="fas fa-chart-bar text-[9px]"></i>
+                            {{ totalMinimosConfigurados }} mínimos
                         </span>
                     </div>
                 </div>
 
-                <!-- ==================== TABS ==================== -->
+                <!-- TABS -->
                 <div class="bg-white rounded-xl shadow-sm mb-4 overflow-hidden">
                     <div class="flex border-b border-gray-200 overflow-x-auto">
-                        <button 
+                        <button
                             @click="tabActiva = 'productos'"
-                            class="flex-1 min-w-[140px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'productos' 
-                                ? 'text-emerald-600 border-b-2 border-emerald-600 bg-emerald-50/50' 
+                            class="flex-1 min-w-[120px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'productos'
+                                ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-box text-sm"></i>
                             <span>1. Productos</span>
-                            <span v-if="totalProductosConPrecio > 0" class="bg-emerald-100 text-emerald-700 rounded-full px-1.5 text-[9px] font-bold">
+                            <span v-if="totalProductosConPrecio > 0" class="bg-primary-100 text-primary-700 rounded-full px-1.5 text-[9px] font-bold">
                                 {{ totalProductosConPrecio }}
                             </span>
                         </button>
-                        <button 
+
+                        <button
                             @click="tabActiva = 'clientes'"
-                            class="flex-1 min-w-[140px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'clientes' 
-                                ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' 
+                            class="flex-1 min-w-[120px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'clientes'
+                                ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-users text-sm"></i>
                             <span>2. Clientes</span>
-                            <span v-if="totalClientesAsignados > 0" class="bg-blue-100 text-blue-700 rounded-full px-1.5 text-[9px] font-bold">
+                            <span v-if="totalClientesAsignados > 0" class="bg-primary-100 text-primary-700 rounded-full px-1.5 text-[9px] font-bold">
                                 {{ totalClientesAsignados }}
                             </span>
                         </button>
-                        <button 
+
+                        <button
+                            @click="tabActiva = 'minimos'"
+                            class="flex-1 min-w-[120px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'minimos'
+                                ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
+                                : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
+                        >
+                            <i class="fas fa-chart-bar text-sm"></i>
+                            <span>3. Mínimos</span>
+                            <span v-if="totalMinimosConfigurados > 0" class="bg-primary-100 text-primary-700 rounded-full px-1.5 text-[9px] font-bold">
+                                {{ totalMinimosConfigurados }}
+                            </span>
+                        </button>
+
+                        <button
                             @click="tabActiva = 'datos'"
-                            class="flex-1 min-w-[140px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'datos' 
-                                ? 'text-gray-700 border-b-2 border-gray-700 bg-gray-50' 
+                            class="flex-1 min-w-[120px] px-3 py-2.5 text-xs font-medium transition flex items-center justify-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'datos'
+                                ? 'text-primary-600 border-b-2 border-primary-600 bg-primary-50/50'
                                 : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'"
                         >
                             <i class="fas fa-cog text-sm"></i>
-                            <span>3. Datos</span>
+                            <span>4. Datos</span>
                         </button>
                     </div>
                 </div>
 
-                <!-- ==================== LOADING ==================== -->
+                <!-- LOADING -->
                 <div v-if="loading" class="bg-white rounded-xl shadow-sm p-10 text-center">
                     <i class="fas fa-spinner fa-spin text-2xl text-primary-500"></i>
                     <p class="text-sm text-gray-500 mt-2">Cargando datos...</p>
                 </div>
 
-                <!-- ==================== PESTAÑA 1: PRODUCTOS ==================== -->
+                <!-- PESTAÑA 1: PRODUCTOS -->
                 <div v-else-if="tabActiva === 'productos'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
                         <div>
                             <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                                <i class="fas fa-box text-emerald-500 text-[10px]"></i>
+                                <i class="fas fa-box text-primary-500 text-[10px]"></i>
                                 Productos y Precios
                             </h2>
                             <p class="text-[10px] text-gray-500 mt-0.5">
                                 Define precios sin factura y con factura para cada producto.
                             </p>
                         </div>
-                        <button 
+                        <button
                             @click="guardarProductos"
                             :disabled="guardando"
-                            class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+                            class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
                         >
                             <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-save text-[10px]"></i>
@@ -439,22 +548,22 @@ onUnmounted(() => {
                         </button>
                     </div>
 
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3 text-[11px] text-blue-700 flex items-start gap-1.5">
-                        <i class="fas fa-info-circle text-blue-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
-                        <p>Configura los precios de cada producto. Los mínimos son <strong>globales</strong> y se configuran aparte en "Mínimos Globales".</p>
+                    <div class="bg-primary-50 border border-primary-200 rounded-lg p-2 mb-3 text-[11px] text-primary-700 flex items-start gap-1.5">
+                        <i class="fas fa-info-circle text-primary-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
+                        <p>Configura los precios de cada producto. Los mínimos se configuran en la pestaña <strong>3. Mínimos</strong>.</p>
                     </div>
 
-                    <!-- BUSCADOR DE PRODUCTOS -->
+                    <!-- BUSCADOR -->
                     <div class="mb-3 space-y-2">
                         <div class="relative">
                             <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                            <input 
+                            <input
                                 type="text"
                                 v-model="busquedaProducto"
                                 placeholder="Buscar producto por nombre o código..."
-                                class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                                class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
-                            <button 
+                            <button
                                 v-if="busquedaProducto"
                                 @click="busquedaProducto = ''"
                                 class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
@@ -464,30 +573,30 @@ onUnmounted(() => {
                         </div>
 
                         <div class="flex flex-wrap items-center gap-1.5">
-                            <button 
+                            <button
                                 @click="filtroProducto = 'todos'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroProducto === 'todos' 
-                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                :class="filtroProducto === 'todos'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 Todos ({{ contadoresProductos.todos }})
                             </button>
-                            <button 
+                            <button
                                 @click="filtroProducto = 'con_precio'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroProducto === 'con_precio' 
-                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                :class="filtroProducto === 'con_precio'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 <i class="fas fa-check-circle text-[9px] mr-0.5"></i>
                                 Con precio ({{ contadoresProductos.conPrecio }})
                             </button>
-                            <button 
+                            <button
                                 @click="filtroProducto = 'sin_precio'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroProducto === 'sin_precio' 
-                                    ? 'bg-emerald-600 text-white border-emerald-600' 
+                                :class="filtroProducto === 'sin_precio'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 <i class="fas fa-minus-circle text-[9px] mr-0.5"></i>
@@ -498,43 +607,43 @@ onUnmounted(() => {
                                 Mostrando <strong class="text-gray-700">{{ contadorProductosFiltrados }}</strong> de {{ contadoresProductos.todos }}
                             </span>
 
-                            <button 
+                            <button
                                 v-if="busquedaProducto || filtroProducto !== 'todos'"
                                 @click="limpiarBusquedaProducto"
-                                class="text-[10px] text-emerald-600 hover:text-emerald-800 font-medium px-2 py-0.5 rounded hover:bg-emerald-50 transition"
+                                class="text-[10px] text-primary-600 hover:text-primary-800 font-medium px-2 py-0.5 rounded hover:bg-primary-50 transition"
                             >
                                 Limpiar
                             </button>
                         </div>
                     </div>
 
-                    <!-- MENSAJE SIN RESULTADOS -->
+                    <!-- SIN RESULTADOS -->
                     <div v-if="productosFiltradosPorGrupo.length === 0" class="text-center py-6 text-gray-400">
                         <i class="fas fa-search text-2xl text-gray-300 block mb-1"></i>
                         <p class="text-xs">No se encontraron productos</p>
-                        <button 
+                        <button
                             @click="limpiarBusquedaProducto"
-                            class="mt-2 text-xs text-emerald-600 hover:text-emerald-800 font-medium underline"
+                            class="mt-2 text-xs text-primary-600 hover:text-primary-800 font-medium underline"
                         >
                             Limpiar filtros
                         </button>
                     </div>
 
-                    <!-- LISTA DE PRODUCTOS -->
+                    <!-- LISTA -->
                     <div v-else class="space-y-3">
-                        <div 
-                            v-for="grupoProd in productosFiltradosPorGrupo" 
+                        <div
+                            v-for="grupoProd in productosFiltradosPorGrupo"
                             :key="grupoProd.IdGrupoAnalisis"
                             class="border border-gray-200 rounded-lg overflow-hidden"
                         >
-                            <div class="bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-3 py-1.5 border-b border-emerald-200 flex items-center justify-between">
+                            <div class="bg-primary-50 px-3 py-1.5 border-b border-primary-200 flex items-center justify-between">
                                 <div class="flex items-center gap-1.5">
-                                    <i class="fas fa-tag text-emerald-600 text-[10px]"></i>
-                                    <span class="font-bold text-emerald-800 text-xs">
+                                    <i class="fas fa-tag text-primary-600 text-[10px]"></i>
+                                    <span class="font-bold text-primary-800 text-xs">
                                         {{ grupoProd.NombreGrupo }}
                                     </span>
                                 </div>
-                                <span class="text-[10px] text-emerald-600 font-medium">
+                                <span class="text-[10px] text-primary-600 font-medium">
                                     {{ grupoProd.Productos.filter(p => p.TienePrecio).length }} / {{ grupoProd.Productos.length }}
                                 </span>
                             </div>
@@ -550,11 +659,11 @@ onUnmounted(() => {
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-gray-100">
-                                        <tr 
-                                            v-for="prod in grupoProd.Productos" 
+                                        <tr
+                                            v-for="prod in grupoProd.Productos"
                                             :key="prod.IdProducto"
                                             class="hover:bg-gray-50 transition"
-                                            :class="prod.TienePrecio ? 'bg-emerald-50/30' : ''"
+                                            :class="prod.TienePrecio ? 'bg-primary-50/30' : ''"
                                         >
                                             <td class="px-2 py-1 font-mono text-[10px] text-gray-500">
                                                 {{ prod.Codigo }}
@@ -563,23 +672,23 @@ onUnmounted(() => {
                                                 {{ prod.Descripcion }}
                                             </td>
                                             <td class="px-2 py-1">
-                                                <input 
+                                                <input
                                                     type="number"
                                                     v-model="prod.PrecioSinFactura"
                                                     min="0"
                                                     step="0.01"
                                                     placeholder="0.00"
-                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
+                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none"
                                                 />
                                             </td>
                                             <td class="px-2 py-1">
-                                                <input 
+                                                <input
                                                     type="number"
                                                     v-model="prod.PrecioConFactura"
                                                     min="0"
                                                     step="0.01"
                                                     placeholder="0.00"
-                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-emerald-400 focus:border-emerald-400 outline-none"
+                                                    class="w-full border border-gray-300 rounded px-1.5 py-0.5 text-xs text-center focus:ring-1 focus:ring-primary-400 focus:border-primary-400 outline-none"
                                                 />
                                             </td>
                                         </tr>
@@ -590,22 +699,22 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ==================== PESTAÑA 2: CLIENTES ==================== -->
+                <!-- PESTAÑA 2: CLIENTES -->
                 <div v-else-if="tabActiva === 'clientes'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
                         <div>
                             <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                                <i class="fas fa-users text-blue-500 text-[10px]"></i>
+                                <i class="fas fa-users text-primary-500 text-[10px]"></i>
                                 Clientes del Grupo
                             </h2>
                             <p class="text-[10px] text-gray-500 mt-0.5">
                                 Selecciona los clientes que pertenecerán a este grupo.
                             </p>
                         </div>
-                        <button 
+                        <button
                             @click="guardarClientes"
                             :disabled="guardando"
-                            class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+                            class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
                         >
                             <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else class="fas fa-save text-[10px]"></i>
@@ -613,21 +722,21 @@ onUnmounted(() => {
                         </button>
                     </div>
 
-                    <div class="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3 text-[11px] text-blue-700 flex items-start gap-1.5">
-                        <i class="fas fa-info-circle text-blue-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
+                    <div class="bg-primary-50 border border-primary-200 rounded-lg p-2 mb-3 text-[11px] text-primary-700 flex items-start gap-1.5">
+                        <i class="fas fa-info-circle text-primary-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
                         <p>Haz clic en un cliente para agregarlo o quitarlo. Los que ya están en otro grupo aparecen con candado.</p>
                     </div>
 
                     <div class="mb-3 space-y-2">
                         <div class="relative">
                             <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                            <input 
+                            <input
                                 type="text"
                                 v-model="busquedaCliente"
                                 placeholder="Buscar por nombre o CI/NIT..."
                                 class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
-                            <button 
+                            <button
                                 v-if="busquedaCliente"
                                 @click="busquedaCliente = ''"
                                 class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
@@ -637,29 +746,29 @@ onUnmounted(() => {
                         </div>
 
                         <div class="flex flex-wrap items-center gap-1.5">
-                            <button 
+                            <button
                                 @click="filtroCliente = 'todos'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroCliente === 'todos' 
-                                    ? 'bg-blue-600 text-white border-blue-600' 
+                                :class="filtroCliente === 'todos'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 Todos ({{ contadoresClientes.todos }})
                             </button>
-                            <button 
+                            <button
                                 @click="filtroCliente = 'asignados'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroCliente === 'asignados' 
-                                    ? 'bg-blue-600 text-white border-blue-600' 
+                                :class="filtroCliente === 'asignados'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 Asignados ({{ contadoresClientes.asignados }})
                             </button>
-                            <button 
+                            <button
                                 @click="filtroCliente = 'disponibles'"
                                 class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
-                                :class="filtroCliente === 'disponibles' 
-                                    ? 'bg-blue-600 text-white border-blue-600' 
+                                :class="filtroCliente === 'disponibles'
+                                    ? 'bg-primary-600 text-white border-primary-600'
                                     : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
                             >
                                 Disponibles ({{ contadoresClientes.disponibles }})
@@ -669,10 +778,10 @@ onUnmounted(() => {
                                 Mostrando <strong class="text-gray-700">{{ clientesFiltrados.length }}</strong> de {{ contadoresClientes.todos }}
                             </span>
 
-                            <button 
+                            <button
                                 v-if="busquedaCliente || filtroCliente !== 'todos'"
                                 @click="limpiarBusquedaCliente"
-                                class="text-[10px] text-blue-600 hover:text-blue-800 font-medium px-2 py-0.5 rounded hover:bg-blue-50 transition"
+                                class="text-[10px] text-primary-600 hover:text-primary-800 font-medium px-2 py-0.5 rounded hover:bg-primary-50 transition"
                             >
                                 Limpiar
                             </button>
@@ -690,21 +799,21 @@ onUnmounted(() => {
                     </div>
 
                     <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
-                        <div 
-                            v-for="cliente in clientesFiltrados" 
+                        <div
+                            v-for="cliente in clientesFiltrados"
                             :key="cliente.IdIdentificador"
                             @click="toggleCliente(cliente)"
                             class="rounded-md border px-2 py-1.5 transition cursor-pointer flex items-center justify-between gap-2"
                             :class="{
-                                'bg-blue-50 border-blue-300': cliente.EnEsteGrupo,
+                                'bg-primary-50 border-primary-300': cliente.EnEsteGrupo,
                                 'bg-gray-100 border-gray-200 opacity-60 cursor-not-allowed': cliente.EnOtroGrupo,
-                                'bg-white border-gray-200 hover:border-blue-300 hover:bg-blue-50/50': !cliente.EnEsteGrupo && !cliente.EnOtroGrupo
+                                'bg-white border-gray-200 hover:border-primary-300 hover:bg-primary-50/50': !cliente.EnEsteGrupo && !cliente.EnOtroGrupo
                             }"
                         >
                             <div class="flex items-center gap-2 min-w-0 flex-1">
-                                <div 
+                                <div
                                     class="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                                    :class="cliente.EnEsteGrupo ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'"
+                                    :class="cliente.EnEsteGrupo ? 'bg-primary-600 text-white' : 'bg-gray-200 text-gray-500'"
                                 >
                                     <i class="fas fa-user text-[9px]"></i>
                                 </div>
@@ -717,30 +826,225 @@ onUnmounted(() => {
                                     </p>
                                 </div>
                             </div>
-                            <i 
-                                v-if="cliente.EnEsteGrupo" 
-                                class="fas fa-check-circle text-blue-600 text-xs flex-shrink-0"
+                            <i
+                                v-if="cliente.EnEsteGrupo"
+                                class="fas fa-check-circle text-primary-600 text-xs flex-shrink-0"
                             ></i>
-                            <i 
-                                v-else-if="cliente.EnOtroGrupo" 
+                            <i
+                                v-else-if="cliente.EnOtroGrupo"
                                 class="fas fa-lock text-gray-400 text-xs flex-shrink-0"
                             ></i>
-                            <i 
-                                v-else 
+                            <i
+                                v-else
                                 class="far fa-circle text-gray-300 text-xs flex-shrink-0"
                             ></i>
                         </div>
                     </div>
                 </div>
 
-                <!-- ==================== PESTAÑA 3: DATOS ==================== -->
+                <!-- PESTAÑA 3: MÍNIMOS -->
+                <div v-else-if="tabActiva === 'minimos'" class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+                        <div>
+                            <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
+                                <i class="fas fa-chart-bar text-primary-500 text-[10px]"></i>
+                                Mínimos por Grupo de Análisis
+                            </h2>
+                            <p class="text-[10px] text-gray-500 mt-0.5">
+                                Configura el mínimo de unidades por grupo de análisis para este grupo de clientes.
+                            </p>
+                        </div>
+                        <button
+                            @click="guardarMinimos"
+                            :disabled="guardando"
+                            class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5 flex-shrink-0"
+                        >
+                            <i v-if="guardando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else class="fas fa-save text-[10px]"></i>
+                            Guardar Mínimos
+                        </button>
+                    </div>
+
+                    <div class="bg-primary-50 border border-primary-200 rounded-lg p-2 mb-3 text-[11px] text-primary-700 flex items-start gap-1.5">
+                        <i class="fas fa-info-circle text-primary-500 flex-shrink-0 mt-0.5 text-[10px]"></i>
+                        <p>
+                            Solo aparecen los grupos de análisis <strong>ACTIVOS</strong> (configurados en "Mínimos Globales").
+                            Poner <strong>0</strong> significa que ese grupo no aplica para este grupo de clientes.
+                        </p>
+                    </div>
+
+                    <div class="mb-3 space-y-2">
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                            <input
+                                type="text"
+                                v-model="busquedaMinimo"
+                                placeholder="Buscar grupo..."
+                                class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                            />
+                            <button
+                                v-if="busquedaMinimo"
+                                @click="busquedaMinimo = ''"
+                                class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            >
+                                <i class="fas fa-times text-[10px]"></i>
+                            </button>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <button
+                                @click="filtroMinimo = 'todos'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroMinimo === 'todos'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                            >
+                                Todos ({{ contadoresMinimos.todos }})
+                            </button>
+                            <button
+                                @click="filtroMinimo = 'con_minimo'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroMinimo === 'con_minimo'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                            >
+                                <i class="fas fa-check-circle text-[9px] mr-0.5"></i>
+                                Con mínimo ({{ contadoresMinimos.conMinimo }})
+                            </button>
+                            <button
+                                @click="filtroMinimo = 'sin_minimo'"
+                                class="px-2 py-0.5 rounded-md text-[10px] font-medium transition border"
+                                :class="filtroMinimo === 'sin_minimo'
+                                    ? 'bg-primary-600 text-white border-primary-600'
+                                    : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'"
+                            >
+                                <i class="fas fa-minus-circle text-[9px] mr-0.5"></i>
+                                Sin mínimo ({{ contadoresMinimos.sinMinimo }})
+                            </button>
+
+                            <span class="ml-auto text-[10px] text-gray-500">
+                                Mostrando <strong class="text-gray-700">{{ minimosFiltrados.length }}</strong> de {{ contadoresMinimos.todos }}
+                            </span>
+
+                            <button
+                                v-if="busquedaMinimo || filtroMinimo !== 'todos'"
+                                @click="limpiarBusquedaMinimo"
+                                class="text-[10px] text-primary-600 hover:text-primary-800 font-medium px-2 py-0.5 rounded hover:bg-primary-50 transition"
+                            >
+                                Limpiar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- SIN GRUPOS ACTIVOS -->
+                    <div v-if="minimos.length === 0" class="text-center py-8 text-gray-400">
+                        <i class="fas fa-chart-bar text-3xl text-gray-300 block mb-2"></i>
+                        <p class="text-sm font-medium">No hay grupos de análisis activos</p>
+                        <p class="text-[10px] mt-1">Primero activa grupos en <strong>Mínimos Globales</strong></p>
+                        <button
+                            @click="router.get('/operacion/pedidos/clientes-mayoristas/minimos-globales')"
+                            class="mt-3 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition"
+                        >
+                            <i class="fas fa-arrow-right text-[10px] mr-1"></i>
+                            Ir a Mínimos Globales
+                        </button>
+                    </div>
+
+                    <!-- SIN RESULTADOS -->
+                    <div v-else-if="minimosFiltrados.length === 0" class="text-center py-6 text-gray-400">
+                        <i class="fas fa-search text-2xl text-gray-300 block mb-1"></i>
+                        <p class="text-xs">No se encontraron grupos</p>
+                        <button
+                            @click="limpiarBusquedaMinimo"
+                            class="mt-2 text-xs text-primary-600 hover:text-primary-800 font-medium underline"
+                        >
+                            Limpiar filtros
+                        </button>
+                    </div>
+
+                    <!-- LISTA -->
+                    <div v-else class="space-y-2">
+                        <div
+                            v-for="min in minimosFiltrados"
+                            :key="min.IdGrupoAnalisis"
+                            class="border border-gray-200 rounded-lg p-3 transition hover:border-primary-300"
+                            :class="Number(min.CantidadMinimaGrupo) > 0 ? 'bg-primary-50/40 border-primary-200' : 'bg-white'"
+                        >
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center gap-3 min-w-0 flex-1">
+                                    <div
+                                        class="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+                                        :class="Number(min.CantidadMinimaGrupo) > 0 ? 'bg-primary-100 text-primary-600' : 'bg-gray-100 text-gray-400'"
+                                    >
+                                        <i class="fas fa-tag text-xs"></i>
+                                    </div>
+                                    <div class="min-w-0 flex-1">
+                                        <p class="text-xs font-semibold text-gray-800 truncate">
+                                            {{ min.NombreGrupo }}
+                                        </p>
+                                        <p class="text-[10px] text-gray-500">
+                                            {{ min.TotalProductos }} producto(s) activo(s)
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="flex items-center gap-2 flex-shrink-0">
+                                    <div class="relative">
+                                        <input
+                                            type="number"
+                                            v-model.number="min.CantidadMinimaGrupo"
+                                            min="0"
+                                            step="1"
+                                            placeholder="0"
+                                            class="w-24 border rounded-md px-2 py-1 text-sm text-center focus:ring-1 outline-none"
+                                            :class="Number(min.CantidadMinimaGrupo) > 0
+                                                ? 'border-primary-400 bg-primary-50 text-primary-800 font-bold focus:ring-primary-400'
+                                                : 'border-gray-300 bg-white text-gray-700 focus:ring-gray-400'"
+                                        />
+                                    </div>
+                                    <span class="text-[10px] text-gray-500 font-medium">und</span>
+                                </div>
+                            </div>
+
+                            <div class="mt-2 flex items-center gap-2">
+                                <span
+                                    v-if="Number(min.CantidadMinimaGrupo) > 0"
+                                    class="text-[9px] px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 font-medium"
+                                >
+                                    <i class="fas fa-check-circle text-[8px] mr-0.5"></i>
+                                    APLICA
+                                </span>
+                                <span
+                                    v-else
+                                    class="text-[9px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium"
+                                >
+                                    <i class="fas fa-minus-circle text-[8px] mr-0.5"></i>
+                                    NO APLICA
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-2.5 mt-4 flex items-start gap-2">
+                        <i class="fas fa-lightbulb text-amber-500 text-[10px] flex-shrink-0 mt-0.5"></i>
+                        <div class="text-xs text-amber-700">
+                            <p class="font-medium mb-0.5 text-[11px]">Recuerda:</p>
+                            <p class="text-[10px]">
+                                Al finalizar un pedido, el sistema valida <strong>ambos mínimos</strong>:
+                                el del grupo de análisis para este grupo de clientes, y el mínimo individual del producto.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PESTAÑA 4: DATOS -->
                 <div v-else-if="tabActiva === 'datos'" class="space-y-4 max-w-3xl">
-                    
-                    <!-- RESUMEN DEL GRUPO -->
+
+                    <!-- RESUMEN -->
                     <div class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                         <div class="mb-3">
                             <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
-                                <i class="fas fa-clipboard-check text-indigo-500 text-[10px]"></i>
+                                <i class="fas fa-clipboard-check text-primary-500 text-[10px]"></i>
                                 Resumen de Configuración
                             </h2>
                             <p class="text-[10px] text-gray-500 mt-0.5">
@@ -748,37 +1052,50 @@ onUnmounted(() => {
                             </p>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                            <div class="rounded-lg p-2.5 border" :class="totalProductosConPrecio > 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50 border-gray-200'">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
+                            <div class="rounded-lg p-2.5 border" :class="totalProductosConPrecio > 0 ? 'bg-primary-50 border-primary-200' : 'bg-gray-50 border-gray-200'">
                                 <div class="flex items-center gap-1.5 mb-1">
-                                    <i class="fas fa-box text-[10px]" :class="totalProductosConPrecio > 0 ? 'text-emerald-600' : 'text-gray-400'"></i>
-                                    <span class="text-[10px] font-semibold" :class="totalProductosConPrecio > 0 ? 'text-emerald-800' : 'text-gray-500'">Productos</span>
+                                    <i class="fas fa-box text-[10px]" :class="totalProductosConPrecio > 0 ? 'text-primary-600' : 'text-gray-400'"></i>
+                                    <span class="text-[10px] font-semibold" :class="totalProductosConPrecio > 0 ? 'text-primary-800' : 'text-gray-500'">Productos</span>
                                 </div>
-                                <p class="text-lg font-bold" :class="totalProductosConPrecio > 0 ? 'text-emerald-700' : 'text-gray-400'">
+                                <p class="text-lg font-bold" :class="totalProductosConPrecio > 0 ? 'text-primary-700' : 'text-gray-400'">
                                     {{ totalProductosConPrecio }}
                                 </p>
-                                <p class="text-[9px]" :class="totalProductosConPrecio > 0 ? 'text-emerald-600' : 'text-gray-400'">
+                                <p class="text-[9px]" :class="totalProductosConPrecio > 0 ? 'text-primary-600' : 'text-gray-400'">
                                     {{ totalProductosConPrecio > 0 ? 'con precio' : 'sin precios' }}
                                 </p>
                             </div>
 
-                            <div class="rounded-lg p-2.5 border" :class="totalClientesAsignados > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-200'">
+                            <div class="rounded-lg p-2.5 border" :class="totalClientesAsignados > 0 ? 'bg-primary-50 border-primary-200' : 'bg-gray-50 border-gray-200'">
                                 <div class="flex items-center gap-1.5 mb-1">
-                                    <i class="fas fa-users text-[10px]" :class="totalClientesAsignados > 0 ? 'text-blue-600' : 'text-gray-400'"></i>
-                                    <span class="text-[10px] font-semibold" :class="totalClientesAsignados > 0 ? 'text-blue-800' : 'text-gray-500'">Clientes</span>
+                                    <i class="fas fa-users text-[10px]" :class="totalClientesAsignados > 0 ? 'text-primary-600' : 'text-gray-400'"></i>
+                                    <span class="text-[10px] font-semibold" :class="totalClientesAsignados > 0 ? 'text-primary-800' : 'text-gray-500'">Clientes</span>
                                 </div>
-                                <p class="text-lg font-bold" :class="totalClientesAsignados > 0 ? 'text-blue-700' : 'text-gray-400'">
+                                <p class="text-lg font-bold" :class="totalClientesAsignados > 0 ? 'text-primary-700' : 'text-gray-400'">
                                     {{ totalClientesAsignados }}
                                 </p>
-                                <p class="text-[9px]" :class="totalClientesAsignados > 0 ? 'text-blue-600' : 'text-gray-400'">
+                                <p class="text-[9px]" :class="totalClientesAsignados > 0 ? 'text-primary-600' : 'text-gray-400'">
                                     {{ totalClientesAsignados > 0 ? 'asignados' : 'sin asignar' }}
+                                </p>
+                            </div>
+
+                            <div class="rounded-lg p-2.5 border" :class="totalMinimosConfigurados > 0 ? 'bg-primary-50 border-primary-200' : 'bg-gray-50 border-gray-200'">
+                                <div class="flex items-center gap-1.5 mb-1">
+                                    <i class="fas fa-chart-bar text-[10px]" :class="totalMinimosConfigurados > 0 ? 'text-primary-600' : 'text-gray-400'"></i>
+                                    <span class="text-[10px] font-semibold" :class="totalMinimosConfigurados > 0 ? 'text-primary-800' : 'text-gray-500'">Mínimos</span>
+                                </div>
+                                <p class="text-lg font-bold" :class="totalMinimosConfigurados > 0 ? 'text-primary-700' : 'text-gray-400'">
+                                    {{ totalMinimosConfigurados }}
+                                </p>
+                                <p class="text-[9px]" :class="totalMinimosConfigurados > 0 ? 'text-primary-600' : 'text-gray-400'">
+                                    {{ totalMinimosConfigurados > 0 ? 'configurados' : 'sin mínimos' }}
                                 </p>
                             </div>
                         </div>
 
-                        <div v-if="resumenGrupo.configuracionCompleta" class="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-start gap-2 mb-3">
-                            <i class="fas fa-check-circle text-emerald-600 text-sm flex-shrink-0 mt-0.5"></i>
-                            <div class="text-xs text-emerald-700">
+                        <div v-if="resumenGrupo.configuracionCompleta" class="bg-primary-50 border border-primary-200 rounded-lg p-2.5 flex items-start gap-2 mb-3">
+                            <i class="fas fa-check-circle text-primary-600 text-sm flex-shrink-0 mt-0.5"></i>
+                            <div class="text-xs text-primary-700">
                                 <p class="font-semibold">¡Configuración completa!</p>
                                 <p class="text-[10px]">Este grupo está listo para usarse en pedidos.</p>
                             </div>
@@ -791,7 +1108,8 @@ onUnmounted(() => {
                                 <p class="text-[10px]">
                                     Falta:
                                     <span v-if="totalProductosConPrecio === 0" class="font-medium">productos con precio, </span>
-                                    <span v-if="totalClientesAsignados === 0" class="font-medium">clientes</span>
+                                    <span v-if="totalClientesAsignados === 0" class="font-medium">clientes, </span>
+                                    <span v-if="totalMinimosConfigurados === 0" class="font-medium">mínimos</span>
                                 </p>
                             </div>
                         </div>
@@ -805,7 +1123,7 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- FORMULARIO DE DATOS -->
+                    <!-- FORMULARIO -->
                     <div class="bg-white rounded-xl shadow-sm p-3 sm:p-4">
                         <div class="mb-3">
                             <h2 class="text-sm font-bold text-gray-800 flex items-center gap-1.5">
@@ -822,7 +1140,7 @@ onUnmounted(() => {
                                 <label class="text-[10px] text-gray-500 font-medium block mb-0.5">
                                     Nombre del grupo <span class="text-red-500">*</span>
                                 </label>
-                                <input 
+                                <input
                                     type="text"
                                     v-model="datosGrupo.Nombre"
                                     class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
@@ -834,7 +1152,7 @@ onUnmounted(() => {
                                 <label class="text-[10px] text-gray-500 font-medium block mb-0.5">
                                     Descripción
                                 </label>
-                                <textarea 
+                                <textarea
                                     v-model="datosGrupo.Descripcion"
                                     rows="3"
                                     class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
@@ -844,7 +1162,7 @@ onUnmounted(() => {
 
                             <div>
                                 <label class="flex items-center gap-2 cursor-pointer">
-                                    <input 
+                                    <input
                                         type="checkbox"
                                         :checked="datosGrupo.ActivoInactivo === 1"
                                         @change="datosGrupo.ActivoInactivo = $event.target.checked ? 1 : 0"
@@ -858,14 +1176,14 @@ onUnmounted(() => {
                             </div>
 
                             <div class="pt-2 border-t border-gray-100 flex justify-end gap-2">
-                                <button 
+                                <button
                                     @click="volverAlListado"
                                     :disabled="guardando"
                                     class="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-xs font-medium transition disabled:opacity-50"
                                 >
                                     Cancelar
                                 </button>
-                                <button 
+                                <button
                                     @click="guardarDatos"
                                     :disabled="guardando"
                                     class="px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 flex items-center gap-1.5"

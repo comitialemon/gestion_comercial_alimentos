@@ -1578,6 +1578,12 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
                     Route::delete('/{id}/productos/{idProducto}', [GrupoClienteController::class, 'eliminarProducto'])
                         ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.eliminar-producto');
+                        // Pestaña 4: Mínimos por grupo de clientes
+                    Route::get('/{id}/minimos', [GrupoClienteController::class, 'getMinimos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.minimos');
+
+                    Route::post('/{id}/minimos', [GrupoClienteController::class, 'guardarMinimos'])
+                        ->name('operacion.pedidos.clientes-mayoristas.grupos-clientes.guardar-minimos');
                 });
 
                 // ============================================================
