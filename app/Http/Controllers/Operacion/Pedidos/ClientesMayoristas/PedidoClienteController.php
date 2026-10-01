@@ -108,155 +108,63 @@ class PedidoClienteController extends Controller
      */
     private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente = null)
     {
-        if (!$pedidoBorrador) return [];
+        if (!$pedidoBorrador) {
+            return [];
+        }
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        $idPedido = $pedidoBorrador->IdPedidoCliente;
 
-        $cacheKey = "progreso_pedido_{$idPedido}_{$clienteId}_{$sucursalId}";
+        // Detalles del pedido
+        $detalles = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('pedidos_clientes_detalle as d')
+            ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
+            ->where('d.IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
+            ->select('d.IdProducto', 'd.Cantidad', 'p.IdGrupoAnalisis')
+            ->get();
 
-        return cache()->remember($cacheKey, 60, function () use ($pedidoBorrador, $clienteId, $sucursalId) {
-            // ✅ 1 SOLA QUERY con toda la info necesaria
-            $detalles = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('pedidos_clientes_detalle as d')
-                ->join('inventario_productodetalle as p', 'd.IdProducto', '=', 'p.IdProducto')
-                ->leftJoin('inventario_productogrupoanalisis as g', 'p.IdGrupoAnalisis', '=', 'g.IdGrupoAnalisis')
-                ->where('d.IdPedidoCliente', $pedidoBorrador->IdPedidoCliente)
-                ->select(
-                    'd.IdProducto',
-                    'd.Cantidad',
-                    'p.IdGrupoAnalisis',
-                    'p.Codigo as producto_codigo',
-                    'p.Descripcion as producto_descripcion',
-                    'g.Grupo as grupo_nombre'
-                )
-                ->get();
+        $progreso = [];
 
-            if ($detalles->isEmpty()) return [];
+        // ============================================================
+        // ✅ SOLO MÍNIMOS POR PRODUCTO (el grupo ya no se valida por cantidad)
+        // ============================================================
+        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
 
-            $progreso = [];
-
-            // ============================================================
-            // 1. MÍNIMOS POR GRUPO DE ANÁLISIS
-            // ============================================================
-            $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
-
-            if (!empty($mapaGrupos)) {
-                $acumuladoPorGrupo = [];
-                $nombresGrupos = [];
-
-                foreach ($detalles as $d) {
-                    if (!$d->IdGrupoAnalisis) continue;
-                    $idG = $d->IdGrupoAnalisis;
-                    $acumuladoPorGrupo[$idG] = ($acumuladoPorGrupo[$idG] ?? 0) + (float) $d->Cantidad;
-                    $nombresGrupos[$idG] = $d->grupo_nombre;
-                }
-
-                foreach ($mapaGrupos as $idGrupo => $minimo) {
-                    if (!isset($acumuladoPorGrupo[$idGrupo])) continue;
-
-                    $pedida = $acumuladoPorGrupo[$idGrupo];
-                    $min = (float) $minimo;
-
-                    $progreso[] = [
-                        'Tipo' => 'grupo',
-                        'IdGrupoAnalisis' => $idGrupo,
-                        'NombreGrupo' => $nombresGrupos[$idGrupo] ?? 'Sin grupo',
-                        'CantidadPedida' => $pedida,
-                        'CantidadMinima' => $min,
-                        'Cumple' => $pedida >= $min,
-                        'Falta' => max(0, $min - $pedida),
-                    ];
-                }
+        if (!empty($mapaProductos)) {
+            $acumuladoPorProducto = [];
+            foreach ($detalles as $d) {
+                $acumuladoPorProducto[$d->IdProducto] = ($acumuladoPorProducto[$d->IdProducto] ?? 0) + (float) $d->Cantidad;
             }
 
-            // ============================================================
-            // 2. MÍNIMOS POR PRODUCTO
-            // ============================================================
-            $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
+            $idsProductos = array_keys($mapaProductos);
+            $infoProductos = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('inventario_productodetalle')
+                ->whereIn('IdProducto', $idsProductos)
+                ->get(['IdProducto', 'Codigo', 'Descripcion'])
+                ->keyBy('IdProducto');
 
-            if (!empty($mapaProductos)) {
-                $acumuladoPorProducto = [];
-                $infoProductos = [];
-
-                foreach ($detalles as $d) {
-                    $acumuladoPorProducto[$d->IdProducto] = ($acumuladoPorProducto[$d->IdProducto] ?? 0) + (float) $d->Cantidad;
-                    $infoProductos[$d->IdProducto] = [
-                        'Codigo' => $d->producto_codigo,
-                        'Descripcion' => $d->producto_descripcion,
-                    ];
+            foreach ($mapaProductos as $idProd => $minimo) {
+                if (!isset($acumuladoPorProducto[$idProd])) {
+                    continue;
                 }
 
-                foreach ($mapaProductos as $idProd => $minimo) {
-                    if (!isset($acumuladoPorProducto[$idProd])) continue;
+                $pedida = $acumuladoPorProducto[$idProd];
+                $min = (float) $minimo;
+                $info = $infoProductos[$idProd] ?? null;
 
-                    $pedida = $acumuladoPorProducto[$idProd];
-                    $min = (float) $minimo;
-                    $info = $infoProductos[$idProd] ?? null;
-
-                    $progreso[] = [
-                        'Tipo' => 'producto',
-                        'IdProducto' => $idProd,
-                        'NombreGrupo' => $info ? ($info['Codigo'] . ' - ' . $info['Descripcion']) : 'Producto #' . $idProd,
-                        'CantidadPedida' => $pedida,
-                        'CantidadMinima' => $min,
-                        'Cumple' => $pedida >= $min,
-                        'Falta' => max(0, $min - $pedida),
-                    ];
-                }
-            }
-
-            return $progreso;
-        });
-    }
-
-    /**
-     * Validar que TODOS los productos del pedido tengan mínimo configurado.
-     * ✅ OPTIMIZADO: caché de 60 segundos
-     */
-    private function validarProductosDelPedidoTienenMinimo($pedido)
-    {
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-        $idPedido = $pedido->IdPedidoCliente;
-
-        $cacheKey = "productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}";
-
-        return cache()->remember($cacheKey, 60, function () use ($pedido, $clienteId, $sucursalId) {
-            $idsProductosEnPedido = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                ->pluck('IdProducto')
-                ->unique()
-                ->toArray();
-
-            if (empty($idsProductosEnPedido)) return [];
-
-            $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
-            $idsSinMinimo = array_diff($idsProductosEnPedido, array_keys($mapaProductos));
-
-            if (empty($idsSinMinimo)) return [];
-
-            $productosSinMinimo = ProductoDetalle::whereIn('IdProducto', $idsSinMinimo)
-                ->get(['IdProducto', 'Codigo', 'Descripcion']);
-
-            return $productosSinMinimo->map(function ($p) {
-                return [
-                    'IdProducto' => $p->IdProducto,
-                    'Codigo' => $p->Codigo,
-                    'Descripcion' => $p->Descripcion,
+                $progreso[] = [
+                    'Tipo' => 'producto',
+                    'IdProducto' => $idProd,
+                    'NombreGrupo' => $info ? ($info->Codigo . ' - ' . $info->Descripcion) : 'Producto #' . $idProd,
+                    'CantidadPedida' => $pedida,
+                    'CantidadMinima' => $min,
+                    'Cumple' => $pedida >= $min,
+                    'Falta' => max(0, $min - $pedida),
                 ];
-            })->toArray();
-        });
-    }
+            }
+        }
 
-    /**
-     * ✅ NUEVO: Invalidar caché de productos sin mínimo
-     */
-    private function invalidarCacheProductosSinMinimo($idPedido, $clienteId = null, $sucursalId = null)
-    {
-        $clienteId = $clienteId ?? session('cliente_id');
-        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
-        cache()->forget("productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}");
+        return $progreso;
     }
 
     // ============================================================

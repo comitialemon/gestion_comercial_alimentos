@@ -16,7 +16,7 @@ class GrupoAnalisisMinimo extends Model
         'IdCliente',
         'IdSucursal',
         'IdGrupoAnalisis',
-        'CantidadMinimaGrupo',
+        'CantidadMinimaGrupo', // ✅ Se mantiene en la tabla pero ya no se usa
         'ActivoInactivo',
         'IdOperadorInserta',
         'FechaInserta',
@@ -55,44 +55,53 @@ class GrupoAnalisisMinimo extends Model
         return $query->where('ActivoInactivo', 1);
     }
 
-    public function scopeConMinimo($query)
-    {
-        return $query->where('CantidadMinimaGrupo', '>', 0);
-    }
-
     // ==================== HELPERS ====================
 
     /**
-     * Mapa de mínimos por grupo de análisis: [IdGrupoAnalisis => CantidadMinima]
+     * ✅ NUEVO: Lista de IDs de grupos ACTIVOS.
+     * Retorna: [IdGrupoAnalisis, IdGrupoAnalisis, ...]
      */
-    public static function obtenerMapa($clienteId = null, $sucursalId = null)
+    public static function obtenerIdsActivos($clienteId = null, $sucursalId = null)
     {
         $clienteId = $clienteId ?? session('cliente_id');
         $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
-        $key = "minimos_grupoanalisis_{$clienteId}_{$sucursalId}";
+        $key = "grupos_activos_{$clienteId}_{$sucursalId}";
 
         return cache()->remember($key, 1800, function () use ($clienteId, $sucursalId) {
             return self::porContexto($clienteId, $sucursalId)
                 ->activos()
-                ->conMinimo()
-                ->pluck('CantidadMinimaGrupo', 'IdGrupoAnalisis')
+                ->pluck('IdGrupoAnalisis')
                 ->toArray();
         });
+    }
+
+    /**
+     * ✅ Compatibilidad: alias de obtenerIdsActivos (por si algo lo usa)
+     */
+    public static function obtenerMapa($clienteId = null, $sucursalId = null)
+    {
+        return self::obtenerIdsActivos($clienteId, $sucursalId);
+    }
+
+    /**
+     * ✅ NUEVO: ¿El grupo está activo?
+     */
+    public static function grupoEstaActivo($idGrupoAnalisis, $clienteId = null, $sucursalId = null)
+    {
+        $ids = self::obtenerIdsActivos($clienteId, $sucursalId);
+        return in_array((int) $idGrupoAnalisis, array_map('intval', $ids));
     }
 
     public static function invalidarCache($clienteId = null, $sucursalId = null)
     {
         $clienteId = $clienteId ?? session('cliente_id');
         $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+        cache()->forget("grupos_activos_{$clienteId}_{$sucursalId}");
+        // Limpiar también la clave vieja por si acaso
         cache()->forget("minimos_grupoanalisis_{$clienteId}_{$sucursalId}");
     }
 
     // ==================== ACCESORS ====================
-
-    public function getCantidadFormateadaAttribute()
-    {
-        return number_format($this->CantidadMinimaGrupo, 2, ',', '.');
-    }
 
     public function getEstadoTextoAttribute()
     {

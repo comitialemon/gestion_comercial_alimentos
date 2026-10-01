@@ -14,23 +14,21 @@ use Carbon\Carbon;
 class MinimoGlobalController extends Controller
 {
     /**
-     * Vista principal: configuración de mínimos por GRUPO de análisis.
+     * Vista principal: configuración de qué grupos de análisis aplican para pedidos.
      */
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        // Mapa de mínimos ya configurados
-        $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
+        $idsActivos = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
+        $idsActivos = array_map('intval', $idsActivos);
 
-        // Grupos de análisis del cliente
         $grupos = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
             ->orderBy('Grupo')
             ->get(['IdGrupoAnalisis', 'Grupo']);
 
-        // Estructura simple: grupos + su mínimo actual + total productos
-        $estructura = $grupos->map(function ($grupo) use ($mapaGrupos, $clienteId) {
+        $estructura = $grupos->map(function ($grupo) use ($idsActivos, $clienteId) {
             $totalProductos = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('inventario_productodetalle')
                 ->where('IdCliente', $clienteId)
@@ -41,7 +39,7 @@ class MinimoGlobalController extends Controller
             return [
                 'IdGrupoAnalisis' => $grupo->IdGrupoAnalisis,
                 'NombreGrupo' => $grupo->Grupo,
-                'CantidadMinimaGrupo' => $mapaGrupos[$grupo->IdGrupoAnalisis] ?? 0,
+                'Aplica' => in_array((int) $grupo->IdGrupoAnalisis, $idsActivos), // ✅ BOOL
                 'TotalProductos' => $totalProductos,
             ];
         })->values();
@@ -60,13 +58,14 @@ class MinimoGlobalController extends Controller
         $sucursalId = session('cliente_sucursal_id');
 
         try {
-            $mapaGrupos = GrupoAnalisisMinimo::obtenerMapa($clienteId, $sucursalId);
+            $idsActivos = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
+            $idsActivos = array_map('intval', $idsActivos);
 
             $grupos = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
                 ->orderBy('Grupo')
                 ->get(['IdGrupoAnalisis', 'Grupo']);
 
-            $estructura = $grupos->map(function ($grupo) use ($mapaGrupos, $clienteId) {
+            $estructura = $grupos->map(function ($grupo) use ($idsActivos, $clienteId) {
                 $totalProductos = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('inventario_productodetalle')
                     ->where('IdCliente', $clienteId)
@@ -77,7 +76,7 @@ class MinimoGlobalController extends Controller
                 return [
                     'IdGrupoAnalisis' => $grupo->IdGrupoAnalisis,
                     'NombreGrupo' => $grupo->Grupo,
-                    'CantidadMinimaGrupo' => $mapaGrupos[$grupo->IdGrupoAnalisis] ?? 0,
+                    'Aplica' => in_array((int) $grupo->IdGrupoAnalisis, $idsActivos),
                     'TotalProductos' => $totalProductos,
                 ];
             })->values();
@@ -97,14 +96,15 @@ class MinimoGlobalController extends Controller
     }
 
     /**
-     * Guardar mínimos de GRUPOS (bulk upsert).
+     * Guardar qué grupos aplican (ON/OFF).
+     * Recibe: { grupos: [{ IdGrupoAnalisis, Aplica: true|false }, ...] }
      */
     public function guardar(Request $request)
     {
         $request->validate([
             'grupos' => 'required|array',
             'grupos.*.IdGrupoAnalisis' => 'required|integer|exists:inventario_productogrupoanalisis,IdGrupoAnalisis',
-            'grupos.*.CantidadMinima' => 'nullable|numeric|min:0',
+            'grupos.*.Aplica' => 'required|boolean',
         ]);
 
         $clienteId = session('cliente_id');
@@ -115,19 +115,16 @@ class MinimoGlobalController extends Controller
         try {
             DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
 
-            // Separar los que se guardan (>0) y los que se eliminan (=0)
-            $aGuardar = [];
-            $aEliminar = [];
+            $aActivar = [];  // upsert
+            $aDesactivar = []; // delete
 
             foreach ($request->grupos as $g) {
-                $cantidad = (float) ($g['CantidadMinima'] ?? 0);
-
-                if ($cantidad > 0) {
-                    $aGuardar[] = [
+                if ($g['Aplica']) {
+                    $aActivar[] = [
                         'IdCliente' => $clienteId,
                         'IdSucursal' => $sucursalId,
                         'IdGrupoAnalisis' => $g['IdGrupoAnalisis'],
-                        'CantidadMinimaGrupo' => $cantidad,
+                        'CantidadMinimaGrupo' => 0, // ✅ Ya no se usa
                         'ActivoInactivo' => 1,
                         'IdOperadorInserta' => $operadorId,
                         'FechaInserta' => $ahora,
@@ -135,37 +132,36 @@ class MinimoGlobalController extends Controller
                         'FechaActualiza' => $ahora,
                     ];
                 } else {
-                    $aEliminar[] = $g['IdGrupoAnalisis'];
+                    $aDesactivar[] = $g['IdGrupoAnalisis'];
                 }
             }
 
-            // Bulk upsert (1 sola query)
-            if (!empty($aGuardar)) {
+            // Upsert de los activos
+            if (!empty($aActivar)) {
                 GrupoAnalisisMinimo::upsert(
-                    $aGuardar,
+                    $aActivar,
                     ['IdCliente', 'IdSucursal', 'IdGrupoAnalisis'],
-                    ['CantidadMinimaGrupo', 'ActivoInactivo', 'IdOperadorActualiza', 'FechaActualiza']
+                    ['ActivoInactivo', 'IdOperadorActualiza', 'FechaActualiza']
                 );
             }
 
-            // Eliminar (borrado físico) los que quedaron en 0
-            if (!empty($aEliminar)) {
+            // Eliminar los que se desactivaron
+            if (!empty($aDesactivar)) {
                 GrupoAnalisisMinimo::porContexto($clienteId, $sucursalId)
-                    ->whereIn('IdGrupoAnalisis', $aEliminar)
+                    ->whereIn('IdGrupoAnalisis', $aDesactivar)
                     ->delete();
             }
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            // Invalidar caché
             GrupoAnalisisMinimo::invalidarCache($clienteId, $sucursalId);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Mínimos de grupos guardados correctamente',
+                'message' => 'Configuración guardada correctamente',
                 'resumen' => [
-                    'guardados' => count($aGuardar),
-                    'eliminados' => count($aEliminar),
+                    'activados' => count($aActivar),
+                    'desactivados' => count($aDesactivar),
                 ],
             ]);
 
@@ -180,7 +176,7 @@ class MinimoGlobalController extends Controller
     }
 
     /**
-     * Limpiar TODOS los mínimos de grupos.
+     * Limpiar TODOS los grupos activos.
      */
     public function limpiarTodo()
     {
@@ -194,7 +190,7 @@ class MinimoGlobalController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Se eliminaron {$eliminados} grupos",
+                'message' => "Se desactivaron {$eliminados} grupos",
             ]);
 
         } catch (\Exception $e) {

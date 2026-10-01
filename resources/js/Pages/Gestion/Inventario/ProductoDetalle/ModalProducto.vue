@@ -32,9 +32,10 @@ const props = defineProps({
         type: Boolean,
         default: false
     },
+    // ✅ AHORA: Array de IDs activos: [1, 5, 8, ...]
     gruposConMinimo: {
-        type: Object,
-        default: () => ({})
+        type: Array,
+        default: () => []
     },
 })
 
@@ -70,14 +71,17 @@ const textoBoton = computed(() => {
     return loading.value ? 'Guardando...' : (props.editando ? 'Actualizar' : 'Guardar')
 })
 
+// ✅ AHORA: gruposConMinimo es un array de IDs
 const grupoActualTieneMinimo = computed(() => {
     if (!form.value.IdGrupoAnalisis) return false
-    return props.gruposConMinimo[form.value.IdGrupoAnalisis] !== undefined
+    return props.gruposConMinimo.includes(Number(form.value.IdGrupoAnalisis))
 })
 
-const minimoGrupoActual = computed(() => {
-    if (!form.value.IdGrupoAnalisis) return 0
-    return props.gruposConMinimo[form.value.IdGrupoAnalisis] || 0
+// ✅ Nombre del grupo seleccionado (para mostrar en la sección)
+const nombreGrupoActual = computed(() => {
+    if (!form.value.IdGrupoAnalisis) return ''
+    const g = props.grupos.find(x => Number(x.id) === Number(form.value.IdGrupoAnalisis))
+    return g ? g.nombre : 'Grupo'
 })
 
 // ==================== FUNCIONES ====================
@@ -192,6 +196,7 @@ const guardar = async () => {
     if (!validacionCodigo.value.valido) errors.value.Codigo = ['¡El código ya existe!']
     if (!validacionDescripcion.value.valido) errors.value.Descripcion = ['¡La descripción ya existe!']
 
+    // ✅ Si el grupo está ACTIVO, el mínimo es obligatorio
     if (grupoActualTieneMinimo.value) {
         if (!form.value.CantidadMinimaProducto || form.value.CantidadMinimaProducto <= 0) {
             errors.value.CantidadMinimaProducto = ['El mínimo por pedido es obligatorio (debe ser mayor a 0)']
@@ -232,6 +237,7 @@ const guardar = async () => {
             throw new Error(responseProducto.data.message || 'Error al guardar el producto')
         }
 
+        // ✅ Si el grupo está ACTIVO y hay mínimo, guardar el mínimo del producto
         if (grupoActualTieneMinimo.value && form.value.CantidadMinimaProducto > 0) {
             try {
                 await axios.post('/operacion/pedidos/clientes-mayoristas/minimos-globales/producto/guardar', {
@@ -316,7 +322,7 @@ onUnmounted(() => {
         <div v-if="modelValue" class="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/50" @click.self="cerrarModal">
             <div class="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
 
-                <!-- ==================== HEADER ==================== -->
+                <!-- HEADER -->
                 <div class="flex justify-between items-center px-3 py-2 bg-primary-600 rounded-t-xl">
                     <div class="flex items-center gap-2">
                         <div class="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center">
@@ -329,7 +335,7 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- ==================== ERROR ==================== -->
+                <!-- ERROR -->
                 <div v-if="errorMensaje" class="mx-3 mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
                     <p class="text-[10px] text-red-600 flex items-start gap-1">
                         <i class="fas fa-exclamation-circle mt-0.5 text-[9px]"></i>
@@ -337,7 +343,7 @@ onUnmounted(() => {
                     </p>
                 </div>
 
-                <!-- ==================== FORMULARIO ==================== -->
+                <!-- FORMULARIO -->
                 <div class="flex-1 overflow-y-auto p-3 space-y-2.5">
 
                     <!-- Grupo + Línea -->
@@ -469,7 +475,7 @@ onUnmounted(() => {
                     </div>
 
                     <!-- ============================================================ -->
-                    <!-- CONFIGURACIÓN PARA PEDIDOS (si el grupo tiene mínimo) -->
+                    <!-- CONFIGURACIÓN PARA PEDIDOS (si el grupo está ACTIVO) -->
                     <!-- ============================================================ -->
                     <div v-if="grupoActualTieneMinimo" class="border border-primary-200 bg-primary-50/50 rounded-md p-2.5 space-y-2.5">
                         <div class="flex items-center gap-2">
@@ -478,9 +484,9 @@ onUnmounted(() => {
                             </div>
                             <div class="min-w-0 flex-1">
                                 <h3 class="text-[11px] font-bold text-primary-900">Configuración para Pedidos</h3>
-                                <p class="text-[9px] text-primary-700 truncate">
-                                    Grupo "<strong>{{ grupos.find(g => g.id === form.IdGrupoAnalisis)?.nombre }}</strong>"
-                                    tiene mínimo de <strong>{{ minimoGrupoActual }}</strong> und.
+                                <p class="text-[10px] text-blue-700">
+                                    El grupo "<strong>{{ nombreGrupoActual }}</strong>" está <strong>ACTIVO</strong>.
+                                    Configura el mínimo individual.
                                 </p>
                             </div>
                         </div>
@@ -558,7 +564,7 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ==================== FOOTER ==================== -->
+                <!-- FOOTER -->
                 <div class="flex justify-end gap-2 p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                     <button @click="cerrarModal"
                         class="px-3 py-1.5 border border-gray-300 rounded-md text-xs text-gray-700 hover:bg-gray-100 transition">

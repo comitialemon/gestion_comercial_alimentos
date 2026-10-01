@@ -146,12 +146,9 @@ class ProductoDetalleController extends Controller
             $unidadId = $unidad->id;
         }
 
-        // ✅ NUEVO: Mapa de grupos con mínimo (para mostrar/ocultar sección en el modal)
-        $gruposConMinimo = GrupoAnalisisMinimo::porContexto($clienteId, $sucursalId)
-            ->activos()
-            ->where('CantidadMinimaGrupo', '>', 0)
-            ->pluck('CantidadMinimaGrupo', 'IdGrupoAnalisis')
-            ->toArray();
+        // ✅ NUEVO: Lista de IDs de grupos activos (para mostrar/ocultar sección en el modal)
+        $gruposConMinimo = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
+        $gruposConMinimo = array_map('intval', $gruposConMinimo);
 
         // ✅ NUEVO: Mapa de mínimos de productos (para saber qué productos ya están configurados)
         $productosConMinimo = ProductoMinimo::porContexto($clienteId, $sucursalId)

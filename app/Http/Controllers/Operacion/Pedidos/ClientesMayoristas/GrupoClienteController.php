@@ -467,12 +467,9 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // ✅ NUEVO: Obtener solo los grupos de análisis que aplican (mínimo > 0)
-            $gruposConMinimo = GrupoAnalisisMinimo::porContexto($clienteId, $sucursalId)
-                ->activos()
-                ->where('CantidadMinimaGrupo', '>', 0)
-                ->pluck('IdGrupoAnalisis')
-                ->toArray();
+            // ✅ NUEVO: Obtener solo los grupos de análisis que aplican (ActivoInactivo = 1)
+            $gruposConMinimo = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
+            $gruposConMinimo = array_map('intval', $gruposConMinimo);
 
             // Si no hay grupos con mínimo, devolver vacío
             if (empty($gruposConMinimo)) {
