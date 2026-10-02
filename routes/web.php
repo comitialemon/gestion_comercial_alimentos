@@ -136,9 +136,8 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\GrupoClienteReporteControlle
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\SubClienteOperadorController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\MinimoGlobalController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ProductoMinimoController;
-use App\Http\Controllers\PuntoVenta\BancoCredencialController;
-use App\Http\Controllers\PuntoVenta\HistorialPagosQRController;
-
+use App\Http\Controllers\Gestion\Banco\BancoCredencialController;
+use App\Http\Controllers\Gestion\Banco\HistorialPagosQRController;
 
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
@@ -1778,7 +1777,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
     // 7. PREFIJO: HISTORIAL DE PAGOS QR
     // ============================================================
     Route::prefix('historial-pagos-qr')->group(function () {
-        Route::get('/', [HistorialPagosQRController::class, 'index'])->name('historial-pagos-qr.index');
+        // ✅ Rutas específicas PRIMERO (para evitar conflictos)
+        Route::get('/banco', [HistorialPagosQRController::class, 'consultarBanco'])
+            ->name('historial-pagos-qr.banco');
+        
+        Route::post('/conciliar', [HistorialPagosQRController::class, 'conciliar'])
+            ->name('historial-pagos-qr.conciliar');
+        
+        // ✅ Ruta raíz AL FINAL
+        Route::get('/', [HistorialPagosQRController::class, 'index'])
+            ->name('historial-pagos-qr.index');
     });
     // ============================================================
     // 11. UTILIDADES

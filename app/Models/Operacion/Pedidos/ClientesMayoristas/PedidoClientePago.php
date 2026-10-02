@@ -50,11 +50,7 @@ class PedidoClientePago extends Model
 
     public function credencial()
     {
-        return $this->belongsTo(
-            \App\Models\Gestion\Impuestos\BancoCredencial::class,
-            'IdCredencial',
-            'IdCredencial'
-        );
+        return $this->belongsTo(\App\Models\Gestion\Banco\BancoCredencial::class, 'IdCredencial', 'IdCredencial');
     }
 
     // ============================================================
@@ -77,7 +73,7 @@ class PedidoClientePago extends Model
     }
 
     // ============================================================
-    // HELPERS
+    // HELPERS DE ESTADO
     // ============================================================
 
     public function estaPendiente(): bool
@@ -105,14 +101,35 @@ class PedidoClientePago extends Model
         return $this->Estado === 'PENDIENTE';
     }
 
+    // ============================================================
+    // HELPERS DE TIEMPO
+    // ============================================================
+
     /**
      * ¿El QR expiró? (15 minutos desde creación)
      */
     public function haExpirado(): bool
     {
         if (!$this->FechaCreacion) return false;
-        return $this->FechaCreacion->addMinutes(15)->isPast();
+        return $this->FechaCreacion->copy()->addMinutes(15)->isPast();
     }
+
+    /**
+     * Segundos restantes antes de que expire el QR (15 min desde creación)
+     */
+    public function segundosRestantes(): int
+    {
+        if (!$this->FechaCreacion) return 0;
+
+        $expira = $this->FechaCreacion->copy()->addMinutes(15);
+        $restantes = now()->diffInSeconds($expira, false);
+
+        return max(0, (int) $restantes);
+    }
+
+    // ============================================================
+    // HELPERS ESTÁTICOS
+    // ============================================================
 
     /**
      * Obtener pago pendiente de un pedido

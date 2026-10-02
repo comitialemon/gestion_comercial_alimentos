@@ -1,23 +1,25 @@
 <?php
 
-namespace App\Services\Gestion\PuntoVenta;
+namespace App\Services\Gestion\Banco\Services;
 
-use App\Models\Gestion\Impuestos\BancoCredencial;
-use App\Services\Gestion\PuntoVenta\DTO\QRGeneradoDTO;
-use App\Services\Gestion\PuntoVenta\DTO\QREstadoDTO;
+use App\Models\Gestion\Banco\BancoCredencial;
+use App\Services\Gestion\Banco\BancoQRException;
+use App\Services\Gestion\Banco\Contracts\BancoQRInterface;
+use App\Services\Gestion\Banco\DTO\QRGeneradoDTO;
+use App\Services\Gestion\Banco\DTO\QREstadoDTO;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class BancoEconomicoService
+class BancoEconomicoService implements BancoQRInterface
 {
     protected BancoCredencial $credencial;
     protected string $baseUrl;
     protected string $username;
     protected string $password;
-    protected string $aesKey;
+    protected ?string $aesKey;
     protected string $cuentaCredito;
     protected string $branchCode;
     protected int $timeout;
@@ -97,7 +99,7 @@ class BancoEconomicoService
 
             if (!$response->successful()) {
                 $this->logError('Error HTTP al autenticar', $response);
-                throw new BancoEconomicoException(
+                throw new BancoQRException(
                     'Error de conexión al autenticar con el banco (HTTP ' . $response->status() . '): ' . $response->body(),
                     'CONEXION',
                     null,
@@ -108,7 +110,7 @@ class BancoEconomicoService
             $data = $response->json();
 
             if (!$data) {
-                throw new BancoEconomicoException(
+                throw new BancoQRException(
                     'Respuesta del banco no es JSON válido: ' . $response->body(),
                     'NEGOCIO'
                 );
@@ -120,7 +122,7 @@ class BancoEconomicoService
                     'message' => $data['message'] ?? 'sin mensaje',
                 ]);
 
-                throw new BancoEconomicoException(
+                throw new BancoQRException(
                     'Error de autenticación: ' . ($data['message'] ?? 'Desconocido'),
                     'AUTENTICACION',
                     $data
@@ -128,7 +130,7 @@ class BancoEconomicoService
             }
 
             if (empty($data['token'])) {
-                throw new BancoEconomicoException(
+                throw new BancoQRException(
                     'El banco no devolvió un token válido',
                     'AUTENTICACION',
                     $data
@@ -165,7 +167,7 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al encriptar', $response);
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error al encriptar',
                 'CONEXION',
                 null,
@@ -178,7 +180,7 @@ class BancoEconomicoService
         $resultado = trim($resultado, "'");
 
         if (empty($resultado)) {
-            throw new BancoEconomicoException('Respuesta vacía al encriptar', 'NEGOCIO');
+            throw new BancoQRException('Respuesta vacía al encriptar', 'NEGOCIO');
         }
 
         return $resultado;
@@ -198,7 +200,7 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al desencriptar', $response);
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error al desencriptar',
                 'CONEXION',
                 null,
@@ -267,7 +269,7 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al generar QR', $response);
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error de conexión al generar QR',
                 'CONEXION',
                 null,
@@ -278,7 +280,7 @@ class BancoEconomicoService
         $data = $response->json();
 
         if (($data['responseCode'] ?? -1) !== 0) {
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error generando QR: ' . ($data['message'] ?? 'Desconocido'),
                 'NEGOCIO',
                 $data
@@ -286,7 +288,7 @@ class BancoEconomicoService
         }
 
         if (empty($data['qrId']) || empty($data['qrImage'])) {
-            throw new BancoEconomicoException('QR inválido del banco', 'NEGOCIO', $data);
+            throw new BancoQRException('QR inválido del banco', 'NEGOCIO', $data);
         }
 
         Log::info('✅ QR generado', ['qrId' => $data['qrId']]);
@@ -325,7 +327,7 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al consultar estado', $response);
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error al consultar estado',
                 'CONEXION',
                 null,
@@ -368,13 +370,13 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al anular QR', $response);
-            throw new BancoEconomicoException('Error al anular QR', 'CONEXION', null, $response->status());
+            throw new BancoQRException('Error al anular QR', 'CONEXION', null, $response->status());
         }
 
         $data = $response->json();
 
         if (($data['responseCode'] ?? -1) !== 0) {
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error anulando QR: ' . ($data['message'] ?? 'Desconocido'),
                 'NEGOCIO',
                 $data
@@ -411,13 +413,13 @@ class BancoEconomicoService
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al listar QR pagados', $response);
-            throw new BancoEconomicoException('Error al listar QRs', 'CONEXION', null, $response->status());
+            throw new BancoQRException('Error al listar QRs', 'CONEXION', null, $response->status());
         }
 
         $data = $response->json();
 
         if (($data['responseCode'] ?? -1) !== 0) {
-            throw new BancoEconomicoException(
+            throw new BancoQRException(
                 'Error listando QRs: ' . ($data['message'] ?? 'Desconocido'),
                 'NEGOCIO',
                 $data

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Models\Gestion\Impuestos;
+namespace App\Models\Gestion\Banco;
 
 use Illuminate\Database\Eloquent\Model;
 

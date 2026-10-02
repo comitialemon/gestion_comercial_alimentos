@@ -1,11 +1,11 @@
 <?php
 
-namespace App\Services\Gestion\PuntoVenta;
+namespace App\Services\Gestion\Banco;
 
 use Exception;
 use Throwable;
 
-class BancoEconomicoException extends Exception
+class BancoQRException extends Exception
 {
     protected ?array $respuestaBanco;
     protected string $tipoError;

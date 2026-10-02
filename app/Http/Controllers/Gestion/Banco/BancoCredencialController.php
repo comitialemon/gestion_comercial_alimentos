@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Http\Controllers\PuntoVenta;
+namespace App\Http\Controllers\Gestion\Banco;
 
 use App\Http\Controllers\Controller;
-use App\Models\Gestion\Impuestos\BancoCredencial;
-use App\Services\Gestion\PuntoVenta\BancoEconomicoService;
+use App\Models\Gestion\Banco\BancoCredencial;
+use App\Services\Gestion\Banco\BancoFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -43,42 +43,49 @@ class BancoCredencialController extends Controller
                     'UltimoError' => $cred->UltimoError,
                     'FechaUltimoError' => $cred->FechaUltimoError?->format('Y-m-d H:i:s'),
                     'FechaCreacion' => $cred->FechaCreacion?->format('Y-m-d H:i:s'),
-                    // ⚠️ NO enviamos PasswordCifrado, AesKey ni CuentaCredito
+                    'TieneAesKey' => !empty($cred->AesKey),
+                    'TieneApiKey' => !empty($cred->ApiKeyCifrada),
+                    // ⚠️ NO enviamos PasswordCifrado, AesKey, ApiKeyCifrada ni CuentaCredito
                 ];
             });
 
-        return Inertia::render('Gestion/Impuestos/BancoCredenciales/Index', [
+        return Inertia::render('Gestion/Banco/Credenciales/Index', [
             'credenciales' => $credenciales,
             'bancosDisponibles' => [
                 ['codigo' => 'BECO', 'nombre' => 'Banco Económico S.A.'],
+                ['codigo' => 'BGAN', 'nombre' => 'Banco Ganadero S.A.'],
             ],
             'ambientesDisponibles' => [
                 ['valor' => 'CERTIFICACION', 'nombre' => 'Certificación'],
                 ['valor' => 'PRODUCCION', 'nombre' => 'Producción'],
             ],
             'urlsDisponibles' => [
-                'CERTIFICACION' => config('banco_economico.urls.CERTIFICACION'),
-                'PRODUCCION' => config('banco_economico.urls.PRODUCCION'),
+                'BECO' => [
+                    'CERTIFICACION' => config('banco_economico.urls.CERTIFICACION'),
+                    'PRODUCCION' => config('banco_economico.urls.PRODUCCION'),
+                ],
+                'BGAN' => [
+                    'CERTIFICACION' => config('banco_ganadero.urls.CERTIFICACION'),
+                    'PRODUCCION' => config('banco_ganadero.urls.PRODUCCION'),
+                ],
             ],
         ]);
     }
 
     /**
      * Crear nueva credencial
-     *
-     * ⚠️ IMPORTANTE: El password se cifra con el BANCO antes de guardarse.
-     * El campo "Password" del formulario espera TEXTO PLANO.
      */
     public function store(Request $request)
     {
         $request->validate([
-            'CodigoBanco' => 'required|string|max:10',
+            'CodigoBanco' => 'required|string|in:BECO,BGAN',
             'NombreBanco' => 'required|string|max:100',
             'Alias' => 'nullable|string|max:100',
             'UrlBase' => 'required|url|max:255',
             'Usuario' => 'required|string|max:100',
             'Password' => 'required|string|max:500',
-            'AesKey' => 'required|string|max:255',
+            'AesKey' => 'nullable|string|max:255|required_if:CodigoBanco,BECO',
+            'ApiKey' => 'nullable|string|max:500|required_if:CodigoBanco,BGAN',
             'CuentaCredito' => 'required|string|max:255',
             'BranchCode' => 'nullable|string|max:5',
             'MonedaDefault' => 'required|in:BOB,USD',
@@ -109,34 +116,42 @@ class BancoCredencialController extends Controller
             }
 
             // ============================================================
-            // 🔥 PASO 1: Crear credencial TEMPORAL para instanciar el Service
+            // 🔥 PASO 1: Preparar el password según el banco
             // ============================================================
-            $credencialTemporal = new BancoCredencial([
-                'UrlBase' => $request->UrlBase,
-                'Usuario' => $request->Usuario,
-                'PasswordCifrado' => Crypt::encryptString($request->Password),
-                'AesKey' => Crypt::encryptString($request->AesKey),
-                'CuentaCredito' => Crypt::encryptString($request->CuentaCredito),
-                'BranchCode' => $request->BranchCode,
-                'Timeout' => $request->Timeout,
-                'Reintentos' => $request->Reintentos,
-                'TokenCacheTtl' => $request->TokenCacheTtl,
-            ]);
+            if ($request->CodigoBanco === 'BECO') {
+                // Banco Económico: cifrar password con el endpoint /encrypt del banco
+                $credencialTemporal = new BancoCredencial([
+                    'CodigoBanco' => $request->CodigoBanco,  // ✅ AGREGADO
+                    'UrlBase' => $request->UrlBase,
+                    'Usuario' => $request->Usuario,
+                    'PasswordCifrado' => Crypt::encryptString($request->Password),
+                    'AesKey' => Crypt::encryptString($request->AesKey),
+                    'CuentaCredito' => Crypt::encryptString($request->CuentaCredito),
+                    'BranchCode' => $request->BranchCode,
+                    'Timeout' => $request->Timeout,
+                    'Reintentos' => $request->Reintentos,
+                    'TokenCacheTtl' => $request->TokenCacheTtl,
+                ]);
 
-            $serviceTemp = new BancoEconomicoService($credencialTemporal);
+                $serviceTemp = BancoFactory::desdeCredencial($credencialTemporal);
+
+                // Cifrar el password con el banco
+                $passwordCifradoBanco = $serviceTemp->encriptar($request->Password);
+
+                Log::info('🔐 Password cifrado con Banco Económico', [
+                    'password_plano_longitud' => strlen($request->Password),
+                    'password_cifrado_longitud' => strlen($passwordCifradoBanco),
+                ]);
+
+                $passwordParaGuardar = Crypt::encryptString($passwordCifradoBanco);
+
+            } else {
+                // Banco Ganadero (u otros): NO cifrar password con el banco
+                $passwordParaGuardar = Crypt::encryptString($request->Password);
+            }
 
             // ============================================================
-            // 🔥 PASO 2: Cifrar el PASSWORD con el banco (/encrypt)
-            // ============================================================
-            $passwordCifradoBanco = $serviceTemp->encriptar($request->Password);
-
-            Log::info('🔐 Cifrado de password para nueva credencial', [
-                'password_plano_longitud' => strlen($request->Password),
-                'password_cifrado_longitud' => strlen($passwordCifradoBanco),
-            ]);
-
-            // ============================================================
-            // 🔥 PASO 3: Guardar credencial (password CIFRADO con el banco)
+            // 🔥 PASO 2: Guardar credencial
             // ============================================================
             $credencial = BancoCredencial::create([
                 'IdCliente' => $idCliente,
@@ -145,10 +160,9 @@ class BancoCredencialController extends Controller
                 'Alias' => $request->Alias,
                 'UrlBase' => $request->UrlBase,
                 'Usuario' => $request->Usuario,
-                // 🔥 Cifrado con el banco + cifrado con Crypt
-                'PasswordCifrado' => Crypt::encryptString($passwordCifradoBanco),
-                // AesKey y CuentaCredito solo cifradas con Crypt (se cifran al vuelo al usar)
-                'AesKey' => Crypt::encryptString($request->AesKey),
+                'PasswordCifrado' => $passwordParaGuardar,
+                'AesKey' => $request->filled('AesKey') ? Crypt::encryptString($request->AesKey) : null,
+                'ApiKeyCifrada' => $request->filled('ApiKey') ? Crypt::encryptString($request->ApiKey) : null,
                 'CuentaCredito' => Crypt::encryptString($request->CuentaCredito),
                 'BranchCode' => $request->BranchCode,
                 'MonedaDefault' => $request->MonedaDefault,
@@ -188,19 +202,18 @@ class BancoCredencialController extends Controller
 
     /**
      * Actualizar credencial existente
-     *
-     * ⚠️ IMPORTANTE: Si se envía un nuevo password, se cifra con el BANCO antes de guardar.
      */
     public function update(Request $request, int $id)
     {
         $request->validate([
-            'CodigoBanco' => 'required|string|max:10',
+            'CodigoBanco' => 'required|string|in:BECO,BGAN',
             'NombreBanco' => 'required|string|max:100',
             'Alias' => 'nullable|string|max:100',
             'UrlBase' => 'required|url|max:255',
             'Usuario' => 'required|string|max:100',
             'Password' => 'nullable|string|max:500',
             'AesKey' => 'nullable|string|max:255',
+            'ApiKey' => 'nullable|string|max:500',
             'CuentaCredito' => 'nullable|string|max:255',
             'BranchCode' => 'nullable|string|max:5',
             'MonedaDefault' => 'required|in:BOB,USD',
@@ -235,31 +248,42 @@ class BancoCredencialController extends Controller
             ];
 
             // ============================================================
-            // 🔥 Si se envía nuevo Password, cifrarlo con el banco
+            // 🔥 Password: cifrar con el banco SOLO si es Económico
             // ============================================================
             if ($request->filled('Password')) {
-                $serviceTemp = new BancoEconomicoService($credencial);
-                $passwordCifradoBanco = $serviceTemp->encriptar($request->Password);
-                $datos['PasswordCifrado'] = Crypt::encryptString($passwordCifradoBanco);
+                if ($request->CodigoBanco === 'BECO') {
+                    $serviceTemp = BancoFactory::desdeCredencial($credencial);
+                    $passwordCifradoBanco = $serviceTemp->encriptar($request->Password);
+                    $datos['PasswordCifrado'] = Crypt::encryptString($passwordCifradoBanco);
 
-                Log::info('🔐 Password actualizado y cifrado con el banco', [
-                    'IdCredencial' => $id,
-                    'password_cifrado_longitud' => strlen($passwordCifradoBanco),
-                ]);
+                    Log::info('🔐 Password actualizado y cifrado con Banco Económico', [
+                        'IdCredencial' => $id,
+                    ]);
+                } else {
+                    $datos['PasswordCifrado'] = Crypt::encryptString($request->Password);
+                }
             }
 
-            // AesKey y CuentaCredito solo se cifran con Crypt
+            // AesKey (solo si se envía)
             if ($request->filled('AesKey')) {
                 $datos['AesKey'] = Crypt::encryptString($request->AesKey);
             }
+
+            // ApiKey (solo si se envía)
+            if ($request->filled('ApiKey')) {
+                $datos['ApiKeyCifrada'] = Crypt::encryptString($request->ApiKey);
+            }
+
+            // CuentaCredito (solo si se envía)
             if ($request->filled('CuentaCredito')) {
                 $datos['CuentaCredito'] = Crypt::encryptString($request->CuentaCredito);
             }
 
             $credencial->update($datos);
 
-            // Limpiar caché del token al actualizar credenciales
+            // Limpiar caché del token
             Cache::forget("banco_economico_token_{$id}");
+            Cache::forget("banco_ganadero_token_{$id}");
 
             Log::info('✅ Credencial actualizada', [
                 'IdCredencial' => $id,
@@ -306,6 +330,7 @@ class BancoCredencialController extends Controller
 
             // Limpiar caché del token
             Cache::forget("banco_economico_token_{$id}");
+            Cache::forget("banco_ganadero_token_{$id}");
 
             Log::info('✅ Credencial eliminada', ['IdCredencial' => $id]);
 
@@ -341,6 +366,7 @@ class BancoCredencialController extends Controller
 
             // Limpiar caché del token
             Cache::forget("banco_economico_token_{$id}");
+            Cache::forget("banco_ganadero_token_{$id}");
 
             return response()->json([
                 'success' => true,
@@ -366,15 +392,11 @@ class BancoCredencialController extends Controller
 
             $credencial = BancoCredencial::porCliente($idCliente)->findOrFail($id);
 
-            // Crear instancia del service con esta credencial específica
-            $service = new BancoEconomicoService($credencial);
+            // 🔥 Usar Factory para instanciar el Service correcto según el banco
+            $service = BancoFactory::desdeCredencial($credencial);
 
             // Probar token (forzar renovación para probar credenciales reales)
             $token = $service->obtenerToken(true);
-
-            // Probar encriptación
-            $textoPrueba = 'PRUEBA-' . date('YmdHis');
-            $cifrado = $service->encriptar($textoPrueba);
 
             // Actualizar fecha de último uso
             $credencial->update([
@@ -387,8 +409,8 @@ class BancoCredencialController extends Controller
                 'success' => true,
                 'message' => '✅ Conexión exitosa con el banco',
                 'detalles' => [
+                    'banco' => $credencial->CodigoBanco,
                     'token_obtenido' => substr($token, 0, 30) . '...',
-                    'texto_cifrado' => substr($cifrado, 0, 30) . '...',
                 ],
             ]);
 

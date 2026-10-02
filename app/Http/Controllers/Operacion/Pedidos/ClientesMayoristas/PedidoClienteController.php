@@ -15,9 +15,8 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClientePago;
-use App\Models\Gestion\Impuestos\BancoCredencial;
-use App\Services\Gestion\PuntoVenta\BancoEconomicoService;
-use Illuminate\Support\Facades\Cache;
+use App\Models\Gestion\Banco\BancoCredencial;
+use App\Services\Gestion\Banco\BancoFactory;
 use App\Models\Gestion\Inventario\ProductoDetalle;
 use App\Models\Gestion\Todos\Cliente;
 use App\Models\Gestion\Todos\ClienteSucursal;
@@ -26,6 +25,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
 
 class PedidoClienteController extends Controller
@@ -93,9 +93,6 @@ class PedidoClienteController extends Controller
         });
     }
 
-    /**
-     * ✅ Invalidar caché del progreso del pedido
-     */
     private function invalidarCacheProgreso($idPedido, $clienteId = null, $sucursalId = null)
     {
         $clienteId = $clienteId ?? session('cliente_id');
@@ -103,9 +100,6 @@ class PedidoClienteController extends Controller
         cache()->forget("progreso_pedido_{$idPedido}_{$clienteId}_{$sucursalId}");
     }
 
-    /**
-     * ✅ Invalidar caché de productos sin mínimo
-     */
     private function invalidarCacheProductosSinMinimo($idPedido, $clienteId = null, $sucursalId = null)
     {
         $clienteId = $clienteId ?? session('cliente_id');
@@ -113,9 +107,6 @@ class PedidoClienteController extends Controller
         cache()->forget("productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}");
     }
 
-    /**
-     * ✅ Validar que TODOS los productos del pedido tengan mínimo configurado.
-     */
     private function validarProductosDelPedidoTienenMinimo($pedido)
     {
         $clienteId = session('cliente_id');
@@ -149,9 +140,6 @@ class PedidoClienteController extends Controller
         })->toArray();
     }
 
-    /**
-     * Calcular progreso de mínimos
-     */
     private function calcularProgresoGrupos($pedidoBorrador, $idGrupoCliente = null)
     {
         if (!$pedidoBorrador || !$idGrupoCliente) {
@@ -170,9 +158,7 @@ class PedidoClienteController extends Controller
 
         $progreso = [];
 
-        // ============================================================
-        // 1. MÍNIMOS POR GRUPO DE ANÁLISIS (POR GRUPO DE CLIENTES)
-        // ============================================================
+        // 1. MÍNIMOS POR GRUPO DE ANÁLISIS
         $mapaGrupos = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($idGrupoCliente, $clienteId, $sucursalId);
 
         if (!empty($mapaGrupos)) {
@@ -208,9 +194,7 @@ class PedidoClienteController extends Controller
             }
         }
 
-        // ============================================================
-        // 2. MÍNIMOS POR PRODUCTO (GLOBAL)
-        // ============================================================
+        // 2. MÍNIMOS POR PRODUCTO
         $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
 
         if (!empty($mapaProductos)) {
@@ -253,30 +237,25 @@ class PedidoClienteController extends Controller
     // ============================================================
     // LISTA DE PEDIDOS
     // ============================================================
+
     public function index()
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ============================================================
-        // 1. CARGAR PEDIDOS CON RELACIONES DE PAGO
-        // ============================================================
         $pedidos = PedidoCliente::porContexto()
             ->where('IdOperador', $operadorId)
             ->with([
                 'cliente',
                 'sucursal',
                 'operador',
-                'pagoPendiente',   // ✅ NUEVO: pago pendiente actual (si existe)
-                'pagoExitoso',     // ✅ NUEVO: pago exitoso (si existe)
+                'pagoPendiente',
+                'pagoExitoso',
             ])
             ->orderBy('IdPedidoCliente', 'desc')
             ->paginate(20);
 
-        // ============================================================
-        // 2. VALIDAR SI PUEDE HACER PEDIDOS
-        // ============================================================
         $grupoCliente = $this->getGrupoDelOperador();
         $puedeHacerPedidos = true;
         $razonNoPuedePedir = null;
@@ -300,9 +279,6 @@ class PedidoClienteController extends Controller
             }
         }
 
-        // ============================================================
-        // 3. ✅ VERIFICAR SI HAY UN PEDIDO EN "ESPERANDO PAGO"
-        // ============================================================
         $pedidoEsperandoPago = PedidoCliente::porContexto()
             ->where('IdOperador', $operadorId)
             ->where('EstadoPedido', 'Esperando Pago')
@@ -312,15 +288,9 @@ class PedidoClienteController extends Controller
 
         $tienePedidoEsperandoPago = $pedidoEsperandoPago !== null;
 
-        // ============================================================
-        // 4. ✅ VERIFICAR SI HAY UN BORRADOR ACTIVO
-        // ============================================================
         $pedidoBorrador = PedidoCliente::obtenerBorradorActivo();
         $tieneBorradorActivo = $pedidoBorrador !== null;
 
-        // ============================================================
-        // 5. RENDERIZAR VISTA
-        // ============================================================
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Index', [
             'pedidos' => $pedidos,
             'puedeHacerPedidos' => $puedeHacerPedidos,
@@ -472,7 +442,7 @@ class PedidoClienteController extends Controller
             })->values();
         }
 
-        // ✅ MAPA DE GRUPOS CON NOMBRE (mínimos del grupo de clientes)
+        // MAPA DE GRUPOS CON NOMBRE
         $mapaGruposRaw = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($grupoCliente->IdGrupoCliente, $clienteId, $sucursalId);
         $minimosGrupos = [];
 
@@ -492,7 +462,7 @@ class PedidoClienteController extends Controller
             }
         }
 
-        // ✅ MAPA DE PRODUCTOS CON INFO
+        // MAPA DE PRODUCTOS CON INFO
         $minimosProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
         $infoProductos = [];
 
@@ -597,9 +567,6 @@ class PedidoClienteController extends Controller
             return response()->json(['success' => false, 'message' => 'Este contenedor no está asignado a tu grupo.'], 400);
         }
 
-        // ============================================================
-        // ✅ VALIDACIÓN NUEVA: ¿El grupo de clientes tiene mínimos?
-        // ============================================================
         $gruposConMinimoDelCliente = GrupoClienteMinimo::obtenerMapaPorGrupoCliente(
             $grupoCliente->IdGrupoCliente,
             $clienteId,
@@ -653,7 +620,7 @@ class PedidoClienteController extends Controller
 
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdProducto', $productosDisponibles)
-            ->whereIn('IdGrupoAnalisis', $idsGruposConMinimoDelCliente)  // ✅ Filtro clave
+            ->whereIn('IdGrupoAnalisis', $idsGruposConMinimoDelCliente)
             ->whereIn('IdProducto', $productosConPrecio->keys())
             ->where('ActivoInactivo', 0)
             ->orderBy('IdGrupoAnalisis')
@@ -1009,7 +976,6 @@ class PedidoClienteController extends Controller
 
             $idIdentificador = $this->getIdIdentificadorOperador();
 
-            // ✅ Permitir Borrador y Esperando Pago
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->whereIn('EstadoPedido', ['Borrador', 'Esperando Pago'])
@@ -1124,7 +1090,6 @@ class PedidoClienteController extends Controller
                 HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
             );
 
-            // ✅ PAGO PENDIENTE (si existe)
             $pagoPendiente = null;
             if ($pedido->pagoPendiente) {
                 $pagoPendiente = [
@@ -1156,7 +1121,7 @@ class PedidoClienteController extends Controller
                 'subclientes' => $subclientes,
                 'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
                 'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
-                'pagoPendiente' => $pagoPendiente,  // ✅ NUEVO
+                'pagoPendiente' => $pagoPendiente,
             ]);
 
         } catch (\Exception $e) {
@@ -1167,7 +1132,7 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // ✅ Obtener progreso de mínimos del pedido actual
+    // OBTENER PROGRESO
     // ============================================================
     public function getProgreso($id)
     {
@@ -1218,95 +1183,42 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // FINALIZAR PEDIDO
+    // GENERAR QR DE PAGO
     // ============================================================
-/*
-    public function finalizarPedido(Request $request, $idPedido)
+    public function generarQRPedido(Request $request, $idPedido)
     {
-        \Log::info('=== 🚀 FINALIZAR PEDIDO ===');
-        \Log::info('📝 Datos recibidos:', $request->all());
-
-        $request->validate([
-            'IdCliente' => 'required|exists:todos_cliente,IdCliente',
-            'Observaciones' => 'nullable|string|max:500',
-            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',
-        ]);
-
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        $sucursalValida = ClienteSucursal::where('IdClienteSucursal', $sucursalId)
-            ->where('IdCliente', $clienteId)
-            ->exists();
-
-        if (!$sucursalValida) {
-            return response()->json([
-                'success' => false,
-                'message' => 'La sucursal de la sesión no es válida. Contacte al administrador.'
-            ], 400);
-        }
-
-        $fechaEntrega = $request->input('FechaEntrega');
-        $fechaEntregaFormateada = null;
-
-        if (!empty($fechaEntrega)) {
-            $fechaEntrega = trim($fechaEntrega);
-
-            if (!preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $fechaEntrega, $matches)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Formato de fecha inválido. Use DD/MM/YYYY.'
-                ], 422);
-            }
-
-            $dia = (int)$matches[1];
-            $mes = (int)$matches[2];
-            $anio = (int)$matches[3];
-
-            $timestampEntrega = mktime(0, 0, 0, $mes, $dia, $anio);
-
-            date_default_timezone_set('America/La_Paz');
-            $timestampHoy = mktime(0, 0, 0, date('m'), date('d'), date('Y'));
-
-            $diferenciaDias = ($timestampEntrega - $timestampHoy) / 86400;
-            $diferenciaDias = floor($diferenciaDias);
-
-            if ($diferenciaDias < 1) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'La fecha de entrega debe ser mínimo 1 día después de hoy. Hoy es ' . date('d/m/Y')
-                ], 422);
-            }
-
-            $fechaEntregaFormateada = date('Y-m-d', $timestampEntrega);
-        } else {
-            return response()->json([
-                'success' => false,
-                'message' => 'La fecha de entrega es obligatoria.'
-            ], 422);
-        }
-
-        $fechaManana = Carbon::now('America/La_Paz')->addDay()->format('Y-m-d');
-
-        if ($fechaEntregaFormateada === $fechaManana) {
-            $horaLimite = HoraLimite::obtenerHoraActiva(
-                HoraLimite::TIPO_PEDIDO_CLIENTE_MAYORISTA
-            );
-
-            $horaActual = (int) Carbon::now('America/La_Paz')->format('H');
-
-            if ($horaLimite && $horaActual >= $horaLimite->Hora) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!"
-                ], 422);
-            }
-        }
-
         try {
-            $grupoCliente = $this->getGrupoDelOperador();
+            // ============================================================
+            // 1. VALIDAR PEDIDO
+            // ============================================================
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdOperador', $operadorId)
+                ->where('IdPedidoCliente', $idPedido)
+                ->first();
 
+            if (!$pedido) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado o no tienes permiso.'
+                ], 404);
+            }
+
+            if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El pedido no puede generar un QR en su estado actual (' . $pedido->EstadoPedido . ').'
+                ], 422);
+            }
+
+            // ============================================================
+            // 2. VALIDACIONES
+            // ============================================================
+            $grupoCliente = $this->getGrupoDelOperador();
             if (!$grupoCliente) {
                 return response()->json([
                     'success' => false,
@@ -1314,153 +1226,408 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
+            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
+            if ($totalDetalles === 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El pedido no tiene productos.'
+                ], 422);
+            }
+
+            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
+            if (!empty($productosSinMinimo)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Algunos productos ya no tienen mínimo configurado.',
+                    'errores' => array_map(fn($p) => "• {$p['Codigo']} - {$p['Descripcion']}", $productosSinMinimo),
+                ], 422);
+            }
+
+            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
+            $gruposQueNoCumplen = collect($progresoGrupos)->filter(fn($item) => !$item['Cumple']);
+
+            if ($gruposQueNoCumplen->isNotEmpty()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No se puede generar QR. Faltan mínimos.',
+                    'errores' => $gruposQueNoCumplen->map(fn($item) => "• {$item['NombreGrupo']}: faltan {$item['Falta']} und")->toArray(),
+                ], 422);
+            }
+
+            if ($pedido->TotalGeneral <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'El total del pedido debe ser mayor a cero.'
+                ], 422);
+            }
+
+            // ============================================================
+            // 3. CANCELAR QR PENDIENTE ANTERIOR
+            // ============================================================
+            $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                ->where('Estado', 'PENDIENTE')
+                ->first();
+
+            if ($pagoAnterior) {
+                try {
+                    $credencialAnterior = $pagoAnterior->credencial;
+                    if ($credencialAnterior) {
+                        $serviceAnterior = BancoFactory::desdeCredencial($credencialAnterior);
+                        $serviceAnterior->anularQR($pagoAnterior->QrId);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('No se pudo anular QR anterior', ['error' => $e->getMessage()]);
+                }
+
+                $pagoAnterior->update([
+                    'Estado' => 'ANULADO',
+                    'FechaAnulacion' => now(),
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+            }
+
+            // ============================================================
+            // 4. OBTENER CREDENCIAL ACTIVA
+            // ✅ Usar el banco que viene en el request, o el primero activo
+            // ============================================================
+            $codigoBanco = $request->input('CodigoBanco');
+
+            $queryCredencial = BancoCredencial::porCliente($clienteId)
+                ->where('ActivoInactivo', 1);
+
+            if ($codigoBanco) {
+                $queryCredencial->porBanco($codigoBanco);
+            }
+
+            $credencial = $queryCredencial->first();
+
+            if (!$credencial) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No hay credencial activa del banco. Contacta al administrador.'
+                ], 400);
+            }
+
+            // ============================================================
+            // 5. GENERAR QR EN EL BANCO (FACTORY)
+            // ============================================================
+            $service = BancoFactory::desdeCredencial($credencial);
+
+            $transactionId = sprintf(
+                'PED-%d-%d-%s',
+                $pedido->IdPedidoCliente,
+                $operadorId,
+                strtoupper(substr(uniqid(), -6))
+            );
+
+            $qr = $service->generarQR(
+                $transactionId,
+                (float) $pedido->TotalGeneral,
+                'Pedido #' . $pedido->NumeroPedidoFormateado,
+                'BOB',
+                null,
+                $credencial->BranchCode,
+                true,   // singleUse
+                false   // modifyAmount
+            );
+
+            // ============================================================
+            // 6. GUARDAR EN pedidos_clientes_pagos
+            // ============================================================
+            $pago = PedidoClientePago::create([
+                'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                'IdCliente' => $clienteId,
+                'IdSucursal' => $sucursalId,
+                'IdOperador' => $operadorId,
+                'IdCredencial' => $credencial->IdCredencial,
+                'QrId' => $qr->qrId,
+                'TransactionId' => $transactionId,
+                'BranchCode' => $credencial->BranchCode,
+                'CodigoBanco' => $credencial->CodigoBanco,
+                'Moneda' => 'BOB',
+                'Monto' => $pedido->TotalGeneral,
+                'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
+                'FechaVencimiento' => date('Y-m-d'),
+                'Estado' => 'PENDIENTE',
+                'FechaCreacion' => now(),
+                'DatosGeneracion' => $qr->respuestaCompleta,
+            ]);
+
+            // ============================================================
+            // 7. ACTUALIZAR PEDIDO
+            // ============================================================
+            $pedido->update([
+                'EstadoPedido' => 'Esperando Pago',
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
+            ]);
+
+            Log::info('✅ QR generado para pedido', [
+                'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                'QrId' => $qr->qrId,
+                'Monto' => $pedido->TotalGeneral,
+                'Banco' => $credencial->CodigoBanco,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'QR generado. Esperando pago.',
+                'qr' => [
+                    'IdPagoPedido' => $pago->IdPagoPedido,
+                    'QrId' => $qr->qrId,
+                    'QrImage' => $qr->qrImage,
+                    'Monto' => (float) $pedido->TotalGeneral,
+                    'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
+                    'ExpiraEnSegundos' => 900,
+                    'CodigoBanco' => $credencial->CodigoBanco,
+                ],
+                'pedido_id' => $pedido->IdPedidoCliente,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generando QR pedido', [
+                'IdPedidoCliente' => $idPedido,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al generar QR: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // VERIFICAR ESTADO DEL PAGO (POLLING)
+    // ============================================================
+    public function verificarEstadoPago($idPedido)
+    {
+        $clienteId = session('cliente_id');
+
+        try {
+            $pago = PedidoClientePago::where('IdPedidoCliente', $idPedido)
+                ->where('IdCliente', $clienteId)
+                ->latest('IdPagoPedido')
+                ->first();
+
+            if (!$pago) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No hay pago asociado a este pedido.',
+                    'estado' => 'SIN_PAGO',
+                ], 404);
+            }
+
+            if ($pago->Estado === 'PAGADO') {
+                return response()->json([
+                    'success' => true,
+                    'estado' => 'PAGADO',
+                    'monto_pagado' => (float) $pago->MontoPagado,
+                    'fecha_pago' => $pago->FechaPago?->format('Y-m-d H:i:s'),
+                    'datos_pago' => $pago->DatosPago,
+                ]);
+            }
+
+            if ($pago->haExpirado() && $pago->Estado === 'PENDIENTE') {
+                $pago->update([
+                    'Estado' => 'EXPIRADO',
+                    'FechaExpiracion' => now(),
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'estado' => 'EXPIRADO',
+                    'message' => 'El QR ha expirado. Genera uno nuevo.',
+                ]);
+            }
+
+            // Throttle de 3 segundos
+            $cacheKey = "pago_pedido_consulta_{$pago->IdPagoPedido}";
+            if (Cache::has($cacheKey)) {
+                return response()->json([
+                    'success' => true,
+                    'estado' => $pago->Estado,
+                    'segundos_restantes' => $pago->segundosRestantes(),
+                ]);
+            }
+            Cache::put($cacheKey, true, 3);
+
+            $credencial = $pago->credencial;
+            if (!$credencial) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Credencial no encontrada.',
+                    'estado' => 'ERROR',
+                ], 500);
+            }
+
+            $service = BancoFactory::desdeCredencial($credencial);
+            $estadoBanco = $service->consultarEstadoQR($pago->QrId);
+
+            if ($estadoBanco->estaPagado()) {
+                $primerPago = $estadoBanco->getPrimerPago();
+
+                DB::beginTransaction();
+                try {
+                    $pago->update([
+                        'Estado' => 'PAGADO',
+                        'StatusQrCodeBanco' => 1,
+                        'MontoPagado' => $primerPago?->amount ?? $pago->Monto,
+                        'FechaPago' => now(),
+                        'DatosPago' => $estadoBanco->respuestaCompleta['payment'] ?? [],
+                        'FechaUltimaActualizacion' => now(),
+                    ]);
+
+                    $pedido = PedidoCliente::find($pago->IdPedidoCliente);
+                    if ($pedido && $pedido->EstadoPedido === 'Esperando Pago') {
+                        // Asignar número de pedido
+                        $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
+                            ->where('IdSucursal', $pedido->IdSucursal)
+                            ->where('NumeroPedido', '!=', '0')
+                            ->whereNotNull('NumeroPedido')
+                            ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
+
+                        $nuevoNumero = $maxNumero + 1;
+                        $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+
+                        $pedido->update([
+                            'EstadoPedido' => 'Pendiente',
+                            'ActivoInactivo' => 1,
+                            'NumeroPedido' => $numeroFormateado,
+                            // ⚠️ NO tocar FechaPedido (se conserva la original)
+                            'IdOperadorActualiza' => session('operador_id'),
+                            'FechaActualiza' => now(),
+                        ]);
+                    }
+
+                    DB::commit();
+
+                    Log::info('✅ Pago confirmado', [
+                        'IdPedidoCliente' => $pago->IdPedidoCliente,
+                        'IdPagoPedido' => $pago->IdPagoPedido,
+                        'Banco' => $credencial->CodigoBanco,
+                    ]);
+
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    throw $e;
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'estado' => 'PAGADO',
+                    'monto_pagado' => (float) $pago->MontoPagado,
+                    'fecha_pago' => $pago->FechaPago?->format('Y-m-d H:i:s'),
+                    'datos_pago' => $pago->DatosPago,
+                ]);
+            }
+
+            if ($estadoBanco->estaAnulado()) {
+                $pago->update([
+                    'Estado' => 'ANULADO',
+                    'StatusQrCodeBanco' => 9,
+                    'FechaAnulacion' => now(),
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'estado' => 'ANULADO',
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'estado' => 'PENDIENTE',
+                'segundos_restantes' => $pago->segundosRestantes(),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error verificando estado pago', [
+                'IdPedidoCliente' => $idPedido,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al verificar: ' . $e->getMessage(),
+                'estado' => 'ERROR',
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // CANCELAR QR
+    // ============================================================
+    public function cancelarQRPedido($idPedido)
+    {
+        $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
+
+        try {
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $idPedido)
-                ->where('ActivoInactivo', 0)
                 ->first();
 
             if (!$pedido) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'El pedido no existe o ya fue finalizado.'
+                    'message' => 'Pedido no encontrado.'
                 ], 404);
             }
 
-            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
+            $pago = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                ->where('Estado', 'PENDIENTE')
+                ->latest('IdPagoPedido')
+                ->first();
 
-            if (!empty($productosSinMinimo)) {
-                $errores = array_map(function ($p) {
-                    return "• {$p['Codigo']} - {$p['Descripcion']}: ya no tiene mínimo configurado";
-                }, $productosSinMinimo);
-
+            if (!$pago) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Algunos productos del pedido ya no tienen mínimo configurado. Contacte al administrador:',
-                    'errores' => $errores,
-                ], 400);
+                    'message' => 'No hay QR pendiente para cancelar.'
+                ], 422);
             }
 
-            $detalles = PedidoClienteDetalle::where('IdPedidoCliente', $idPedido)->get();
-            $ordenes = $detalles->groupBy('OrdenContenedor');
-
-            foreach ($ordenes as $orden => $items) {
-                $total = $items->sum('Cantidad');
-                $contenedor = Contenedor::find($items->first()->IdContenedor);
-                $capacidad = $contenedor ? $contenedor->CapacidadTotal : 0;
-
-                if ((float) $total > (float) $capacidad) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => "El contenedor #{$orden} tiene {$total} unidades, excede la capacidad de {$capacidad} unidades"
-                    ], 400);
+            try {
+                $credencial = $pago->credencial;
+                if ($credencial) {
+                    $service = BancoFactory::desdeCredencial($credencial);
+                    $service->anularQR($pago->QrId);
                 }
+            } catch (\Exception $e) {
+                Log::warning('No se pudo anular QR en el banco', ['error' => $e->getMessage()]);
             }
 
-            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
-
-            $gruposQueNoCumplen = collect($progresoGrupos)->filter(function($item) {
-                return !$item['Cumple'];
-            })->values();
-
-            if ($gruposQueNoCumplen->isNotEmpty()) {
-                $errores = $gruposQueNoCumplen->map(function($item) {
-                    $tipo = $item['Tipo'] === 'producto' ? 'Producto' : 'Grupo';
-                    return "• [{$tipo}] {$item['NombreGrupo']}: faltan {$item['Falta']} und (tienes {$item['CantidadPedida']}, mínimo {$item['CantidadMinima']})";
-                })->toArray();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No se puede finalizar el pedido. Faltan mínimos:',
-                    'errores' => $errores,
-                ], 400);
-            }
-
-            $totales = $this->calcularTotales($pedido->IdPedidoCliente);
-
-            $maxNumero = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('NumeroPedido', '!=', '0')
-                ->whereNotNull('NumeroPedido')
-                ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
-
-            $nuevoNumero = $maxNumero + 1;
-            $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
-
-            $existe = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('NumeroPedido', $numeroPedidoFormateado)
-                ->exists();
-
-            if ($existe) {
-                $nuevoNumero = $nuevoNumero + 1;
-                $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
-
-                $existeNuevamente = PedidoCliente::where('IdCliente', $clienteId)
-                    ->where('IdSucursal', $sucursalId)
-                    ->where('NumeroPedido', $numeroPedidoFormateado)
-                    ->exists();
-
-                if ($existeNuevamente) {
-                    do {
-                        $nuevoNumero++;
-                        $numeroPedidoFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
-                        $existeNuevamente = PedidoCliente::where('IdCliente', $clienteId)
-                            ->where('IdSucursal', $sucursalId)
-                            ->where('NumeroPedido', $numeroPedidoFormateado)
-                            ->exists();
-                    } while ($existeNuevamente);
-                }
-            }
-
-            $pedido->update([
-                'IdCliente' => $clienteId,
-                'IdSucursal' => $sucursalId,
-                'TipoPrecio' => $request->TipoPrecio ?? $pedido->TipoPrecio,
-                'NumeroPedido' => $numeroPedidoFormateado,
-                'FechaEntrega' => $fechaEntregaFormateada,
-                'Observaciones' => $request->Observaciones,
-                'ActivoInactivo' => 1,
-                'EstadoPedido' => 'Pendiente',
-                'FechaPedido' => Carbon::now('America/La_Paz'),
-                'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => Carbon::now('America/La_Paz'),
-                'TotalUnidades' => $totales['total_unidades'],
-                'TotalContenedores' => $totales['total_contenedores'],
-                'TotalGeneral' => $totales['total_general'],
+            $pago->update([
+                'Estado' => 'ANULADO',
+                'FechaAnulacion' => now(),
+                'FechaUltimaActualizacion' => now(),
             ]);
 
-            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
-            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
-
-            \Log::info('🎉 Pedido finalizado correctamente', [
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'NumeroPedido' => $pedido->NumeroPedido,
-                'FechaEntrega' => $fechaEntregaFormateada,
-                'TotalGeneral' => $totales['total_general'],
-                'TipoPrecio' => $pedido->TipoPrecio,
+            $pedido->update([
+                'EstadoPedido' => 'Borrador',
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
             ]);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Pedido finalizado correctamente',
-                'pedido_id' => $pedido->IdPedidoCliente,
-                'numero_pedido' => $pedido->NumeroPedido,
-                'pdf_url' => url("/operacion/pedidos/clientes-mayoristas/pedidos-clientes/{$pedido->IdPedidoCliente}/pdf")
+                'message' => 'QR cancelado correctamente.',
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('❌ Error al finalizar pedido: ' . $e->getMessage());
+            Log::error('Error cancelando QR', ['error' => $e->getMessage()]);
             return response()->json([
                 'success' => false,
-                'message' => 'Error al finalizar pedido: ' . $e->getMessage()
+                'message' => 'Error al cancelar: ' . $e->getMessage(),
             ], 500);
         }
     }
-*/
+
     // ============================================================
     // MOSTRAR PEDIDO
     // ============================================================
-
     public function show($id)
     {
         try {
@@ -1516,6 +1683,7 @@ class PedidoClienteController extends Controller
 
             $estados = [
                 ['key' => 'Borrador', 'label' => 'Borrador', 'icon' => 'fa-pencil-alt', 'color' => 'yellow'],
+                ['key' => 'Esperando Pago', 'label' => 'Esperando Pago', 'icon' => 'fa-qrcode', 'color' => 'purple'],
                 ['key' => 'Pendiente', 'label' => 'Pendiente', 'icon' => 'fa-clock', 'color' => 'blue'],
                 ['key' => 'En Proceso', 'label' => 'En Proceso', 'icon' => 'fa-cog', 'color' => 'orange'],
                 ['key' => 'Entregado', 'label' => 'Entregado', 'icon' => 'fa-check-circle', 'color' => 'green'],
@@ -1602,7 +1770,7 @@ class PedidoClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error en getDetalles: ' . $e->getMessage());
+            Log::error('Error en getDetalles: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Error al cargar los detalles: ' . $e->getMessage()
@@ -1613,7 +1781,6 @@ class PedidoClienteController extends Controller
     // ============================================================
     // PDF
     // ============================================================
-
     public function generarPdf($id)
     {
         try {
@@ -2231,7 +2398,7 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // API: VALIDAR HORA LÍMITE PARA CLIENTES MAYORISTAS
+    // API: VALIDAR HORA LÍMITE
     // ============================================================
 
     public function apiValidarHoraLimite(Request $request)
@@ -2268,471 +2435,5 @@ class PedidoClienteController extends Controller
                 ? null
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
         ]);
-    }
-    /**
-     * Genera un QR de pago para el pedido.
-     * POST /operacion/pedidos/clientes-mayoristas/pedidos-clientes/{id}/generar-qr
-     */
-    public function generarQRPedido(Request $request, $idPedido)
-    {
-        $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
-        $operadorId = session('operador_id');
-
-        try {
-            // ============================================================
-            // 1. VALIDAR PEDIDO
-            // ============================================================
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('IdOperador', $operadorId)
-                ->where('IdPedidoCliente', $idPedido)
-                ->first();
-
-            if (!$pedido) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado o no tienes permiso.'
-                ], 404);
-            }
-
-            // Verificar que esté en estado válido para generar QR
-            if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El pedido no puede generar un QR en su estado actual (' . $pedido->EstadoPedido . ').'
-                ], 422);
-            }
-
-            // ============================================================
-            // 2. VALIDACIONES (mínimos, fecha, hora)
-            // ============================================================
-            $grupoCliente = $this->getGrupoDelOperador();
-            if (!$grupoCliente) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
-                ], 400);
-            }
-
-            // Validar que tenga productos
-            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
-            if ($totalDetalles === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El pedido no tiene productos.'
-                ], 422);
-            }
-
-            // Validar mínimos
-            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
-            if (!empty($productosSinMinimo)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Algunos productos ya no tienen mínimo configurado.',
-                    'errores' => array_map(fn($p) => "• {$p['Codigo']} - {$p['Descripcion']}", $productosSinMinimo),
-                ], 422);
-            }
-
-            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
-            $gruposQueNoCumplen = collect($progresoGrupos)->filter(fn($item) => !$item['Cumple']);
-
-            if ($gruposQueNoCumplen->isNotEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No se puede generar QR. Faltan mínimos.',
-                    'errores' => $gruposQueNoCumplen->map(fn($item) => "• {$item['NombreGrupo']}: faltan {$item['Falta']} und")->toArray(),
-                ], 422);
-            }
-
-            // Validar monto > 0
-            if ($pedido->TotalGeneral <= 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El total del pedido debe ser mayor a cero.'
-                ], 422);
-            }
-
-            // ============================================================
-            // 3. CANCELAR QR PENDIENTE ANTERIOR (si existe)
-            // ============================================================
-            $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                ->where('Estado', 'PENDIENTE')
-                ->first();
-
-            if ($pagoAnterior) {
-                // Anular en el banco (silencioso, si falla no importa)
-                try {
-                    $credencialAnterior = $pagoAnterior->credencial;
-                    if ($credencialAnterior) {
-                        $serviceAnterior = new \App\Services\Gestion\PuntoVenta\BancoEconomicoService($credencialAnterior);
-                        $serviceAnterior->anularQR($pagoAnterior->QrId);
-                    }
-                } catch (\Exception $e) {
-                    Log::warning('No se pudo anular QR anterior', ['error' => $e->getMessage()]);
-                }
-
-                $pagoAnterior->update([
-                    'Estado' => 'ANULADO',
-                    'FechaAnulacion' => now(),
-                    'FechaUltimaActualizacion' => now(),
-                ]);
-            }
-
-            // ============================================================
-            // 4. OBTENER CREDENCIAL ACTIVA
-            // ============================================================
-            $credencial = \App\Models\Gestion\Impuestos\BancoCredencial::porCliente($clienteId)
-                ->where('ActivoInactivo', 1)
-                ->first();
-
-            if (!$credencial) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No hay credencial activa del banco. Contacta al administrador.'
-                ], 400);
-            }
-
-            // ============================================================
-            // 5. GENERAR QR EN EL BANCO
-            // ============================================================
-            $service = new \App\Services\Gestion\PuntoVenta\BancoEconomicoService($credencial);
-
-            $transactionId = sprintf(
-                'PED-%d-%d-%s',
-                $pedido->IdPedidoCliente,
-                $operadorId,
-                strtoupper(substr(uniqid(), -6))
-            );
-
-            $qr = $service->generarQR(
-                $transactionId,
-                (float) $pedido->TotalGeneral,
-                'Pedido #' . $pedido->NumeroPedidoFormateado,
-                'BOB',
-                null,
-                $credencial->BranchCode,
-                true,   // singleUse
-                false   // modifyAmount
-            );
-
-            // ============================================================
-            // 6. GUARDAR EN pedidos_clientes_pagos
-            // ============================================================
-            $pago = PedidoClientePago::create([
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'IdCliente' => $clienteId,
-                'IdSucursal' => $sucursalId,
-                'IdOperador' => $operadorId,
-                'IdCredencial' => $credencial->IdCredencial,
-                'QrId' => $qr->qrId,
-                'TransactionId' => $transactionId,
-                'BranchCode' => $credencial->BranchCode,
-                'CodigoBanco' => $credencial->CodigoBanco,
-                'Moneda' => 'BOB',
-                'Monto' => $pedido->TotalGeneral,
-                'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
-                'FechaVencimiento' => date('Y-m-d'),
-                'Estado' => 'PENDIENTE',
-                'FechaCreacion' => now(),
-                'DatosGeneracion' => $qr->respuestaCompleta,
-            ]);
-
-            // ============================================================
-            // 7. ACTUALIZAR PEDIDO
-            // ============================================================
-            $pedido->update([
-                'EstadoPedido' => 'Esperando Pago',
-                'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => now(),
-            ]);
-
-            Log::info('✅ QR generado para pedido', [
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'QrId' => $qr->qrId,
-                'Monto' => $pedido->TotalGeneral,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'QR generado. Esperando pago.',
-                'qr' => [
-                    'IdPagoPedido' => $pago->IdPagoPedido,
-                    'QrId' => $qr->qrId,
-                    'QrImage' => $qr->qrImage,
-                    'Monto' => (float) $pedido->TotalGeneral,
-                    'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
-                    'ExpiraEnSegundos' => 900, // 15 minutos
-                ],
-                'pedido_id' => $pedido->IdPedidoCliente,
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error generando QR pedido', [
-                'IdPedidoCliente' => $idPedido,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al generar QR: ' . $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Verifica el estado del pago (polling desde el frontend).
-     * GET /operacion/pedidos/clientes-mayoristas/pedidos-clientes/{id}/estado-pago
-     */
-    public function verificarEstadoPago($idPedido)
-    {
-        $clienteId = session('cliente_id');
-
-        try {
-            // ============================================================
-            // 1. BUSCAR ÚLTIMO PAGO DEL PEDIDO
-            // ============================================================
-            $pago = PedidoClientePago::where('IdPedidoCliente', $idPedido)
-                ->where('IdCliente', $clienteId)
-                ->latest('IdPagoPedido')
-                ->first();
-
-            if (!$pago) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No hay pago asociado a este pedido.',
-                    'estado' => 'SIN_PAGO',
-                ], 404);
-            }
-
-            // ============================================================
-            // 2. SI YA ESTÁ PAGADO → DEVOLVER DIRECTO (sin consultar al banco)
-            // ============================================================
-            if ($pago->Estado === 'PAGADO') {
-                return response()->json([
-                    'success' => true,
-                    'estado' => 'PAGADO',
-                    'monto_pagado' => (float) $pago->MontoPagado,
-                    'fecha_pago' => $pago->FechaPago?->format('Y-m-d H:i:s'),
-                    'datos_pago' => $pago->DatosPago,
-                ]);
-            }
-
-            // ============================================================
-            // 3. SI YA EXPIRÓ POR TIEMPO → MARCAR EXPIRADO
-            // ============================================================
-            if ($pago->haExpirado() && $pago->Estado === 'PENDIENTE') {
-                $pago->update([
-                    'Estado' => 'EXPIRADO',
-                    'FechaExpiracion' => now(),
-                    'FechaUltimaActualizacion' => now(),
-                ]);
-
-                return response()->json([
-                    'success' => true,
-                    'estado' => 'EXPIRADO',
-                    'message' => 'El QR ha expirado. Genera uno nuevo.',
-                ]);
-            }
-
-            // ============================================================
-            // 4. THROTTLE: SI CONSULTÓ HACE <3s, NO CONSULTAR AL BANCO
-            // ============================================================
-            $cacheKey = "pago_pedido_consulta_{$pago->IdPagoPedido}";
-            if (Cache::has($cacheKey)) {
-                return response()->json([
-                    'success' => true,
-                    'estado' => $pago->Estado,
-                    'segundos_restantes' => $pago->segundosRestantes(),
-                ]);
-            }
-            Cache::put($cacheKey, true, 3);
-
-            // ============================================================
-            // 5. CONSULTAR AL BANCO
-            // ============================================================
-            $credencial = $pago->credencial;
-            if (!$credencial) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Credencial no encontrada.',
-                    'estado' => 'ERROR',
-                ], 500);
-            }
-
-            $service = new \App\Services\Gestion\PuntoVenta\BancoEconomicoService($credencial);
-            $estadoBanco = $service->consultarEstadoQR($pago->QrId);
-
-            // ============================================================
-            // 6. SI EL BANCO DICE PAGADO → ACTUALIZAR TODO
-            // ============================================================
-            if ($estadoBanco->estaPagado()) {
-                $primerPago = $estadoBanco->getPrimerPago();
-
-                DB::beginTransaction();
-                try {
-                    // Actualizar pago
-                    $pago->update([
-                        'Estado' => 'PAGADO',
-                        'StatusQrCodeBanco' => 1,
-                        'MontoPagado' => $primerPago?->amount ?? $pago->Monto,
-                        'FechaPago' => now(),
-                        'DatosPago' => $estadoBanco->respuestaCompleta['payment'] ?? [],
-                        'FechaUltimaActualizacion' => now(),
-                    ]);
-
-                    // Actualizar pedido: de "Esperando Pago" a "Pendiente"
-                    $pedido = PedidoCliente::find($pago->IdPedidoCliente);
-                    if ($pedido && $pedido->EstadoPedido === 'Esperando Pago') {
-                        // Asignar número de pedido
-                        $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
-                            ->where('IdSucursal', $pedido->IdSucursal)
-                            ->where('NumeroPedido', '!=', '0')
-                            ->whereNotNull('NumeroPedido')
-                            ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
-
-                        $nuevoNumero = $maxNumero + 1;
-                        $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
-
-                        $pedido->update([
-                            'EstadoPedido' => 'Pendiente',
-                            'ActivoInactivo' => 1,
-                            'NumeroPedido' => $numeroFormateado,
-                            'FechaPedido' => now(),
-                            'IdOperadorActualiza' => session('operador_id'),
-                            'FechaActualiza' => now(),
-                        ]);
-                    }
-
-                    DB::commit();
-
-                    Log::info('✅ Pago confirmado', [
-                        'IdPedidoCliente' => $pago->IdPedidoCliente,
-                        'IdPagoPedido' => $pago->IdPagoPedido,
-                    ]);
-
-                } catch (\Exception $e) {
-                    DB::rollBack();
-                    throw $e;
-                }
-
-                return response()->json([
-                    'success' => true,
-                    'estado' => 'PAGADO',
-                    'monto_pagado' => (float) $pago->MontoPagado,
-                    'fecha_pago' => $pago->FechaPago?->format('Y-m-d H:i:s'),
-                    'datos_pago' => $pago->DatosPago,
-                ]);
-            }
-
-            // ============================================================
-            // 7. SI EL BANCO DICE ANULADO
-            // ============================================================
-            if ($estadoBanco->estaAnulado()) {
-                $pago->update([
-                    'Estado' => 'ANULADO',
-                    'StatusQrCodeBanco' => 9,
-                    'FechaAnulacion' => now(),
-                    'FechaUltimaActualizacion' => now(),
-                ]);
-
-                return response()->json([
-                    'success' => true,
-                    'estado' => 'ANULADO',
-                ]);
-            }
-
-            // ============================================================
-            // 8. SIGUE ACTIVO → DEVOLVER PENDIENTE CON SEGUNDOS RESTANTES
-            // ============================================================
-            return response()->json([
-                'success' => true,
-                'estado' => 'PENDIENTE',
-                'segundos_restantes' => $pago->segundosRestantes(),
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error verificando estado pago', [
-                'IdPedidoCliente' => $idPedido,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al verificar: ' . $e->getMessage(),
-                'estado' => 'ERROR',
-            ], 500);
-        }
-    }
-    /**
-     * Cancela el QR pendiente del pedido.
-     * POST /operacion/pedidos/clientes-mayoristas/pedidos-clientes/{id}/cancelar-qr
-     */
-    public function cancelarQRPedido($idPedido)
-    {
-        $clienteId = session('cliente_id');
-        $operadorId = session('operador_id');
-
-        try {
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdPedidoCliente', $idPedido)
-                ->first();
-
-            if (!$pedido) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado.'
-                ], 404);
-            }
-
-            $pago = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                ->where('Estado', 'PENDIENTE')
-                ->latest('IdPagoPedido')
-                ->first();
-
-            if (!$pago) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No hay QR pendiente para cancelar.'
-                ], 422);
-            }
-
-            // Anular en el banco
-            try {
-                $credencial = $pago->credencial;
-                if ($credencial) {
-                    $service = new \App\Services\Gestion\PuntoVenta\BancoEconomicoService($credencial);
-                    $service->anularQR($pago->QrId);
-                }
-            } catch (\Exception $e) {
-                Log::warning('No se pudo anular QR en el banco', ['error' => $e->getMessage()]);
-            }
-
-            // Actualizar pago
-            $pago->update([
-                'Estado' => 'ANULADO',
-                'FechaAnulacion' => now(),
-                'FechaUltimaActualizacion' => now(),
-            ]);
-
-            // Regresar el pedido a Borrador
-            $pedido->update([
-                'EstadoPedido' => 'Borrador',
-                'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => now(),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'QR cancelado correctamente.',
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Error cancelando QR', ['error' => $e->getMessage()]);
-            return response()->json([
-                'success' => false,
-                'message' => 'Error al cancelar: ' . $e->getMessage(),
-            ], 500);
-        }
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Services\Gestion\PuntoVenta\DTO;
+namespace App\Services\Gestion\Banco\DTO;
 
 class QRPagoDTO
 {
