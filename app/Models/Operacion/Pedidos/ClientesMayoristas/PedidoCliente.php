@@ -19,7 +19,7 @@ class PedidoCliente extends Model
         'IdCliente',
         'IdSucursal',
         'IdOperador',
-        'TipoPrecio',           // ✅ NUEVO
+        'TipoPrecio',
         'NumeroPedido',
         'FechaPedido',
         'FechaEntrega',
@@ -44,6 +44,15 @@ class PedidoCliente extends Model
         'ActivoInactivo' => 'integer',
     ];
 
+    // ==================== CONSTANTES ====================
+    
+    const ESTADO_BORRADOR = 'Borrador';
+    const ESTADO_ESPERANDO_PAGO = 'Esperando Pago';
+    const ESTADO_PENDIENTE = 'Pendiente';
+    const ESTADO_EN_PROCESO = 'En Proceso';
+    const ESTADO_ENTREGADO = 'Entregado';
+    const ESTADO_CANCELADO = 'Cancelado';
+
     // ==================== RELACIONES ====================
     
     public function cliente()
@@ -64,6 +73,43 @@ class PedidoCliente extends Model
     public function detalles()
     {
         return $this->hasMany(PedidoClienteDetalle::class, 'IdPedidoCliente', 'IdPedidoCliente');
+    }
+
+    /**
+     * ✅ Relación con pagos QR
+     */
+    public function pagos()
+    {
+        return $this->hasMany(PedidoClientePago::class, 'IdPedidoCliente', 'IdPedidoCliente');
+    }
+
+    /**
+     * ✅ Último pago (el más reciente)
+     */
+    public function ultimoPago()
+    {
+        return $this->hasOne(PedidoClientePago::class, 'IdPedidoCliente', 'IdPedidoCliente')
+            ->latest('IdPagoPedido');
+    }
+
+    /**
+     * ✅ Pago pendiente actual (si existe)
+     */
+    public function pagoPendiente()
+    {
+        return $this->hasOne(PedidoClientePago::class, 'IdPedidoCliente', 'IdPedidoCliente')
+            ->where('Estado', 'PENDIENTE')
+            ->latest('IdPagoPedido');
+    }
+
+    /**
+     * ✅ Pago exitoso (si existe)
+     */
+    public function pagoExitoso()
+    {
+        return $this->hasOne(PedidoClientePago::class, 'IdPedidoCliente', 'IdPedidoCliente')
+            ->where('Estado', 'PAGADO')
+            ->latest('IdPagoPedido');
     }
 
     // ==================== SCOPES ====================
@@ -92,22 +138,28 @@ class PedidoCliente extends Model
 
     public function scopeBorradores($query)
     {
-        return $query->where('ActivoInactivo', 0);
+        return $query->where('ActivoInactivo', 0)
+            ->where('EstadoPedido', self::ESTADO_BORRADOR);
+    }
+
+    public function scopeEsperandoPago($query)
+    {
+        return $query->where('EstadoPedido', self::ESTADO_ESPERANDO_PAGO);
     }
 
     public function scopePendientes($query)
     {
-        return $query->where('EstadoPedido', 'Pendiente');
+        return $query->where('EstadoPedido', self::ESTADO_PENDIENTE);
     }
 
     public function scopeEntregados($query)
     {
-        return $query->where('EstadoPedido', 'Entregado');
+        return $query->where('EstadoPedido', self::ESTADO_ENTREGADO);
     }
 
     public function scopeCancelados($query)
     {
-        return $query->where('EstadoPedido', 'Cancelado');
+        return $query->where('EstadoPedido', self::ESTADO_CANCELADO);
     }
 
     /**
@@ -131,6 +183,19 @@ class PedidoCliente extends Model
     }
 
     /**
+     * ✅ Obtener el pedido en "Esperando Pago" del operador (si tiene uno)
+     */
+    public static function obtenerEsperandoPago()
+    {
+        return self::porContexto()
+            ->porSucursal()
+            ->porOperador()
+            ->esperandoPago()
+            ->latest('IdPedidoCliente')
+            ->first();
+    }
+
+    /**
      * ✅ Crear o actualizar borrador
      */
     public static function obtenerOCrearBorrador($data = [])
@@ -146,7 +211,7 @@ class PedidoCliente extends Model
             'IdCliente' => session('cliente_id'),
             'IdSucursal' => session('cliente_sucursal_id'),
             'IdOperador' => session('operador_id'),
-            'TipoPrecio' => 'sin_factura',   // ✅ NUEVO
+            'TipoPrecio' => 'sin_factura',
             'NumeroPedido' => '0',
             'FechaPedido' => Carbon::now('America/La_Paz'),
             'FechaEntrega' => null,
@@ -154,7 +219,7 @@ class PedidoCliente extends Model
             'TotalContenedores' => 0,
             'TotalGeneral' => 0,
             'ActivoInactivo' => 0,
-            'EstadoPedido' => 'Borrador',
+            'EstadoPedido' => self::ESTADO_BORRADOR,
             'Observaciones' => null,
             'IdOperadorInserta' => session('operador_id'),
             'FechaInserta' => Carbon::now('America/La_Paz'),
@@ -166,11 +231,12 @@ class PedidoCliente extends Model
     public function getEstadoColorAttribute()
     {
         $colores = [
-            'Borrador' => 'yellow',
-            'Pendiente' => 'blue',
-            'En Proceso' => 'orange',
-            'Entregado' => 'green',
-            'Cancelado' => 'red',
+            self::ESTADO_BORRADOR => 'yellow',
+            self::ESTADO_ESPERANDO_PAGO => 'purple',
+            self::ESTADO_PENDIENTE => 'blue',
+            self::ESTADO_EN_PROCESO => 'orange',
+            self::ESTADO_ENTREGADO => 'green',
+            self::ESTADO_CANCELADO => 'red',
         ];
         return $colores[$this->EstadoPedido] ?? 'gray';
     }
@@ -178,11 +244,12 @@ class PedidoCliente extends Model
     public function getEstadoIconoAttribute()
     {
         $iconos = [
-            'Borrador' => 'fa-pencil-alt',
-            'Pendiente' => 'fa-clock',
-            'En Proceso' => 'fa-cog',
-            'Entregado' => 'fa-check-circle',
-            'Cancelado' => 'fa-times-circle',
+            self::ESTADO_BORRADOR => 'fa-pencil-alt',
+            self::ESTADO_ESPERANDO_PAGO => 'fa-qrcode',
+            self::ESTADO_PENDIENTE => 'fa-clock',
+            self::ESTADO_EN_PROCESO => 'fa-cog',
+            self::ESTADO_ENTREGADO => 'fa-check-circle',
+            self::ESTADO_CANCELADO => 'fa-times-circle',
         ];
         return $iconos[$this->EstadoPedido] ?? 'fa-circle';
     }
@@ -190,11 +257,12 @@ class PedidoCliente extends Model
     public function getEstadoBadgeAttribute()
     {
         $badges = [
-            'Borrador' => 'bg-yellow-100 text-yellow-800',
-            'Pendiente' => 'bg-blue-100 text-blue-800',
-            'En Proceso' => 'bg-orange-100 text-orange-800',
-            'Entregado' => 'bg-green-100 text-green-800',
-            'Cancelado' => 'bg-red-100 text-red-800',
+            self::ESTADO_BORRADOR => 'bg-yellow-100 text-yellow-800',
+            self::ESTADO_ESPERANDO_PAGO => 'bg-purple-100 text-purple-800',
+            self::ESTADO_PENDIENTE => 'bg-blue-100 text-blue-800',
+            self::ESTADO_EN_PROCESO => 'bg-orange-100 text-orange-800',
+            self::ESTADO_ENTREGADO => 'bg-green-100 text-green-800',
+            self::ESTADO_CANCELADO => 'bg-red-100 text-red-800',
         ];
         return $badges[$this->EstadoPedido] ?? 'bg-gray-100 text-gray-800';
     }
@@ -239,19 +307,11 @@ class PedidoCliente extends Model
         return $this->TotalGeneral > 0;
     }
 
-    // ==================== ✅ NUEVOS ACCESORS ====================
-
-    /**
-     * ✅ Texto del tipo de precio
-     */
     public function getTipoPrecioTextoAttribute()
     {
         return $this->TipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura';
     }
 
-    /**
-     * ✅ Badge del tipo de precio (para UI)
-     */
     public function getTipoPrecioBadgeAttribute()
     {
         return $this->TipoPrecio === 'con_factura' 
@@ -259,13 +319,50 @@ class PedidoCliente extends Model
             : 'bg-gray-100 text-gray-800';
     }
 
-    /**
-     * ✅ Icono del tipo de precio
-     */
     public function getTipoPrecioIconoAttribute()
     {
         return $this->TipoPrecio === 'con_factura' 
             ? 'fa-file-invoice-dollar' 
             : 'fa-receipt';
+    }
+
+    // ==================== HELPERS DE ESTADO ====================
+    
+    public function estaEnBorrador(): bool
+    {
+        return $this->EstadoPedido === self::ESTADO_BORRADOR;
+    }
+
+    public function estaEsperandoPago(): bool
+    {
+        return $this->EstadoPedido === self::ESTADO_ESPERANDO_PAGO;
+    }
+
+    public function estaPendiente(): bool
+    {
+        return $this->EstadoPedido === self::ESTADO_PENDIENTE;
+    }
+
+    public function estaPagado(): bool
+    {
+        return $this->pagoExitoso()->exists();
+    }
+
+    public function estaCancelado(): bool
+    {
+        return $this->EstadoPedido === self::ESTADO_CANCELADO;
+    }
+
+    public function puedeGenerarQR(): bool
+    {
+        return in_array($this->EstadoPedido, [
+            self::ESTADO_BORRADOR,
+            self::ESTADO_ESPERANDO_PAGO,
+        ]);
+    }
+
+    public function puedeCancelar(): bool
+    {
+        return $this->EstadoPedido === self::ESTADO_BORRADOR;
     }
 }

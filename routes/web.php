@@ -136,6 +136,10 @@ use App\Http\Controllers\Operacion\Pedidos\Reportes\GrupoClienteReporteControlle
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\SubClienteOperadorController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\MinimoGlobalController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ProductoMinimoController;
+use App\Http\Controllers\PuntoVenta\BancoCredencialController;
+use App\Http\Controllers\PuntoVenta\BancoQRPruebaController;
+
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1503,6 +1507,15 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         ->name('operacion.pedidos-clientes.pedidos.pdf');
                     Route::get('/{id}/progreso', [PedidoClienteController::class, 'getProgreso'])
                         ->name('operacion.pedidos-clientes.pedidos.progreso');
+                    //PAGO QR
+                    Route::post('/{id}/generar-qr', [PedidoClienteController::class, 'generarQRPedido'])
+                        ->name('operacion.pedidos-clientes.pedidos.generar-qr');
+                    
+                    Route::get('/{id}/estado-pago', [PedidoClienteController::class, 'verificarEstadoPago'])
+                        ->name('operacion.pedidos-clientes.pedidos.estado-pago');
+                    
+                    Route::post('/{id}/cancelar-qr', [PedidoClienteController::class, 'cancelarQRPedido'])
+                        ->name('operacion.pedidos-clientes.pedidos.cancelar-qr');
                 });
                 
                 // ============================================================
@@ -1749,6 +1762,27 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
     });
 
+    // ============================================================
+    // 6. PREFIJO: BANCO - CREDENCIALES QR
+    // ============================================================
+    Route::prefix('banco-credenciales')->group(function () {
+        Route::get('/', [BancoCredencialController::class, 'index'])->name('banco-credenciales.index');
+        Route::post('/', [BancoCredencialController::class, 'store'])->name('banco-credenciales.store');
+        Route::put('/{id}', [BancoCredencialController::class, 'update'])->name('banco-credenciales.update');
+        Route::delete('/{id}', [BancoCredencialController::class, 'destroy'])->name('banco-credenciales.destroy');
+        Route::post('/{id}/toggle-activo', [BancoCredencialController::class, 'toggleActivo'])->name('banco-credenciales.toggle-activo');
+        Route::post('/{id}/probar-conexion', [BancoCredencialController::class, 'probarConexion'])->name('banco-credenciales.probar-conexion');
+    });
+    // ============================================================
+    // 7. PREFIJO: BANCO - PRUEBAS QR
+    // ============================================================
+    Route::prefix('banco-qr-prueba')->group(function () {
+        Route::get('/', [BancoQRPruebaController::class, 'index'])->name('banco-qr-prueba.index');
+        Route::post('/generar', [BancoQRPruebaController::class, 'generar'])->name('banco-qr-prueba.generar');
+        Route::get('/estado/{qrId}', [BancoQRPruebaController::class, 'consultarEstado'])->name('banco-qr-prueba.estado');
+        Route::post('/anular/{qrId}', [BancoQRPruebaController::class, 'anular'])->name('banco-qr-prueba.anular');
+        Route::post('/listar-pagados', [BancoQRPruebaController::class, 'listarPagados'])->name('banco-qr-prueba.listar-pagados');
+    });
     // ============================================================
     // 11. UTILIDADES
     // ============================================================

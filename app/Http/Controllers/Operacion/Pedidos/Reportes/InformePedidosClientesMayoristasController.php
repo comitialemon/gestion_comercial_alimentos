@@ -30,7 +30,6 @@ class InformePedidosClientesMayoristasController extends Controller
         $fechaSeleccionada = $request->get('fecha', Carbon::now('America/La_Paz')->format('Y-m-d'));
         $operadorFiltro = $request->get('operador_id');
         
-        // ✅ Nombre del operador filtrado (para mostrar en el input)
         $operadorFiltroNombre = null;
         if ($operadorFiltro) {
             $op = DB::connection('mysql_gestion_comercial_alimentos')
@@ -57,16 +56,13 @@ class InformePedidosClientesMayoristasController extends Controller
             'operador' => $operador,
             'fechaSeleccionada' => $fechaSeleccionada,
             'operadorFiltro' => $operadorFiltro,
-            'operadorFiltroNombre' => $operadorFiltroNombre, // ✅ NUEVO
+            'operadorFiltroNombre' => $operadorFiltroNombre,
             'matriz' => $matriz,
             'detalle' => $detalle,
             'resumen' => $resumen,
         ]);
     }
-    /**
-     * ✅ Obtener operadores que tienen pedidos en esa fecha para ese cliente
-     * Se consulta desde la tabla de pedidos para no depender de relaciones inexistentes
-     */
+
     private function obtenerOperadoresConPedidos($clienteId, $fecha)
     {
         return DB::connection('mysql_gestion_comercial_alimentos')
@@ -84,10 +80,7 @@ class InformePedidosClientesMayoristasController extends Controller
                 'iden.Nombre as nombre',
             ]);
     }
-    /**
-     * ✅ BUSCAR OPERADORES PARA AUTOCOMPLETE (filtrado por fecha y cliente)
-     * Devuelve solo operadores que tienen pedidos en esa fecha
-     */
+
     public function buscarOperadores(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -124,6 +117,7 @@ class InformePedidosClientesMayoristasController extends Controller
             'operadores' => $operadores,
         ]);
     }
+
     private function obtenerDatosCombinados($clienteId, $fecha, $operadorFiltro = null)
     {
         $query = PedidoCliente::where('IdCliente', $clienteId)
@@ -136,7 +130,6 @@ class InformePedidosClientesMayoristasController extends Controller
                 'detalles.producto'
             ]);
         
-        // ✅ FILTRO POR OPERADOR
         if (!empty($operadorFiltro)) {
             $query->where('IdOperador', $operadorFiltro);
         }
@@ -264,7 +257,6 @@ class InformePedidosClientesMayoristasController extends Controller
                 'total_pedido' => 0
             ];
             
-            // ✅ AGRUPAR POR OrdenContenedor (cada bloque independiente, igual que el PDF)
             $detallesAgrupados = $pedido->detalles
                 ->groupBy('OrdenContenedor')
                 ->sortKeys();
@@ -278,7 +270,7 @@ class InformePedidosClientesMayoristasController extends Controller
                 });
                 
                 $pedidoData['contenedores'][] = [
-                    'orden' => intval($orden),                                    // ✅ NUEVO: para mostrarlo
+                    'orden' => intval($orden),
                     'codigo' => $contenedor->Codigo ?? '-',
                     'nombre' => $contenedor->Nombre ?? ('Contenedor ' . ($contenedor->Codigo ?? '-')),
                     'capacidad' => $contenedor->CapacidadTotal ?? 0,
@@ -376,7 +368,6 @@ class InformePedidosClientesMayoristasController extends Controller
         $fechaEntrega = $primerPedido ? $primerPedido['fecha_entrega'] : Carbon::parse($fecha)->format('d/m/Y');
         $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
 
-        // HTML - SOLO RESUMEN
         $html = '
         <!DOCTYPE html>
         <html>
@@ -550,9 +541,9 @@ class InformePedidosClientesMayoristasController extends Controller
         $pdf->Output($nombreArchivo, 'D');
         exit();
     }
+
     // =============================================
-    // PDF - DETALLE (recorriendo TODOS los pedidos de la fecha,
-    //                 con filtro opcional por operador)
+    // PDF - DETALLE
     // =============================================
     public function exportarPdfDetalle(Request $request)
     {
@@ -564,9 +555,8 @@ class InformePedidosClientesMayoristasController extends Controller
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
         $fecha = $request->fecha;
-        $operadorFiltro = $request->operador_id; // ✅ NUEVO
+        $operadorFiltro = $request->operador_id;
 
-        // ✅ Traer TODOS los pedidos de la fecha (con filtro opcional por operador)
         $query = PedidoCliente::where('IdCliente', $clienteId)
             ->whereDate('FechaEntrega', $fecha)
             ->where('ActivoInactivo', 1)
@@ -577,7 +567,6 @@ class InformePedidosClientesMayoristasController extends Controller
                 'detalles.contenedor.tipoContenedor',
             ]);
 
-        // ✅ FILTRO POR OPERADOR
         if (!empty($operadorFiltro)) {
             $query->where('IdOperador', $operadorFiltro);
         }
@@ -602,9 +591,6 @@ class InformePedidosClientesMayoristasController extends Controller
             ->where('todos_operador.IdOperador', $operadorId)
             ->first(['todos_identificador.Nombre as nombre']);
 
-        // ============================================================
-        // CREAR PDF
-        // ============================================================
         $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
         $pdf->setPrintHeader(false);
         $pdf->setPrintFooter(false);
@@ -612,15 +598,13 @@ class InformePedidosClientesMayoristasController extends Controller
         $pdf->SetAutoPageBreak(true, 12);
 
         // ============================================================
-        // RECORRER CADA PEDIDO Y GENERAR SU BLOQUE COMPLETO
+        // RECORRER CADA PEDIDO
         // ============================================================
         foreach ($pedidos as $index => $pedido) {
 
             $pdf->AddPage();
 
-            // ============================================================
             // HEADER EMPRESA
-            // ============================================================
             $y = 8;
 
             $pdf->SetFont('helvetica', 'B', 12);
@@ -651,9 +635,7 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->Line(10, $y, 206, $y);
             $y += 5;
 
-            // ============================================================
             // TÍTULO
-            // ============================================================
             $pdf->SetFont('helvetica', 'B', 14);
             $pdf->SetTextColor(30, 60, 120);
             $pdf->SetXY(10, $y);
@@ -666,9 +648,7 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->Cell(196, 5, 'N° ' . ($pedido->NumeroPedido ?? '000000'), 0, 1, 'C');
             $y += 8;
 
-            // ============================================================
             // INFO PEDIDO EN 2 COLUMNAS
-            // ============================================================
             $pdf->SetFont('helvetica', '', 8);
 
             $colIzq_label = 12;
@@ -724,7 +704,6 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
             $yInfoDer += $altoFila;
 
-            // CONFIG OPERADOR (Ciudad/Provincia/Destino)
             $configOperador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('operacion_pedidos_operadores_clientes')
                 ->where('IdOperador', $pedido->IdOperador)
@@ -764,9 +743,7 @@ class InformePedidosClientesMayoristasController extends Controller
 
             $y = max($yInfo, $yInfoDer) + 3;
 
-            // ============================================================
             // OBSERVACIONES
-            // ============================================================
             if (!empty($pedido->Observaciones)) {
                 $pdf->SetDrawColor(251, 191, 36);
                 $pdf->SetFillColor(255, 251, 235);
@@ -794,9 +771,7 @@ class InformePedidosClientesMayoristasController extends Controller
                 $pdf->SetFillColor(255, 255, 255);
             }
 
-            // ============================================================
             // AGRUPAR POR OrdenContenedor
-            // ============================================================
             $detallesAgrupados = $pedido->detalles
                 ->groupBy('OrdenContenedor')
                 ->map(function ($items, $orden) {
@@ -830,9 +805,7 @@ class InformePedidosClientesMayoristasController extends Controller
                 ->sortBy('IdContenedor')
                 ->values();
 
-            // ============================================================
             // CABECERA TABLA
-            // ============================================================
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(240, 240, 240);
             $pdf->SetTextColor(0, 0, 0);
@@ -849,9 +822,7 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->SetFont('helvetica', '', 7);
             $contador = 0;
 
-            // ============================================================
-            // LISTA POR CONTENEDOR (cada contenedor = bloque independiente)
-            // ============================================================
+            // LISTA POR CONTENEDOR
             foreach ($detallesAgrupados as $idx => $grupo) {
                 if ($idx > 0) {
                     $y += 3;
@@ -907,9 +878,7 @@ class InformePedidosClientesMayoristasController extends Controller
 
             $y += 5;
 
-            // ============================================================
             // TOTALES DEL PEDIDO
-            // ============================================================
             $totalUnidades = $pedido->detalles->sum('Cantidad');
             $totalContenedores = $detallesAgrupados->count();
             $totalGeneral = $pedido->detalles->sum(function ($item) {
@@ -936,9 +905,13 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
             $y += 10;
 
-            // ============================================================
+            // ✅ Verificar espacio antes de dibujar "RESUMEN POR TIPO DE CONTENEDOR"
+            if ((270 - $y) < 30) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
             // RESUMEN POR TIPO DE CONTENEDOR
-            // ============================================================
             $resumenPorTipo = $detallesAgrupados
                 ->groupBy('Codigo')
                 ->map(function ($items, $codigo) {
@@ -997,9 +970,108 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->SetFillColor(255, 255, 255);
 
             // ============================================================
+            // ✅ MATRIZ HORIZONTAL DE PRODUCTOS DEL PEDIDO
+            // ============================================================
+            $y += 5;
+
+            // Agrupar productos del pedido por IdProducto
+            $productosPedido = [];
+            foreach ($pedido->detalles as $det) {
+                $idProd = $det->IdProducto;
+                if (!isset($productosPedido[$idProd])) {
+                    $productosPedido[$idProd] = [
+                        'nombre' => $det->producto->Descripcion ?? 'Sin nombre',
+                        'cantidad' => 0,
+                        'orden' => $det->producto->OrdenInformes ?? 0,
+                    ];
+                }
+                $productosPedido[$idProd]['cantidad'] += floatval($det->Cantidad);
+            }
+
+            // Ordenar por OrdenInformes
+            uasort($productosPedido, function ($a, $b) {
+                return $a['orden'] <=> $b['orden'];
+            });
+
+            $productosPedido = array_values($productosPedido);
+            $cantidadProductos = count($productosPedido);
+
+            if ($cantidadProductos > 0) {
+                // ✅ Altura del bloque: título (5) + cabecera (7) + cantidades (6) = 18mm
+                $alturaBloque = 18;
+                $espacioRestante = 270 - $y;
+
+                // ✅ Si no cabe, saltar a nueva página ANTES de dibujar
+                if ($espacioRestante < $alturaBloque) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                // TÍTULO (reducido)
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetTextColor(30, 60, 120);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(196, 4.5, 'RESUMEN DE PRODUCTOS DEL PEDIDO', 0, 1, 'C');
+                $y += 5;
+
+                $anchoTotal = 30;
+                $anchoDisponible = 196 - $anchoTotal;
+                $anchoProducto = $anchoDisponible / max($cantidadProductos, 1);
+
+                // CABECERA (reducida)
+                $pdf->SetFont('helvetica', 'B', 6);
+                $pdf->SetFillColor(217, 225, 242);
+                $pdf->SetTextColor(26, 35, 126);
+                $pdf->SetDrawColor(120, 120, 120);
+
+                $xInicial = 10;
+                $pdf->SetXY($xInicial, $y);
+
+                foreach ($productosPedido as $prod) {
+                    $nombre = $prod['nombre'];
+                    $maxChars = max(8, intval($anchoProducto / 1.5));
+                    if (mb_strlen($nombre, 'UTF-8') > $maxChars) {
+                        $nombre = mb_substr($nombre, 0, $maxChars - 2, 'UTF-8') . '..';
+                    }
+                    $pdf->Cell($anchoProducto, 7, mb_strtoupper($nombre, 'UTF-8'), 1, 0, 'C', 1);
+                }
+                $pdf->Cell($anchoTotal, 7, 'TOTAL', 1, 1, 'C', 1);
+                $y += 7;
+
+                // FILA DE CANTIDADES (reducida)
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(255, 255, 255);
+                $pdf->SetTextColor(50, 50, 50);
+
+                $pdf->SetXY($xInicial, $y);
+                $sumaTotal = 0;
+                foreach ($productosPedido as $prod) {
+                    $pdf->Cell($anchoProducto, 6, number_format($prod['cantidad'], 2, ',', '.'), 1, 0, 'C', 0);
+                    $sumaTotal += $prod['cantidad'];
+                }
+
+                $pdf->SetFillColor(255, 243, 224);
+                $pdf->SetTextColor(230, 81, 0);
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->Cell($anchoTotal, 6, number_format($sumaTotal, 2, ',', '.'), 1, 1, 'C', 1);
+                $y += 6;
+
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFillColor(255, 255, 255);
+                $pdf->SetDrawColor(0, 0, 0);
+            }
+
+            // ============================================================
             // FIRMAS
             // ============================================================
             $y += 15;
+
+            // ✅ Verificar espacio para firmas
+            if ((270 - $y) < 12) {
+                $pdf->AddPage();
+                $y = 20;
+            }
+
             $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 8);
 
@@ -1025,6 +1097,7 @@ class InformePedidosClientesMayoristasController extends Controller
         $pdf->Output($nombreArchivo, 'D');
         exit;
     }
+
     private function generarHTMLMatriz($matriz)
     {
         $html = '<table class="matriz-table">';

@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed, inject, watch } from 'vue'
+import { ref, computed, inject, watch, onMounted } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
 import ConfirmModal from './ConfirmModal.vue'
 import CreateModalProductos from './CreateModalProductos.vue'
+import PagoQRModal from './PagoQRModal.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -24,6 +25,7 @@ const props = defineProps({
     subclientes: { type: Array, default: () => [] },
     horaLimite: { type: [Number, String], default: null },
     horaLimiteFormateada: { type: String, default: null },
+    pagoPendiente: { type: Object, default: null },  // ✅ NUEVO
 })
 
 // ==================== ESTADO ====================
@@ -38,6 +40,11 @@ const cambiandoTipoPrecio = ref(false)
 
 const horaActualCliente = ref(new Date())
 const validandoHoraLimite = ref(false)
+
+// ✅ Estado del pago pendiente
+const pagoPendienteLocal = ref(props.pagoPendiente || null)
+const mostrarModalQR = ref(false)
+const qrActual = ref(null)
 
 // ✅ Progreso como REF (para poder actualizarlo)
 const progresoLocal = ref([...(props.progresoGrupos || [])])
@@ -59,6 +66,18 @@ const detallesLocal = ref(
 
 const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
+
+// ==================== ✅ INICIALIZAR MODAL SI HAY PAGO PENDIENTE ====================
+onMounted(() => {
+    if (props.pagoPendiente && props.pagoPendiente.Estado === 'PENDIENTE') {
+        // Si hay un pago pendiente, mostrar el modal automáticamente
+        // pero primero necesitamos la imagen del QR
+        // Esto se resolverá porque el backend ya generó el QR
+        // y podemos obtener la imagen con un endpoint o re-generarla
+        // Por simplicidad, mostramos un mensaje indicando que se debe generar de nuevo
+        toast?.warning('Pago pendiente', 'Tienes un pago pendiente. Genera el QR de nuevo para continuar.')
+    }
+})
 
 // ==================== HELPERS DE FECHAS ====================
 const normalizarFecha = (fecha) => {
@@ -276,18 +295,12 @@ const tieneProductosSinMinimo = computed(() => {
     return productosSinMinimoLocal.value.length > 0
 })
 
-/**
- * ✅ Obtener el progreso de un producto por IdProducto
- */
 const getProgresoProducto = (idProducto) => {
     return progresoLocal.value.find(
         p => p.Tipo === 'producto' && Number(p.IdProducto) === Number(idProducto)
     ) || null
 }
 
-/**
- * ✅ Obtener el progreso de un grupo por IdGrupoAnalisis
- */
 const getProgresoGrupo = (idGrupo) => {
     return progresoLocal.value.find(
         g => g.Tipo === 'grupo' && Number(g.IdGrupoAnalisis) === Number(idGrupo)
@@ -313,7 +326,7 @@ const textoBoton = computed(() => {
     if (fechaEsInvalida.value) return 'Fecha inválida'
     if (fechaEsManana.value && fueraDeHoraLimite.value) return 'Hora límite excedida'
     if (!cumpleTodos.value) return 'Cumplir mínimos'
-    return 'Finalizar Pedido'
+    return 'Generar QR y Finalizar'
 })
 
 const tipoPrecioTexto = computed(() => {
@@ -333,7 +346,7 @@ const formatearPrecio = (valor) => {
     return isNaN(numero) ? '0.00' : numero.toFixed(2)
 }
 
-// ==================== ✅ RECARGAR PROGRESO DESDE EL BACKEND ====================
+// ==================== ✅ RECARGAR PROGRESO ====================
 const recargarProgreso = async () => {
     try {
         const response = await axios.get(
@@ -349,7 +362,7 @@ const recargarProgreso = async () => {
     }
 }
 
-// ==================== WATCH: Validar al cambiar fecha ====================
+// ==================== WATCH ====================
 watch(fechaEntrega, (nueva) => {
     if (!nueva) {
         errorFechaEntrega.value = ''
@@ -456,6 +469,9 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
     }
 }
 
+// ============================================================
+// ✅ FINALIZAR PEDIDO → GENERAR QR
+// ============================================================
 const abrirModalConfirmacion = async () => {
     if (detallesLocal.value.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
@@ -485,60 +501,77 @@ const abrirModalConfirmacion = async () => {
     const horaOk = await validarHoraLimite()
     if (!horaOk) return
 
+    // ✅ Abrir modal de confirmación
     modalConfirmacionVisible.value = true
 }
 
-const finalizarPedido = async () => {
+// ✅ Generar QR (llamado desde ConfirmModal)
+const generarQR = async () => {
     modalConfirmacionVisible.value = false
     loading.value = true
 
     try {
-        let fechaEntregaFormateada = null
-        if (fechaEntrega.value) {
-            const partes = fechaEntrega.value.split('-')
-            if (partes.length === 3) {
-                fechaEntregaFormateada = `${partes[2]}/${partes[1]}/${partes[0]}`
-            }
-        }
-
         const response = await axios.post(
-            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`,
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/generar-qr`,
             {
-                IdCliente: props.pedido.IdCliente,
-                IdSucursal: props.pedido.IdSucursal,
-                FechaEntrega: fechaEntregaFormateada,
+                FechaEntrega: fechaEntrega.value,
                 Observaciones: observaciones.value || null,
-                TipoPrecio: tipoPrecioLocal.value
+                TipoPrecio: tipoPrecioLocal.value,
             }
         )
 
         if (response.data.success) {
-            toast?.success('Pedido finalizado', `Pedido N° ${response.data.numero_pedido} creado correctamente`)
-
-            if (response.data.pdf_url) {
-                window.open(response.data.pdf_url, '_blank')
-            }
-
-            setTimeout(() => {
-                router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
-            }, 1500)
+            qrActual.value = response.data.qr
+            mostrarModalQR.value = true
         } else {
             if (response.data.errores) {
-                const errores = response.data.errores.join('\n')
-                toast?.error('No se puede finalizar', errores)
+                toast?.error('No se puede generar QR', response.data.errores.join('\n'))
             } else {
-                toast?.error('Error', response.data.message || 'Error al finalizar el pedido')
+                toast?.error('Error', response.data.message || 'Error al generar QR')
             }
         }
     } catch (error) {
         console.error('❌ Error:', error)
-        const mensaje = error.response?.data?.message || 'Error al finalizar el pedido'
+        const mensaje = error.response?.data?.message || 'Error al generar QR'
         toast?.error('Error', mensaje)
     } finally {
         loading.value = false
     }
 }
 
+// ✅ Pago exitoso
+const onPagoExitoso = () => {
+    mostrarModalQR.value = false
+    qrActual.value = null
+    pagoPendienteLocal.value = null
+
+    toast?.success('¡Pago recibido!', 'El pedido se registró correctamente.')
+
+    // Redirigir a la lista de pedidos
+    setTimeout(() => {
+        router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
+    }, 1500)
+}
+
+// ✅ Cancelar QR
+const onCancelarQR = () => {
+    mostrarModalQR.value = false
+    qrActual.value = null
+    pagoPendienteLocal.value = null
+
+    toast?.info('QR cancelado', 'Puedes modificar el pedido y volver a intentar.')
+}
+
+// ✅ QR expirado
+const onQRExpirado = () => {
+    mostrarModalQR.value = false
+    qrActual.value = null
+    pagoPendienteLocal.value = null
+
+    toast?.warning('QR expirado', 'El QR expiró. Genera uno nuevo.')
+}
+
+// ==================== EDICIÓN ====================
 const abrirModalEdicion = (item) => {
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
@@ -701,7 +734,7 @@ const eliminarContenedor = async (item) => {
                                     #{{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
                                 </span>
                             </h1>
-                            <p class="text-xs text-gray-500">Confirma los productos y finaliza el pedido</p>
+                            <p class="text-xs text-gray-500">Confirma los productos y genera el QR de pago</p>
                         </div>
                     </div>
                 </div>
@@ -871,6 +904,19 @@ const eliminarContenedor = async (item) => {
                     </p>
                 </div>
 
+                <!-- ALERTA PAGO PENDIENTE -->
+                <div v-if="pagoPendienteLocal" class="bg-purple-50 border-l-4 border-purple-500 rounded-xl p-3 mb-3">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-qrcode text-purple-600 text-2xl"></i>
+                        <div class="flex-1">
+                            <h3 class="font-bold text-purple-800 text-sm">Tienes un pago pendiente</h3>
+                            <p class="text-[11px] text-purple-700">
+                                Monto: Bs. {{ Number(pagoPendienteLocal.Monto).toFixed(2) }} — Genera el QR para continuar.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ALERTA: PRODUCTOS SIN MÍNIMO -->
                 <div v-if="tieneProductosSinMinimo" class="bg-red-50 border-l-4 border-red-600 rounded-xl p-3 mb-3">
                     <div class="flex items-start gap-2">
@@ -942,7 +988,7 @@ const eliminarContenedor = async (item) => {
                         <i class="fas fa-check-circle text-emerald-500 text-base flex-shrink-0"></i>
                         <div class="flex-1">
                             <h3 class="font-bold text-emerald-800 text-xs">¡Todo listo!</h3>
-                            <p class="text-[10px] text-emerald-700">Todos los mínimos están cumplidos. Puede finalizar el pedido.</p>
+                            <p class="text-[10px] text-emerald-700">Todos los mínimos están cumplidos. Puede generar el QR.</p>
                         </div>
                     </div>
                 </div>
@@ -1041,7 +1087,7 @@ const eliminarContenedor = async (item) => {
                                     </div>
                                 </div>
 
-                                <!-- ✅ Mínimo del grupo (si aplica) -->
+                                <!-- Mínimo del grupo (si aplica) -->
                                 <div
                                     v-if="item.productos.length > 0 && item.productos[0].IdGrupoAnalisis && getProgresoGrupo(item.productos[0].IdGrupoAnalisis)"
                                     class="px-3 py-1.5 border-b flex items-center gap-2 flex-wrap"
@@ -1098,13 +1144,9 @@ const eliminarContenedor = async (item) => {
                                                 <td class="py-1.5 px-3 text-gray-700 truncate max-w-[260px]" :title="producto.Descripcion">
                                                     {{ producto.Descripcion }}
                                                 </td>
-
-                                                <!-- Cantidad -->
                                                 <td class="py-1.5 px-3 text-right font-medium text-gray-800 tabular-nums">
                                                     {{ formatearNumero(producto.Cantidad) }}
                                                 </td>
-
-                                                <!-- Mínimo -->
                                                 <td class="py-1.5 px-3 text-right tabular-nums text-[11px]"
                                                     :class="getProgresoProducto(producto.IdProducto) ? 'font-semibold text-indigo-700' : 'text-gray-300'">
                                                     <template v-if="getProgresoProducto(producto.IdProducto)">
@@ -1112,8 +1154,6 @@ const eliminarContenedor = async (item) => {
                                                     </template>
                                                     <template v-else>—</template>
                                                 </td>
-
-                                                <!-- Estado -->
                                                 <td class="py-1.5 px-3 text-center">
                                                     <template v-if="getProgresoProducto(producto.IdProducto)">
                                                         <span
@@ -1132,13 +1172,9 @@ const eliminarContenedor = async (item) => {
                                                         <span class="text-[9px] text-gray-300">—</span>
                                                     </template>
                                                 </td>
-
-                                                <!-- Precio -->
                                                 <td class="py-1.5 px-3 text-right text-gray-600 tabular-nums">
                                                     Bs. {{ formatearPrecio(producto.Precio || 0) }}
                                                 </td>
-
-                                                <!-- Subtotal -->
                                                 <td class="py-1.5 px-3 text-right font-bold text-primary-600 tabular-nums">
                                                     Bs. {{ formatearPrecio((Number(producto.Cantidad) || 0) * (Number(producto.Precio) || 0)) }}
                                                 </td>
@@ -1242,7 +1278,7 @@ const eliminarContenedor = async (item) => {
                             <i v-else-if="fechaEsInvalida" class="fas fa-exclamation-triangle text-[10px]"></i>
                             <i v-else-if="fechaEsManana && fueraDeHoraLimite" class="fas fa-clock text-[10px]"></i>
                             <i v-else-if="!puedeFinalizar" class="fas fa-ban text-[10px]"></i>
-                            <i v-else class="fas fa-check-circle text-[10px]"></i>
+                            <i v-else class="fas fa-qrcode text-[10px]"></i>
                             {{ textoBoton }}
                         </button>
                     </div>
@@ -1251,17 +1287,18 @@ const eliminarContenedor = async (item) => {
             </div>
         </div>
 
-        <!-- MODALES -->
+        <!-- MODAL DE CONFIRMACIÓN -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
-            title="Confirmar Pedido"
-            message="¿Estás seguro de finalizar este pedido? Una vez confirmado no se podrá modificar."
-            confirm-text="Sí, finalizar pedido"
+            title="Generar QR y Finalizar"
+            message="Se generará un código QR por el monto total del pedido. El cliente deberá escanearlo y pagarlo para que el pedido se registre."
+            confirm-text="Sí, generar QR"
             cancel-text="Cancelar"
             type="success"
-            @confirm="finalizarPedido"
+            @confirm="generarQR"
         />
 
+        <!-- MODAL DE EDICIÓN -->
         <CreateModalProductos
             :visible="modalEdicionVisible"
             :contenedor="contenedorSeleccionado"
@@ -1273,6 +1310,16 @@ const eliminarContenedor = async (item) => {
             :idSubClienteOperadorDefault="contenedorSeleccionado?._datosEdicion?.IdSubClienteOperador || null"
             @close="modalEdicionVisible = false"
             @actualizar="actualizarContenedor"
+        />
+
+        <!-- ✅ MODAL DE PAGO QR -->
+        <PagoQRModal
+            v-if="mostrarModalQR && qrActual"
+            :pedido-id="pedido.IdPedidoCliente"
+            :qr="qrActual"
+            @pago-exitoso="onPagoExitoso"
+            @cancelar="onCancelarQR"
+            @expirado="onQRExpirado"
         />
     </div>
 </template>
