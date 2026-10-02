@@ -137,7 +137,7 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\SubClienteOperador
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\MinimoGlobalController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ProductoMinimoController;
 use App\Http\Controllers\PuntoVenta\BancoCredencialController;
-use App\Http\Controllers\PuntoVenta\BancoQRPruebaController;
+use App\Http\Controllers\PuntoVenta\HistorialPagosQRController;
 
 
 // ============================================
@@ -1773,15 +1773,12 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
         Route::post('/{id}/toggle-activo', [BancoCredencialController::class, 'toggleActivo'])->name('banco-credenciales.toggle-activo');
         Route::post('/{id}/probar-conexion', [BancoCredencialController::class, 'probarConexion'])->name('banco-credenciales.probar-conexion');
     });
+
     // ============================================================
-    // 7. PREFIJO: BANCO - PRUEBAS QR
+    // 7. PREFIJO: HISTORIAL DE PAGOS QR
     // ============================================================
-    Route::prefix('banco-qr-prueba')->group(function () {
-        Route::get('/', [BancoQRPruebaController::class, 'index'])->name('banco-qr-prueba.index');
-        Route::post('/generar', [BancoQRPruebaController::class, 'generar'])->name('banco-qr-prueba.generar');
-        Route::get('/estado/{qrId}', [BancoQRPruebaController::class, 'consultarEstado'])->name('banco-qr-prueba.estado');
-        Route::post('/anular/{qrId}', [BancoQRPruebaController::class, 'anular'])->name('banco-qr-prueba.anular');
-        Route::post('/listar-pagados', [BancoQRPruebaController::class, 'listarPagados'])->name('banco-qr-prueba.listar-pagados');
+    Route::prefix('historial-pagos-qr')->group(function () {
+        Route::get('/', [HistorialPagosQRController::class, 'index'])->name('historial-pagos-qr.index');
     });
     // ============================================================
     // 11. UTILIDADES
