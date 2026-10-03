@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon;
 
 class ProductoDetalleController extends Controller
 {
@@ -146,11 +147,11 @@ class ProductoDetalleController extends Controller
             $unidadId = $unidad->id;
         }
 
-        // ✅ NUEVO: Lista de IDs de grupos activos (para mostrar/ocultar sección en el modal)
+        // ✅ Lista de IDs de grupos activos (para mostrar/ocultar sección en el modal)
         $gruposConMinimo = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
         $gruposConMinimo = array_map('intval', $gruposConMinimo);
 
-        // ✅ NUEVO: Mapa de mínimos de productos (para saber qué productos ya están configurados)
+        // ✅ Mapa de mínimos de productos (para saber qué productos ya están configurados)
         $productosConMinimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
             ->activos()
             ->pluck('CantidadMinimaProducto', 'IdProducto')
@@ -299,7 +300,6 @@ class ProductoDetalleController extends Controller
 
     /**
      * Edit - Obtener producto + su mínimo actual
-     * ✅ MODIFICADO: ahora devuelve también el mínimo
      */
     public function edit($id)
     {
@@ -311,7 +311,7 @@ class ProductoDetalleController extends Controller
                 ->with(['grupoAnalisis', 'linea', 'estado', 'unidadMedida'])
                 ->findOrFail($id);
 
-            // ✅ NUEVO: Buscar el mínimo actual del producto
+            // Buscar el mínimo actual del producto
             $minimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
                 ->where('IdProducto', $id)
                 ->where('ActivoInactivo', 1)
@@ -459,5 +459,250 @@ class ProductoDetalleController extends Controller
             ->get(['IdProducto as id', 'Codigo', 'Descripcion']);
 
         return response()->json($productos);
+    }
+
+    /**
+     * Exportar listado de productos a PDF
+     */
+    public function exportarPdf(Request $request)
+    {
+        $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
+
+        // ================== QUERY ==================
+        $query = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('inventario_productodetalle as p')
+            ->leftJoin('inventario_productogrupoanalisis as g', 'p.IdGrupoAnalisis', '=', 'g.IdGrupoAnalisis')
+            ->leftJoin('inventario_producto_linea as l', 'p.IdLineaProducto', '=', 'l.IdLinea')
+            ->leftJoin('inventario_producto_estado as e', 'p.IdEstadoProducto', '=', 'e.IdEstado')
+            ->leftJoin('inventario_unidadmedida as u', 'p.IdUnidadMedida', '=', 'u.IdUnidadMedida')
+            ->where('p.IdCliente', $clienteId)
+            ->select(
+                'p.IdProducto',
+                'p.Codigo',
+                'p.Descripcion',
+                'p.ActivoInactivo',
+                'p.OrdenInformes',
+                'g.Grupo as grupo_nombre',
+                'l.Linea as linea_nombre',
+                'e.Estado as estado_nombre',
+                'u.UnidadMedida as unidad_nombre'
+            );
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('p.Codigo', 'like', "%{$search}%")
+                    ->orWhere('p.Descripcion', 'like', "%{$search}%");
+            });
+        }
+        if ($request->filled('estado') && $request->estado !== '') {
+            $query->where('p.ActivoInactivo', $request->estado);
+        }
+        if ($request->filled('linea')) {
+            $query->where('p.IdLineaProducto', $request->linea);
+        }
+        if ($request->filled('estadoProducto') && $request->estadoProducto !== '') {
+            $query->where('p.IdEstadoProducto', $request->estadoProducto);
+        }
+        if ($request->filled('grupo')) {
+            $query->where('p.IdGrupoAnalisis', $request->grupo);
+        }
+
+        $productos = $query->orderBy('p.Codigo')->get();
+
+        // ================== INFO EMPRESA / OPERADOR ==================
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT', 'Direccion', 'Fono']);
+
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', $operadorId)
+            ->first(['todos_identificador.Nombre as nombre']);
+
+        $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
+
+        // ================== FILTROS APLICADOS ==================
+        $filtroGrupoNombre = $request->filled('grupo')
+            ? DB::connection('mysql_gestion_comercial_alimentos')->table('inventario_productogrupoanalisis')->where('IdGrupoAnalisis', $request->grupo)->value('Grupo')
+            : null;
+
+        $filtroLineaNombre = $request->filled('linea')
+            ? DB::connection('mysql_gestion_comercial_alimentos')->table('inventario_producto_linea')->where('IdLinea', $request->linea)->value('Linea')
+            : null;
+
+        $filtroEstadoNombre = $request->filled('estadoProducto')
+            ? DB::connection('mysql_gestion_comercial_alimentos')->table('inventario_producto_estado')->where('IdEstado', $request->estadoProducto)->value('Estado')
+            : null;
+
+        $filtroActivoTexto = 'Todos';
+        if ($request->estado === '0') $filtroActivoTexto = 'Activos';
+        if ($request->estado === '1') $filtroActivoTexto = 'Inactivos';
+
+        // ================== PDF ==================
+        $pdf = new \TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(8, 8, 8);
+        $pdf->SetAutoPageBreak(false);
+        $pdf->SetFont('helvetica', '', 8);
+
+        // Anchos (total 281 mm = A4 landscape - márgenes 8+8)
+        $anchos = [
+            'num'         => 8,
+            'codigo'      => 22,
+            'descripcion' => 80,
+            'grupo'       => 40,
+            'linea'       => 45,
+            'tipo'        => 25,
+            'unidad'      => 22,
+            'orden'       => 14,
+            'estado'      => 25,
+        ];
+
+        // ===== FUNCIÓN: dibujar cabecera empresa =====
+        $dibujarCabecera = function () use ($pdf, $empresa, $operador, $fechaImpresion) {
+            $pdf->SetFont('helvetica', 'B', 14);
+            $pdf->SetTextColor(26, 35, 126);
+            $pdf->SetXY(8, 8);
+            $pdf->Cell(281, 7, 'LISTADO DE PRODUCTOS', 0, 1, 'C');
+
+            $pdf->SetFont('helvetica', 'B', 10);
+            $pdf->SetTextColor(50, 50, 50);
+            $pdf->SetX(8);
+            $pdf->Cell(281, 5, mb_strtoupper($empresa->Nombre ?? '', 'UTF-8'), 0, 1, 'C');
+
+            $pdf->SetFont('helvetica', '', 7.5);
+            $pdf->SetTextColor(90, 90, 90);
+            $pdf->SetX(8);
+            $pdf->Cell(281, 4, 'Fecha impresión: ' . $fechaImpresion . '   |   Operador: ' . ($operador->nombre ?? '-'), 0, 1, 'C');
+
+            $pdf->SetDrawColor(26, 35, 126);
+            $pdf->SetLineWidth(0.5);
+            $pdf->Line(8, $pdf->GetY() + 1, 289, $pdf->GetY() + 1);
+            $pdf->Ln(3);
+        };
+
+        // ===== FUNCIÓN: dibujar cabecera de tabla =====
+        $dibujarCabeceraTabla = function () use ($pdf, $anchos) {
+            $pdf->SetFont('helvetica', 'B', 7);
+            $pdf->SetFillColor(217, 225, 242);
+            $pdf->SetTextColor(26, 35, 126);
+            $pdf->SetDrawColor(120, 120, 120);
+            $pdf->SetLineWidth(0.2);
+
+            $pdf->SetX(8);
+            $pdf->Cell($anchos['num'],         7, '#',           1, 0, 'C', 1);
+            $pdf->Cell($anchos['codigo'],      7, 'Código',      1, 0, 'C', 1);
+            $pdf->Cell($anchos['descripcion'], 7, 'Descripción', 1, 0, 'C', 1);
+            $pdf->Cell($anchos['grupo'],       7, 'Grupo',       1, 0, 'C', 1);
+            $pdf->Cell($anchos['linea'],       7, 'Línea',       1, 0, 'C', 1);
+            $pdf->Cell($anchos['tipo'],        7, 'Tipo',        1, 0, 'C', 1);
+            $pdf->Cell($anchos['unidad'],      7, 'Unidad',      1, 0, 'C', 1);
+            $pdf->Cell($anchos['orden'],       7, 'Orden',       1, 0, 'C', 1);
+            $pdf->Cell($anchos['estado'],      7, 'Estado',      1, 1, 'C', 1);
+        };
+
+        // ===== PRIMERA PÁGINA =====
+        $pdf->AddPage();
+        $dibujarCabecera();
+
+        // Filtros aplicados
+        $filtrosAplicados = [];
+        if ($request->filled('search')) $filtrosAplicados[] = 'Búsqueda: "' . $request->search . '"';
+        $filtrosAplicados[] = 'Estado: ' . $filtroActivoTexto;
+        if ($filtroGrupoNombre) $filtrosAplicados[] = 'Grupo: ' . $filtroGrupoNombre;
+        if ($filtroLineaNombre) $filtrosAplicados[] = 'Línea: ' . $filtroLineaNombre;
+        if ($filtroEstadoNombre) $filtrosAplicados[] = 'Tipo: ' . $filtroEstadoNombre;
+
+        $pdf->SetFont('helvetica', '', 7);
+        $pdf->SetTextColor(60, 60, 60);
+        $pdf->SetX(8);
+        $pdf->Cell(281, 5, 'Filtros aplicados: ' . implode('  |  ', $filtrosAplicados), 0, 1, 'L');
+        $pdf->SetX(8);
+        $pdf->Cell(281, 5, 'Total de productos: ' . count($productos), 0, 1, 'L');
+        $pdf->Ln(1);
+
+        $dibujarCabeceraTabla();
+
+        // ===== FILAS =====
+        $pdf->SetFont('helvetica', '', 6.5);
+        $pdf->SetTextColor(40, 40, 40);
+        $pdf->SetDrawColor(160, 160, 160);
+        $pdf->SetLineWidth(0.15);
+
+        $alturaFila = 5.5;
+        $alturaMaxPagina = 195; // A4 landscape útil
+
+        $contador = 0;
+        $fill = false;
+
+        foreach ($productos as $p) {
+            // Salto de página
+            if (($pdf->GetY() + $alturaFila) > $alturaMaxPagina) {
+                $pdf->AddPage();
+                $dibujarCabecera();
+                $dibujarCabeceraTabla();
+                $pdf->SetFont('helvetica', '', 6.5);
+                $pdf->SetTextColor(40, 40, 40);
+                $pdf->SetDrawColor(160, 160, 160);
+                $pdf->SetLineWidth(0.15);
+                $fill = false;
+            }
+
+            $contador++;
+
+            // Truncar descripción
+            $descripcion = $p->Descripcion ?? '-';
+            if (mb_strlen($descripcion, 'UTF-8') > 55) {
+                $descripcion = mb_substr($descripcion, 0, 52, 'UTF-8') . '...';
+            }
+
+            $estado = ($p->ActivoInactivo == 0) ? 'Activo' : 'Inactivo';
+            $fillColor = $fill ? [250, 250, 250] : [255, 255, 255];
+            $pdf->SetFillColor($fillColor[0], $fillColor[1], $fillColor[2]);
+
+            $pdf->SetX(8);
+            $pdf->Cell($anchos['num'],         $alturaFila, $contador,                   1, 0, 'C', true);
+            $pdf->Cell($anchos['codigo'],      $alturaFila, $p->Codigo ?? '-',            1, 0, 'L', true);
+            $pdf->Cell($anchos['descripcion'], $alturaFila, $descripcion,                 1, 0, 'L', true);
+            $pdf->Cell($anchos['grupo'],       $alturaFila, $p->grupo_nombre ?? '-',      1, 0, 'L', true);
+            $pdf->Cell($anchos['linea'],       $alturaFila, $p->linea_nombre ?? '-',      1, 0, 'L', true);
+            $pdf->Cell($anchos['tipo'],        $alturaFila, $p->estado_nombre ?? '-',     1, 0, 'L', true);
+            $pdf->Cell($anchos['unidad'],      $alturaFila, $p->unidad_nombre ?? '-',     1, 0, 'L', true);
+            $pdf->Cell($anchos['orden'],       $alturaFila, $p->OrdenInformes ?? 0,       1, 0, 'C', true);
+            $pdf->Cell($anchos['estado'],      $alturaFila, $estado,                      1, 1, 'C', true);
+
+            $fill = !$fill;
+        }
+
+        // ===== TOTALES =====
+        $pdf->Ln(3);
+        $pdf->SetFont('helvetica', 'B', 8);
+        $pdf->SetTextColor(26, 35, 126);
+        $pdf->SetX(8);
+
+        $totalActivos = collect($productos)->where('ActivoInactivo', 0)->count();
+        $totalInactivos = collect($productos)->where('ActivoInactivo', 1)->count();
+
+        $pdf->Cell(281, 6, 'Total: ' . count($productos) . ' productos   |   Activos: ' . $totalActivos . '   |   Inactivos: ' . $totalInactivos, 0, 1, 'R');
+
+        // ===== PIE DE PÁGINA =====
+        $pdf->SetY(-12);
+        $pdf->SetFont('helvetica', 'I', 7);
+        $pdf->SetTextColor(150, 150, 150);
+        $pdf->Cell(281, 5, 'Documento generado automáticamente - ' . $fechaImpresion, 0, 0, 'C');
+
+        // ===== OUTPUT =====
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        $nombreArchivo = 'Productos_Inventario_' . date('Ymd_His') . '.pdf';
+        $pdf->Output($nombreArchivo, 'D');
+        exit;
     }
 }

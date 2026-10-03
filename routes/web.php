@@ -494,7 +494,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/api/productos', [ProductoDetalleController::class, 'getProductos'])->name('gestion.inventario.productos-detalle.api');
                 Route::get('/validar-codigo', [ProductoDetalleController::class, 'validarCodigo'])->name('gestion.inventario.productos-detalle.validar-codigo');
                 Route::get('/validar-descripcion', [ProductoDetalleController::class, 'validarDescripcion'])->name('gestion.inventario.productos-detalle.validar-descripcion');
-                
+                Route::get('/exportar-pdf', [ProductoDetalleController::class, 'exportarPdf'])->name('productos-detalle.exportar-pdf');
                 // ============================================================
                 // 🔥 RUTAS CON PARÁMETROS {id} - DEBEN IR AL FINAL
                 // ============================================================

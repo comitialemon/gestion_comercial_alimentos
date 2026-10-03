@@ -18,7 +18,6 @@ const props = defineProps({
     unidades: Array,
     unidadId: Number,
     filtros: Object,
-    // ✅ NUEVOS: mapa de grupos con mínimo y mapa de productos con mínimo
     gruposConMinimo: { type: Object, default: () => ({}) },
     productosConMinimo: { type: Object, default: () => ({}) },
 })
@@ -28,6 +27,7 @@ const search = ref(props.filtros?.search || '')
 const estadoActivo = ref(props.filtros?.estado || '')
 const linea = ref(props.filtros?.linea || '')
 const estadoProducto = ref(props.filtros?.estadoProducto || '')
+const grupo = ref(props.filtros?.grupo || '')
 const isMobile = ref(false)
 const filtrosAbiertos = ref(false)
 const escribiendo = ref(false)
@@ -37,7 +37,6 @@ const modalOpen = ref(false)
 const editando = ref(false)
 const productoSeleccionado = ref(null)
 
-// 🔥 MODAL FICHA TÉCNICA
 const modalFichaOpen = ref(false)
 const productoParaFicha = ref(null)
 
@@ -48,6 +47,7 @@ const filtrosActivos = computed(() => {
     if (estadoActivo.value && estadoActivo.value !== '') count++
     if (linea.value && linea.value !== '') count++
     if (estadoProducto.value && estadoProducto.value !== '') count++
+    if (grupo.value && grupo.value !== '') count++
     return count
 })
 
@@ -58,6 +58,7 @@ const aplicarFiltros = (cerrarFiltros = true) => {
     if (estadoActivo.value !== '' && estadoActivo.value !== null) params.estado = estadoActivo.value
     if (linea.value && linea.value !== '') params.linea = linea.value
     if (estadoProducto.value && estadoProducto.value !== '') params.estadoProducto = estadoProducto.value
+    if (grupo.value && grupo.value !== '') params.grupo = grupo.value
 
     router.get('/gestion/inventario/productos-detalle', params, {
         preserveState: true,
@@ -82,6 +83,7 @@ const limpiarFiltros = () => {
     estadoActivo.value = ''
     linea.value = ''
     estadoProducto.value = ''
+    grupo.value = ''
     filtrosAbiertos.value = false
     escribiendo.value = false
 
@@ -91,6 +93,19 @@ const limpiarFiltros = () => {
     })
 }
 
+// ==================== EXPORTAR PDF ====================
+const exportarPdf = () => {
+    const params = new URLSearchParams()
+    if (search.value && search.value.trim() !== '') params.append('search', search.value)
+    if (estadoActivo.value !== '' && estadoActivo.value !== null) params.append('estado', estadoActivo.value)
+    if (linea.value && linea.value !== '') params.append('linea', linea.value)
+    if (estadoProducto.value && estadoProducto.value !== '') params.append('estadoProducto', estadoProducto.value)
+    if (grupo.value && grupo.value !== '') params.append('grupo', grupo.value)
+
+    const url = `/gestion/inventario/productos-detalle/exportar-pdf?${params.toString()}`
+    window.open(url, '_blank')
+}
+
 // ==================== MODALES ====================
 const abrirModalNuevo = () => {
     productoSeleccionado.value = null
@@ -98,16 +113,14 @@ const abrirModalNuevo = () => {
     modalOpen.value = true
 }
 
-// ✅ MODIFICADO: ahora hace GET al endpoint /edit para traer producto + mínimo
 const abrirModalEditar = async (producto) => {
     try {
         const response = await axios.get(`/gestion/inventario/productos-detalle/${producto.IdProducto}/edit`)
 
         if (response.data.success) {
-            // Combinar producto + mínimo en un solo objeto
             productoSeleccionado.value = {
                 ...response.data.producto,
-                minimo: response.data.minimo, // puede ser null si no tiene mínimo
+                minimo: response.data.minimo,
             }
             editando.value = true
             modalOpen.value = true
@@ -118,7 +131,6 @@ const abrirModalEditar = async (producto) => {
     }
 }
 
-// 🔥 ABRIR MODAL FICHA TÉCNICA
 const abrirModalFicha = (producto) => {
     productoParaFicha.value = producto
     modalFichaOpen.value = true
@@ -198,6 +210,16 @@ onMounted(() => {
                                 {{ filtrosActivos }}
                             </span>
                         </button>
+
+                        <!-- ✅ BOTÓN EXPORTAR PDF -->
+                        <button
+                            @click="exportarPdf"
+                            class="flex-1 sm:flex-none px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs flex items-center justify-center gap-1 transition"
+                            title="Exportar a PDF">
+                            <i class="fas fa-file-pdf text-[10px]"></i>
+                            <span>PDF</span>
+                        </button>
+
                         <button
                             @click="abrirModalNuevo"
                             class="flex-1 sm:flex-none bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1 transition">
@@ -264,6 +286,19 @@ onMounted(() => {
                                 </div>
                             </div>
 
+                            <!-- Grupo de Análisis -->
+                            <div class="mb-3">
+                                <label class="block text-[10px] font-medium text-gray-700 mb-1">Grupo de Análisis</label>
+                                <select v-model="grupo" @change="aplicarFiltros(true)"
+                                        class="w-full border rounded-md px-2 py-1.5 text-[11px] focus:ring-2 focus:outline-none"
+                                        :style="{ borderColor: `var(--color-primary-300)`, '--tw-ring-color': `var(--color-primary-500)` }">
+                                    <option value="">Todos</option>
+                                    <option v-for="item in grupos" :key="item.id" :value="item.id">
+                                        {{ item.nombre }}
+                                    </option>
+                                </select>
+                            </div>
+
                             <!-- Tipo de Producto -->
                             <div class="mb-3">
                                 <label class="block text-[10px] font-medium text-gray-700 mb-1">Tipo de Producto</label>
@@ -323,6 +358,11 @@ onMounted(() => {
                                     <i class="fas fa-circle text-[6px]" :class="estadoActivo == '0' ? 'text-green-500' : 'text-red-500'"></i>
                                     {{ estadoActivo == '0' ? 'Activos' : 'Inactivos' }}
                                 </span>
+                                <span v-if="grupo" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
+                                    :style="{ color: `var(--color-primary-700)` }">
+                                    <i class="fas fa-tag text-[8px]"></i>
+                                    {{ grupos.find(g => g.id === grupo)?.nombre || 'Grupo' }}
+                                </span>
                                 <span v-if="estadoProducto" class="px-1.5 py-0.5 bg-primary-50 rounded text-[9px] flex items-center gap-1"
                                     :style="{ color: `var(--color-primary-700)` }">
                                     <i class="fas fa-tag text-[8px]"></i>
@@ -339,11 +379,13 @@ onMounted(() => {
                                 <table class="min-w-full divide-y divide-gray-200">
                                     <thead class="bg-primary-50" :style="{ backgroundColor: `var(--color-primary-50)` }">
                                         <tr>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Estado</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Grupo</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Línea</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Tipo</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Unidad</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Descripción</th>
+                                            <th class="px-3 py-2 text-center text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Orden</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Activo</th>
                                             <th class="px-3 py-2 text-right text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Acciones</th>
                                         </tr>
@@ -351,10 +393,13 @@ onMounted(() => {
                                     <tbody class="bg-white divide-y divide-gray-200">
                                         <tr v-for="producto in productos.data" :key="producto.IdProducto" class="hover:bg-gray-50 transition">
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
-                                                {{ producto.estado?.Estado || '-' }}
+                                                {{ producto.grupoAnalisis?.Grupo || '-' }}
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
                                                 {{ producto.linea?.Linea || '-' }}
+                                            </td>
+                                            <td class="px-3 py-2 text-[11px] text-gray-500">
+                                                {{ producto.estado?.Estado || '-' }}
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">
                                                 {{ producto.unidadMedida?.UnidadMedida || '-' }}
@@ -364,6 +409,9 @@ onMounted(() => {
                                             </td>
                                             <td class="px-3 py-2 text-[11px] text-gray-800">
                                                 {{ producto.Descripcion }}
+                                            </td>
+                                            <td class="px-3 py-2 text-[11px] text-gray-500 text-center">
+                                                {{ producto.OrdenInformes ?? 0 }}
                                             </td>
                                             <td class="px-3 py-2 text-center">
                                                 <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
@@ -391,7 +439,7 @@ onMounted(() => {
                                             </td>
                                         </tr>
                                         <tr v-if="!productos.data || productos.data.length === 0">
-                                            <td colspan="8" class="px-3 py-8 text-center text-gray-400 text-[11px]">
+                                            <td colspan="9" class="px-3 py-8 text-center text-gray-400 text-[11px]">
                                                 <i class="fas fa-box-open text-xl mb-1 block text-gray-300"></i>
                                                 No se encontraron productos
                                             </td>
@@ -407,7 +455,8 @@ onMounted(() => {
                                         <tr>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Código</th>
                                             <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Descripción</th>
-                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Estado</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Grupo</th>
+                                            <th class="px-3 py-2 text-left text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Tipo</th>
                                             <th class="px-3 py-2 text-center text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Activo</th>
                                             <th class="px-3 py-2 text-right text-[10px] font-semibold" :style="{ color: `var(--color-primary-700)` }">Acciones</th>
                                         </tr>
@@ -416,6 +465,7 @@ onMounted(() => {
                                         <tr v-for="producto in productos.data" :key="producto.IdProducto" class="hover:bg-gray-50 transition">
                                             <td class="px-3 py-2 text-[11px] text-gray-600 font-mono">{{ producto.Codigo }}</td>
                                             <td class="px-3 py-2 text-[11px] text-gray-800">{{ producto.Descripcion }}</td>
+                                            <td class="px-3 py-2 text-[11px] text-gray-500">{{ producto.grupoAnalisis?.Grupo || '-' }}</td>
                                             <td class="px-3 py-2 text-[11px] text-gray-500">{{ producto.estado?.Estado || '-' }}</td>
                                             <td class="px-3 py-2 text-center">
                                                 <span class="px-1.5 py-0.5 text-[9px] rounded-full" :class="estadoClase(producto.ActivoInactivo)">
@@ -442,7 +492,7 @@ onMounted(() => {
                                             </td>
                                         </tr>
                                         <tr v-if="!productos.data || productos.data.length === 0">
-                                            <td colspan="5" class="px-3 py-8 text-center text-gray-400 text-[11px]">
+                                            <td colspan="6" class="px-3 py-8 text-center text-gray-400 text-[11px]">
                                                 <i class="fas fa-box-open text-xl mb-1 block text-gray-300"></i>
                                                 No se encontraron productos
                                             </td>
@@ -463,6 +513,8 @@ onMounted(() => {
                                                 {{ producto.Codigo }}
                                             </div>
                                             <div class="flex flex-wrap items-center gap-1.5 text-[10px] text-gray-500">
+                                                <span>{{ producto.grupoAnalisis?.Grupo || '-' }}</span>
+                                                <span>|</span>
                                                 <span>{{ producto.estado?.Estado || '-' }}</span>
                                                 <span>|</span>
                                                 <span>{{ producto.linea?.Linea || '-' }}</span>
@@ -532,7 +584,7 @@ onMounted(() => {
             </div>
         </div>
 
-        <!-- ✅ MODAL PRODUCTO con props nuevas -->
+        <!-- ✅ MODAL PRODUCTO -->
         <ModalProducto
             v-model="modalOpen"
             :producto="productoSeleccionado"
