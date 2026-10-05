@@ -2157,6 +2157,15 @@ class PedidoClienteController extends Controller
             $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
             $y += 10;
 
+            // ✅ Verificar espacio antes de "RESUMEN POR TIPO DE CONTENEDOR"
+            if ((270 - $y) < 30) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
+            // ============================================================
+            // RESUMEN POR TIPO DE CONTENEDOR
+            // ============================================================
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetTextColor(30, 60, 120);
             $pdf->SetXY(10, $y);
@@ -2201,7 +2210,152 @@ class PedidoClienteController extends Controller
             $pdf->SetDrawColor(0, 0, 0);
             $pdf->SetFillColor(255, 255, 255);
 
+            // ============================================================
+            // ✅ RESUMEN DE PRODUCTOS DEL PEDIDO (LISTA VERTICAL)
+            // ============================================================
+            $y += 5;
+
+            // Agrupar productos del pedido por IdProducto
+            $productosPedido = [];
+            foreach ($pedido->detalles as $det) {
+                $idProd = $det->IdProducto;
+                if (!isset($productosPedido[$idProd])) {
+                    $productosPedido[$idProd] = [
+                        'nombre' => $det->producto->Descripcion ?? 'Sin nombre',
+                        'cantidad' => 0,
+                        'orden' => $det->producto->OrdenInformes ?? 0,
+                    ];
+                }
+                $productosPedido[$idProd]['cantidad'] += floatval($det->Cantidad);
+            }
+
+            // Ordenar por OrdenInformes
+            uasort($productosPedido, function ($a, $b) {
+                return $a['orden'] <=> $b['orden'];
+            });
+
+            $productosPedido = array_values($productosPedido);
+            $cantidadProductos = count($productosPedido);
+
+            if ($cantidadProductos > 0) {
+                // ✅ Espacio mínimo: título (7) + cabecera (6) + 1 fila (5) + total (6) = 24mm
+                $alturaMinima = 24;
+
+                if ((270 - $y) < $alturaMinima) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                // ===== TÍTULO =====
+                $pdf->SetFont('helvetica', 'B', 9);
+                $pdf->SetTextColor(30, 60, 120);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(196, 6, 'RESUMEN DE PRODUCTOS DEL PEDIDO', 0, 1, 'C');
+                $y += 7;
+
+                // ===== ANCHOS =====
+                $anchoNum = 10;
+                $anchoProducto = 156;
+                $anchoCantidad = 30;
+
+                // ===== CABECERA DE LA TABLA =====
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetFillColor(217, 225, 242);
+                $pdf->SetTextColor(26, 35, 126);
+                $pdf->SetDrawColor(120, 120, 120);
+                $pdf->SetLineWidth(0.2);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
+                $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
+                $y += 6;
+
+                // ===== FILAS =====
+                $pdf->SetFont('helvetica', '', 7.5);
+                $pdf->SetTextColor(40, 40, 40);
+
+                $sumaTotal = 0;
+                $contadorProd = 0;
+                $alturaFila = 5;
+
+                foreach ($productosPedido as $prod) {
+                    // ✅ Verificar espacio para la fila
+                    if ((270 - $y) < ($alturaFila + 8)) {
+                        $pdf->AddPage();
+                        $y = 15;
+
+                        // Redibujar título y cabecera
+                        $pdf->SetFont('helvetica', 'B', 9);
+                        $pdf->SetTextColor(30, 60, 120);
+                        $pdf->SetXY(10, $y);
+                        $pdf->Cell(196, 6, 'RESUMEN DE PRODUCTOS DEL PEDIDO (continuación)', 0, 1, 'C');
+                        $y += 7;
+
+                        $pdf->SetFont('helvetica', 'B', 8);
+                        $pdf->SetFillColor(217, 225, 242);
+                        $pdf->SetTextColor(26, 35, 126);
+                        $pdf->SetDrawColor(120, 120, 120);
+                        $pdf->SetXY(10, $y);
+                        $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                        $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
+                        $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
+                        $y += 6;
+
+                        $pdf->SetFont('helvetica', '', 7.5);
+                        $pdf->SetTextColor(40, 40, 40);
+                    }
+
+                    $contadorProd++;
+
+                    // Truncar nombre si es muy largo
+                    $nombre = $prod['nombre'];
+                    if (mb_strlen($nombre, 'UTF-8') > 90) {
+                        $nombre = mb_substr($nombre, 0, 87, 'UTF-8') . '...';
+                    }
+
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell($anchoNum,      $alturaFila, $contadorProd,                                1, 0, 'C', 0);
+                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre,                                1, 0, 'L', 0);
+                    $pdf->Cell($anchoCantidad, $alturaFila, number_format($prod['cantidad'], 2, ',', '.'), 1, 1, 'C', 0);
+
+                    $sumaTotal += $prod['cantidad'];
+                    $y += $alturaFila;
+                }
+
+                // ===== FILA TOTAL =====
+                if ((270 - $y) < 8) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                $pdf->SetFont('helvetica', 'B', 8.5);
+                $pdf->SetFillColor(255, 243, 224);
+                $pdf->SetTextColor(230, 81, 0);
+                $pdf->SetDrawColor(120, 120, 120);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell($anchoNum + $anchoProducto, 6, 'TOTAL GENERAL DE PRODUCTOS', 1, 0, 'R', 1);
+                $pdf->Cell($anchoCantidad, 6, number_format($sumaTotal, 2, ',', '.'), 1, 1, 'C', 1);
+                $y += 6;
+
+                // Resetear colores
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFillColor(255, 255, 255);
+                $pdf->SetDrawColor(0, 0, 0);
+            }
+
+            // ============================================================
+            // FIRMAS
+            // ============================================================
             $y += 15;
+
+            // ✅ Verificar espacio para firmas
+            if ((270 - $y) < 12) {
+                $pdf->AddPage();
+                $y = 20;
+            }
+
             $pdf->SetTextColor(0, 0, 0);
             $pdf->SetFont('helvetica', '', 8);
 
