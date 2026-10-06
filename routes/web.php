@@ -1771,8 +1771,11 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
         Route::delete('/{id}', [BancoCredencialController::class, 'destroy'])->name('banco-credenciales.destroy');
         Route::post('/{id}/toggle-activo', [BancoCredencialController::class, 'toggleActivo'])->name('banco-credenciales.toggle-activo');
         Route::post('/{id}/probar-conexion', [BancoCredencialController::class, 'probarConexion'])->name('banco-credenciales.probar-conexion');
+        
+        // ✅ NUEVA RUTA: Regenerar webhook
+        Route::post('/{id}/regenerar-webhook', [BancoCredencialController::class, 'regenerarWebhook'])
+            ->name('banco-credenciales.regenerar-webhook');
     });
-
     // ============================================================
     // 7. PREFIJO: HISTORIAL DE PAGOS QR
     // ============================================================

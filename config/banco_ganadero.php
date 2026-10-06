@@ -2,10 +2,12 @@
 
 return [
     'urls' => [
-        'CERTIFICACION' => env('BANCO_GANADERO_URL_CERTIFICACION', ''),
+        'CERTIFICACION' => env('BANCO_GANADERO_URL_CERTIFICACION', 'https://api.bg.com.bo/bgqa'),
         'PRODUCCION' => env('BANCO_GANADERO_URL_PRODUCCION', ''),
     ],
+
     'fake_mode' => env('BANCO_GANADERO_FAKE_MODE', false),
+
     'timeout_default' => 20,
     'retry_default' => 3,
     'retry_delay_default' => 1000,

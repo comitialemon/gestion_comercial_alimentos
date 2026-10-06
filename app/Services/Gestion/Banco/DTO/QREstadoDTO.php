@@ -23,12 +23,21 @@ class QREstadoDTO
             }
         }
 
-        // 🔥 EL BANCO DEVUELVE "statusQrCode" (con Q mayúscula, r minúscula)
-        // Pero a veces devuelve "statusQRCode" (con QR mayúsculas)
-        // Aceptamos AMBAS variantes
-        $statusQRCode = $data['statusQrCode'] 
-                     ?? $data['statusQRCode'] 
+        // Acepta múltiples variantes
+        $statusQRCode = $data['statusQrCode']
+                     ?? $data['statusQRCode']
+                     ?? $data['orderState']
                      ?? 0;
+
+        // Mapeo si viene orderState (BGAN)
+        if (isset($data['orderState'])) {
+            $statusQRCode = match ((int) $data['orderState']) {
+                1 => self::ESTADO_ACTIVO,
+                2 => self::ESTADO_PAGADO,
+                3, 5 => self::ESTADO_ANULADO,
+                default => self::ESTADO_ACTIVO,
+            };
+        }
 
         return new self(
             statusQRCode: (int) $statusQRCode,

@@ -23,6 +23,7 @@ const modoEdicion = ref(false)
 const credencialEditando = ref(null)
 const probandoConexion = ref(null)
 const guardando = ref(false)
+const regenerandoWebhook = ref(null)
 
 const mostrarPassword = ref(false)
 const mostrarAesKey = ref(false)
@@ -30,6 +31,11 @@ const mostrarApiKey = ref(false)
 const mostrarCuenta = ref(false)
 
 const errores = ref({})
+
+// ============================================================
+// ✅ Estado para credenciales del webhook
+// ============================================================
+const credencialesWebhook = ref(null)
 
 // ============================================================
 // FORMULARIO
@@ -98,6 +104,31 @@ const setErrores = (errors) => {
     Object.keys(errors).forEach(key => {
         errores.value[key] = Array.isArray(errors[key]) ? errors[key][0] : errors[key]
     })
+}
+
+// ============================================================
+// ✅ Copiar al portapapeles con fallback
+// ============================================================
+const copiarAlPortapapeles = async (texto, etiqueta = '') => {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(texto)
+        } else {
+            // Fallback para contextos no seguros (http)
+            const textArea = document.createElement('textarea')
+            textArea.value = texto
+            textArea.style.position = 'fixed'
+            textArea.style.left = '-9999px'
+            document.body.appendChild(textArea)
+            textArea.focus()
+            textArea.select()
+            document.execCommand('copy')
+            document.body.removeChild(textArea)
+        }
+        toast?.success(`Copiado${etiqueta ? ': ' + etiqueta : ''}`)
+    } catch (err) {
+        toast?.error('Error', 'No se pudo copiar al portapapeles')
+    }
 }
 
 // ============================================================
@@ -233,8 +264,16 @@ const guardar = async () => {
 
         if (response.data.success) {
             toast?.success(response.data.message)
-            cerrarModal()
-            router.reload()
+
+            // ✅ Si hay credenciales del webhook, mostrarlas
+            if (response.data.webhook) {
+                credencialesWebhook.value = response.data.webhook
+                cerrarModal()
+                // NO recargar todavía, esperar a que cierre el modal
+            } else {
+                cerrarModal()
+                router.reload()
+            }
         } else {
             toast?.error('Error', response.data.message)
         }
@@ -247,6 +286,12 @@ const guardar = async () => {
     } finally {
         guardando.value = false
     }
+}
+
+// ✅ Cerrar modal de credenciales del webhook
+const cerrarModalWebhook = () => {
+    credencialesWebhook.value = null
+    router.reload()
 }
 
 // Toggle activo
@@ -276,6 +321,30 @@ const probarConexion = async (cred) => {
         toast?.error('Error', error.response?.data?.message || 'No se pudo probar la conexión')
     } finally {
         probandoConexion.value = null
+    }
+}
+
+// ✅ Regenerar credenciales del webhook (solo BGAN)
+const regenerarWebhook = async (cred) => {
+    if (!confirm(`¿Regenerar las credenciales del webhook para "${cred.Alias || cred.CodigoBanco}"?\n\n⚠️ Las credenciales anteriores ya NO funcionarán y deberás compartir las nuevas con el banco.`)) {
+        return
+    }
+
+    regenerandoWebhook.value = cred.IdCredencial
+
+    try {
+        const response = await axios.post(`/banco-credenciales/${cred.IdCredencial}/regenerar-webhook`)
+
+        if (response.data.success) {
+            toast?.success('Credenciales regeneradas')
+            credencialesWebhook.value = response.data.webhook
+        } else {
+            toast?.error('Error', response.data.message)
+        }
+    } catch (error) {
+        toast?.error('Error', error.response?.data?.message || 'No se pudo regenerar')
+    } finally {
+        regenerandoWebhook.value = null
     }
 }
 
@@ -427,6 +496,21 @@ onUnmounted(() => {
                                 <span class="text-gray-500">Sucursal:</span>
                                 <span class="font-mono">{{ cred.BranchCode }}</span>
                             </div>
+
+                            <!-- ✅ Indicador de Webhook (solo BGAN) -->
+                            <div v-if="cred.CodigoBanco === 'BGAN'" class="flex justify-between items-center pt-2 border-t">
+                                <span class="text-gray-500">Webhook:</span>
+                                <span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                    :class="cred.TieneWebhook
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-orange-100 text-orange-700'"
+                                >
+                                    <i :class="cred.TieneWebhook ? 'fas fa-check-circle' : 'fas fa-exclamation-circle'" class="mr-1"></i>
+                                    {{ cred.TieneWebhook ? 'Configurado' : 'Sin configurar' }}
+                                </span>
+                            </div>
+
                             <div v-if="cred.FechaUltimoUso" class="flex justify-between items-center pt-2 border-t">
                                 <span class="text-gray-500">Último uso:</span>
                                 <span class="text-[10px]">{{ cred.FechaUltimoUso }}</span>
@@ -468,6 +552,20 @@ onUnmounted(() => {
                                 <i :class="cred.ActivoInactivo ? 'fas fa-pause' : 'fas fa-play'" class="mr-1"></i>
                                 {{ cred.ActivoInactivo ? 'Desactivar' : 'Activar' }}
                             </button>
+
+                            <!-- ✅ NUEVO: Botón Regenerar Webhook (solo BGAN) -->
+                            <button
+                                v-if="cred.CodigoBanco === 'BGAN'"
+                                @click="regenerarWebhook(cred)"
+                                :disabled="regenerandoWebhook === cred.IdCredencial"
+                                class="flex-1 px-2 py-1.5 bg-emerald-50 text-emerald-600 rounded text-[10px] font-medium hover:bg-emerald-100 disabled:opacity-50 transition"
+                                :title="cred.TieneWebhook ? 'Regenerar credenciales del webhook' : 'Generar credenciales del webhook'"
+                            >
+                                <i v-if="regenerandoWebhook === cred.IdCredencial" class="fas fa-spinner fa-spin mr-1"></i>
+                                <i v-else class="fas fa-sync-alt mr-1"></i>
+                                {{ cred.TieneWebhook ? 'Regenerar' : 'Generar' }}
+                            </button>
+
                             <button
                                 @click="eliminar(cred)"
                                 class="px-2 py-1.5 bg-red-50 text-red-600 rounded text-[10px] font-medium hover:bg-red-100 transition"
@@ -653,7 +751,7 @@ onUnmounted(() => {
                                 <p v-if="errores.Password" class="text-red-500 text-[10px] mt-1">{{ errores.Password }}</p>
                             </div>
 
-                            <!-- ✅ AES Key (solo para Banco Económico) -->
+                            <!-- AES Key (solo BECO) -->
                             <div v-if="esBancoEconomico">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">
                                     AES Key (256 bits)
@@ -677,7 +775,7 @@ onUnmounted(() => {
                                 <p v-if="errores.AesKey" class="text-red-500 text-[10px] mt-1">{{ errores.AesKey }}</p>
                             </div>
 
-                            <!-- ✅ ApiKey (solo para Banco Ganadero) -->
+                            <!-- ApiKey (solo BGAN) -->
                             <div v-if="esBancoGanadero">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">
                                     X-Api-Key
@@ -838,6 +936,143 @@ onUnmounted(() => {
             </div>
         </div>
 
+        <!-- ============================================ -->
+        <!-- MODAL: CREDENCIALES DEL WEBHOOK -->
+        <!-- ============================================ -->
+        <div
+            v-if="credencialesWebhook"
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+            @click.self="cerrarModalWebhook"
+        >
+            <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8">
+                <!-- Header -->
+                <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4 text-white rounded-t-2xl">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
+                            <i class="fas fa-key text-lg"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-lg">Credenciales del Webhook</h3>
+                            <p class="text-xs opacity-75">Guárdalas y compártelas con el banco</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Body -->
+                <div class="p-6 space-y-3">
+                    <!-- Alerta -->
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                        <p class="text-xs text-amber-800 flex items-start gap-2">
+                            <i class="fas fa-exclamation-triangle text-amber-600 mt-0.5 flex-shrink-0"></i>
+                            <span>
+                                <strong>IMPORTANTE:</strong> Estas credenciales se muestran <strong>UNA SOLA VEZ</strong>.
+                                Cópialas y guárdalas en un lugar seguro.
+                            </span>
+                        </p>
+                    </div>
+
+                    <!-- Usuario -->
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Usuario</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="text"
+                                :value="credencialesWebhook.user"
+                                readonly
+                                class="flex-1 border border-gray-200 rounded-md px-3 py-2 text-xs font-mono bg-gray-50"
+                            />
+                            <button
+                                @click="copiarAlPortapapeles(credencialesWebhook.user, 'Usuario')"
+                                class="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs"
+                                title="Copiar"
+                            >
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Password -->
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Password</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="text"
+                                :value="credencialesWebhook.password"
+                                readonly
+                                class="flex-1 border border-gray-200 rounded-md px-3 py-2 text-xs font-mono bg-gray-50 break-all"
+                            />
+                            <button
+                                @click="copiarAlPortapapeles(credencialesWebhook.password, 'Password')"
+                                class="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs"
+                                title="Copiar"
+                            >
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Token -->
+                    <div>
+                        <label class="block text-[10px] font-semibold text-gray-500 uppercase mb-1">Token</label>
+                        <div class="flex items-center gap-2">
+                            <input
+                                type="text"
+                                :value="credencialesWebhook.token"
+                                readonly
+                                class="flex-1 border border-gray-200 rounded-md px-3 py-2 text-xs font-mono bg-gray-50 break-all"
+                            />
+                            <button
+                                @click="copiarAlPortapapeles(credencialesWebhook.token, 'Token')"
+                                class="px-2 py-2 bg-gray-100 hover:bg-gray-200 rounded-md text-xs"
+                                title="Copiar"
+                            >
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- URLs -->
+                    <div class="border-t pt-3 space-y-2">
+                        <p class="text-[10px] font-semibold text-gray-500 uppercase">URLs para el banco</p>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 text-[10px] font-mono text-gray-700 bg-gray-50 rounded px-2 py-1.5 break-all">
+                                <strong>Login:</strong> {{ credencialesWebhook.login_url }}
+                            </div>
+                            <button
+                                @click="copiarAlPortapapeles(credencialesWebhook.login_url, 'URL Login')"
+                                class="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                title="Copiar"
+                            >
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <div class="flex-1 text-[10px] font-mono text-gray-700 bg-gray-50 rounded px-2 py-1.5 break-all">
+                                <strong>Payments:</strong> {{ credencialesWebhook.payments_url }}
+                            </div>
+                            <button
+                                @click="copiarAlPortapapeles(credencialesWebhook.payments_url, 'URL Payments')"
+                                class="px-2 py-1.5 bg-gray-100 hover:bg-gray-200 rounded text-xs"
+                                title="Copiar"
+                            >
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="px-6 py-4 bg-gray-50 border-t rounded-b-2xl flex justify-end">
+                    <button
+                        @click="cerrarModalWebhook"
+                        class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition"
+                    >
+                        <i class="fas fa-check mr-1"></i>
+                        Entendido, ya las guardé
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 

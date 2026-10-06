@@ -19,9 +19,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
         ]);
         
+        // 🔥 EXCLUIR RUTAS DEL WEBHOOK DEL CSRF
+        $middleware->validateCsrfTokens(except: [
+            'api/banco-ganadero/*',
+        ]);
+        
         // 🔥 Grupo web (append) - AGREGAR SetTimezone AQUÍ
         $middleware->web(append: [
-            \App\Http\Middleware\SetTimezone::class,  // ✅ NUEVO - ZONA HORARIA
+            \App\Http\Middleware\SetTimezone::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
@@ -34,7 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'verificar.contexto'    => \App\Http\Middleware\VerificarContexto::class,
             'evitar.contexto.duplicado' => \App\Http\Middleware\EvitarContextoDuplicado::class,
             'verificar.fecha' => \App\Http\Middleware\VerificarFecha::class,
-            'set.timezone' => \App\Http\Middleware\SetTimezone::class, // ✅ ALIAS OPCIONAL
+            'set.timezone' => \App\Http\Middleware\SetTimezone::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

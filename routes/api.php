@@ -10,8 +10,11 @@ use App\Models\Gestion\Contabilidad\FactorCambio;
 use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Operacion\Produccion\CronogramaController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
+use App\Http\Controllers\Gestion\Banco\BancoGanaderoWebhookController;
 
-// Middleware web + auth para tener sesión
+// ============================================================
+// APIS INTERNAS (con sesión)
+// ============================================================
 Route::middleware(['web', 'auth.operador'])->group(function () {
     
     // ==================== VENTA TÁCTIL - ENDPOINTS ====================
@@ -231,4 +234,18 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         }
     })->name('api.venta.comisionista-id');
     
+});
+
+// ============================================================
+// WEBHOOK BANCO GANADERO
+// Endpoints públicos para que el banco notifique pagos
+// ⚠️ NO lleva middleware de auth (el banco se autentica con sus propias credenciales)
+// ⚠️ NO lleva CSRF (excluido en bootstrap/app.php)
+// ============================================================
+Route::prefix('banco-ganadero')->group(function () {
+    Route::post('/login', [BancoGanaderoWebhookController::class, 'login'])
+        ->name('banco-ganadero.webhook.login');
+    
+    Route::post('/payments', [BancoGanaderoWebhookController::class, 'payments'])
+        ->name('banco-ganadero.webhook.payments');
 });

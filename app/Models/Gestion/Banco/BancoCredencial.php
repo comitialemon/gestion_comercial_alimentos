@@ -25,9 +25,14 @@ class BancoCredencial extends Model
         'Usuario',
         'PasswordCifrado',
         'AesKey',
-        'ApiKeyCifrada',      // ✅ NUEVO
+        'ApiKeyCifrada',
         'CuentaCredito',
         'BranchCode',
+        // ✅ WEBHOOK
+        'WebhookUser',
+        'WebhookPasswordCifrado',
+        'WebhookTokenCifrado',
+        // Configuración
         'MonedaDefault',
         'Timeout',
         'Reintentos',
@@ -59,6 +64,8 @@ class BancoCredencial extends Model
         'AesKey',
         'ApiKeyCifrada',
         'CuentaCredito',
+        'WebhookPasswordCifrado',
+        'WebhookTokenCifrado',
     ];
 
     // =========================================================================
@@ -83,6 +90,21 @@ class BancoCredencial extends Model
     public function getCuentaCreditoDescifradoAttribute(): string
     {
         return Crypt::decryptString($this->CuentaCredito);
+    }
+
+    // ✅ WEBHOOK ACCESORS
+    public function getWebhookPasswordDescifradoAttribute(): ?string
+    {
+        return $this->WebhookPasswordCifrado 
+            ? Crypt::decryptString($this->WebhookPasswordCifrado) 
+            : null;
+    }
+
+    public function getWebhookTokenDescifradoAttribute(): ?string
+    {
+        return $this->WebhookTokenCifrado 
+            ? Crypt::decryptString($this->WebhookTokenCifrado) 
+            : null;
     }
 
     // =========================================================================
@@ -128,6 +150,11 @@ class BancoCredencial extends Model
         return $query->where('Ambiente', 'PRODUCCION');
     }
 
+    public function scopeConWebhook($query)
+    {
+        return $query->whereNotNull('WebhookTokenCifrado');
+    }
+
     // =========================================================================
     // HELPERS
     // =========================================================================
@@ -157,12 +184,16 @@ class BancoCredencial extends Model
         return $this->CodigoBanco === self::BANCO_GANADERO;
     }
 
-    /**
-     * ¿Esta credencial necesita ApiKey?
-     */
     public function requiereApiKey(): bool
     {
         return $this->esBancoGanadero();
     }
-    
+
+    /**
+     * ¿Tiene credenciales de webhook configuradas?
+     */
+    public function tieneWebhook(): bool
+    {
+        return !empty($this->WebhookUser) && !empty($this->WebhookTokenCifrado);
+    }
 }
