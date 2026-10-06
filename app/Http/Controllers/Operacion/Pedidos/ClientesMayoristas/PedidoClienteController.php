@@ -1262,7 +1262,7 @@ class PedidoClienteController extends Controller
             }
 
             // ============================================================
-            // 3. CANCELAR QR PENDIENTE ANTERIOR
+            // 3. CANCELAR QR PENDIENTE ANTERIOR (si existe)
             // ============================================================
             $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                 ->where('Estado', 'PENDIENTE')
@@ -1288,7 +1288,6 @@ class PedidoClienteController extends Controller
 
             // ============================================================
             // 4. OBTENER CREDENCIAL ACTIVA
-            // ✅ Usar el banco que viene en el request, o el primero activo
             // ============================================================
             $codigoBanco = $request->input('CodigoBanco');
 
@@ -1309,7 +1308,44 @@ class PedidoClienteController extends Controller
             }
 
             // ============================================================
-            // 5. GENERAR QR EN EL BANCO (FACTORY)
+            // 5. CONSTRUIR GLOSA DESCRIPTIVA
+            // ✅ Formato: "Pedido 06/10/26 - Juan Pérez"
+            // ============================================================
+            $nombreOperador = $this->getNombreOperador();
+
+            // ✅ Usar FechaPedido (cuando se creó el pedido), fallback a now()
+            $fechaPedido = $pedido->FechaPedido
+                ? Carbon::parse($pedido->FechaPedido)
+                : now();
+
+            $fechaFormateada = $fechaPedido->format('d/m/y'); // 06/10/26
+
+            // Prefijo base
+            $prefijo = "Pedido {$fechaFormateada}";
+
+            // Agregar operador si tiene nombre válido
+            if (!empty($nombreOperador) && $nombreOperador !== 'Sin nombre') {
+                $glosa = "{$prefijo} - {$nombreOperador}";
+            } else {
+                $glosa = $prefijo;
+            }
+
+            // ✅ Truncar si excede 60 chars (límite BGAN)
+            // Dejamos 3 chars para "..." si es necesario
+            if (mb_strlen($glosa) > 60) {
+                $glosa = mb_substr($glosa, 0, 57) . '...';
+            }
+
+            Log::info('📝 Glosa construida para QR', [
+                'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                'FechaPedido' => $fechaPedido->format('Y-m-d H:i:s'),
+                'Operador' => $nombreOperador,
+                'Glosa' => $glosa,
+                'Longitud' => mb_strlen($glosa),
+            ]);
+
+            // ============================================================
+            // 6. GENERAR QR EN EL BANCO (FACTORY)
             // ============================================================
             $service = BancoFactory::desdeCredencial($credencial);
 
@@ -1323,7 +1359,7 @@ class PedidoClienteController extends Controller
             $qr = $service->generarQR(
                 $transactionId,
                 (float) $pedido->TotalGeneral,
-                'Pedido #' . $pedido->NumeroPedidoFormateado,
+                $glosa,
                 'BOB',
                 null,
                 $credencial->BranchCode,
@@ -1332,7 +1368,7 @@ class PedidoClienteController extends Controller
             );
 
             // ============================================================
-            // 6. GUARDAR EN pedidos_clientes_pagos
+            // 7. GUARDAR EN pedidos_clientes_pagos
             // ============================================================
             $pago = PedidoClientePago::create([
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
@@ -1346,7 +1382,7 @@ class PedidoClienteController extends Controller
                 'CodigoBanco' => $credencial->CodigoBanco,
                 'Moneda' => 'BOB',
                 'Monto' => $pedido->TotalGeneral,
-                'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
+                'Descripcion' => $glosa,
                 'FechaVencimiento' => date('Y-m-d'),
                 'Estado' => 'PENDIENTE',
                 'FechaCreacion' => now(),
@@ -1354,7 +1390,7 @@ class PedidoClienteController extends Controller
             ]);
 
             // ============================================================
-            // 7. ACTUALIZAR PEDIDO
+            // 8. ACTUALIZAR ESTADO DEL PEDIDO
             // ============================================================
             $pedido->update([
                 'EstadoPedido' => 'Esperando Pago',
@@ -1367,6 +1403,7 @@ class PedidoClienteController extends Controller
                 'QrId' => $qr->qrId,
                 'Monto' => $pedido->TotalGeneral,
                 'Banco' => $credencial->CodigoBanco,
+                'Glosa' => $glosa,
             ]);
 
             return response()->json([
@@ -1377,7 +1414,7 @@ class PedidoClienteController extends Controller
                     'QrId' => $qr->qrId,
                     'QrImage' => $qr->qrImage,
                     'Monto' => (float) $pedido->TotalGeneral,
-                    'Descripcion' => 'Pedido #' . $pedido->NumeroPedidoFormateado,
+                    'Descripcion' => $glosa,
                     'ExpiraEnSegundos' => 900,
                     'CodigoBanco' => $credencial->CodigoBanco,
                 ],
@@ -1388,6 +1425,7 @@ class PedidoClienteController extends Controller
             Log::error('Error generando QR pedido', [
                 'IdPedidoCliente' => $idPedido,
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
