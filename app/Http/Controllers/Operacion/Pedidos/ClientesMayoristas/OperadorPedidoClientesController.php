@@ -9,7 +9,7 @@ use App\Models\Gestion\Todos\Identificador;
 use App\Models\Gestion\Todos\OperadorSucursalDb;
 use App\Models\Gestion\Todos\ClienteSucursal;
 use App\Models\Gestion\Todos\Cliente;
-use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente; // ✅ NUEVO
+use App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -24,32 +24,32 @@ class OperadorPedidoClientesController extends Controller
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         if (!$clienteId) {
             return redirect()->route('contexto.index')
                 ->with('error', 'Debes seleccionar una empresa primero');
         }
 
         // ✅ Filtrar operadores que tengan asignación en ESTE cliente
-        $query = Operador::whereHas('tipo', function($q) {
+        $query = Operador::whereHas('tipo', function ($q) {
                 $q->where('Detalle', 'PedidoClientes');
             })
-            ->whereHas('asignacionesSucursal', function($q) use ($clienteId) {
+            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
                 $q->where('IdCliente', $clienteId);
             })
             ->with([
-                'identificador', 
+                'identificador',
                 'tipo',
-                'pedidoClienteConfig',  // ✅ Cargar Ciudad, Provincia, Destino
+                'pedidoClienteConfig',
             ]);
 
         // Filtros
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
-                $q->whereHas('identificador', function($q2) use ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('identificador', function ($q2) use ($search) {
                     $q2->where('Nombre', 'like', "%{$search}%")
-                    ->orWhere('CI_NIT', 'like', "%{$search}%");
+                       ->orWhere('CI_NIT', 'like', "%{$search}%");
                 })->orWhere('NombreAcceso', 'like', "%{$search}%");
             });
         }
@@ -67,7 +67,7 @@ class OperadorPedidoClientesController extends Controller
             ->with(['sucursal', 'operador'])
             ->get()
             ->groupBy('IdOperador')
-            ->map(function($items) {
+            ->map(function ($items) {
                 return $items->first();
             });
 
@@ -77,15 +77,25 @@ class OperadorPedidoClientesController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
 
-        // ✅ Identificadores: solo los que YA tienen operador en este cliente
-        $idsConOperador = $asignaciones->pluck('IdOperador')->filter()->toArray();
-        
-        $identificadores = Identificador::whereIn('IdIdentificador',
-                Operador::whereIn('IdOperador', $idsConOperador)
-                    ->pluck('IdIdentificador')
-                    ->filter()
-                    ->unique()
-            )
+        // ============================================================
+        // ✅ IDs de identificadores que YA tienen operador PedidoClientes
+        // en este cliente
+        // ============================================================
+        $idsIdentificadoresConOperador = Operador::whereHas('tipo', function ($q) {
+                $q->where('Detalle', 'PedidoClientes');
+            })
+            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
+                $q->where('IdCliente', $clienteId);
+            })
+            ->pluck('IdIdentificador')
+            ->filter()
+            ->unique()
+            ->toArray();
+
+        // ============================================================
+        // ✅ Identificadores DISPONIBLES (sin operador PedidoClientes)
+        // ============================================================
+        $identificadores = Identificador::whereNotIn('IdIdentificador', $idsIdentificadoresConOperador)
             ->orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
 
@@ -111,7 +121,7 @@ class OperadorPedidoClientesController extends Controller
     {
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
-        
+
         if (!$clienteId) {
             return response()->json([
                 'success' => false,
@@ -120,7 +130,7 @@ class OperadorPedidoClientesController extends Controller
         }
 
         $tipoOperador = OperadorTipo::where('Detalle', 'PedidoClientes')->first();
-        
+
         if (!$tipoOperador) {
             return response()->json([
                 'success' => false,
@@ -130,11 +140,11 @@ class OperadorPedidoClientesController extends Controller
 
         // Convertir teléfonos a string
         $request->merge([
-            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== '' 
-                ? (string) $request->TelefonoDomicilio 
+            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== ''
+                ? (string) $request->TelefonoDomicilio
                 : null,
-            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== '' 
-                ? (string) $request->NumeroCelular 
+            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== ''
+                ? (string) $request->NumeroCelular
                 : null,
         ]);
 
@@ -147,8 +157,7 @@ class OperadorPedidoClientesController extends Controller
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            
-            // ✅ Nuevos campos
+
             'Ciudad' => 'nullable|boolean',
             'Provincia' => 'nullable|boolean',
             'Destino' => 'nullable|string|max:150',
@@ -177,7 +186,7 @@ class OperadorPedidoClientesController extends Controller
                 'IdOperador' => $operador->IdOperador,
             ]);
 
-            // ✅ 3. Crear la config específica de PedidoClientes
+            // 3. Crear la config específica de PedidoClientes
             OperadorPedidoCliente::create([
                 'IdOperador' => $operador->IdOperador,
                 'Ciudad' => $request->boolean('Ciudad') ? 1 : 0,
@@ -217,16 +226,16 @@ class OperadorPedidoClientesController extends Controller
     {
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
-        
+
         $operador = Operador::findOrFail($id);
 
         // Convertir teléfonos a string
         $request->merge([
-            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== '' 
-                ? (string) $request->TelefonoDomicilio 
+            'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== ''
+                ? (string) $request->TelefonoDomicilio
                 : null,
-            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== '' 
-                ? (string) $request->NumeroCelular 
+            'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== ''
+                ? (string) $request->NumeroCelular
                 : null,
         ]);
 
@@ -239,8 +248,7 @@ class OperadorPedidoClientesController extends Controller
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            
-            // ✅ Nuevos campos
+
             'Ciudad' => 'nullable|boolean',
             'Provincia' => 'nullable|boolean',
             'Destino' => 'nullable|string|max:150',
@@ -278,7 +286,7 @@ class OperadorPedidoClientesController extends Controller
                 );
             }
 
-            // ✅ 3. Actualizar o crear la config específica
+            // 3. Actualizar o crear la config específica
             OperadorPedidoCliente::updateOrCreate(
                 ['IdOperador' => $operador->IdOperador],
                 [
@@ -317,7 +325,7 @@ class OperadorPedidoClientesController extends Controller
     public function toggle($id)
     {
         $operador = Operador::findOrFail($id);
-        
+
         try {
             $nuevoEstado = $operador->ActivoInactivo == 0 ? 1 : 0;
             $operador->update(['ActivoInactivo' => $nuevoEstado]);
@@ -345,7 +353,7 @@ class OperadorPedidoClientesController extends Controller
     public function destroy($id)
     {
         $operador = Operador::findOrFail($id);
-        
+
         try {
             $operador->update(['ActivoInactivo' => 1]);
 
