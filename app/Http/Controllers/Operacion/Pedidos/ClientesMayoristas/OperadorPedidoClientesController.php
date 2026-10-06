@@ -148,20 +148,36 @@ class OperadorPedidoClientesController extends Controller
                 : null,
         ]);
 
+        // ✅ Validación SIN 'unique:' en NombreAcceso
         $request->validate([
             'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
             'Iniciales' => 'required|string|max:5',
             'Clave' => 'required|string|min:4|max:15',
-            'NombreAcceso' => 'required|string|max:20|unique:mysql_gestion_comercial_alimentos.todos_operador,NombreAcceso',
+            'NombreAcceso' => 'required|string|max:20',
             'DireccionDomicilio' => 'nullable|string',
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-
             'Ciudad' => 'nullable|boolean',
             'Provincia' => 'nullable|boolean',
             'Destino' => 'nullable|string|max:150',
         ]);
+
+        // ============================================================
+        // ✅ VALIDACIÓN MANUAL: NombreAcceso único SOLO en este cliente
+        // ============================================================
+        $nombreAccesoExiste = Operador::where('NombreAcceso', $request->NombreAcceso)
+            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
+                $q->where('IdCliente', $clienteId);
+            })
+            ->exists();
+
+        if ($nombreAccesoExiste) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El Nombre de Acceso ya está en uso por otro operador de tu empresa.'
+            ], 422);
+        }
 
         try {
             DB::beginTransaction();
@@ -239,20 +255,38 @@ class OperadorPedidoClientesController extends Controller
                 : null,
         ]);
 
+        // ✅ Validación SIN 'unique:' en NombreAcceso
         $request->validate([
             'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
             'Iniciales' => 'required|string|max:5',
             'Clave' => 'nullable|string|min:4|max:15',
-            'NombreAcceso' => 'required|string|max:20|unique:mysql_gestion_comercial_alimentos.todos_operador,NombreAcceso,' . $id . ',IdOperador',
+            'NombreAcceso' => 'required|string|max:20',
             'DireccionDomicilio' => 'nullable|string',
             'TelefonoDomicilio' => 'nullable|string|max:20',
             'NumeroCelular' => 'nullable|string|max:20',
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-
             'Ciudad' => 'nullable|boolean',
             'Provincia' => 'nullable|boolean',
             'Destino' => 'nullable|string|max:150',
         ]);
+
+        // ============================================================
+        // ✅ VALIDACIÓN MANUAL: NombreAcceso único SOLO en este cliente
+        // (excluyendo el operador actual)
+        // ============================================================
+        $nombreAccesoExiste = Operador::where('NombreAcceso', $request->NombreAcceso)
+            ->where('IdOperador', '!=', $id)
+            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
+                $q->where('IdCliente', $clienteId);
+            })
+            ->exists();
+
+        if ($nombreAccesoExiste) {
+            return response()->json([
+                'success' => false,
+                'message' => 'El Nombre de Acceso ya está en uso por otro operador de tu empresa.'
+            ], 422);
+        }
 
         try {
             DB::beginTransaction();
