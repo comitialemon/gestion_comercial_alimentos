@@ -22,6 +22,8 @@ class Cliente extends Model
         'IdFechaInicioOperaciones',
         'facturacion_habilitada',
         'zona_horaria',  // 🔥 AGREGAR
+        'dominio',  // 🔥 AGREGAR
+
     ];
 
     /**

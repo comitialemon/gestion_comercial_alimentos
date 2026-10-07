@@ -16,14 +16,23 @@ class ContextoController extends Controller
     {
         $operadorId = (int) $request->session()->get('operador_id');
 
-        $empresas = $this->g()
+        // 🔥 ¿Venimos de un dominio específico?
+        $dominioEmpresaId = $request->session()->get('dominio_empresa_id');
+
+        $query = $this->g()
             ->table('todos_cliente as c')
             ->join('todos_operador_sucursaldb as os', 'os.IdCliente', '=', 'c.IdCliente')
             ->where('os.IdOperador', $operadorId)
             ->selectRaw('c.IdCliente as id, c.Nombre as nombre, c.NIT as nit, c.facturacion_habilitada')
             ->distinct()
-            ->orderBy('c.Nombre')
-            ->get();
+            ->orderBy('c.Nombre');
+
+        // 🔥 Si entró por dominio, filtrar SOLO esa empresa
+        if ($dominioEmpresaId) {
+            $query->where('c.IdCliente', $dominioEmpresaId);
+        }
+
+        $empresas = $query->get();
 
         return Inertia::render('Contexto/Index', [
             'empresas' => $empresas,
@@ -32,6 +41,7 @@ class ContextoController extends Controller
                 'sucursal_id' => session('cliente_sucursal_id'),
             ],
             'isSuper' => (int) session('operador_tipo_id') === 1,
+            'dominioEmpresaId' => $dominioEmpresaId,  // 👈 opcional, por si el front lo usa
         ]);
     }
 

@@ -27,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // 🔥 Grupo web (append) - AGREGAR SetTimezone AQUÍ
         $middleware->web(append: [
             \App\Http\Middleware\SetTimezone::class,
+            \App\Http\Middleware\DominioCliente::class,   // 👈 NUEVO, antes de Inertia
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
