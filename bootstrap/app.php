@@ -12,7 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        // 🔥 AGREGAR CSRF EXPLÍCITAMENTE
+        // 🔥 CONFIAR EN LOS PROXIES (Nginx)
+        $middleware->trustProxies(at: '*');
+        
+        // 🔥 CSRF explícito
         $middleware->web(prepend: [
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
@@ -24,15 +27,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'api/banco-ganadero/*',
         ]);
         
-        // 🔥 Grupo web (append) - AGREGAR SetTimezone AQUÍ
+        // 🔥 DominioCliente primero para URLs dinámicas
         $middleware->web(append: [
+            \App\Http\Middleware\DominioCliente::class,
             \App\Http\Middleware\SetTimezone::class,
-            \App\Http\Middleware\DominioCliente::class,   // 👈 NUEVO, antes de Inertia
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
         ]);
 
-        // Alias de middlewares
         $middleware->alias([
             'auth.operador'         => \App\Http\Middleware\AuthOperador::class,
             'contexto.requerido'    => \App\Http\Middleware\EnsureContextSelected::class,
