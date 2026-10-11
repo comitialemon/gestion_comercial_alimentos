@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use App\Services\Gestion\Menu\MenuService;
 use App\Models\Gestion\Todos\ClienteTema;
 
@@ -99,6 +100,9 @@ class HandleInertiaRequests extends Middleware
         // 🔥 ZONA HORARIA - DEFINIRLA AQUÍ
         $zonaHoraria = session('zona_horaria', config('app.timezone', 'America/La_Paz'));
 
+        // 🔥 BILLETERA DEL OPERADOR (con cache de 5 segundos)
+        $billetera = $this->loadBilletera(session('operador_id'));
+
         return array_merge(parent::share($request), [
             'auth'            => $auth,
             'ctx'             => $ctx,
@@ -107,7 +111,8 @@ class HandleInertiaRequests extends Middleware
             'sucursalNombre'  => $sucursalNombre,
             'operadorNombre'  => $operadorNombre,
             'theme'           => $theme,
-            'zonaHoraria'     => $zonaHoraria, // ✅ AHORA ESTÁ DEFINIDA
+            'zonaHoraria'     => $zonaHoraria,
+            'billetera'       => $billetera,
         ]);
     }
 
@@ -116,7 +121,6 @@ class HandleInertiaRequests extends Middleware
      */
     private function loadTheme($clienteId): array
     {
-        // Tema por defecto
         $defaultTheme = [
             'primary' => '#1f2937',
             'primary_rgb' => '31, 41, 55',
@@ -164,6 +168,53 @@ class HandleInertiaRequests extends Middleware
             \Log::error('Error cargando tema: ' . $e->getMessage());
             return $defaultTheme;
         }
+    }
+
+    /**
+     * 🔥 Carga la billetera del operador (con cache de 5 segundos)
+     * 
+     * Devuelve null si no tiene billetera.
+     * Cache de 5s evita golpear la BD en cada request concurrente.
+     */
+    private function loadBilletera($operadorId): ?array
+    {
+        if (!$operadorId) {
+            return null;
+        }
+
+        $cacheKey = "billetera_operador_{$operadorId}";
+
+        return Cache::remember($cacheKey, 5, function () use ($operadorId) {
+            try {
+                $billetera = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('operacion_pedidos_operadores_billeteras')
+                    ->where('IdOperador', $operadorId)
+                    ->select('IdBilletera', 'SaldoActual', 'ActivoInactivo', 'SaldoMinimoAlerta')
+                    ->first();
+
+                if (!$billetera) {
+                    return null;
+                }
+
+                $saldo = (float) $billetera->SaldoActual;
+
+                // ✅ CAMBIO: 0 = sin alerta, > 0 = con alerta
+                $saldoBajo = (float) $billetera->SaldoMinimoAlerta > 0
+                    && $saldo <= (float) $billetera->SaldoMinimoAlerta;
+
+                return [
+                    'tiene_billetera' => true,
+                    'activa' => (int) $billetera->ActivoInactivo === 0,
+                    'saldo' => $saldo,
+                    'saldo_formateado' => number_format($saldo, 2, ',', '.'),
+                    'saldo_bajo' => $saldoBajo,
+                ];
+
+            } catch (\Exception $e) {
+                \Log::error('Error cargando billetera en middleware: ' . $e->getMessage());
+                return null;
+            }
+        });
     }
 
     /**

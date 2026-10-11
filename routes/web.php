@@ -138,7 +138,8 @@ use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\MinimoGlobalContro
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ProductoMinimoController;
 use App\Http\Controllers\Gestion\Banco\BancoCredencialController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRController;
-
+use App\Http\Controllers\Gestion\Banco\HistorialPagosQRDetalleController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController;
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -1309,7 +1310,45 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             // CLIENTES MAYORISTAS (Contenedores + Pedidos)
             // ============================================================
             Route::prefix('clientes-mayoristas')->group(function () {
-                
+                // ============================================================
+                // BILLETERAS
+                // ============================================================
+                Route::prefix('billeteras')->group(function () {
+                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.index');
+                    
+                    Route::post('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'store'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.store');
+                    
+                    Route::get('/api/operadores-disponibles', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'operadoresDisponibles'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.api.operadores');
+                    
+                    Route::get('/{id}', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'show'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.show');
+                    
+                    Route::post('/{id}/cargar-saldo', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'cargarSaldo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.cargar-saldo');
+                    
+                    Route::post('/{id}/ajustar-saldo', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'ajustarSaldo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.ajustar-saldo');
+                    
+                    Route::post('/{id}/activar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'activar'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.activar');
+                    
+                    Route::post('/{id}/inactivar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'inactivar'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.inactivar');
+                });
+
+                // ============================================================
+                // MI BILLETERA (operador)
+                // ============================================================
+                Route::prefix('mi-billetera')->group(function () {
+                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'miBilletera'])
+                        ->name('operacion.pedidos.clientes-mayoristas.mi-billetera');
+                    
+                    Route::get('/api/mi-saldo', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'apiMiSaldo'])
+                        ->name('operacion.pedidos.clientes-mayoristas.mi-billetera.api.saldo');
+                });
                 // ============================================================
                 // CONTENEDORES
                 // ============================================================
@@ -1515,6 +1554,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     
                     Route::post('/{id}/cancelar-qr', [PedidoClienteController::class, 'cancelarQRPedido'])
                         ->name('operacion.pedidos-clientes.pedidos.cancelar-qr');
+                        // ✅ NUEVO: Finalizar pedido con billetera (descuenta saldo, sin QR)
+                    Route::post('/{id}/finalizar-con-billetera', [PedidoClienteController::class, 'finalizarConBilletera'])
+                        ->name('operacion.pedidos-clientes.pedidos.finalizar-con-billetera');
                 });
                 
                 // ============================================================

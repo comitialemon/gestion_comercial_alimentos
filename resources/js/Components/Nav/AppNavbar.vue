@@ -3,6 +3,7 @@ import { computed, inject, ref, onMounted, onUnmounted } from 'vue'
 import { usePage, router } from '@inertiajs/vue3'
 import { useUiStore } from '@/stores/ui'
 import Notificaciones from '@/Components/Nav/Notificaciones.vue'
+import BilleteraNavbar from '@/Components/Nav/BilleteraNavbar.vue'
 
 const page = usePage()
 const ui = useUiStore()
@@ -163,8 +164,12 @@ const navbarBgStyle = computed(() => {
                 </button>
             </div>
 
-            <!-- 🔹 SECCIÓN DERECHA: Notificaciones + Operador + Logout -->
+            <!-- 🔹 SECCIÓN DERECHA: Billetera + Notificaciones + Operador + Logout -->
             <div class="flex items-center gap-2 flex-shrink-0">
+                
+                <!-- 💰 BILLETERA (solo si el operador tiene) -->
+                <BilleteraNavbar v-if="ctxReady" />
+
                 <Notificaciones v-if="ctxReady" />
 
                 <!-- 🔥 OPERADOR - TEXTO MÁS PEQUEÑO Y MÁS ANCHO -->

@@ -25,7 +25,10 @@ const props = defineProps({
     subclientes: { type: Array, default: () => [] },
     horaLimite: { type: [Number, String], default: null },
     horaLimiteFormateada: { type: String, default: null },
-    pagoPendiente: { type: Object, default: null },  // ✅ NUEVO
+    pagoPendiente: { type: Object, default: null },
+    // 🔥 Info de billetera (solo para mostrar banner informativo)
+    tieneBilleteraActiva: { type: Boolean, default: false },
+    billeteraInfo: { type: Object, default: null },
 })
 
 // ==================== ESTADO ====================
@@ -41,15 +44,18 @@ const cambiandoTipoPrecio = ref(false)
 const horaActualCliente = ref(new Date())
 const validandoHoraLimite = ref(false)
 
-// ✅ Estado del pago pendiente
+// Estado del pago pendiente
 const pagoPendienteLocal = ref(props.pagoPendiente || null)
 const mostrarModalQR = ref(false)
 const qrActual = ref(null)
 
-// ✅ Progreso como REF (para poder actualizarlo)
+// Saldo local (para mostrar en banner)
+const saldoBilleteraLocal = ref(props.billeteraInfo?.SaldoActual ?? null)
+
+// Progreso como REF
 const progresoLocal = ref([...(props.progresoGrupos || [])])
 
-// ✅ Productos sin mínimo como REF
+// Productos sin mínimo como REF
 const productosSinMinimoLocal = ref([...(props.productosSinMinimo || [])])
 
 const detallesLocal = ref(
@@ -67,14 +73,9 @@ const detallesLocal = ref(
 const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 
-// ==================== ✅ INICIALIZAR MODAL SI HAY PAGO PENDIENTE ====================
+// ==================== INICIALIZAR ====================
 onMounted(() => {
     if (props.pagoPendiente && props.pagoPendiente.Estado === 'PENDIENTE') {
-        // Si hay un pago pendiente, mostrar el modal automáticamente
-        // pero primero necesitamos la imagen del QR
-        // Esto se resolverá porque el backend ya generó el QR
-        // y podemos obtener la imagen con un endpoint o re-generarla
-        // Por simplicidad, mostramos un mensaje indicando que se debe generar de nuevo
         toast?.warning('Pago pendiente', 'Tienes un pago pendiente. Genera el QR de nuevo para continuar.')
     }
 })
@@ -307,7 +308,26 @@ const getProgresoGrupo = (idGrupo) => {
     ) || null
 }
 
-// ✅ BOTÓN
+// 🔥 Saldo info (solo para mostrar banner)
+const saldoSuficiente = computed(() => {
+    if (!props.tieneBilleteraActiva) return false
+    if (saldoBilleteraLocal.value === null) return false
+    return saldoBilleteraLocal.value >= totalGeneral.value
+})
+
+const faltanteBilletera = computed(() => {
+    if (saldoBilleteraLocal.value === null) return 0
+    const faltante = totalGeneral.value - saldoBilleteraLocal.value
+    return faltante > 0 ? faltante : 0
+})
+
+const saldoDespues = computed(() => {
+    if (saldoBilleteraLocal.value === null) return null
+    const despues = saldoBilleteraLocal.value - totalGeneral.value
+    return despues >= 0 ? despues : 0
+})
+
+// ==================== BOTÓN ====================
 const puedeFinalizar = computed(() => {
     if (detallesLocal.value.length === 0) return false
     if (tieneProductosSinMinimo.value) return false
@@ -315,6 +335,8 @@ const puedeFinalizar = computed(() => {
     if (fechaVacia.value) return false
     if (fechaEsInvalida.value) return false
     if (fechaEsManana.value && fueraDeHoraLimite.value) return false
+    // Si tiene billetera activa pero saldo insuficiente, bloquear (feedback temprano)
+    if (props.tieneBilleteraActiva && !saldoSuficiente.value) return false
     return true
 })
 
@@ -326,7 +348,8 @@ const textoBoton = computed(() => {
     if (fechaEsInvalida.value) return 'Fecha inválida'
     if (fechaEsManana.value && fueraDeHoraLimite.value) return 'Hora límite excedida'
     if (!cumpleTodos.value) return 'Cumplir mínimos'
-    return 'Generar QR y Finalizar'
+    if (props.tieneBilleteraActiva && !saldoSuficiente.value) return 'Saldo insuficiente'
+    return 'Finalizar Pedido'
 })
 
 const tipoPrecioTexto = computed(() => {
@@ -346,7 +369,7 @@ const formatearPrecio = (valor) => {
     return isNaN(numero) ? '0.00' : numero.toFixed(2)
 }
 
-// ==================== ✅ RECARGAR PROGRESO ====================
+// ==================== RECARGAR PROGRESO ====================
 const recargarProgreso = async () => {
     try {
         const response = await axios.get(
@@ -470,7 +493,8 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
 }
 
 // ============================================================
-// ✅ FINALIZAR PEDIDO → GENERAR QR
+// 🔥 FINALIZAR PEDIDO → Un solo endpoint
+// El backend decide: si tiene billetera → descuenta saldo; si no → QR
 // ============================================================
 const abrirModalConfirmacion = async () => {
     if (detallesLocal.value.length === 0) {
@@ -501,18 +525,26 @@ const abrirModalConfirmacion = async () => {
     const horaOk = await validarHoraLimite()
     if (!horaOk) return
 
-    // ✅ Abrir modal de confirmación
+    // Si tiene billetera pero saldo insuficiente, avisar antes
+    if (props.tieneBilleteraActiva && !saldoSuficiente.value) {
+        toast?.error(
+            'Saldo insuficiente',
+            `Tienes Bs. ${formatearPrecio(saldoBilleteraLocal.value)} y necesitas Bs. ${formatearPrecio(totalGeneral.value)}. Contacta al encargado para recargar.`
+        )
+        return
+    }
+
     modalConfirmacionVisible.value = true
 }
 
-// ✅ Generar QR (llamado desde ConfirmModal)
-const generarQR = async () => {
+// 🎯 El único método que hace todo
+const finalizarPedido = async () => {
     modalConfirmacionVisible.value = false
     loading.value = true
 
     try {
         const response = await axios.post(
-            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/generar-qr`,
+            `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedido.IdPedidoCliente}/finalizar`,
             {
                 FechaEntrega: fechaEntrega.value,
                 Observaciones: observaciones.value || null,
@@ -521,18 +553,38 @@ const generarQR = async () => {
         )
 
         if (response.data.success) {
-            qrActual.value = response.data.qr
-            mostrarModalQR.value = true
+            // 🔥 Si fue con QR → abrir el modal de QR
+            if (response.data.tipo_finalizacion === 'QR') {
+                qrActual.value = response.data.qr
+                mostrarModalQR.value = true
+                return
+            }
+
+            // 🔥 Si fue con billetera → mostrar éxito y redirigir
+            if (response.data.tipo_finalizacion === 'BILLETERA') {
+                if (response.data.saldo_despues !== undefined) {
+                    saldoBilleteraLocal.value = response.data.saldo_despues
+                }
+
+                toast?.success(
+                    '¡Pedido finalizado!',
+                    `${response.data.message} Saldo restante: Bs. ${formatearPrecio(response.data.saldo_despues)}`
+                )
+
+                setTimeout(() => {
+                    router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
+                }, 1500)
+            }
         } else {
             if (response.data.errores) {
-                toast?.error('No se puede generar QR', response.data.errores.join('\n'))
+                toast?.error('No se puede finalizar', response.data.errores.join('\n'))
             } else {
-                toast?.error('Error', response.data.message || 'Error al generar QR')
+                toast?.error('Error', response.data.message || 'Error al finalizar')
             }
         }
     } catch (error) {
         console.error('❌ Error:', error)
-        const mensaje = error.response?.data?.message || 'Error al generar QR'
+        const mensaje = error.response?.data?.message || 'Error al finalizar'
         toast?.error('Error', mensaje)
     } finally {
         loading.value = false
@@ -547,7 +599,6 @@ const onPagoExitoso = () => {
 
     toast?.success('¡Pago recibido!', 'El pedido se registró correctamente.')
 
-    // Redirigir a la lista de pedidos
     setTimeout(() => {
         router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
     }, 1500)
@@ -734,7 +785,63 @@ const eliminarContenedor = async (item) => {
                                     #{{ pedido?.NumeroPedido && pedido.NumeroPedido !== '0' ? pedido.NumeroPedido : 'Nuevo' }}
                                 </span>
                             </h1>
-                            <p class="text-xs text-gray-500">Confirma los productos y genera el QR de pago</p>
+                            <p class="text-xs text-gray-500">
+                                {{ tieneBilleteraActiva ? 'Confirma los productos y finaliza el pedido' : 'Confirma los productos y genera el QR de pago' }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 🔥 BANNER DE BILLETERA (informativo) -->
+                <div
+                    v-if="tieneBilleteraActiva"
+                    class="mb-3 rounded-xl border-2 overflow-hidden"
+                    :class="saldoSuficiente
+                        ? 'bg-gradient-to-br from-emerald-50 to-green-50 border-emerald-300'
+                        : 'bg-gradient-to-br from-red-50 to-orange-50 border-red-300'"
+                >
+                    <div class="px-4 py-3 flex items-center gap-3 border-b"
+                         :class="saldoSuficiente ? 'bg-emerald-100/50 border-emerald-200' : 'bg-red-100/50 border-red-200'">
+                        <div
+                            class="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
+                            :class="saldoSuficiente ? 'bg-emerald-500' : 'bg-red-500'"
+                        >
+                            <i
+                                :class="saldoSuficiente ? 'fas fa-wallet' : 'fas fa-exclamation-triangle'"
+                                class="text-white text-lg"
+                            ></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-[10px] uppercase tracking-wider font-semibold"
+                               :class="saldoSuficiente ? 'text-emerald-700' : 'text-red-700'">
+                                Saldo disponible en tu billetera
+                            </p>
+                            <p class="text-2xl font-extrabold tabular-nums"
+                               :class="saldoSuficiente ? 'text-emerald-800' : 'text-red-800'">
+                                Bs. {{ formatearPrecio(saldoBilleteraLocal) }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+                        <div>
+                            <p class="text-[10px] uppercase text-gray-500 font-semibold">Total pedido</p>
+                            <p class="font-bold text-gray-800 tabular-nums">Bs. {{ formatearPrecio(totalGeneral) }}</p>
+                        </div>
+                        <div v-if="saldoSuficiente">
+                            <p class="text-[10px] uppercase text-emerald-600 font-semibold">Saldo después</p>
+                            <p class="font-bold text-emerald-700 tabular-nums">Bs. {{ formatearPrecio(saldoDespues) }}</p>
+                        </div>
+                        <div v-else>
+                            <p class="text-[10px] uppercase text-red-600 font-semibold">Faltante</p>
+                            <p class="font-bold text-red-700 tabular-nums">Bs. {{ formatearPrecio(faltanteBilletera) }}</p>
+                        </div>
+                    </div>
+
+                    <div v-if="!saldoSuficiente" class="px-4 pb-3">
+                        <div class="bg-red-100 border border-red-200 rounded-lg p-2.5 text-[11px] text-red-800">
+                            <i class="fas fa-info-circle mr-1"></i>
+                            <strong>Saldo insuficiente.</strong> Contacta al encargado para recargar tu billetera. No podrás finalizar el pedido hasta que tengas saldo suficiente.
                         </div>
                     </div>
                 </div>
@@ -988,7 +1095,11 @@ const eliminarContenedor = async (item) => {
                         <i class="fas fa-check-circle text-emerald-500 text-base flex-shrink-0"></i>
                         <div class="flex-1">
                             <h3 class="font-bold text-emerald-800 text-xs">¡Todo listo!</h3>
-                            <p class="text-[10px] text-emerald-700">Todos los mínimos están cumplidos. Puede generar el QR.</p>
+                            <p class="text-[10px] text-emerald-700">
+                                {{ tieneBilleteraActiva
+                                    ? 'Todos los mínimos están cumplidos. Puedes finalizar el pedido.'
+                                    : 'Todos los mínimos están cumplidos. Puede generar el QR.' }}
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -1270,13 +1381,15 @@ const eliminarContenedor = async (item) => {
                             :disabled="loading || !puedeFinalizar || validandoHoraLimite"
                             class="px-4 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-sm"
                             :class="puedeFinalizar
-                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                ? (tieneBilleteraActiva ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white')
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                         >
                             <i v-if="loading || validandoHoraLimite" class="fas fa-spinner fa-spin text-[10px]"></i>
                             <i v-else-if="tieneProductosSinMinimo" class="fas fa-ban text-[10px]"></i>
                             <i v-else-if="fechaEsInvalida" class="fas fa-exclamation-triangle text-[10px]"></i>
                             <i v-else-if="fechaEsManana && fueraDeHoraLimite" class="fas fa-clock text-[10px]"></i>
+                            <i v-else-if="tieneBilleteraActiva && !saldoSuficiente" class="fas fa-wallet text-[10px]"></i>
+                            <i v-else-if="tieneBilleteraActiva" class="fas fa-check-circle text-[10px]"></i>
                             <i v-else-if="!puedeFinalizar" class="fas fa-ban text-[10px]"></i>
                             <i v-else class="fas fa-qrcode text-[10px]"></i>
                             {{ textoBoton }}
@@ -1287,15 +1400,17 @@ const eliminarContenedor = async (item) => {
             </div>
         </div>
 
-        <!-- MODAL DE CONFIRMACIÓN -->
+        <!-- 🎯 MODAL DE CONFIRMACIÓN (uno solo, unificado) -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
-            title="Generar QR y Finalizar"
-            message="Se generará un código QR por el monto total del pedido. El cliente deberá escanearlo y pagarlo para que el pedido se registre."
-            confirm-text="Sí, generar QR"
+            title="Finalizar Pedido"
+            :message="tieneBilleteraActiva
+                ? `Se descontarán Bs. ${formatearPrecio(totalGeneral)} de tu billetera.\n\nSaldo actual: Bs. ${formatearPrecio(saldoBilleteraLocal)}\nSaldo después: Bs. ${formatearPrecio(saldoDespues)}\n\n¿Confirmas finalizar el pedido?`
+                : 'Se generará un código QR por el monto total del pedido. El cliente deberá escanearlo y pagarlo para que el pedido se registre.'"
+            :confirm-text="tieneBilleteraActiva ? 'Sí, finalizar' : 'Sí, generar QR'"
             cancel-text="Cancelar"
             type="success"
-            @confirm="generarQR"
+            @confirm="finalizarPedido"
         />
 
         <!-- MODAL DE EDICIÓN -->
@@ -1312,7 +1427,7 @@ const eliminarContenedor = async (item) => {
             @actualizar="actualizarContenedor"
         />
 
-        <!-- ✅ MODAL DE PAGO QR -->
+        <!-- MODAL DE PAGO QR -->
         <PagoQRModal
             v-if="mostrarModalQR && qrActual"
             :pedido-id="pedido.IdPedidoCliente"

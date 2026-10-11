@@ -15,6 +15,8 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoAnalisisMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ProductoMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\GrupoClienteMinimo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClientePago;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraOperador;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraMovimiento;
 use App\Models\Gestion\Banco\BancoCredencial;
 use App\Services\Gestion\Banco\BancoFactory;
 use App\Models\Gestion\Inventario\ProductoDetalle;
@@ -93,6 +95,24 @@ class PedidoClienteController extends Controller
         });
     }
 
+    /**
+     * 🔥 Obtener la billetera ACTIVA del operador actual.
+     */
+    private function getBilleteraActivaDelOperador(): ?BilleteraOperador
+    {
+        $operadorId = session('operador_id');
+        if (!$operadorId) return null;
+
+        return BilleteraOperador::where('IdOperador', $operadorId)
+            ->where('ActivoInactivo', 0)
+            ->first();
+    }
+
+    private function operadorTieneBilleteraActiva(): bool
+    {
+        return $this->getBilleteraActivaDelOperador() !== null;
+    }
+
     private function invalidarCacheProgreso($idPedido, $clienteId = null, $sucursalId = null)
     {
         $clienteId = $clienteId ?? session('cliente_id');
@@ -105,6 +125,11 @@ class PedidoClienteController extends Controller
         $clienteId = $clienteId ?? session('cliente_id');
         $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
         cache()->forget("productos_sin_minimo_{$idPedido}_{$clienteId}_{$sucursalId}");
+    }
+
+    private function invalidarCacheBilletera(int $operadorId): void
+    {
+        Cache::forget("billetera_operador_{$operadorId}");
     }
 
     private function validarProductosDelPedidoTienenMinimo($pedido)
@@ -319,16 +344,10 @@ class PedidoClienteController extends Controller
 
     public function create(Request $request)
     {
-        Log::info('=== 🔍 DEBUG create() ===');
-        Log::info('Session cliente_id: ' . session('cliente_id'));
-        Log::info('Session cliente_sucursal_id: ' . session('cliente_sucursal_id'));
-        Log::info('Session operador_id: ' . session('operador_id'));
-
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
         if (!$clienteId || !$sucursalId) {
-            Log::error('❌ FALTA SESIÓN');
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', 'Tu sesión expiró. Por favor, vuelve a iniciar sesión.');
         }
@@ -1102,6 +1121,28 @@ class PedidoClienteController extends Controller
                 ];
             }
 
+            // 🔥 Info de la billetera del operador
+            $billetera = $this->getBilleteraActivaDelOperador();
+            $tieneBilleteraActiva = $billetera !== null;
+
+            $billeteraInfo = null;
+            if ($tieneBilleteraActiva) {
+                $saldoActual = (float) $billetera->SaldoActual;
+                $saldoSuficiente = $saldoActual >= (float) $totalGeneral;
+
+                $billeteraInfo = [
+                    'IdBilletera' => $billetera->IdBilletera,
+                    'SaldoActual' => $saldoActual,
+                    'SaldoFormateado' => number_format($saldoActual, 2, ',', '.'),
+                    'SaldoSuficiente' => $saldoSuficiente,
+                    'Faltante' => $saldoSuficiente ? 0 : round((float) $totalGeneral - $saldoActual, 2),
+                    'SaldoDespues' => $saldoSuficiente ? round($saldoActual - (float) $totalGeneral, 2) : null,
+                    'SaldoDespuesFormateado' => $saldoSuficiente
+                        ? number_format($saldoActual - (float) $totalGeneral, 2, ',', '.')
+                        : null,
+                ];
+            }
+
             return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Review', [
                 'pedido' => $pedido,
                 'detallesAgrupados' => $detallesAgrupados,
@@ -1122,6 +1163,8 @@ class PedidoClienteController extends Controller
                 'horaLimite' => $horaLimite ? $horaLimite->Hora : null,
                 'horaLimiteFormateada' => $horaLimite ? $horaLimite->HoraFormateada : null,
                 'pagoPendiente' => $pagoPendiente,
+                'tieneBilleteraActiva' => $tieneBilleteraActiva,
+                'billeteraInfo' => $billeteraInfo,
             ]);
 
         } catch (\Exception $e) {
@@ -1183,9 +1226,9 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // GENERAR QR DE PAGO
+    // 🎯 FINALIZAR PEDIDO (UNIFICADO - decide billetera o QR)
     // ============================================================
-    public function generarQRPedido(Request $request, $idPedido)
+    public function finalizarPedido(Request $request, $idPedido)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
@@ -1211,12 +1254,12 @@ class PedidoClienteController extends Controller
             if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'El pedido no puede generar un QR en su estado actual (' . $pedido->EstadoPedido . ').'
+                    'message' => 'El pedido no puede finalizarse en su estado actual (' . $pedido->EstadoPedido . ').'
                 ], 422);
             }
 
             // ============================================================
-            // 2. VALIDACIONES
+            // 2. VALIDACIONES COMUNES
             // ============================================================
             $grupoCliente = $this->getGrupoDelOperador();
             if (!$grupoCliente) {
@@ -1249,12 +1292,13 @@ class PedidoClienteController extends Controller
             if ($gruposQueNoCumplen->isNotEmpty()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se puede generar QR. Faltan mínimos.',
+                    'message' => 'No se puede finalizar. Faltan mínimos.',
                     'errores' => $gruposQueNoCumplen->map(fn($item) => "• {$item['NombreGrupo']}: faltan {$item['Falta']} und")->toArray(),
                 ], 422);
             }
 
-            if ($pedido->TotalGeneral <= 0) {
+            $totalGeneral = (float) $pedido->TotalGeneral;
+            if ($totalGeneral <= 0) {
                 return response()->json([
                     'success' => false,
                     'message' => 'El total del pedido debe ser mayor a cero.'
@@ -1262,8 +1306,105 @@ class PedidoClienteController extends Controller
             }
 
             // ============================================================
-            // 3. CANCELAR QR PENDIENTE ANTERIOR (si existe)
+            // 3. Guardar FechaEntrega y Observaciones
             // ============================================================
+            $pedido->update([
+                'FechaEntrega' => $request->input('FechaEntrega'),
+                'Observaciones' => $request->input('Observaciones'),
+                'TipoPrecio' => $request->input('TipoPrecio', $pedido->TipoPrecio),
+            ]);
+
+            // ============================================================
+            // 4. 🔥 DECISIÓN: ¿Tiene billetera activa?
+            // ============================================================
+            $billetera = $this->getBilleteraActivaDelOperador();
+
+            // ============================================================
+            // 4A. CON BILLETERA → Descontar saldo, NO QR
+            // ============================================================
+            if ($billetera) {
+                $saldoActual = (float) $billetera->SaldoActual;
+
+                if ($saldoActual < $totalGeneral) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => sprintf(
+                            'Saldo insuficiente. Tienes Bs. %s y necesitas Bs. %s. Contacta al encargado para recargar.',
+                            number_format($saldoActual, 2),
+                            number_format($totalGeneral, 2)
+                        ),
+                        'saldo_actual' => $saldoActual,
+                        'total_requerido' => $totalGeneral,
+                        'faltante' => round($totalGeneral - $saldoActual, 2),
+                        'tipo_finalizacion' => 'BILLETERA',
+                    ], 422);
+                }
+
+                DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+
+                try {
+                    $movimiento = $billetera->descontarSaldo(
+                        $totalGeneral,
+                        $pedido->IdPedidoCliente,
+                        "Pedido Borrador #{$pedido->IdPedidoCliente}",
+                        $operadorId
+                    );
+
+                    $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
+                        ->where('IdSucursal', $pedido->IdSucursal)
+                        ->where('NumeroPedido', '!=', '0')
+                        ->whereNotNull('NumeroPedido')
+                        ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
+
+                    $nuevoNumero = $maxNumero + 1;
+                    $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+
+                    $pedido->update([
+                        'EstadoPedido' => 'Pendiente',
+                        'ActivoInactivo' => 1,
+                        'NumeroPedido' => $numeroFormateado,
+                        'IdOperadorActualiza' => $operadorId,
+                        'FechaActualiza' => now(),
+                    ]);
+
+                    $movimiento->update([
+                        'Glosa' => "Pedido #{$numeroFormateado}",
+                    ]);
+
+                    DB::connection('mysql_gestion_comercial_alimentos')->commit();
+
+                    $this->invalidarCacheBilletera($operadorId);
+
+                    Log::info('✅ Pedido finalizado con billetera', [
+                        'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                        'NumeroPedido' => $numeroFormateado,
+                        'TotalGeneral' => $totalGeneral,
+                        'SaldoAntes' => $saldoActual,
+                        'SaldoDespues' => $saldoActual - $totalGeneral,
+                    ]);
+
+                    return response()->json([
+                        'success' => true,
+                        'tipo_finalizacion' => 'BILLETERA',
+                        'message' => "Pedido #{$numeroFormateado} finalizado. Se descontaron Bs. " . number_format($totalGeneral, 2),
+                        'pedido_id' => $pedido->IdPedidoCliente,
+                        'numero_pedido' => $numeroFormateado,
+                        'saldo_antes' => $saldoActual,
+                        'saldo_despues' => round($saldoActual - $totalGeneral, 2),
+                        'monto_descontado' => $totalGeneral,
+                    ]);
+
+                } catch (\Exception $e) {
+                    DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
+                    throw $e;
+                }
+            }
+
+            // ============================================================
+            // 4B. SIN BILLETERA → Generar QR
+            // ============================================================
+            
+            // Cancelar QR pendiente anterior
             $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                 ->where('Estado', 'PENDIENTE')
                 ->first();
@@ -1286,9 +1427,7 @@ class PedidoClienteController extends Controller
                 ]);
             }
 
-            // ============================================================
-            // 4. OBTENER CREDENCIAL ACTIVA
-            // ============================================================
+            // Obtener credencial activa
             $codigoBanco = $request->input('CodigoBanco');
 
             $queryCredencial = BancoCredencial::porCliente($clienteId)
@@ -1307,46 +1446,25 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
-            // ============================================================
-            // 5. CONSTRUIR GLOSA DESCRIPTIVA
-            // ✅ Formato: "Pedido 06/10/26 - Juan Pérez"
-            // ============================================================
+            // Construir glosa
             $nombreOperador = $this->getNombreOperador();
-
-            // ✅ Usar FechaPedido (cuando se creó el pedido), fallback a now()
             $fechaPedido = $pedido->FechaPedido
                 ? Carbon::parse($pedido->FechaPedido)
                 : now();
-
-            $fechaFormateada = $fechaPedido->format('d/m/y'); // 06/10/26
-
-            // Prefijo base
+            $fechaFormateada = $fechaPedido->format('d/m/y');
             $prefijo = "Pedido {$fechaFormateada}";
 
-            // Agregar operador si tiene nombre válido
             if (!empty($nombreOperador) && $nombreOperador !== 'Sin nombre') {
                 $glosa = "{$prefijo} - {$nombreOperador}";
             } else {
                 $glosa = $prefijo;
             }
 
-            // ✅ Truncar si excede 60 chars (límite BGAN)
-            // Dejamos 3 chars para "..." si es necesario
             if (mb_strlen($glosa) > 60) {
                 $glosa = mb_substr($glosa, 0, 57) . '...';
             }
 
-            Log::info('📝 Glosa construida para QR', [
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'FechaPedido' => $fechaPedido->format('Y-m-d H:i:s'),
-                'Operador' => $nombreOperador,
-                'Glosa' => $glosa,
-                'Longitud' => mb_strlen($glosa),
-            ]);
-
-            // ============================================================
-            // 6. GENERAR QR EN EL BANCO (FACTORY)
-            // ============================================================
+            // Generar QR
             $service = BancoFactory::desdeCredencial($credencial);
 
             $transactionId = sprintf(
@@ -1363,13 +1481,10 @@ class PedidoClienteController extends Controller
                 'BOB',
                 null,
                 $credencial->BranchCode,
-                true,   // singleUse
-                false   // modifyAmount
+                true,
+                false
             );
 
-            // ============================================================
-            // 7. GUARDAR EN pedidos_clientes_pagos
-            // ============================================================
             $pago = PedidoClientePago::create([
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
                 'IdCliente' => $clienteId,
@@ -1389,9 +1504,6 @@ class PedidoClienteController extends Controller
                 'DatosGeneracion' => $qr->respuestaCompleta,
             ]);
 
-            // ============================================================
-            // 8. ACTUALIZAR ESTADO DEL PEDIDO
-            // ============================================================
             $pedido->update([
                 'EstadoPedido' => 'Esperando Pago',
                 'IdOperadorActualiza' => $operadorId,
@@ -1403,11 +1515,11 @@ class PedidoClienteController extends Controller
                 'QrId' => $qr->qrId,
                 'Monto' => $pedido->TotalGeneral,
                 'Banco' => $credencial->CodigoBanco,
-                'Glosa' => $glosa,
             ]);
 
             return response()->json([
                 'success' => true,
+                'tipo_finalizacion' => 'QR',
                 'message' => 'QR generado. Esperando pago.',
                 'qr' => [
                     'IdPagoPedido' => $pago->IdPagoPedido,
@@ -1422,7 +1534,7 @@ class PedidoClienteController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error generando QR pedido', [
+            Log::error('Error al finalizar pedido', [
                 'IdPedidoCliente' => $idPedido,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
@@ -1430,9 +1542,17 @@ class PedidoClienteController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Error al generar QR: ' . $e->getMessage(),
+                'message' => 'Error al finalizar: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    // ============================================================
+    // GENERAR QR (mantener como respaldo interno - redirige al unificado)
+    // ============================================================
+    public function generarQRPedido(Request $request, $idPedido)
+    {
+        return $this->finalizarPedido($request, $idPedido);
     }
 
     // ============================================================
@@ -1480,7 +1600,6 @@ class PedidoClienteController extends Controller
                 ]);
             }
 
-            // Throttle de 3 segundos
             $cacheKey = "pago_pedido_consulta_{$pago->IdPagoPedido}";
             if (Cache::has($cacheKey)) {
                 return response()->json([
@@ -1519,7 +1638,6 @@ class PedidoClienteController extends Controller
 
                     $pedido = PedidoCliente::find($pago->IdPedidoCliente);
                     if ($pedido && $pedido->EstadoPedido === 'Esperando Pago') {
-                        // Asignar número de pedido
                         $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
                             ->where('IdSucursal', $pedido->IdSucursal)
                             ->where('NumeroPedido', '!=', '0')
@@ -1533,7 +1651,6 @@ class PedidoClienteController extends Controller
                             'EstadoPedido' => 'Pendiente',
                             'ActivoInactivo' => 1,
                             'NumeroPedido' => $numeroFormateado,
-                            // ⚠️ NO tocar FechaPedido (se conserva la original)
                             'IdOperadorActualiza' => session('operador_id'),
                             'FechaActualiza' => now(),
                         ]);
@@ -2195,15 +2312,11 @@ class PedidoClienteController extends Controller
             $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
             $y += 10;
 
-            // ✅ Verificar espacio antes de "RESUMEN POR TIPO DE CONTENEDOR"
             if ((270 - $y) < 30) {
                 $pdf->AddPage();
                 $y = 15;
             }
 
-            // ============================================================
-            // RESUMEN POR TIPO DE CONTENEDOR
-            // ============================================================
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetTextColor(30, 60, 120);
             $pdf->SetXY(10, $y);
@@ -2248,12 +2361,8 @@ class PedidoClienteController extends Controller
             $pdf->SetDrawColor(0, 0, 0);
             $pdf->SetFillColor(255, 255, 255);
 
-            // ============================================================
-            // ✅ RESUMEN DE PRODUCTOS DEL PEDIDO (LISTA VERTICAL)
-            // ============================================================
             $y += 5;
 
-            // Agrupar productos del pedido por IdProducto
             $productosPedido = [];
             foreach ($pedido->detalles as $det) {
                 $idProd = $det->IdProducto;
@@ -2267,7 +2376,6 @@ class PedidoClienteController extends Controller
                 $productosPedido[$idProd]['cantidad'] += floatval($det->Cantidad);
             }
 
-            // Ordenar por OrdenInformes
             uasort($productosPedido, function ($a, $b) {
                 return $a['orden'] <=> $b['orden'];
             });
@@ -2276,7 +2384,6 @@ class PedidoClienteController extends Controller
             $cantidadProductos = count($productosPedido);
 
             if ($cantidadProductos > 0) {
-                // ✅ Espacio mínimo: título (7) + cabecera (6) + 1 fila (5) + total (6) = 24mm
                 $alturaMinima = 24;
 
                 if ((270 - $y) < $alturaMinima) {
@@ -2284,19 +2391,16 @@ class PedidoClienteController extends Controller
                     $y = 15;
                 }
 
-                // ===== TÍTULO =====
                 $pdf->SetFont('helvetica', 'B', 9);
                 $pdf->SetTextColor(30, 60, 120);
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(196, 6, 'RESUMEN DE PRODUCTOS DEL PEDIDO', 0, 1, 'C');
                 $y += 7;
 
-                // ===== ANCHOS =====
                 $anchoNum = 10;
                 $anchoProducto = 156;
                 $anchoCantidad = 30;
 
-                // ===== CABECERA DE LA TABLA =====
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetFillColor(217, 225, 242);
                 $pdf->SetTextColor(26, 35, 126);
@@ -2309,7 +2413,6 @@ class PedidoClienteController extends Controller
                 $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
                 $y += 6;
 
-                // ===== FILAS =====
                 $pdf->SetFont('helvetica', '', 7.5);
                 $pdf->SetTextColor(40, 40, 40);
 
@@ -2318,12 +2421,10 @@ class PedidoClienteController extends Controller
                 $alturaFila = 5;
 
                 foreach ($productosPedido as $prod) {
-                    // ✅ Verificar espacio para la fila
                     if ((270 - $y) < ($alturaFila + 8)) {
                         $pdf->AddPage();
                         $y = 15;
 
-                        // Redibujar título y cabecera
                         $pdf->SetFont('helvetica', 'B', 9);
                         $pdf->SetTextColor(30, 60, 120);
                         $pdf->SetXY(10, $y);
@@ -2346,7 +2447,6 @@ class PedidoClienteController extends Controller
 
                     $contadorProd++;
 
-                    // Truncar nombre si es muy largo
                     $nombre = $prod['nombre'];
                     if (mb_strlen($nombre, 'UTF-8') > 90) {
                         $nombre = mb_substr($nombre, 0, 87, 'UTF-8') . '...';
@@ -2361,7 +2461,6 @@ class PedidoClienteController extends Controller
                     $y += $alturaFila;
                 }
 
-                // ===== FILA TOTAL =====
                 if ((270 - $y) < 8) {
                     $pdf->AddPage();
                     $y = 15;
@@ -2377,18 +2476,13 @@ class PedidoClienteController extends Controller
                 $pdf->Cell($anchoCantidad, 6, number_format($sumaTotal, 2, ',', '.'), 1, 1, 'C', 1);
                 $y += 6;
 
-                // Resetear colores
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFillColor(255, 255, 255);
                 $pdf->SetDrawColor(0, 0, 0);
             }
 
-            // ============================================================
-            // FIRMAS
-            // ============================================================
             $y += 15;
 
-            // ✅ Verificar espacio para firmas
             if ((270 - $y) < 12) {
                 $pdf->AddPage();
                 $y = 20;
