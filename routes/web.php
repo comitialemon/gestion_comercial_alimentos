@@ -1746,11 +1746,14 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // PDF - SOLO DETALLE
                     Route::post('/exportar-pdf-detalle', [InformePedidosClientesMayoristasController::class, 'exportarPdfDetalle'])
                         ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-detalle');
+                    // ✅ NUEVO: PDF - RESUMEN DE PRODUCTOS POR OPERADOR
+                    Route::post('/exportar-pdf-resumen-productos', [InformePedidosClientesMayoristasController::class, 'exportarPdfResumenProductos'])
+                        ->name('operacion.pedidos.reportes.informe-clientes-mayoristas.exportar-pdf-resumen-productos');
                 });
-                // ✅ EXPORTAR GRUPOS CLIENTES A EXCEL
+                    // ✅ EXPORTAR GRUPOS CLIENTES A EXCEL
                     Route::get('/grupos-clientes/exportar-excel', [GrupoClienteReporteController::class, 'exportarExcel'])
                         ->name('operacion.pedidos.reportes.grupos-clientes.exportar-excel');
-
+            
             });
             
 

@@ -1219,4 +1219,298 @@ class InformePedidosClientesMayoristasController extends Controller
         }
         return $html;
     }
+    // =============================================
+    // PDF - RESUMEN DE PRODUCTOS POR OPERADOR
+    // =============================================
+    public function exportarPdfResumenProductos(Request $request)
+    {
+        $request->validate([
+            'fecha' => 'required|date',
+            'operador_id' => 'nullable|integer',
+        ]);
+
+        $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
+        $fecha = $request->fecha;
+        $operadorFiltro = $request->operador_id;
+
+        $query = PedidoCliente::where('IdCliente', $clienteId)
+            ->whereDate('FechaEntrega', $fecha)
+            ->where('ActivoInactivo', 1)
+            ->with([
+                'sucursal',
+                'operador.identificador',
+                'detalles.producto',
+            ]);
+
+        if (!empty($operadorFiltro)) {
+            $query->where('IdOperador', $operadorFiltro);
+        }
+
+        $pedidos = $query
+            ->orderBy('IdSucursal')
+            ->orderBy('IdOperador')
+            ->orderBy('NumeroPedido')
+            ->get();
+
+        if ($pedidos->isEmpty()) {
+            return redirect()->back()->with('error', 'No hay datos para los filtros seleccionados.');
+        }
+
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT', 'Direccion', 'Fono']);
+
+        $operadorLogueado = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', $operadorId)
+            ->first(['todos_identificador.Nombre as nombre']);
+
+        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(10, 10, 10);
+        $pdf->SetAutoPageBreak(true, 12);
+
+        $fechaImpresion = Carbon::now('America/La_Paz')->format('d/m/Y H:i');
+
+        // ============================================================
+        // AGRUPAR POR SUCURSAL + OPERADOR -> PRODUCTOS CONSOLIDADOS
+        // ============================================================
+        $agrupado = [];
+        foreach ($pedidos as $pedido) {
+            $sucNombre = $pedido->sucursal->Nombre ?? 'Sin sucursal';
+            $opNombre  = $pedido->operador->identificador->Nombre ?? 'Sin operador';
+            $opId      = $pedido->IdOperador;
+
+            if (!isset($agrupado[$sucNombre])) {
+                $agrupado[$sucNombre] = [];
+            }
+            if (!isset($agrupado[$sucNombre][$opId])) {
+                $agrupado[$sucNombre][$opId] = [
+                    'operador' => $opNombre,
+                    'pedidos'  => 0,
+                    'productos' => [],
+                ];
+            }
+
+            $agrupado[$sucNombre][$opId]['pedidos']++;
+
+            foreach ($pedido->detalles as $det) {
+                $idProd = $det->IdProducto;
+                if (!isset($agrupado[$sucNombre][$opId]['productos'][$idProd])) {
+                    $agrupado[$sucNombre][$opId]['productos'][$idProd] = [
+                        'nombre'   => $det->producto->Descripcion ?? 'Sin nombre',
+                        'cantidad' => 0,
+                        'orden'    => $det->producto->OrdenInformes ?? 0,
+                    ];
+                }
+                $agrupado[$sucNombre][$opId]['productos'][$idProd]['cantidad'] += floatval($det->Cantidad);
+            }
+        }
+
+        // Ordenar productos dentro de cada operador por OrdenInformes
+        foreach ($agrupado as $sucNombre => &$operadores) {
+            foreach ($operadores as &$op) {
+                uasort($op['productos'], function ($a, $b) {
+                    return $a['orden'] <=> $b['orden'];
+                });
+                $op['productos'] = array_values($op['productos']);
+                $op['total'] = array_sum(array_column($op['productos'], 'cantidad'));
+            }
+        }
+        unset($operadores, $op);
+
+        // ============================================================
+        // RENDER
+        // ============================================================
+        $pdf->AddPage();
+        $y = 10;
+
+        // -------- HEADER EMPRESA --------
+        $pdf->SetFont('helvetica', 'B', 13);
+        $pdf->SetTextColor(26, 35, 126);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 6, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'), 0, 1, 'C');
+        $y += 6;
+
+        $pdf->SetFont('helvetica', '', 8);
+        $pdf->SetTextColor(60, 60, 60);
+        if (!empty($empresa->NIT)) {
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 4, 'NIT: ' . $empresa->NIT, 0, 1, 'C');
+            $y += 4;
+        }
+
+        $y += 2;
+        $pdf->SetDrawColor(26, 35, 126);
+        $pdf->SetLineWidth(0.4);
+        $pdf->Line(10, $y, 206, $y);
+        $y += 6;
+
+        // -------- TÍTULO --------
+        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->SetTextColor(30, 60, 120);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 7, 'RESUMEN DE PRODUCTOS POR OPERADOR', 0, 1, 'C');
+        $y += 7;
+
+        // -------- FILTROS / FECHA --------
+        $pdf->SetFont('helvetica', '', 8.5);
+        $pdf->SetTextColor(60, 60, 60);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(98, 4.5, 'Fecha Entrega: ' . Carbon::parse($fecha)->format('d/m/Y'), 0, 0, 'L');
+
+        if (!empty($operadorFiltro)) {
+            $opFiltroNombre = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador as op')
+                ->join('todos_identificador as iden', 'iden.IdIdentificador', '=', 'op.IdIdentificador')
+                ->where('op.IdOperador', $operadorFiltro)
+                ->value('iden.Nombre');
+            $pdf->Cell(98, 4.5, 'Operador: ' . $opFiltroNombre, 0, 1, 'R');
+        } else {
+            $pdf->Cell(98, 4.5, 'Operador: Todos', 0, 1, 'R');
+        }
+        $y += 5;
+
+        $pdf->SetFont('helvetica', '', 7.5);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 4, 'Fecha Impresion: ' . $fechaImpresion, 0, 1, 'L');
+        $y += 6;
+
+        // ============================================================
+        // POR CADA SUCURSAL -> POR CADA OPERADOR -> TABLA PRODUCTOS
+        // ============================================================
+        $anchoNum = 10;
+        $anchoProducto = 156;
+        $anchoCantidad = 30;
+
+        foreach ($agrupado as $sucNombre => $operadores) {
+            // Título de sucursal
+            if ((270 - $y) < 20) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
+            $pdf->SetFont('helvetica', 'B', 11);
+            $pdf->SetTextColor(255, 255, 255);
+            $pdf->SetFillColor(26, 35, 126);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 7, '  ' . mb_strtoupper($sucNombre, 'UTF-8'), 0, 1, 'L', 1);
+            $y += 9;
+
+            foreach ($operadores as $opId => $op) {
+                // Espacio mínimo: título operador (7) + header (6) + 1 fila (5) + total (6) = 24
+                $alturaMinima = 26;
+                if ((270 - $y) < $alturaMinima) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                // Subtítulo operador
+                $pdf->SetFont('helvetica', 'B', 10);
+                $pdf->SetTextColor(20, 50, 110);
+                $pdf->SetFillColor(225, 238, 255);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(140, 6, '  Operador: ' . $op['operador'], 'LTR', 0, 'L', 1);
+                $pdf->Cell(56, 6, $op['pedidos'] . ' pedido' . ($op['pedidos'] !== 1 ? 's' : '') . '  ', 'LTR', 1, 'R', 1);
+                $y += 6;
+
+                // Cabecera tabla
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetFillColor(217, 225, 242);
+                $pdf->SetTextColor(26, 35, 126);
+                $pdf->SetDrawColor(120, 120, 120);
+                $pdf->SetLineWidth(0.2);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
+                $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
+                $y += 6;
+
+                // Filas
+                $pdf->SetFont('helvetica', '', 7.5);
+                $pdf->SetTextColor(40, 40, 40);
+
+                $contador = 0;
+                $alturaFila = 5;
+
+                foreach ($op['productos'] as $prod) {
+                    if ((270 - $y) < ($alturaFila + 8)) {
+                        $pdf->AddPage();
+                        $y = 15;
+
+                        // Reimprimir cabecera de operador en nueva página
+                        $pdf->SetFont('helvetica', 'B', 9);
+                        $pdf->SetTextColor(20, 50, 110);
+                        $pdf->SetFillColor(225, 238, 255);
+                        $pdf->SetXY(10, $y);
+                        $pdf->Cell(196, 6, '  Operador: ' . $op['operador'] . ' (continuación)', 'LTR', 1, 'L', 1);
+                        $y += 6;
+
+                        $pdf->SetFont('helvetica', 'B', 8);
+                        $pdf->SetFillColor(217, 225, 242);
+                        $pdf->SetTextColor(26, 35, 126);
+                        $pdf->SetDrawColor(120, 120, 120);
+                        $pdf->SetXY(10, $y);
+                        $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                        $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
+                        $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
+                        $y += 6;
+
+                        $pdf->SetFont('helvetica', '', 7.5);
+                        $pdf->SetTextColor(40, 40, 40);
+                    }
+
+                    $contador++;
+
+                    $nombre = $prod['nombre'];
+                    if (mb_strlen($nombre, 'UTF-8') > 90) {
+                        $nombre = mb_substr($nombre, 0, 87, 'UTF-8') . '...';
+                    }
+
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell($anchoNum,      $alturaFila, $contador,                                    1, 0, 'C', 0);
+                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre,                                1, 0, 'L', 0);
+                    $pdf->Cell($anchoCantidad, $alturaFila, number_format($prod['cantidad'], 2, ',', '.'), 1, 1, 'C', 0);
+                    $y += $alturaFila;
+                }
+
+                // Fila TOTAL operador
+                if ((270 - $y) < 8) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
+                $pdf->SetFont('helvetica', 'B', 8.5);
+                $pdf->SetFillColor(255, 243, 224);
+                $pdf->SetTextColor(230, 81, 0);
+                $pdf->SetDrawColor(120, 120, 120);
+
+                $pdf->SetXY(10, $y);
+                $pdf->Cell($anchoNum + $anchoProducto, 6, 'TOTAL ' . mb_strtoupper($op['operador'], 'UTF-8'), 1, 0, 'R', 1);
+                $pdf->Cell($anchoCantidad, 6, number_format($op['total'], 2, ',', '.'), 1, 1, 'C', 1);
+                $y += 8;
+
+                // Reset
+                $pdf->SetTextColor(0, 0, 0);
+                $pdf->SetFillColor(255, 255, 255);
+                $pdf->SetDrawColor(0, 0, 0);
+            }
+        }
+
+        // ============================================================
+        // SALIDA
+        // ============================================================
+        if (ob_get_length()) {
+            ob_end_clean();
+        }
+
+        $nombreArchivo = 'Resumen_Productos_' . $fecha . '.pdf';
+        $pdf->Output($nombreArchivo, 'D');
+        exit;
+    }
 }

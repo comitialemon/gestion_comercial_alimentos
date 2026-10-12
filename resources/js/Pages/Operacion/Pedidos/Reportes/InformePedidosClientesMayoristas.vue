@@ -228,11 +228,19 @@ const exportarPDF = (tipo) => {
         return
     }
 
+    // Mapeo de tipo -> endpoint
+    const endpoints = {
+        resumen: '/operacion/pedidos/reportes/informe-clientes-mayoristas/exportar-pdf-resumen',
+        detalle: '/operacion/pedidos/reportes/informe-clientes-mayoristas/exportar-pdf-detalle',
+        resumen_productos: '/operacion/pedidos/reportes/informe-clientes-mayoristas/exportar-pdf-resumen-productos',
+    }
+
+    const url = endpoints[tipo]
+    if (!url) return
+
     const form = document.createElement('form')
     form.method = 'POST'
-    form.action = tipo === 'resumen'
-        ? `/operacion/pedidos/reportes/informe-clientes-mayoristas/exportar-pdf-resumen`
-        : `/operacion/pedidos/reportes/informe-clientes-mayoristas/exportar-pdf-detalle`
+    form.action = url
 
     const token = document.createElement('input')
     token.type = 'hidden'
@@ -382,6 +390,14 @@ onUnmounted(() => {
                             >
                                 <i class="fas fa-file-pdf mr-1.5 text-[10px]"></i>
                                 PDF Detalle
+                            </button>
+                            <button
+                                @click="exportarPDF('resumen_productos')"
+                                :disabled="cargando || !tieneDatos"
+                                class="inline-flex items-center px-3 py-1.5 bg-primary-600 text-white text-xs font-medium rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                            >
+                                <i class="fas fa-file-pdf mr-1.5 text-[10px]"></i>
+                                PDF Productos
                             </button>
                             <button
                                 @click="cargarDatos"
