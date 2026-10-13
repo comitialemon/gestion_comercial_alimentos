@@ -27,6 +27,18 @@ class BancoEconomicoService implements BancoQRInterface
     protected int $retryDelay;
     protected int $tokenCacheTtl;
 
+    // ============================================================
+    // 🔥 URLs CORRECTAS (con 'r' después de 'q' según prueba en Tinker)
+    // El PDF tiene un error tipográfico: dice 'qsimple' pero la API real es 'qrsimple'
+    // ============================================================
+    private const URL_AUTHENTICATE = '/api/authentication/authenticate';
+    private const URL_ENCRYPT      = '/api/authentication/encrypt';
+    private const URL_DECRYPT      = '/api/authentication/decrypt';
+    private const URL_GENERATE_QR  = '/api/qrsimple/generateQR';
+    private const URL_CANCEL_QR    = '/api/qrsimple/cancelQR';
+    private const URL_STATUS_QR    = '/api/qrsimple/v2/statusQR';
+    private const URL_PAID_QR      = '/api/qrsimple/v2/paidQR';
+
     public function __construct(BancoCredencial $credencial)
     {
         $this->credencial = $credencial;
@@ -39,8 +51,30 @@ class BancoEconomicoService implements BancoQRInterface
         $this->timeout = (int) ($credencial->Timeout ?: config('banco_economico.timeout_default', 20));
         $this->retry = (int) ($credencial->Reintentos ?: config('banco_economico.retry_default', 3));
         $this->retryDelay = (int) config('banco_economico.retry_delay_default', 1000);
-        // 🔥 Token expira en 30 min → usamos 25 min (1500s) para renovar antes
         $this->tokenCacheTtl = (int) ($credencial->TokenCacheTtl ?: config('banco_economico.token_cache_ttl_default', 1500));
+
+        // ✅ VALIDACIÓN: Verificar que las credenciales se desencriptaron correctamente
+        if (empty($this->password)) {
+            throw new BancoQRException(
+                "No se pudo desencriptar el password de la credencial #{$credencial->IdCredencial}. " .
+                "Verifica que el APP_KEY no haya cambiado y que el dato en BD esté correctamente encriptado.",
+                'CONFIGURACION'
+            );
+        }
+
+        if (empty($this->aesKey)) {
+            throw new BancoQRException(
+                "No se pudo desencriptar el AES Key de la credencial #{$credencial->IdCredencial}.",
+                'CONFIGURACION'
+            );
+        }
+
+        if (empty($this->cuentaCredito)) {
+            throw new BancoQRException(
+                "No se pudo desencriptar la Cuenta de Crédito de la credencial #{$credencial->IdCredencial}.",
+                'CONFIGURACION'
+            );
+        }
     }
 
     public function getIdCredencial(): int
@@ -59,10 +93,11 @@ class BancoEconomicoService implements BancoQRInterface
 
     /**
      * Obtener token del banco (con caché de 25 minutos)
+     * 
+     * IMPORTANTE: El password debe ir ENCRIPTADO con el endpoint /encrypt del banco.
      */
     public function obtenerToken(bool $forzarRenovacion = false): string
     {
-        // 🔥 MODO FAKE
         if ($this->esModoFake()) {
             Log::info('🧪 MODO FAKE: token simulado');
             return 'FAKE_TOKEN_' . uniqid();
@@ -75,27 +110,32 @@ class BancoEconomicoService implements BancoQRInterface
         }
 
         return Cache::remember($cacheKey, $this->tokenCacheTtl, function () {
-
             Log::info('═══════════════════════════════════════════');
             Log::info('🔐 AUTENTICACIÓN BANCO ECONÓMICO');
             Log::info('═══════════════════════════════════════════');
-            Log::info('🌐 URL: ' . "{$this->baseUrl}/api/authentication/authenticate");
+            Log::info('🌐 URL: ' . "{$this->baseUrl}" . self::URL_AUTHENTICATE);
             Log::info('👤 Usuario: ' . $this->username);
-            Log::info('🔑 Password (longitud): ' . strlen($this->password));
+            Log::info('🔑 Password (longitud original): ' . strlen($this->password));
             Log::info('───────────────────────────────────────────');
 
-            $esBase64 = preg_match('/^[A-Za-z0-9+\/]+={0,2}$/', $this->password);
-            Log::info('✔️ ¿Es Base64 válido?: ' . ($esBase64 ? 'SÍ' : 'NO ❌'));
+            // 🔥 PASO 1: Encriptar el password con el endpoint del banco
+            $passwordEncriptado = $this->encriptar($this->password);
+
+            Log::info('🔑 Password encriptado (longitud): ' . strlen($passwordEncriptado));
+            Log::info('🔑 Password encriptado (preview): ' . substr($passwordEncriptado, 0, 30) . '...');
             Log::info('═══════════════════════════════════════════');
 
-            $response = $this->httpClient()
-                ->post("{$this->baseUrl}/api/authentication/authenticate", [
+            // 🔥 PASO 2: Enviar el password encriptado
+            $response = $this->httpClient()->post(
+                "{$this->baseUrl}" . self::URL_AUTHENTICATE,
+                [
                     'userName' => $this->username,
-                    'password' => $this->password,
-                ]);
+                    'password' => $passwordEncriptado,
+                ]
+            );
 
             Log::info('📊 HTTP Status: ' . $response->status());
-            Log::info('📄 Body: ' . $response->body());
+            Log::info('📄 Body: ' . substr($response->body(), 0, 500));
 
             if (!$response->successful()) {
                 $this->logError('Error HTTP al autenticar', $response);
@@ -153,17 +193,22 @@ class BancoEconomicoService implements BancoQRInterface
     // ENCRIPTACIÓN
     // =========================================================================
 
+    /**
+     * Encriptar texto con el endpoint del banco
+     */
     public function encriptar(string $texto): string
     {
         if ($this->esModoFake()) {
             return base64_encode($texto);
         }
 
-        $response = $this->httpClient()
-            ->get("{$this->baseUrl}/api/authentication/encrypt", [
+        $response = $this->httpClient()->get(
+            "{$this->baseUrl}" . self::URL_ENCRYPT,
+            [
                 'text' => $texto,
                 'aesKey' => $this->aesKey,
-            ]);
+            ]
+        );
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al encriptar', $response);
@@ -186,17 +231,22 @@ class BancoEconomicoService implements BancoQRInterface
         return $resultado;
     }
 
+    /**
+     * Desencriptar texto con el endpoint del banco
+     */
     public function desencriptar(string $textoCifrado): string
     {
         if ($this->esModoFake()) {
             return base64_decode($textoCifrado);
         }
 
-        $response = $this->httpClient()
-            ->get("{$this->baseUrl}/api/authentication/decrypt", [
+        $response = $this->httpClient()->get(
+            "{$this->baseUrl}" . self::URL_DECRYPT,
+            [
                 'text' => $textoCifrado,
                 'aesKey' => $this->aesKey,
-            ]);
+            ]
+        );
 
         if (!$response->successful()) {
             $this->logError('Error HTTP al desencriptar', $response);
@@ -219,6 +269,12 @@ class BancoEconomicoService implements BancoQRInterface
     // GENERACIÓN DE QR
     // =========================================================================
 
+    /**
+     * Generar un QR para cobrar
+     * 
+     * URL correcta: /api/qrsimple/generateQR (con 'r' después de 'q')
+     * El banco devuelve: qrId (con I mayúscula) y qrImage
+     */
     public function generarQR(
         string $transactionId,
         float $monto,
@@ -248,29 +304,32 @@ class BancoEconomicoService implements BancoQRInterface
             'branchCode' => $branchCode ?? $this->branchCode,
         ];
 
-        Log::info('📤 Generando QR', [
+        $url = "{$this->baseUrl}" . self::URL_GENERATE_QR;
+
+        Log::info('📤 Generando QR BECO', [
             'IdCredencial' => $this->credencial->IdCredencial,
+            'url' => $url,
             'transactionId' => $transactionId,
             'monto' => $monto,
+            'payload' => $payload,
         ]);
 
-        // 🔥 ENDPOINT CORRECTO: /api/qrsimple/ (CON R)
         $response = $this->httpClient()
             ->withToken($token)
-            ->post("{$this->baseUrl}/api/qrsimple/generateQR", $payload);
+            ->post($url, $payload);
 
         if ($response->status() === 401) {
-            Log::warning('Token expirado, renovando');
+            Log::warning('Token BECO expirado, renovando');
             $token = $this->renovarToken();
             $response = $this->httpClient()
                 ->withToken($token)
-                ->post("{$this->baseUrl}/api/qrsimple/generateQR", $payload);
+                ->post($url, $payload);
         }
 
         if (!$response->successful()) {
-            $this->logError('Error HTTP al generar QR', $response);
+            $this->logError('Error HTTP al generar QR BECO', $response);
             throw new BancoQRException(
-                'Error de conexión al generar QR',
+                'Error de conexión al generar QR (HTTP ' . $response->status() . ')',
                 'CONEXION',
                 null,
                 $response->status()
@@ -278,6 +337,14 @@ class BancoEconomicoService implements BancoQRInterface
         }
 
         $data = $response->json();
+
+        Log::info('📥 Respuesta generar QR BECO', [
+            'responseCode' => $data['responseCode'] ?? 'no definido',
+            'message' => $data['message'] ?? 'sin mensaje',
+            'tiene_qrId' => !empty($data['qrId']),
+            'tiene_qrld' => !empty($data['qrld']),
+            'tiene_qrImage' => !empty($data['qrImage']),
+        ]);
 
         if (($data['responseCode'] ?? -1) !== 0) {
             throw new BancoQRException(
@@ -287,15 +354,25 @@ class BancoEconomicoService implements BancoQRInterface
             );
         }
 
-        if (empty($data['qrId']) || empty($data['qrImage'])) {
-            throw new BancoQRException('QR inválido del banco', 'NEGOCIO', $data);
+        // 🔥 IMPORTANTE: El banco devuelve 'qrId' (con I mayúscula), NO 'qrld' (con L)
+        // El PDF tiene otro error tipográfico aquí
+        $qrId = $data['qrId'] ?? $data['qrld'] ?? null;
+        $qrImage = $data['qrImage'] ?? null;
+
+        if (empty($qrId) || empty($qrImage)) {
+            Log::error('❌ QR inválido del banco', ['data' => $data]);
+            throw new BancoQRException(
+                'QR inválido del banco: falta qrId o qrImage',
+                'NEGOCIO',
+                $data
+            );
         }
 
-        Log::info('✅ QR generado', ['qrId' => $data['qrId']]);
+        Log::info('✅ QR BECO generado', ['qrId' => $qrId]);
 
         return new QRGeneradoDTO(
-            qrId: $data['qrId'],
-            qrImage: $data['qrImage'],
+            qrId: $qrId,
+            qrImage: $qrImage,
             transactionId: $transactionId,
             respuestaCompleta: $data,
         );
@@ -305,6 +382,11 @@ class BancoEconomicoService implements BancoQRInterface
     // CONSULTA DE ESTADO
     // =========================================================================
 
+    /**
+     * Consultar el estado de un QR
+     * 
+     * URL correcta: /api/qrsimple/v2/statusQR/{qrId}
+     */
     public function consultarEstadoQR(string $qrId): QREstadoDTO
     {
         if ($this->esModoFake()) {
@@ -313,20 +395,23 @@ class BancoEconomicoService implements BancoQRInterface
 
         $token = $this->obtenerToken();
 
-        // 🔥 ENDPOINT CORRECTO: /api/qrsimple/ (CON R)
+        $url = "{$this->baseUrl}" . self::URL_STATUS_QR . "/{$qrId}";
+
+        Log::info('🔍 Consultando estado QR BECO', ['url' => $url, 'qrId' => $qrId]);
+
         $response = $this->httpClient()
             ->withToken($token)
-            ->get("{$this->baseUrl}/api/qrsimple/v2/statusQR/{$qrId}");
+            ->get($url);
 
         if ($response->status() === 401) {
             $token = $this->renovarToken();
             $response = $this->httpClient()
                 ->withToken($token)
-                ->get("{$this->baseUrl}/api/qrsimple/v2/statusQR/{$qrId}");
+                ->get($url);
         }
 
         if (!$response->successful()) {
-            $this->logError('Error HTTP al consultar estado', $response);
+            $this->logError('Error HTTP al consultar estado BECO', $response);
             throw new BancoQRException(
                 'Error al consultar estado',
                 'CONEXION',
@@ -342,6 +427,11 @@ class BancoEconomicoService implements BancoQRInterface
     // ANULACIÓN
     // =========================================================================
 
+    /**
+     * Anular un QR
+     * 
+     * URL correcta: /api/qrsimple/cancelQR/{qrId}
+     */
     public function anularQR(string $qrId): array
     {
         if ($this->esModoFake()) {
@@ -350,27 +440,29 @@ class BancoEconomicoService implements BancoQRInterface
 
         $token = $this->obtenerToken();
 
-        // 🔥 ENDPOINT CORRECTO: /api/qrsimple/ (CON R)
+        $url = "{$this->baseUrl}" . self::URL_CANCEL_QR . "/{$qrId}";
+
+        Log::info('🚫 Anulando QR BECO', ['url' => $url, 'qrId' => $qrId]);
+
         $response = $this->httpClient()
             ->withToken($token)
-            ->asJson()
-            ->delete("{$this->baseUrl}/api/qrsimple/cancelQR", [
-                'qrId' => $qrId,
-            ]);
+            ->delete($url);
 
         if ($response->status() === 401) {
             $token = $this->renovarToken();
             $response = $this->httpClient()
                 ->withToken($token)
-                ->asJson()
-                ->delete("{$this->baseUrl}/api/qrsimple/cancelQR", [
-                    'qrId' => $qrId,
-                ]);
+                ->delete($url);
         }
 
         if (!$response->successful()) {
-            $this->logError('Error HTTP al anular QR', $response);
-            throw new BancoQRException('Error al anular QR', 'CONEXION', null, $response->status());
+            $this->logError('Error HTTP al anular QR BECO', $response);
+            throw new BancoQRException(
+                'Error al anular QR',
+                'CONEXION',
+                null,
+                $response->status()
+            );
         }
 
         $data = $response->json();
@@ -383,6 +475,8 @@ class BancoEconomicoService implements BancoQRInterface
             );
         }
 
+        Log::info('✅ QR BECO anulado', ['qrId' => $qrId]);
+
         return $data;
     }
 
@@ -390,6 +484,11 @@ class BancoEconomicoService implements BancoQRInterface
     // QR PAGADOS
     // =========================================================================
 
+    /**
+     * Listar QRs pagados en una fecha
+     * 
+     * URL correcta: /api/qrsimple/v2/paidQR/{fecha} (formato yyyyMMdd)
+     */
     public function listarQRPagados(string $fecha): array
     {
         if ($this->esModoFake()) {
@@ -399,21 +498,29 @@ class BancoEconomicoService implements BancoQRInterface
         $token = $this->obtenerToken();
         $fechaFormato = date('Ymd', strtotime($fecha));
 
-        // 🔥 ENDPOINT CORRECTO: /api/qrsimple/ (CON R)
+        $url = "{$this->baseUrl}" . self::URL_PAID_QR . "/{$fechaFormato}";
+
+        Log::info('📋 Listando QR pagados BECO', ['url' => $url, 'fecha' => $fechaFormato]);
+
         $response = $this->httpClient(30)
             ->withToken($token)
-            ->get("{$this->baseUrl}/api/qrsimple/v2/paidQR/{$fechaFormato}");
+            ->get($url);
 
         if ($response->status() === 401) {
             $token = $this->renovarToken();
             $response = $this->httpClient(30)
                 ->withToken($token)
-                ->get("{$this->baseUrl}/api/qrsimple/v2/paidQR/{$fechaFormato}");
+                ->get($url);
         }
 
         if (!$response->successful()) {
-            $this->logError('Error HTTP al listar QR pagados', $response);
-            throw new BancoQRException('Error al listar QRs', 'CONEXION', null, $response->status());
+            $this->logError('Error HTTP al listar QR pagados BECO', $response);
+            throw new BancoQRException(
+                'Error al listar QRs',
+                'CONEXION',
+                null,
+                $response->status()
+            );
         }
 
         $data = $response->json();
@@ -435,8 +542,8 @@ class BancoEconomicoService implements BancoQRInterface
 
     protected function respuestaFakeQR(string $transactionId, float $monto, string $descripcion): QRGeneradoDTO
     {
-        $qrIdFalso = 'FAKE-' . strtoupper(uniqid());
-        Log::info('🧪 FAKE: QR generado', ['qrId' => $qrIdFalso, 'monto' => $monto]);
+        $qrIdFalso = 'FAKE-BECO-' . strtoupper(uniqid());
+        Log::info('🧪 FAKE: QR BECO generado', ['qrId' => $qrIdFalso, 'monto' => $monto]);
 
         return new QRGeneradoDTO(
             qrId: $qrIdFalso,
@@ -459,10 +566,10 @@ class BancoEconomicoService implements BancoQRInterface
                     'currency' => 'BOB',
                     'amount' => 1.00,
                     'senderBankCode' => '1016',
-                    'senderName' => 'CLIENTE PRUEBA',
+                    'senderName' => 'CLIENTE PRUEBA BECO',
                     'senderDocumentId' => '0',
                     'senderAccount' => '******1234',
-                    'description' => 'Pago de prueba',
+                    'description' => 'Pago de prueba fake',
                 ]],
             ]);
         }
