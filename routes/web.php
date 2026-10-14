@@ -1450,6 +1450,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         Route::get('/list', [ContenedorTipoController::class, 'getTipos'])
                             ->name('operacion.pedidos.clientes-mayoristas.contenedores.tipos.list');
                     });
+                    Route::post('/{id}/asignar-producto-unico',[ContenedorController::class, 'asignarProductoUnico'])->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-producto-unico');
                 });
                 
                 // ============================================================
@@ -1499,6 +1500,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // API: Agregar al carrito
                     Route::post('/carrito/agregar', [PedidoClienteController::class, 'agregarAlCarrito'])
                         ->name('operacion.pedidos-clientes.api.carrito.agregar');
+                        // ✅ NUEVO: Agregar N rejillas (producto único) al carrito
+                    Route::post('/carrito/agregar-rejillas', [PedidoClienteController::class, 'agregarRejillas'])
+                        ->name('operacion.pedidos-clientes.api.carrito.agregar-rejillas');
 
                     // ✅ NUEVO: Cambiar tipo de precio del borrador
                     Route::post('/carrito/cambiar-tipo-precio', [PedidoClienteController::class, 'cambiarTipoPrecio'])

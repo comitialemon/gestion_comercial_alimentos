@@ -565,6 +565,7 @@ class InformePedidosClientesMayoristasController extends Controller
                 'operador.identificador',
                 'detalles.producto',
                 'detalles.contenedor.tipoContenedor',
+                'detalles.subClienteOperador.identificador',
             ]);
 
         if (!empty($operadorFiltro)) {
@@ -771,8 +772,23 @@ class InformePedidosClientesMayoristasController extends Controller
                 $pdf->SetFillColor(255, 255, 255);
             }
 
-            // AGRUPAR POR OrdenContenedor
-            $detallesAgrupados = $pedido->detalles
+            // ============================================================
+            // ✅ SEPARAR REJILLAS DE CONTENEDORES NORMALES
+            // ============================================================
+            $detallesNormales = collect();
+            $detallesRejillas = collect();
+
+            foreach ($pedido->detalles as $detalle) {
+                $contenedor = $detalle->contenedor;
+                if ($contenedor && $contenedor->EsProductoUnico) {
+                    $detallesRejillas->push($detalle);
+                } else {
+                    $detallesNormales->push($detalle);
+                }
+            }
+
+            // ✅ NORMALES: agrupar por OrdenContenedor
+            $detallesAgrupadosNormales = $detallesNormales
                 ->groupBy('OrdenContenedor')
                 ->map(function ($items, $orden) {
                     $primerItem = $items->first();
@@ -783,17 +799,27 @@ class InformePedidosClientesMayoristasController extends Controller
                         return $item->Cantidad * $item->Precio;
                     });
 
+                    $subCliente = $primerItem->subClienteOperador;
+                    $subClienteNombre = $subCliente
+                        ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                        : null;
+
                     return [
                         'OrdenContenedor' => intval($orden),
                         'IdContenedor' => $primerItem->IdContenedor,
                         'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                         'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                        'EsProductoUnico' => false,
+                        'SubClienteNombre' => $subClienteNombre,
+                        'CantidadRejillas' => 0,
                         'productos' => $items->map(function ($item) {
                             return [
                                 'IdProducto' => $item->IdProducto,
                                 'Codigo' => $item->producto ? $item->producto->Codigo : '-',
                                 'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
                                 'Cantidad' => $item->Cantidad,
+                                'CantidadPorRejilla' => (float) $item->Cantidad,
+                                'CantidadRejillas' => 0,
                                 'Precio' => $item->Precio,
                                 'Subtotal' => $item->Cantidad * $item->Precio,
                             ];
@@ -802,7 +828,62 @@ class InformePedidosClientesMayoristasController extends Controller
                         'subtotal' => $subtotal,
                     ];
                 })
-                ->sortBy('IdContenedor')
+                ->values();
+
+            // ✅ REJILLAS: agrupar por IdContenedor + IdProducto + SubCliente
+            $detallesAgrupadosRejillas = $detallesRejillas
+                ->groupBy(function ($item) {
+                    $subClienteId = $item->IdSubClienteOperador ?? 'sin_sub';
+                    return $item->IdContenedor . '_' . $item->IdProducto . '_' . $subClienteId;
+                })
+                ->map(function ($items) {
+                    $primerItem = $items->first();
+                    $contenedor = $primerItem->contenedor;
+
+                    $producto = $primerItem->producto;
+                    $cantidadPorRejilla = (float) $primerItem->Cantidad;
+                    $cantidadRejillas = $items->count();
+                    $totalUnidades = $items->sum('Cantidad');
+                    $precioUnitario = (float) $primerItem->Precio;
+                    $subtotal = $items->sum(function ($item) {
+                        return $item->Cantidad * $item->Precio;
+                    });
+
+                    $subCliente = $primerItem->subClienteOperador;
+                    $subClienteNombre = $subCliente
+                        ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                        : null;
+
+                    $ordenMin = $items->min('OrdenContenedor');
+
+                    return [
+                        'OrdenContenedor' => intval($ordenMin),
+                        'IdContenedor' => $primerItem->IdContenedor,
+                        'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                        'CapacidadTotal' => 0,
+                        'EsProductoUnico' => true,
+                        'SubClienteNombre' => $subClienteNombre,
+                        'CantidadRejillas' => $cantidadRejillas,
+                        'productos' => [[
+                            'IdProducto' => $primerItem->IdProducto,
+                            'Codigo' => $producto ? $producto->Codigo : '-',
+                            'Descripcion' => $producto ? $producto->Descripcion : '-',
+                            'Cantidad' => $totalUnidades,
+                            'CantidadPorRejilla' => $cantidadPorRejilla,
+                            'CantidadRejillas' => $cantidadRejillas,
+                            'Precio' => $precioUnitario,
+                            'Subtotal' => $subtotal,
+                        ]],
+                        'total_unidades' => $totalUnidades,
+                        'subtotal' => $subtotal,
+                    ];
+                })
+                ->values();
+
+            // ✅ Unir y ordenar por OrdenContenedor
+            $detallesAgrupados = $detallesAgrupadosNormales
+                ->concat($detallesAgrupadosRejillas)
+                ->sortBy('OrdenContenedor')
                 ->values();
 
             // CABECERA TABLA
@@ -828,18 +909,42 @@ class InformePedidosClientesMayoristasController extends Controller
                     $y += 3;
                 }
 
+                $esRejilla = !empty($grupo['EsProductoUnico']);
+
                 // HEADER CONTENEDOR
                 $pdf->SetFont('helvetica', 'B', 8.5);
-                $pdf->SetFillColor(225, 238, 255);
-                $pdf->SetTextColor(20, 50, 110);
+
+                if ($esRejilla) {
+                    $pdf->SetFillColor(237, 233, 254); // morado claro
+                    $pdf->SetTextColor(88, 28, 135);   // morado oscuro
+                } else {
+                    $pdf->SetFillColor(225, 238, 255);
+                    $pdf->SetTextColor(20, 50, 110);
+                }
 
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(196, 6, '', 'LTR', 1, 'L', 1);
 
                 $pdf->SetXY(10, $y);
-                $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
-                $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
+
+                if ($esRejilla) {
+                    $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']', 'L', 0, 'L', 1);
+                    $pdf->Cell(86, 6, '  ' . $grupo['CantidadRejillas'] . ' Cant.   ', 'R', 1, 'R', 1);
+                } else {
+                    $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
+                    $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
+                }
                 $y += 6;
+
+                // Subcliente
+                if (!empty($grupo['SubClienteNombre'])) {
+                    $pdf->SetFont('helvetica', 'I', 7);
+                    $pdf->SetTextColor(80, 80, 80);
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell(196, 4, '  Subcliente: ' . $grupo['SubClienteNombre'], 'LR', 1, 'L', 1);
+                    $y += 4;
+                    $pdf->SetFont('helvetica', '', 7);
+                }
 
                 $pdf->SetTextColor(0, 0, 0);
 
@@ -854,6 +959,10 @@ class InformePedidosClientesMayoristasController extends Controller
                         $nombreProducto = mb_substr($nombreProducto, 0, 40, 'UTF-8') . '...';
                     }
 
+                    if ($esRejilla) {
+                        $nombreProducto = $nombreProducto . '  (' . $producto['CantidadRejillas'] . ' rej. x ' . number_format($producto['CantidadPorRejilla'], 0, ',', '.') . ')';
+                    }
+
                     $pdf->SetXY(10, $y);
                     $pdf->Cell(8, 4, $contador . '.', 'LR', 0, 'C', $fill);
                     $pdf->Cell(72, 4, ' ' . $nombreProducto, 'LR', 0, 'L', $fill);
@@ -866,10 +975,20 @@ class InformePedidosClientesMayoristasController extends Controller
 
                 // TOTAL CONTENEDOR
                 $pdf->SetFont('helvetica', 'B', 7);
-                $pdf->SetFillColor(235, 245, 255);
+
+                if ($esRejilla) {
+                    $pdf->SetFillColor(237, 233, 254);
+                } else {
+                    $pdf->SetFillColor(235, 245, 255);
+                }
+
+                $textoTotal = $esRejilla
+                    ? 'TOTAL ' . $grupo['Codigo']
+                    : 'TOTAL ' . $grupo['Codigo'] . ' #' . $grupo['OrdenContenedor'];
+
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(8, 4.5, '', 'LRB', 0, 'C', 1);
-                $pdf->Cell(72, 4.5, 'TOTAL ' . $grupo['Codigo'] . ' #' . $grupo['OrdenContenedor'], 'LRB', 0, 'R', 1);
+                $pdf->Cell(72, 4.5, $textoTotal, 'LRB', 0, 'R', 1);
                 $pdf->Cell(24, 4.5, number_format($grupo['total_unidades'], 0, ',', '.'), 'LRB', 0, 'C', 1);
                 $pdf->Cell(30, 4.5, '', 'LRB', 0, 'C', 1);
                 $pdf->Cell(62, 4.5, 'Bs. ' . number_format($grupo['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
@@ -913,13 +1032,23 @@ class InformePedidosClientesMayoristasController extends Controller
 
             // ============================================================
             // RESUMEN POR TIPO DE CONTENEDOR
+            // ✅ Si es rejilla → cuenta el N° real de rejillas
             // ============================================================
             $resumenPorTipo = $detallesAgrupados
                 ->groupBy('Codigo')
                 ->map(function ($items, $codigo) {
+                    $esRejilla = $items->first()['EsProductoUnico'] ?? false;
+
+                    $cantidadContenedores = $esRejilla
+                        ? $items->sum(function ($item) {
+                            return (int) ($item['CantidadRejillas'] ?? 1);
+                        })
+                        : $items->count();
+
                     return [
                         'Codigo' => $codigo,
-                        'cantidad_contenedores' => $items->count(),
+                        'cantidad_contenedores' => $cantidadContenedores,
+                        'es_rejilla' => $esRejilla,
                         'total_unidades' => $items->sum('total_unidades'),
                         'subtotal' => $items->sum('subtotal'),
                     ];
@@ -999,7 +1128,6 @@ class InformePedidosClientesMayoristasController extends Controller
             $cantidadProductos = count($productosPedido);
 
             if ($cantidadProductos > 0) {
-                // ✅ Espacio mínimo requerido: título (7) + cabecera (6) + 1 fila (5) + total (6) = 24mm
                 $alturaMinima = 24;
 
                 if ((270 - $y) < $alturaMinima) {
@@ -1041,12 +1169,10 @@ class InformePedidosClientesMayoristasController extends Controller
                 $alturaFila = 5;
 
                 foreach ($productosPedido as $prod) {
-                    // ✅ Verificar espacio para la fila
                     if ((270 - $y) < ($alturaFila + 8)) {
                         $pdf->AddPage();
                         $y = 15;
 
-                        // Redibujar título y cabecera en la nueva página
                         $pdf->SetFont('helvetica', 'B', 9);
                         $pdf->SetTextColor(30, 60, 120);
                         $pdf->SetXY(10, $y);
@@ -1069,7 +1195,6 @@ class InformePedidosClientesMayoristasController extends Controller
 
                     $contador++;
 
-                    // Truncar nombre si es muy largo
                     $nombre = $prod['nombre'];
                     if (mb_strlen($nombre, 'UTF-8') > 90) {
                         $nombre = mb_substr($nombre, 0, 87, 'UTF-8') . '...';
@@ -1084,7 +1209,6 @@ class InformePedidosClientesMayoristasController extends Controller
                     $y += $alturaFila;
                 }
 
-                // ===== FILA TOTAL =====
                 if ((270 - $y) < 8) {
                     $pdf->AddPage();
                     $y = 15;
@@ -1100,7 +1224,6 @@ class InformePedidosClientesMayoristasController extends Controller
                 $pdf->Cell($anchoCantidad, 6, number_format($sumaTotal, 2, ',', '.'), 1, 1, 'C', 1);
                 $y += 6;
 
-                // Resetear colores
                 $pdf->SetTextColor(0, 0, 0);
                 $pdf->SetFillColor(255, 255, 255);
                 $pdf->SetDrawColor(0, 0, 0);
@@ -1111,7 +1234,6 @@ class InformePedidosClientesMayoristasController extends Controller
             // ============================================================
             $y += 15;
 
-            // ✅ Verificar espacio para firmas
             if ((270 - $y) < 12) {
                 $pdf->AddPage();
                 $y = 20;

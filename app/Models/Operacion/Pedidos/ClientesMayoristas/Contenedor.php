@@ -16,6 +16,7 @@ class Contenedor extends Model
 
     protected $fillable = [
         'IdTipoContenedor',
+        'EsProductoUnico',   // ✅ NUEVO: 1 = rejilla, 0 = normal
         'Codigo',
         'CapacidadTotal',
         'ActivoInactivo',
@@ -28,9 +29,10 @@ class Contenedor extends Model
     ];
 
     protected $casts = [
-        'CapacidadTotal' => 'decimal:2',
-        'ActivoInactivo' => 'integer',
-        'IdTipoContenedor' => 'integer',
+        'CapacidadTotal'  => 'decimal:2',
+        'ActivoInactivo'  => 'integer',
+        'IdTipoContenedor'=> 'integer',
+        'EsProductoUnico' => 'boolean',   // ✅ NUEVO
     ];
 
     // ==================== SCOPES ====================
@@ -61,6 +63,22 @@ class Contenedor extends Model
     public function scopeActivos($query)
     {
         return $query->where('ActivoInactivo', 1);
+    }
+
+    /**
+     * ✅ NUEVO SCOPE: Solo contenedores de producto único (rejilla)
+     */
+    public function scopeProductoUnico($query)
+    {
+        return $query->where('EsProductoUnico', 1);
+    }
+
+    /**
+     * ✅ NUEVO SCOPE: Solo contenedores normales (varios productos)
+     */
+    public function scopeNormales($query)
+    {
+        return $query->where('EsProductoUnico', 0);
     }
 
     public function scopeBorradorPorOperador($query)
@@ -120,17 +138,11 @@ class Contenedor extends Model
         return $this->hasMany(PedidoClienteDetalle::class, 'IdContenedor', 'IdContenedor');
     }
 
-    /**
-     * ✅ NUEVA RELACIÓN: Grupos de clientes asignados al contenedor
-     */
     public function gruposClientes()
     {
         return $this->hasMany(ContenedorGrupoCliente::class, 'IdContenedor', 'IdContenedor');
     }
 
-    /**
-     * ✅ NUEVA RELACIÓN: Grupos de clientes activos
-     */
     public function gruposClientesActivos()
     {
         return $this->hasMany(ContenedorGrupoCliente::class, 'IdContenedor', 'IdContenedor')
@@ -160,16 +172,19 @@ class Contenedor extends Model
     }
 
     /**
-     * ✅ Total de grupos asignados
+     * ✅ NUEVO ACCESOR: Texto legible del tipo de contenedor
+     * Devuelve "Producto Único" o "Normal"
      */
+    public function getTipoContenedorTextoAttribute()
+    {
+        return $this->EsProductoUnico ? 'Producto Único' : 'Normal';
+    }
+
     public function getTotalGruposAttribute()
     {
         return $this->gruposClientesActivos()->count();
     }
 
-    /**
-     * ✅ Total de clientes (sumando los de todos los grupos)
-     */
     public function getTotalClientesAttribute()
     {
         $total = 0;

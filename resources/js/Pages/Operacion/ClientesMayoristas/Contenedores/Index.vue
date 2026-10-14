@@ -54,13 +54,13 @@ const contenedoresData = ref(props.contenedores)
 
 const contenedoresAgrupados = computed(() => {
     if (!contenedoresData.value?.data) return {}
-    
+
     const grupos = {}
-    
+
     contenedoresData.value.data.forEach(contenedor => {
         const sucursalNombre = contenedor.sucursal?.Nombre || 'Sin sucursal'
         const sucursalId = contenedor.IdSucursal || 0
-        
+
         if (!grupos[sucursalId]) {
             grupos[sucursalId] = {
                 id: sucursalId,
@@ -69,11 +69,11 @@ const contenedoresAgrupados = computed(() => {
                 total_capacidad: 0
             }
         }
-        
+
         grupos[sucursalId].contenedores.push(contenedor)
-        grupos[sucursalId].total_capacidad += contenedor.CapacidadTotal || 0
+        grupos[sucursalId].total_capacidad += Number(contenedor.CapacidadTotal) || 0
     })
-    
+
     return grupos
 })
 
@@ -107,13 +107,13 @@ const contraerTodas = () => {
 const actualizarExpandidas = () => {
     const grupos = contenedoresAgrupados.value
     const idsActuales = Object.keys(grupos)
-    
+
     idsActuales.forEach(id => {
         if (sucursalesExpandidas.value[id] === undefined) {
             sucursalesExpandidas.value[id] = true
         }
     })
-    
+
     Object.keys(sucursalesExpandidas.value).forEach(id => {
         if (!idsActuales.includes(id)) {
             delete sucursalesExpandidas.value[id]
@@ -134,7 +134,7 @@ const actualizarDatosLocales = () => {
         estado: estadoFiltro.value || undefined,
         buscar: buscador.value || undefined
     }
-    
+
     router.get('/operacion/pedidos/clientes-mayoristas/contenedores', params, {
         preserveState: true,
         preserveScroll: true,
@@ -163,15 +163,15 @@ const limpiarBusqueda = () => {
 
 const construirUrlConFiltros = (url) => {
     if (!url) return '#'
-    
+
     try {
         const urlObj = new URL(url, window.location.origin)
         const params = new URLSearchParams(urlObj.search)
-        
+
         if (sucursalId.value) params.set('sucursal_id', sucursalId.value)
         if (estadoFiltro.value) params.set('estado', estadoFiltro.value)
         if (buscador.value) params.set('buscar', buscador.value)
-        
+
         urlObj.search = params.toString()
         return urlObj.toString()
     } catch (error) {
@@ -181,24 +181,24 @@ const construirUrlConFiltros = (url) => {
 }
 
 // =============================================
-// CAMBIAR ESTADO (ÚNICA ACCIÓN DISPONIBLE)
+// CAMBIAR ESTADO
 // =============================================
 const cambiando = ref({})
 
 const cambiarEstado = async (contenedor) => {
     const accion = contenedor.ActivoInactivo === 1 ? 'inactivar' : 'activar'
-    
+
     if (!confirm(`¿Estás seguro de ${accion} el contenedor "${contenedor.Codigo}"?`)) {
         return
     }
-    
+
     cambiando.value[contenedor.IdContenedor] = true
-    
+
     try {
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/contenedores/${contenedor.IdContenedor}/cambiar-estado`
         )
-        
+
         if (response.data.success) {
             toast?.success('Éxito', response.data.message)
             actualizarDatosLocales()
@@ -227,6 +227,11 @@ const getEstadoTexto = (activo) => {
 
 const getEstadoBadge = (activo) => {
     return activo === 1 ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+}
+
+// ✅ NUEVO: Detectar si es producto único
+const esProductoUnico = (item) => {
+    return item.EsProductoUnico === true || item.EsProductoUnico === 1
 }
 
 // =============================================
@@ -269,7 +274,7 @@ watch(() => props.contenedores, (newVal) => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
+                        <button
                             @click="irANuevo"
                             class="flex-1 sm:flex-initial bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-xs flex items-center justify-center gap-1.5 transition"
                         >
@@ -284,15 +289,15 @@ watch(() => props.contenedores, (newVal) => {
                     <div class="flex flex-wrap items-center gap-3">
                         <div class="flex items-center gap-1">
                             <label class="text-xs font-medium text-gray-700">Sucursal:</label>
-                            <span 
-                                v-if="sucursalId && sucursalNombre" 
+                            <span
+                                v-if="sucursalId && sucursalNombre"
                                 class="inline-flex items-center gap-1.5 bg-primary-50 border border-primary-200 text-primary-700 text-xs font-semibold px-2.5 py-1 rounded-lg"
                             >
                                 <i class="fas fa-store text-primary-500 text-[10px]"></i>
                                 {{ sucursalNombre }}
                             </span>
                         </div>
-                        
+
                         <div class="flex items-center gap-2">
                             <label class="text-xs font-medium text-gray-700">Estado:</label>
                             <select v-model="estadoFiltro" @change="aplicarFiltros" class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-32 sm:w-36 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none">
@@ -301,24 +306,24 @@ watch(() => props.contenedores, (newVal) => {
                                 <option value="borradores">Borradores</option>
                             </select>
                         </div>
-                        
+
                         <div class="flex items-center gap-1">
-                            <input 
-                                type="text" 
-                                v-model="buscador" 
+                            <input
+                                type="text"
+                                v-model="buscador"
                                 @input="buscarContenedores"
                                 placeholder="Buscar..."
                                 class="border border-gray-300 rounded-lg px-2 py-1 text-xs w-28 sm:w-32 focus:ring-1 focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
-                            <button 
-                                v-if="buscador" 
-                                @click="limpiarBusqueda" 
+                            <button
+                                v-if="buscador"
+                                @click="limpiarBusqueda"
                                 class="text-gray-400 hover:text-gray-600 text-xs"
                             >
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
-                        
+
                         <div class="flex gap-1 ml-auto flex-wrap">
                             <button @click="expandirTodas" class="text-[10px] bg-primary-100 hover:bg-primary-200 text-primary-700 px-2 py-1 rounded transition">
                                 <i class="fas fa-plus-circle"></i> Expandir
@@ -328,11 +333,14 @@ watch(() => props.contenedores, (newVal) => {
                             </button>
                         </div>
                     </div>
-                    
-                    <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right">
-                        <i class="fas fa-info-circle"></i> 
-                        <span class="text-green-600">● Activo</span> = Contenedor listo para usar | 
-                        <span class="text-yellow-600">● Borrador</span> = En edición
+
+                    <div class="text-[10px] text-gray-400 text-center mt-2 sm:text-right flex items-center justify-center sm:justify-end gap-2 flex-wrap">
+                        <span><i class="fas fa-info-circle"></i></span>
+                        <span class="text-green-600">● Activo</span>=Listo |
+                        <span class="text-yellow-600">● Borrador</span>=En edición |
+                        <span class="text-purple-600 inline-flex items-center gap-0.5">
+                            <i class="fas fa-cube text-[8px]"></i> Producto Único
+                        </span>
                     </div>
                 </div>
 
@@ -346,13 +354,13 @@ watch(() => props.contenedores, (newVal) => {
 
                 <div v-else-if="sucursalesConContenedores.length > 0">
                     <div v-for="grupo in sucursalesConContenedores" :key="grupo.id" class="mb-3">
-                        
-                        <div 
+
+                        <div
                             @click="toggleSucursal(grupo.id)"
                             class="flex flex-wrap items-center justify-between gap-2 bg-primary-50 rounded-t-lg px-3 sm:px-4 py-2 border border-primary-200 cursor-pointer hover:bg-primary-100 transition"
                         >
                             <div class="flex items-center gap-2 min-w-0 flex-1">
-                                <i 
+                                <i
                                     class="text-primary-600 text-[10px] sm:text-sm transition-transform duration-200 flex-shrink-0"
                                     :class="sucursalesExpandidas[grupo.id] ? 'fas fa-chevron-down' : 'fas fa-chevron-right'"
                                 ></i>
@@ -369,7 +377,7 @@ watch(() => props.contenedores, (newVal) => {
                             </div>
                         </div>
 
-                        <transition 
+                        <transition
                             enter-active-class="transition-all duration-300 ease-in-out"
                             enter-from-class="max-h-0 opacity-0 overflow-hidden"
                             enter-to-class="max-h-[5000px] opacity-100 overflow-hidden"
@@ -378,7 +386,7 @@ watch(() => props.contenedores, (newVal) => {
                             leave-to-class="max-h-0 opacity-0 overflow-hidden"
                         >
                             <div v-if="sucursalesExpandidas[grupo.id]" class="bg-white rounded-b-lg shadow-sm overflow-hidden border border-t-0 border-primary-200">
-                                
+
                                 <!-- DESKTOP -->
                                 <div class="hidden md:block overflow-x-auto">
                                     <table class="min-w-full divide-y divide-gray-200">
@@ -386,6 +394,7 @@ watch(() => props.contenedores, (newVal) => {
                                             <tr>
                                                 <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Código</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                                                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Modalidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Capacidad</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Estado</th>
                                                 <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cambiar Estado</th>
@@ -395,20 +404,45 @@ watch(() => props.contenedores, (newVal) => {
                                             <tr v-for="item in grupo.contenedores" :key="item.IdContenedor" class="hover:bg-gray-50">
                                                 <td class="px-3 py-2 text-xs font-mono text-gray-900 font-bold">{{ item.Codigo }}</td>
                                                 <td class="px-3 py-2 text-center text-xs">{{ item.TipoContenedor }}</td>
-                                                <td class="px-3 py-2 text-center text-xs">{{ formatearNumero(item.CapacidadTotal) }}</td>
+                                                <!-- ✅ NUEVO: Badge modalidad -->
+                                                <td class="px-3 py-2 text-center">
+                                                    <span
+                                                        v-if="esProductoUnico(item)"
+                                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700"
+                                                        title="Contenedor de producto único (el operador elige el producto)"
+                                                    >
+                                                        <i class="fas fa-cube text-[9px]"></i>
+                                                        Producto Único
+                                                    </span>
+                                                    <span
+                                                        v-else
+                                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600"
+                                                    >
+                                                        <i class="fas fa-boxes text-[9px]"></i>
+                                                        Normal
+                                                    </span>
+                                                </td>
+                                                <td class="px-3 py-2 text-center text-xs">
+                                                    <span v-if="esProductoUnico(item)" class="text-purple-600 font-medium">
+                                                        <i class="fas fa-infinity text-[9px]"></i>
+                                                        Fijo
+                                                    </span>
+                                                    <span v-else>
+                                                        {{ formatearNumero(item.CapacidadTotal) }}
+                                                    </span>
+                                                </td>
                                                 <td class="px-3 py-2 text-center">
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoBadge(item.ActivoInactivo)">
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
                                                 </td>
-
                                                 <td class="px-3 py-2 text-center">
-                                                    <button 
+                                                    <button
                                                         @click="cambiarEstado(item)"
                                                         :disabled="cambiando[item.IdContenedor]"
                                                         class="transition p-1.5 rounded disabled:opacity-50 inline-flex items-center gap-1 text-xs"
-                                                        :class="item.ActivoInactivo === 1 
-                                                            ? 'text-red-500 hover:text-red-700 hover:bg-red-50' 
+                                                        :class="item.ActivoInactivo === 1
+                                                            ? 'text-red-500 hover:text-red-700 hover:bg-red-50'
                                                             : 'text-green-600 hover:text-green-800 hover:bg-green-50'"
                                                         :title="item.ActivoInactivo === 1 ? 'Inactivar' : 'Activar'"
                                                     >
@@ -432,9 +466,20 @@ watch(() => props.contenedores, (newVal) => {
                                                 <div class="flex items-center gap-2 flex-wrap">
                                                     <span class="font-bold text-primary-700 text-sm font-mono">{{ item.Codigo }}</span>
                                                     <span class="text-xs text-gray-500">{{ item.TipoContenedor }}</span>
+                                                    <!-- ✅ NUEVO: Badge modalidad móvil -->
+                                                    <span
+                                                        v-if="esProductoUnico(item)"
+                                                        class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-purple-100 text-purple-700"
+                                                    >
+                                                        <i class="fas fa-cube text-[8px]"></i>
+                                                        Único
+                                                    </span>
                                                 </div>
-                                                <div class="flex items-center gap-3 mt-1">
-                                                    <span class="text-xs text-gray-500">Cap: {{ formatearNumero(item.CapacidadTotal) }}</span>
+                                                <div class="flex items-center gap-3 mt-1 flex-wrap">
+                                                    <span v-if="esProductoUnico(item)" class="text-xs text-purple-600 font-medium">
+                                                        <i class="fas fa-infinity text-[9px]"></i> Capacidad fija
+                                                    </span>
+                                                    <span v-else class="text-xs text-gray-500">Cap: {{ formatearNumero(item.CapacidadTotal) }}</span>
                                                     <span class="px-1.5 py-0.5 text-[10px] rounded-full" :class="getEstadoBadge(item.ActivoInactivo)">
                                                         {{ getEstadoTexto(item.ActivoInactivo) }}
                                                     </span>
@@ -442,14 +487,14 @@ watch(() => props.contenedores, (newVal) => {
                                             </div>
                                             <div class="flex flex-col items-end gap-1 flex-shrink-0">
                                                 <div class="flex gap-2">
-                                                    <button 
-                                                        @click="abrirModal(item)" 
-                                                        class="text-blue-500 hover:text-blue-700" 
+                                                    <button
+                                                        @click="abrirModal(item)"
+                                                        class="text-blue-500 hover:text-blue-700"
                                                         title="Ver detalle"
                                                     >
                                                         <i class="fas fa-eye text-sm"></i>
                                                     </button>
-                                                    <button 
+                                                    <button
                                                         @click="cambiarEstado(item)"
                                                         :disabled="cambiando[item.IdContenedor]"
                                                         class="disabled:opacity-50"
@@ -468,23 +513,23 @@ watch(() => props.contenedores, (newVal) => {
                             </div>
                         </transition>
                     </div>
-                    
+
                     <!-- PAGINACIÓN -->
                     <div v-if="contenedoresData?.data?.length" class="bg-white rounded-xl shadow-sm mt-4 px-3 sm:px-4 py-2 border border-gray-200 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <p class="text-[10px] sm:text-xs text-gray-500">
                             Mostrando {{ contenedoresData.from || 0 }} - {{ contenedoresData.to || 0 }} de {{ contenedoresData.total || 0 }}
                         </p>
                         <div class="flex gap-1 flex-wrap justify-center">
-                            <Link 
-                                v-for="link in contenedoresData.links" 
-                                :key="link.label" 
+                            <Link
+                                v-for="link in contenedoresData.links"
+                                :key="link.label"
                                 :href="construirUrlConFiltros(link.url)"
-                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition" 
-                                :class="{ 
-                                    'bg-primary-600 text-white': link.active, 
-                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url, 
-                                    'opacity-50 cursor-not-allowed': !link.url 
-                                }" 
+                                class="px-2 sm:px-2.5 py-1 rounded text-[10px] sm:text-xs transition"
+                                :class="{
+                                    'bg-primary-600 text-white': link.active,
+                                    'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200': !link.active && link.url,
+                                    'opacity-50 cursor-not-allowed': !link.url
+                                }"
                                 v-html="link.label"
                                 preserve-state
                             />
@@ -500,7 +545,7 @@ watch(() => props.contenedores, (newVal) => {
                         <span v-else>No hay contenedores en esta sucursal</span>
                     </p>
                     <div class="mt-4">
-                        <button 
+                        <button
                             @click="irANuevo"
                             class="inline-flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800"
                         >
@@ -513,8 +558,8 @@ watch(() => props.contenedores, (newVal) => {
         </div>
 
         <!-- MODAL DETALLE -->
-        <ShowModal 
-            :visible="modalVisible" 
+        <ShowModal
+            :visible="modalVisible"
             :contenedor="contenedorSeleccionado"
             @close="cerrarModal"
         />

@@ -322,15 +322,14 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
+            // ✅ Con borrado físico, ya no necesitamos filtrar por ActivoInactivo
             $idsEnEsteGrupo = GrupoClienteDetalle::where('IdGrupoCliente', $id)
-                ->where('ActivoInactivo', 1)
                 ->pluck('IdIdentificador')
                 ->toArray();
 
             $idsEnOtroGrupo = GrupoClienteDetalle::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('IdGrupoCliente', '!=', $id)
-                ->where('ActivoInactivo', 1)
                 ->pluck('IdIdentificador')
                 ->toArray();
 
@@ -368,6 +367,15 @@ class GrupoClienteController extends Controller
         }
     }
 
+    /**
+     * ✅ SINCRONIZAR CLIENTES DEL GRUPO
+     * 
+     * - Agrega los nuevos (updateOrCreate por seguridad)
+     * - Elimina FÍSICAMENTE los que ya no están
+     * 
+     * Con esto, un cliente puede moverse libremente entre grupos:
+     * lo quitas de uno (se borra) y lo agregas a otro (se crea).
+     */
     public function asignarClientes(Request $request, $id)
     {
         $request->validate([
@@ -388,47 +396,50 @@ class GrupoClienteController extends Controller
             DB::beginTransaction();
 
             $idsActuales = GrupoClienteDetalle::where('IdGrupoCliente', $id)
-                ->where('ActivoInactivo', 1)
                 ->pluck('IdIdentificador')
                 ->toArray();
 
             $idsNuevos = $request->identificadores;
 
-            // Agregar los que no estaban
+            // ✅ AGREGAR los que no estaban
             $agregar = array_diff($idsNuevos, $idsActuales);
             foreach ($agregar as $identificadorId) {
+                // Verificar que no esté en OTRO grupo activo
                 $enOtroGrupo = GrupoClienteDetalle::where('IdIdentificador', $identificadorId)
                     ->where('IdCliente', $clienteId)
                     ->where('IdSucursal', $sucursalId)
                     ->where('IdGrupoCliente', '!=', $id)
-                    ->where('ActivoInactivo', 1)
                     ->exists();
 
                 if ($enOtroGrupo) {
-                    continue;
+                    continue; // ya está en otro grupo, lo saltamos
                 }
 
-                GrupoClienteDetalle::create([
-                    'IdGrupoCliente' => $id,
-                    'IdIdentificador' => $identificadorId,
-                    'IdCliente' => $clienteId,
-                    'IdSucursal' => $sucursalId,
-                    'ActivoInactivo' => 1,
-                    'IdOperadorInserta' => $operadorId,
-                    'FechaInserta' => Carbon::now('America/La_Paz'),
-                ]);
+                // ✅ updateOrCreate por seguridad (por si hay algún registro residual)
+                GrupoClienteDetalle::updateOrCreate(
+                    [
+                        'IdGrupoCliente'  => $id,
+                        'IdIdentificador' => $identificadorId,
+                        'IdCliente'       => $clienteId,
+                        'IdSucursal'      => $sucursalId,
+                    ],
+                    [
+                        'ActivoInactivo'      => 1,
+                        'IdOperadorInserta'   => $operadorId,
+                        'FechaInserta'        => Carbon::now('America/La_Paz'),
+                        'IdOperadorActualiza' => $operadorId,
+                        'FechaActualiza'      => Carbon::now('America/La_Paz'),
+                    ]
+                );
             }
 
-            // Quitar los que ya no están
+            // ✅ QUITAR los que ya no están → BORRADO FÍSICO
+            // Esto permite mover el cliente a otro grupo sin conflictos
             $quitar = array_diff($idsActuales, $idsNuevos);
             if (!empty($quitar)) {
                 GrupoClienteDetalle::where('IdGrupoCliente', $id)
                     ->whereIn('IdIdentificador', $quitar)
-                    ->update([
-                        'ActivoInactivo' => 0,
-                        'IdOperadorActualiza' => $operadorId,
-                        'FechaActualiza' => Carbon::now('America/La_Paz'),
-                    ]);
+                    ->delete(); // 🔥 BORRADO FÍSICO
             }
 
             DB::commit();
@@ -451,7 +462,7 @@ class GrupoClienteController extends Controller
     }
 
     // ============================================================
-    // PESTAÑA 3: PRECIOS POR GRUPO
+    // PESTAÑA 1: PRECIOS POR GRUPO
     // ============================================================
 
     /**
@@ -461,14 +472,14 @@ class GrupoClienteController extends Controller
     public function getProductos($id)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');  // ✅ NUEVO
+        $sucursalId = session('cliente_sucursal_id');
 
         try {
             $grupo = GrupoCliente::porCliente($clienteId)
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // ✅ NUEVO: Obtener solo los grupos de análisis que aplican (ActivoInactivo = 1)
+            // ✅ Obtener solo los grupos de análisis que aplican (ActivoInactivo = 1)
             $gruposConMinimo = GrupoAnalisisMinimo::obtenerIdsActivos($clienteId, $sucursalId);
             $gruposConMinimo = array_map('intval', $gruposConMinimo);
 
@@ -481,9 +492,9 @@ class GrupoClienteController extends Controller
                 ]);
             }
 
-            // ✅ MODIFICADO: Solo los grupos con mínimo
+            // ✅ Solo los grupos con mínimo
             $gruposAnalisis = ProductoGrupoAnalisis::where('IdCliente', $clienteId)
-                ->whereIn('IdGrupoAnalisis', $gruposConMinimo)  // ✅ FILTRO
+                ->whereIn('IdGrupoAnalisis', $gruposConMinimo)
                 ->orderBy('Grupo')
                 ->get(['IdGrupoAnalisis', 'Grupo']);
 
@@ -494,7 +505,7 @@ class GrupoClienteController extends Controller
 
             $resultado = [];
             foreach ($gruposAnalisis as $grupoAnalisis) {
-                // ✅ NUEVO: Solo productos que tengan mínimo configurado (cualquier valor > 0)
+                // ✅ Solo productos que tengan mínimo configurado (cualquier valor > 0)
                 $idsProductosConMinimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
                     ->activos()
                     ->where('IdGrupoAnalisis', $grupoAnalisis->IdGrupoAnalisis)
@@ -508,7 +519,7 @@ class GrupoClienteController extends Controller
 
                 $productos = ProductoDetalle::where('IdCliente', $clienteId)
                     ->where('IdGrupoAnalisis', $grupoAnalisis->IdGrupoAnalisis)
-                    ->whereIn('IdProducto', $idsProductosConMinimo)  // ✅ FILTRO
+                    ->whereIn('IdProducto', $idsProductosConMinimo)
                     ->where('ActivoInactivo', 0)
                     ->orderBy('Descripcion')
                     ->get(['IdProducto', 'Codigo', 'Descripcion', 'IdGrupoAnalisis']);
@@ -661,8 +672,9 @@ class GrupoClienteController extends Controller
             ], 500);
         }
     }
+
     // ============================================================
-    // PESTAÑA 4: MÍNIMOS POR GRUPO DE ANÁLISIS (POR GRUPO DE CLIENTES)
+    // PESTAÑA 3: MÍNIMOS POR GRUPO DE ANÁLISIS (POR GRUPO DE CLIENTES)
     // ============================================================
 
     /**
@@ -679,7 +691,7 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // ✅ Solo los grupos de análisis ACTIVOS (los que activó en MinimosGlobales)
+            // ✅ Solo los grupos de análisis ACTIVOS
             $gruposActivos = GrupoAnalisisMinimo::obtenerGruposActivosConNombre($clienteId, $sucursalId);
 
             // ✅ Mapa de mínimos ya guardados para este grupo de clientes
@@ -807,6 +819,7 @@ class GrupoClienteController extends Controller
             ], 500);
         }
     }
+
     // ============================================================
     // BUSCAR CLIENTE Y SU GRUPO
     // ============================================================
@@ -854,11 +867,10 @@ class GrupoClienteController extends Controller
 
             $idsIdentificadores = $clientes->pluck('IdIdentificador')->toArray();
 
-            // Buscar en qué grupo está cada uno (detalle activo)
+            // Buscar en qué grupo está cada uno
             $detalles = GrupoClienteDetalle::whereIn('IdIdentificador', $idsIdentificadores)
                 ->where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
-                ->where('ActivoInactivo', 1)
                 ->get(['IdIdentificador', 'IdGrupoCliente'])
                 ->keyBy('IdIdentificador');
 

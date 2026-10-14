@@ -44,6 +44,8 @@ const form = ref({
     IdSucursal: props.contenedor?.IdSucursal || props.sucursalActual || '',
     IdTipoContenedor: props.contenedor?.IdTipoContenedor || '',
     CapacidadTotal: props.contenedor?.CapacidadTotal || '',
+    EsProductoUnico: props.contenedor?.EsProductoUnico === 1 || props.contenedor?.EsProductoUnico === true,
+    Codigo: props.contenedor?.EsProductoUnico ? (props.contenedor?.Codigo || '') : '',
 })
 
 // ==================== TIPOS DE CONTENEDOR (LOCAL) ====================
@@ -72,11 +74,16 @@ const processing = ref(false)
 
 // ==================== COMPUTADOS ====================
 const codigoGenerado = computed(() => {
+    // Si es producto único, el código lo define el usuario
+    if (form.value.EsProductoUnico) {
+        return form.value.Codigo || ''
+    }
+
     if (!form.value.IdTipoContenedor || !form.value.CapacidadTotal) return ''
-    
+
     const tipo = tiposContenedorLocal.value.find(t => t.id === form.value.IdTipoContenedor)
     if (!tipo) return ''
-    
+
     const nombreTipo = tipo.nombre.toUpperCase()
     return nombreTipo + '-' + parseInt(form.value.CapacidadTotal)
 })
@@ -100,10 +107,26 @@ const sucursalActualNumero = computed(() => {
     return suc?.numero || null
 })
 
+// ✅ ¿Puede guardar?
+const puedeGuardar = computed(() => {
+    if (!form.value.IdSucursal) return false
+    if (!form.value.IdTipoContenedor) return false
+
+    if (form.value.EsProductoUnico) {
+        // Producto único: solo necesita el código
+        if (!form.value.Codigo || form.value.Codigo.trim() === '') return false
+        return true
+    }
+
+    // Normal: necesita capacidad
+    if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) return false
+    return true
+})
+
 // ==================== GUARDAR (crear o actualizar) ====================
 const guardar = async () => {
     errors.value = {}
-    
+
     if (!form.value.IdSucursal) {
         toast?.error('Validación', 'No hay sucursal asignada')
         return
@@ -112,32 +135,45 @@ const guardar = async () => {
         toast?.error('Validación', 'Seleccione un tipo de contenedor')
         return
     }
-    if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) {
-        toast?.error('Validación', 'Ingrese la capacidad máxima')
-        return
+
+    if (form.value.EsProductoUnico) {
+        if (!form.value.Codigo || form.value.Codigo.trim() === '') {
+            toast?.error('Validación', 'Ingrese un nombre/código para el contenedor')
+            return
+        }
+    } else {
+        if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) {
+            toast?.error('Validación', 'Ingrese la capacidad máxima')
+            return
+        }
     }
-    
+
     processing.value = true
-    
+
     try {
+        const payload = {
+            IdSucursal: form.value.IdSucursal,
+            IdTipoContenedor: form.value.IdTipoContenedor,
+            EsProductoUnico: form.value.EsProductoUnico ? 1 : 0,
+        }
+
+        if (form.value.EsProductoUnico) {
+            payload.Codigo = form.value.Codigo.trim().toUpperCase()
+            payload.CapacidadTotal = 0
+        } else {
+            payload.CapacidadTotal = form.value.CapacidadTotal
+        }
+
         let response
-        
+
         if (contenedorId.value) {
             // Actualizar
-            response = await axios.put(`/operacion/pedidos/clientes-mayoristas/contenedores/${contenedorId.value}`, {
-                IdSucursal: form.value.IdSucursal,
-                IdTipoContenedor: form.value.IdTipoContenedor,
-                CapacidadTotal: form.value.CapacidadTotal,
-            })
+            response = await axios.put(`/operacion/pedidos/clientes-mayoristas/contenedores/${contenedorId.value}`, payload)
         } else {
             // Crear
-            response = await axios.post('/operacion/pedidos/clientes-mayoristas/contenedores', {
-                IdSucursal: form.value.IdSucursal,
-                IdTipoContenedor: form.value.IdTipoContenedor,
-                CapacidadTotal: form.value.CapacidadTotal,
-            })
+            response = await axios.post('/operacion/pedidos/clientes-mayoristas/contenedores', payload)
         }
-        
+
         if (response.data.success) {
             const nuevoContenedorId = response.data.contenedor?.IdContenedor || contenedorId.value
 
@@ -151,7 +187,7 @@ const guardar = async () => {
             }
 
             toast?.success('Éxito', contenedorId.value ? 'Contenedor actualizado' : 'Contenedor creado y activado')
-            
+
             // Redirigir al listado
             router.get('/operacion/pedidos/clientes-mayoristas/contenedores')
         }
@@ -159,7 +195,7 @@ const guardar = async () => {
         console.error('Error:', error)
         if (error.response?.data?.errors) {
             errors.value = error.response.data.errors
-            toast?.error('Error de validación', Object.values(errors.value).join(', '))
+            toast?.error('Error de validación', Object.values(errors.value).flat().join(', '))
         } else {
             toast?.error('Error', error.response?.data?.message || 'Error al guardar')
         }
@@ -170,7 +206,7 @@ const guardar = async () => {
 
 // ==================== CANCELAR ====================
 const cancelar = () => {
-    if (form.value.IdTipoContenedor || form.value.CapacidadTotal) {
+    if (form.value.IdTipoContenedor || form.value.CapacidadTotal || form.value.Codigo) {
         if (!confirm('¿Estás seguro de salir? Los cambios no guardados se perderán.')) {
             return
         }
@@ -185,22 +221,41 @@ watch(
         if (nuevoContenedor) {
             contenedorId.value = nuevoContenedor.IdContenedor
             estaActivo.value = nuevoContenedor.ActivoInactivo === 1
-            
+
             form.value = {
                 IdSucursal: nuevoContenedor.IdSucursal || props.sucursalActual || '',
                 IdTipoContenedor: nuevoContenedor.IdTipoContenedor || '',
                 CapacidadTotal: nuevoContenedor.CapacidadTotal || '',
+                EsProductoUnico: nuevoContenedor.EsProductoUnico === 1 || nuevoContenedor.EsProductoUnico === true,
+                Codigo: nuevoContenedor.EsProductoUnico ? (nuevoContenedor.Codigo || '') : '',
             }
         }
     },
     { immediate: true, deep: true }
 )
 
+// ✅ Cuando cambia EsProductoUnico, resetear el campo correspondiente
+watch(() => form.value.EsProductoUnico, (esUnico) => {
+    if (esUnico) {
+        // Cambió a producto único: limpiar capacidad
+        form.value.CapacidadTotal = ''
+        // Si estamos editando y ya era producto único, mantener código
+        if (contenedorId.value && props.contenedor?.EsProductoUnico) {
+            form.value.Codigo = props.contenedor.Codigo || ''
+        } else {
+            form.value.Codigo = ''
+        }
+    } else {
+        // Cambió a normal: limpiar código
+        form.value.Codigo = ''
+    }
+})
+
 // ==================== LIFECYCLE ====================
 onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
-    
+
     // ✅ Asegurar que la sucursal venga del login
     if (!form.value.IdSucursal && props.sucursalActual) {
         form.value.IdSucursal = props.sucursalActual
@@ -232,17 +287,17 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex gap-2 w-full sm:w-auto">
-                        <button 
+                        <button
                             @click="guardar"
-                            :disabled="processing"
+                            :disabled="processing || !puedeGuardar"
                             class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs flex items-center gap-1 flex-1 sm:flex-initial justify-center transition disabled:opacity-50"
                         >
                             <i v-if="processing" class="fas fa-spinner fa-spin"></i>
                             <i v-else class="fas fa-save"></i>
                             {{ processing ? 'Guardando...' : 'Guardar' }}
                         </button>
-                        
-                        <button 
+
+                        <button
                             @click="cancelar"
                             class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-xs transition flex-1 sm:flex-initial"
                         >
@@ -279,8 +334,8 @@ onUnmounted(() => {
                         <div>
                             <label class="block text-gray-600 mb-0.5">Tipo de Contenedor *</label>
                             <div class="flex gap-2">
-                                <select 
-                                    v-model="form.IdTipoContenedor" 
+                                <select
+                                    v-model="form.IdTipoContenedor"
                                     class="flex-1 border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 focus:outline-none"
                                     :class="{'border-red-500': errors.IdTipoContenedor}"
                                 >
@@ -289,8 +344,8 @@ onUnmounted(() => {
                                         {{ tipo.nombre }}
                                     </option>
                                 </select>
-                                
-                                <button 
+
+                                <button
                                     @click="abrirModalTipo"
                                     type="button"
                                     class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded text-xs flex items-center gap-1 transition flex-shrink-0"
@@ -303,26 +358,100 @@ onUnmounted(() => {
                             <p v-if="errors.IdTipoContenedor" class="text-red-500 text-[10px] mt-0.5">{{ errors.IdTipoContenedor }}</p>
                         </div>
 
-                        <!-- Capacidad Máxima -->
-                        <div>
-                            <label class="block text-gray-600 mb-0.5">Capacidad Máxima *</label>
-                            <input 
-                                type="number" 
-                                v-model="form.CapacidadTotal" 
-                                step="0.01"
-                                placeholder="0.00" 
-                                class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 focus:outline-none"
-                                :class="{'border-red-500': errors.CapacidadTotal}"
-                            />
-                            <p v-if="errors.CapacidadTotal" class="text-red-500 text-[10px] mt-0.5">{{ errors.CapacidadTotal }}</p>
-                            <p class="text-[10px] text-gray-400 mt-0.5">Límite máximo de unidades</p>
+                        <!-- ✅ Toggle: Normal / Producto Único -->
+                        <div class="flex flex-col justify-center">
+                            <label class="block text-gray-600 mb-0.5">Modalidad</label>
+                            <button
+                                type="button"
+                                @click="form.EsProductoUnico = !form.EsProductoUnico"
+                                class="w-full flex items-center justify-between gap-2 border rounded-md px-3 py-1.5 text-xs transition"
+                                :class="form.EsProductoUnico
+                                    ? 'bg-purple-50 border-purple-300 text-purple-800'
+                                    : 'bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100'"
+                            >
+                                <span class="flex items-center gap-2">
+                                    <i class="fas" :class="form.EsProductoUnico ? 'fa-cube text-purple-500' : 'fa-boxes text-gray-400'"></i>
+                                    <span class="font-medium">
+                                        {{ form.EsProductoUnico ? 'Producto Único' : 'Contenedor Normal' }}
+                                    </span>
+                                </span>
+                                <span
+                                    class="relative inline-flex items-center h-5 w-9 rounded-full transition-colors"
+                                    :class="form.EsProductoUnico ? 'bg-purple-500' : 'bg-gray-300'"
+                                >
+                                    <span
+                                        class="inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition"
+                                        :class="form.EsProductoUnico ? 'translate-x-5' : 'translate-x-0.5'"
+                                    ></span>
+                                </span>
+                            </button>
+                            <p class="text-[10px] text-gray-400 mt-0.5">
+                                {{ form.EsProductoUnico
+                                    ? 'Se elige 1 producto al hacer el pedido (cantidad = mínimo)'
+                                    : 'Se llenan varios productos hasta la capacidad' }}
+                            </p>
                         </div>
                     </div>
 
-                    <!-- Código generado -->
+                    <!-- ============================================================ -->
+                    <!-- MODO PRODUCTO ÚNICO: solo pide nombre -->
+                    <!-- ============================================================ -->
+                    <div v-if="form.EsProductoUnico" class="mt-4 border-t border-purple-200 pt-4">
+                        <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+                            <div class="flex items-start gap-2">
+                                <i class="fas fa-info-circle text-purple-500 text-sm flex-shrink-0 mt-0.5"></i>
+                                <div class="text-[11px] text-purple-800">
+                                    <p class="font-bold">Contenedor de producto único</p>
+                                    <p>Al hacer el pedido, el operador elegirá <strong>1 producto</strong> y la cantidad será automáticamente <strong>el mínimo configurado</strong> en Inventario. Podrá agregar varias "rejillas" del mismo producto.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <!-- Nombre / Código -->
+                            <div>
+                                <label class="block text-gray-600 mb-0.5">Nombre / Código *</label>
+                                <input
+                                    type="text"
+                                    v-model="form.Codigo"
+                                    placeholder="Ej: REJILLA"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs uppercase focus:ring-1 focus:ring-purple-400 focus:outline-none"
+                                />
+                                <p class="text-[10px] text-gray-400 mt-0.5">Nombre libre (ej: REJILLA, TABLA, BANDEJA)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ============================================================ -->
+                    <!-- MODO NORMAL: pide capacidad -->
+                    <!-- ============================================================ -->
+                    <div v-else class="mt-4 border-t border-gray-200 pt-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <!-- Capacidad Máxima -->
+                            <div>
+                                <label class="block text-gray-600 mb-0.5">Capacidad Máxima *</label>
+                                <input
+                                    type="number"
+                                    v-model="form.CapacidadTotal"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 focus:outline-none"
+                                    :class="{'border-red-500': errors.CapacidadTotal}"
+                                />
+                                <p v-if="errors.CapacidadTotal" class="text-red-500 text-[10px] mt-0.5">{{ errors.CapacidadTotal }}</p>
+                                <p class="text-[10px] text-gray-400 mt-0.5">Límite máximo de unidades</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Código generado / Vista previa -->
                     <div v-if="codigoGenerado" class="mt-3 bg-gray-50 rounded-lg p-2 border border-gray-200">
-                        <p class="text-[10px] text-gray-500">Código generado automáticamente</p>
-                        <p class="text-sm font-mono font-bold text-indigo-600">{{ codigoGenerado }}</p>
+                        <p class="text-[10px] text-gray-500">
+                            {{ form.EsProductoUnico ? 'Código del contenedor' : 'Código generado automáticamente' }}
+                        </p>
+                        <p class="text-sm font-mono font-bold" :class="form.EsProductoUnico ? 'text-purple-600' : 'text-indigo-600'">
+                            {{ codigoGenerado }}
+                        </p>
                     </div>
 
                     <!-- Estado -->
@@ -354,7 +483,7 @@ onUnmounted(() => {
         </div>
 
         <!-- MODAL TIPO CONTENEDOR -->
-        <CreateTipoContenedor 
+        <CreateTipoContenedor
             :visible="modalTipoVisible"
             :sucursales="sucursales"
             @close="cerrarModalTipo"

@@ -95,9 +95,6 @@ class PedidoClienteController extends Controller
         });
     }
 
-    /**
-     * 🔥 Obtener la billetera ACTIVA del operador actual.
-     */
     private function getBilleteraActivaDelOperador(): ?BilleteraOperador
     {
         $operadorId = session('operador_id');
@@ -369,6 +366,7 @@ class PedidoClienteController extends Controller
                 ->with('error', "Tu usuario no tiene un Grupo de Clientes asignado. Contacte al administrador.");
         }
 
+        // ✅ Traer también EsProductoUnico
         $contenedores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('operacion_pedidos_clientes_contenedor as c')
             ->join('operacion_pedidos_clientes_contenedor_grupo_cliente as cgc', 'cgc.IdContenedor', '=', 'c.IdContenedor')
@@ -377,7 +375,14 @@ class PedidoClienteController extends Controller
             ->where('c.ActivoInactivo', 1)
             ->where('cgc.IdGrupoCliente', $grupoCliente->IdGrupoCliente)
             ->where('cgc.ActivoInactivo', 1)
-            ->select('c.IdContenedor', 'c.Codigo', 'c.CapacidadTotal', 'c.IdTipoContenedor', 't.Nombre as TipoContenedor')
+            ->select(
+                'c.IdContenedor',
+                'c.Codigo',
+                'c.CapacidadTotal',
+                'c.IdTipoContenedor',
+                'c.EsProductoUnico',
+                't.Nombre as TipoContenedor'
+            )
             ->orderBy('c.Codigo')
             ->get();
 
@@ -401,6 +406,7 @@ class PedidoClienteController extends Controller
                 'TipoContenedor' => $c->TipoContenedor ?: '-',
                 'CapacidadTotal' => $c->CapacidadTotal,
                 'CapacidadTotalFormateada' => number_format($c->CapacidadTotal, 0, ',', '.'),
+                'EsProductoUnico' => (bool) $c->EsProductoUnico,   // ✅
                 'total_productos' => $totalProductosDelGrupo,
                 'grupos' => $grupoCliente->Nombre,
             ];
@@ -552,6 +558,7 @@ class PedidoClienteController extends Controller
 
     // ============================================================
     // PRODUCTOS DEL CONTENEDOR CON PRECIOS DEL GRUPO
+    // ✅ MODIFICADO: soporta rejilla (producto único)
     // ============================================================
     public function getProductosContenedorConPrecios(Request $request, $id)
     {
@@ -586,6 +593,86 @@ class PedidoClienteController extends Controller
             return response()->json(['success' => false, 'message' => 'Este contenedor no está asignado a tu grupo.'], 400);
         }
 
+        // ✅ Productos con precio del grupo
+        $productosConPrecio = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
+            ->where('ActivoInactivo', 1)
+            ->get()
+            ->keyBy('IdProducto');
+
+        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
+
+        // ============================================================
+        // ✅ CASO A: CONTENEDOR DE PRODUCTO ÚNICO (REJILLA)
+        //    Devuelve TODOS los productos con precio en el grupo.
+        //    El frontend mostrará un modal para elegir 1 + cantidad de rejillas.
+        // ============================================================
+        if ($contenedor->EsProductoUnico) {
+            // Todos los productos del cliente que tengan precio en el grupo
+            $productos = ProductoDetalle::where('IdCliente', $clienteId)
+                ->whereIn('IdProducto', $productosConPrecio->keys())
+                ->where('ActivoInactivo', 0)
+                ->orderBy('IdGrupoAnalisis')
+                ->orderBy('Descripcion')
+                ->get(['IdProducto', 'Codigo', 'Descripcion', 'IdGrupoAnalisis']);
+
+            $productosAgrupados = $productos->groupBy('IdGrupoAnalisis')->map(function ($items, $grupoId) use ($productosConPrecio, $tipoPrecio, $mapaProductos) {
+                $grupo = \App\Models\Gestion\Inventario\ProductoGrupoAnalisis::find($grupoId);
+
+                return [
+                    'grupo_id' => $grupoId,
+                    'grupo_nombre' => $grupo ? $grupo->Grupo : 'Sin grupo',
+                    'productos' => $items->map(function ($producto) use ($productosConPrecio, $tipoPrecio, $mapaProductos) {
+                        $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
+
+                        $precioFinal = null;
+                        if ($precioGrupo) {
+                            $precioFinal = $tipoPrecio === 'con_factura'
+                                ? $precioGrupo->PrecioConFactura
+                                : $precioGrupo->PrecioSinFactura;
+                        }
+
+                        $tienePrecio = $precioFinal !== null && $precioFinal > 0;
+                        $minimoProducto = $mapaProductos[$producto->IdProducto] ?? null;
+
+                        return [
+                            'IdProducto' => $producto->IdProducto,
+                            'Codigo' => $producto->Codigo,
+                            'Descripcion' => $producto->Descripcion,
+                            'PrecioFinal' => $precioFinal,
+                            'tiene_precio' => $tienePrecio,
+                            'IdGrupoAnalisis' => $producto->IdGrupoAnalisis,
+                            'MinimoProducto' => $minimoProducto !== null ? (float) $minimoProducto : null,
+                        ];
+                    })->values(),
+                ];
+            })->values();
+
+            $totalConPrecio = $productos->filter(function ($producto) use ($productosConPrecio, $tipoPrecio) {
+                $precioGrupo = $productosConPrecio[$producto->IdProducto] ?? null;
+                if (!$precioGrupo) return false;
+                $precioFinal = $tipoPrecio === 'con_factura' ? $precioGrupo->PrecioConFactura : $precioGrupo->PrecioSinFactura;
+                return $precioFinal !== null && $precioFinal > 0;
+            })->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'IdContenedor' => $contenedor->IdContenedor,
+                    'Codigo' => $contenedor->Codigo,
+                    'EsProductoUnico' => true,   // ✅ FLAG para el frontend
+                    'CapacidadTotal' => 0,
+                    'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                    'productos_agrupados' => $productosAgrupados,
+                    'total_productos' => $totalConPrecio,
+                    'tipoPrecio' => $tipoPrecio,
+                    'grupoCliente' => $grupoCliente->Nombre,
+                ]
+            ]);
+        }
+
+        // ============================================================
+        // ✅ CASO B: CONTENEDOR NORMAL (lógica original)
+        // ============================================================
         $gruposConMinimoDelCliente = GrupoClienteMinimo::obtenerMapaPorGrupoCliente(
             $grupoCliente->IdGrupoCliente,
             $clienteId,
@@ -598,6 +685,7 @@ class PedidoClienteController extends Controller
                 'data' => [
                     'IdContenedor' => $contenedor->IdContenedor,
                     'Codigo' => $contenedor->Codigo,
+                    'EsProductoUnico' => false,
                     'CapacidadTotal' => $contenedor->CapacidadTotal,
                     'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                     'productos_agrupados' => [],
@@ -619,6 +707,7 @@ class PedidoClienteController extends Controller
                 'data' => [
                     'IdContenedor' => $contenedor->IdContenedor,
                     'Codigo' => $contenedor->Codigo,
+                    'EsProductoUnico' => false,
                     'CapacidadTotal' => $contenedor->CapacidadTotal,
                     'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                     'productos_agrupados' => [],
@@ -629,13 +718,6 @@ class PedidoClienteController extends Controller
                 ]
             ]);
         }
-
-        $mapaProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
-
-        $productosConPrecio = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
-            ->where('ActivoInactivo', 1)
-            ->get()
-            ->keyBy('IdProducto');
 
         $productos = ProductoDetalle::where('IdCliente', $clienteId)
             ->whereIn('IdProducto', $productosDisponibles)
@@ -691,6 +773,7 @@ class PedidoClienteController extends Controller
             'data' => [
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
+                'EsProductoUnico' => false,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                 'productos_agrupados' => $productosAgrupados,
@@ -702,7 +785,7 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // CARRITO
+    // CARRITO - AGREGAR NORMAL
     // ============================================================
 
     public function agregarAlCarrito(Request $request)
@@ -723,6 +806,14 @@ class PedidoClienteController extends Controller
         $contenedor = Contenedor::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 1)
             ->findOrFail($request->IdContenedor);
+
+        // ❌ Un contenedor de producto único no usa este endpoint
+        if ($contenedor->EsProductoUnico) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este contenedor es de tipo Producto Único (rejilla). Usa el endpoint correcto.'
+            ], 400);
+        }
 
         $totalUnidades = array_sum(array_column($request->productos, 'Cantidad'));
 
@@ -787,6 +878,147 @@ class PedidoClienteController extends Controller
         }
     }
 
+    // ============================================================
+    // ✅ NUEVO: AGREGAR N REJILLAS (mismo producto)
+    // ============================================================
+    public function agregarRejillas(Request $request)
+    {
+        $request->validate([
+            'IdContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor,IdContenedor',
+            'IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
+            'CantidadRejillas' => 'required|integer|min:1|max:999',
+            'TipoPrecio' => 'nullable|in:sin_factura,con_factura',
+            'IdSubClienteOperador' => 'nullable|exists:pedidos_clientes_subclientes,IdSubClienteOperador',
+        ]);
+
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        $cantidadRejillas = (int) $request->CantidadRejillas;
+
+        // 1. Verificar contenedor
+        $contenedor = Contenedor::where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 1)
+            ->findOrFail($request->IdContenedor);
+
+        if (!$contenedor->EsProductoUnico) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este contenedor no es de producto único.'
+            ], 400);
+        }
+
+        // 2. Grupo del operador
+        $grupoCliente = $this->getGrupoDelOperador();
+        if (!$grupoCliente) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No tienes un Grupo de Clientes asignado.'
+            ], 400);
+        }
+
+        // 3. Precio del producto en el grupo
+        $tipoPrecio = $request->TipoPrecio ?? 'sin_factura';
+        if (!in_array($tipoPrecio, ['sin_factura', 'con_factura'])) {
+            $tipoPrecio = 'sin_factura';
+        }
+
+        $precioGrupo = GrupoClienteProducto::where('IdGrupoCliente', $grupoCliente->IdGrupoCliente)
+            ->where('IdProducto', $request->IdProducto)
+            ->where('ActivoInactivo', 1)
+            ->first();
+
+        if (!$precioGrupo) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este producto no tiene precio configurado en tu grupo.'
+            ], 400);
+        }
+
+        $precioFinal = $tipoPrecio === 'con_factura'
+            ? $precioGrupo->PrecioConFactura
+            : $precioGrupo->PrecioSinFactura;
+
+        if ($precioFinal === null || $precioFinal <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este producto no tiene el precio seleccionado configurado.'
+            ], 400);
+        }
+
+        // 4. Mínimo del producto → cantidad fija por rejilla
+        $minimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
+            ->where('IdProducto', $request->IdProducto)
+            ->where('ActivoInactivo', 1)
+            ->first();
+
+        if (!$minimo || $minimo->CantidadMinimaProducto <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este producto no tiene mínimo configurado.'
+            ], 400);
+        }
+
+        $cantidadPorRejilla = (float) $minimo->CantidadMinimaProducto;
+
+        DB::beginTransaction();
+
+        try {
+            $pedido = PedidoCliente::obtenerOCrearBorrador([
+                'IdSucursal' => $sucursalId,
+                'TipoPrecio' => $tipoPrecio,
+            ]);
+
+            $maxOrden = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                ->max('OrdenContenedor') ?? 0;
+
+            // ✅ Crear N items, uno por cada rejilla
+            for ($i = 1; $i <= $cantidadRejillas; $i++) {
+                PedidoClienteDetalle::create([
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'IdContenedor' => $request->IdContenedor,
+                    'IdProducto' => $request->IdProducto,
+                    'IdSubClienteOperador' => $request->IdSubClienteOperador,
+                    'Cantidad' => $cantidadPorRejilla,
+                    'Precio' => $precioFinal,
+                    'OrdenContenedor' => $maxOrden + $i,
+                ]);
+            }
+
+            $totales = $this->calcularTotales($pedido->IdPedidoCliente);
+            $pedido->update([
+                'TotalUnidades' => $totales['total_unidades'],
+                'TotalContenedores' => $totales['total_contenedores'],
+                'TotalGeneral' => $totales['total_general'],
+            ]);
+
+            DB::commit();
+
+            $this->invalidarCacheProgreso($pedido->IdPedidoCliente);
+            $this->invalidarCacheProductosSinMinimo($pedido->IdPedidoCliente);
+
+            return response()->json([
+                'success' => true,
+                'message' => "{$cantidadRejillas} rejilla(s) agregada(s) al carrito ({$cantidadPorRejilla} und cada una)",
+                'pedido' => $pedido,
+                'totales' => $totales,
+                'rejillas_agregadas' => $cantidadRejillas,
+                'cantidad_por_rejilla' => $cantidadPorRejilla,
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error al agregar rejillas: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al agregar rejillas: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ============================================================
+    // ACTUALIZAR CONTENEDOR (normal)
+    // ============================================================
     public function actualizarContenedor(Request $request)
     {
         $request->validate([
@@ -829,7 +1061,7 @@ class PedidoClienteController extends Controller
         $totalUnidades = array_sum(array_column($request->productos, 'Cantidad'));
 
         $contenedor = Contenedor::find($request->IdContenedor);
-        if ((float) $totalUnidades > (float) $contenedor->CapacidadTotal) {
+        if (!$contenedor->EsProductoUnico && (float) $totalUnidades > (float) $contenedor->CapacidadTotal) {
             return response()->json([
                 'success' => false,
                 'message' => "La suma de productos ({$totalUnidades}) excede la capacidad del contenedor ({$contenedor->CapacidadTotal})"
@@ -1121,7 +1353,6 @@ class PedidoClienteController extends Controller
                 ];
             }
 
-            // 🔥 Info de la billetera del operador
             $billetera = $this->getBilleteraActivaDelOperador();
             $tieneBilleteraActiva = $billetera !== null;
 
@@ -1226,7 +1457,7 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // 🎯 FINALIZAR PEDIDO (UNIFICADO - decide billetera o QR)
+    // 🎯 FINALIZAR PEDIDO (UNIFICADO)
     // ============================================================
     public function finalizarPedido(Request $request, $idPedido)
     {
@@ -1235,9 +1466,6 @@ class PedidoClienteController extends Controller
         $operadorId = session('operador_id');
 
         try {
-            // ============================================================
-            // 1. VALIDAR PEDIDO
-            // ============================================================
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdSucursal', $sucursalId)
                 ->where('IdOperador', $operadorId)
@@ -1258,9 +1486,6 @@ class PedidoClienteController extends Controller
                 ], 422);
             }
 
-            // ============================================================
-            // 2. VALIDACIONES COMUNES
-            // ============================================================
             $grupoCliente = $this->getGrupoDelOperador();
             if (!$grupoCliente) {
                 return response()->json([
@@ -1305,23 +1530,14 @@ class PedidoClienteController extends Controller
                 ], 422);
             }
 
-            // ============================================================
-            // 3. Guardar FechaEntrega y Observaciones
-            // ============================================================
             $pedido->update([
                 'FechaEntrega' => $request->input('FechaEntrega'),
                 'Observaciones' => $request->input('Observaciones'),
                 'TipoPrecio' => $request->input('TipoPrecio', $pedido->TipoPrecio),
             ]);
 
-            // ============================================================
-            // 4. 🔥 DECISIÓN: ¿Tiene billetera activa?
-            // ============================================================
             $billetera = $this->getBilleteraActivaDelOperador();
 
-            // ============================================================
-            // 4A. CON BILLETERA → Descontar saldo, NO QR
-            // ============================================================
             if ($billetera) {
                 $saldoActual = (float) $billetera->SaldoActual;
 
@@ -1400,11 +1616,7 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            // ============================================================
-            // 4B. SIN BILLETERA → Generar QR
-            // ============================================================
-            
-            // Cancelar QR pendiente anterior
+            // SIN BILLETERA → QR
             $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                 ->where('Estado', 'PENDIENTE')
                 ->first();
@@ -1427,7 +1639,6 @@ class PedidoClienteController extends Controller
                 ]);
             }
 
-            // Obtener credencial activa
             $codigoBanco = $request->input('CodigoBanco');
 
             $queryCredencial = BancoCredencial::porCliente($clienteId)
@@ -1446,7 +1657,6 @@ class PedidoClienteController extends Controller
                 ], 400);
             }
 
-            // Construir glosa
             $nombreOperador = $this->getNombreOperador();
             $fechaPedido = $pedido->FechaPedido
                 ? Carbon::parse($pedido->FechaPedido)
@@ -1464,7 +1674,6 @@ class PedidoClienteController extends Controller
                 $glosa = mb_substr($glosa, 0, 57) . '...';
             }
 
-            // Generar QR
             $service = BancoFactory::desdeCredencial($credencial);
 
             $transactionId = sprintf(
@@ -1547,17 +1756,11 @@ class PedidoClienteController extends Controller
         }
     }
 
-    // ============================================================
-    // GENERAR QR (mantener como respaldo interno - redirige al unificado)
-    // ============================================================
     public function generarQRPedido(Request $request, $idPedido)
     {
         return $this->finalizarPedido($request, $idPedido);
     }
 
-    // ============================================================
-    // VERIFICAR ESTADO DEL PAGO (POLLING)
-    // ============================================================
     public function verificarEstadoPago($idPedido)
     {
         $clienteId = session('cliente_id');
@@ -1712,9 +1915,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    // ============================================================
-    // CANCELAR QR
-    // ============================================================
     public function cancelarQRPedido($idPedido)
     {
         $clienteId = session('cliente_id');
@@ -1780,9 +1980,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    // ============================================================
-    // MOSTRAR PEDIDO
-    // ============================================================
     public function show($id)
     {
         try {
@@ -1933,9 +2130,6 @@ class PedidoClienteController extends Controller
         }
     }
 
-    // ============================================================
-    // PDF
-    // ============================================================
     public function generarPdf($id)
     {
         try {
@@ -2002,14 +2196,32 @@ class PedidoClienteController extends Controller
                 }
             }
 
-            $detallesAgrupados = $pedido->detalles
+            // ============================================================
+            // ✅ SEPARAR REJILLAS (producto único) DE CONTENEDORES NORMALES
+            // ============================================================
+            $detallesNormales = collect();
+            $detallesRejillas = collect();
+
+            foreach ($pedido->detalles as $detalle) {
+                $contenedor = $detalle->contenedor;
+                if ($contenedor && $contenedor->EsProductoUnico) {
+                    $detallesRejillas->push($detalle);
+                } else {
+                    $detallesNormales->push($detalle);
+                }
+            }
+
+            // ============================================================
+            // ✅ CONTENEDORES NORMALES: agrupar por OrdenContenedor
+            // ============================================================
+            $detallesAgrupadosNormales = $detallesNormales
                 ->groupBy('OrdenContenedor')
-                ->map(function($items, $orden) {
+                ->map(function ($items, $orden) {
                     $primerItem = $items->first();
                     $contenedor = $primerItem->contenedor;
 
                     $totalUnidadesContenedor = $items->sum('Cantidad');
-                    $subtotal = $items->sum(function($item) {
+                    $subtotal = $items->sum(function ($item) {
                         return $item->Cantidad * $item->Precio;
                     });
 
@@ -2023,13 +2235,17 @@ class PedidoClienteController extends Controller
                         'IdContenedor' => $primerItem->IdContenedor,
                         'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                         'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                        'EsProductoUnico' => false,
                         'SubClienteNombre' => $subClienteNombre,
-                        'productos' => $items->map(function($item) {
+                        'CantidadRejillas' => 0,
+                        'productos' => $items->map(function ($item) {
                             return [
                                 'IdProducto' => $item->IdProducto,
                                 'Codigo' => $item->producto ? $item->producto->Codigo : '-',
                                 'Descripcion' => $item->producto ? $item->producto->Descripcion : '-',
                                 'Cantidad' => $item->Cantidad,
+                                'CantidadPorRejilla' => (float) $item->Cantidad,
+                                'CantidadRejillas' => 0,
                                 'Precio' => $item->Precio,
                                 'Subtotal' => $item->Cantidad * $item->Precio,
                             ];
@@ -2038,15 +2254,89 @@ class PedidoClienteController extends Controller
                         'subtotal' => $subtotal,
                     ];
                 })
-                ->sortBy('IdContenedor')
                 ->values();
 
+            // ============================================================
+            // ✅ REJILLAS: agrupar por IdContenedor + IdProducto + SubCliente
+            //    → 20 rejillas del mismo producto se ven como 1 solo bloque
+            // ============================================================
+            $detallesAgrupadosRejillas = $detallesRejillas
+                ->groupBy(function ($item) {
+                    $subClienteId = $item->IdSubClienteOperador ?? 'sin_sub';
+                    return $item->IdContenedor . '_' . $item->IdProducto . '_' . $subClienteId;
+                })
+                ->map(function ($items) {
+                    $primerItem = $items->first();
+                    $contenedor = $primerItem->contenedor;
+
+                    $producto = $primerItem->producto;
+                    $cantidadPorRejilla = (float) $primerItem->Cantidad;
+                    $cantidadRejillas = $items->count();
+                    $totalUnidades = $items->sum('Cantidad');
+                    $precioUnitario = (float) $primerItem->Precio;
+                    $subtotal = $items->sum(function ($item) {
+                        return $item->Cantidad * $item->Precio;
+                    });
+
+                    $subCliente = $primerItem->subClienteOperador;
+                    $subClienteNombre = $subCliente
+                        ? ($subCliente->Alias ?: ($subCliente->identificador->Nombre ?? null))
+                        : null;
+
+                    $ordenMin = $items->min('OrdenContenedor');
+
+                    return [
+                        'OrdenContenedor' => intval($ordenMin),
+                        'IdContenedor' => $primerItem->IdContenedor,
+                        'Codigo' => $contenedor ? $contenedor->Codigo : '-',
+                        'CapacidadTotal' => 0,
+                        'EsProductoUnico' => true,
+                        'SubClienteNombre' => $subClienteNombre,
+                        'CantidadRejillas' => $cantidadRejillas,
+                        'productos' => [[
+                            'IdProducto' => $primerItem->IdProducto,
+                            'Codigo' => $producto ? $producto->Codigo : '-',
+                            'Descripcion' => $producto ? $producto->Descripcion : '-',
+                            'Cantidad' => $totalUnidades,
+                            'CantidadPorRejilla' => $cantidadPorRejilla,
+                            'CantidadRejillas' => $cantidadRejillas,
+                            'Precio' => $precioUnitario,
+                            'Subtotal' => $subtotal,
+                        ]],
+                        'total_unidades' => $totalUnidades,
+                        'subtotal' => $subtotal,
+                    ];
+                })
+                ->values();
+
+            // ============================================================
+            // ✅ UNIR NORMALES + REJILLAS Y ORDENAR POR OrdenContenedor
+            // ============================================================
+            $detallesAgrupados = $detallesAgrupadosNormales
+                ->concat($detallesAgrupadosRejillas)
+                ->sortBy('OrdenContenedor')
+                ->values();
+
+            // ============================================================
+            // ✅ RESUMEN POR TIPO (colapsando rejillas del mismo contenedor)
+            //    Si es rejilla → cuenta el N° real de rejillas
+            //    Si es normal → cuenta la cantidad de bloques
+            // ============================================================
             $resumenPorTipo = $detallesAgrupados
                 ->groupBy('Codigo')
-                ->map(function($items, $codigo) {
+                ->map(function ($items, $codigo) {
+                    $esRejilla = $items->first()['EsProductoUnico'] ?? false;
+
+                    $cantidadContenedores = $esRejilla
+                        ? $items->sum(function ($item) {
+                            return (int) ($item['CantidadRejillas'] ?? 1);
+                        })
+                        : $items->count();
+
                     return [
                         'Codigo' => $codigo,
-                        'cantidad_contenedores' => $items->count(),
+                        'cantidad_contenedores' => $cantidadContenedores,
+                        'es_rejilla' => $esRejilla,
                         'total_unidades' => $items->sum('total_unidades'),
                         'subtotal' => $items->sum('subtotal'),
                     ];
@@ -2056,7 +2346,7 @@ class PedidoClienteController extends Controller
 
             $totalUnidades = $pedido->detalles->sum('Cantidad');
             $totalContenedores = $detallesAgrupados->count();
-            $totalGeneral = $pedido->detalles->sum(function($item) {
+            $totalGeneral = $pedido->detalles->sum(function ($item) {
                 return $item->Cantidad * $item->Precio;
             });
 
@@ -2069,6 +2359,7 @@ class PedidoClienteController extends Controller
 
             $y = 8;
 
+            // ============ HEADER ============
             $pdf->SetFont('helvetica', 'B', 12);
             $pdf->SetXY(10, $y);
             $pdf->Cell(196, 5, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'), 0, 1, 'C');
@@ -2189,6 +2480,7 @@ class PedidoClienteController extends Controller
 
             $y = max($yInfo, $yInfoDer) + 3;
 
+            // ============ OBSERVACIONES ============
             if (!empty($pedido->Observaciones)) {
                 $pdf->SetDrawColor(251, 191, 36);
                 $pdf->SetFillColor(255, 251, 235);
@@ -2216,6 +2508,7 @@ class PedidoClienteController extends Controller
                 $pdf->SetFillColor(255, 255, 255);
             }
 
+            // ============ CABECERA TABLA ============
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(240, 240, 240);
             $pdf->SetTextColor(0, 0, 0);
@@ -2229,6 +2522,7 @@ class PedidoClienteController extends Controller
             $pdf->Cell(62, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
             $y += 5;
 
+            // ============ DETALLE ============
             $pdf->SetFont('helvetica', '', 7);
             $contador = 0;
 
@@ -2237,18 +2531,36 @@ class PedidoClienteController extends Controller
                     $y += 3;
                 }
 
+                $esRejilla = !empty($grupo['EsProductoUnico']);
+
+                // ============ HEADER DEL CONTENEDOR ============
                 $pdf->SetFont('helvetica', 'B', 8.5);
-                $pdf->SetFillColor(225, 238, 255);
-                $pdf->SetTextColor(20, 50, 110);
+
+                if ($esRejilla) {
+                    $pdf->SetFillColor(237, 233, 254); // morado claro
+                    $pdf->SetTextColor(88, 28, 135);   // morado oscuro
+                } else {
+                    $pdf->SetFillColor(225, 238, 255);
+                    $pdf->SetTextColor(20, 50, 110);
+                }
 
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(196, 6, '', 'LTR', 1, 'L', 1);
 
                 $pdf->SetXY(10, $y);
-                $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
-                $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
+
+                if ($esRejilla) {
+                    // ✅ En rejillas: solo el código, sin #N
+                    $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']', 'L', 0, 'L', 1);
+                    $pdf->Cell(86, 6, '  ' . $grupo['CantidadRejillas'] . ' Cant.   ', 'R', 1, 'R', 1);
+                } else {
+                    // ✅ En normales: código + #N
+                    $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
+                    $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
+                }
                 $y += 6;
 
+                // Subcliente
                 if (!empty($grupo['SubClienteNombre'])) {
                     $pdf->SetFont('helvetica', 'I', 7);
                     $pdf->SetTextColor(80, 80, 80);
@@ -2259,6 +2571,7 @@ class PedidoClienteController extends Controller
                     $pdf->SetTextColor(0, 0, 0);
                 }
 
+                // ============ FILAS ============
                 $pdf->SetFont('helvetica', '', 7);
                 $fill = false;
 
@@ -2267,6 +2580,11 @@ class PedidoClienteController extends Controller
                     $nombreProducto = $producto['Descripcion'] ?? '-';
                     if (mb_strlen($nombreProducto, 'UTF-8') > 42) {
                         $nombreProducto = mb_substr($nombreProducto, 0, 40, 'UTF-8') . '...';
+                    }
+
+                    // Si es rejilla, mostramos info de rejillas
+                    if ($esRejilla) {
+                        $nombreProducto = $nombreProducto . '  (' . $producto['CantidadRejillas'] . ' rej. x ' . number_format($producto['CantidadPorRejilla'], 0, ',', '.') . ')';
                     }
 
                     $pdf->SetXY(10, $y);
@@ -2279,11 +2597,22 @@ class PedidoClienteController extends Controller
                     $fill = !$fill;
                 }
 
+                // ============ TOTAL DEL CONTENEDOR ============
                 $pdf->SetFont('helvetica', 'B', 7);
-                $pdf->SetFillColor(235, 245, 255);
+
+                if ($esRejilla) {
+                    $pdf->SetFillColor(237, 233, 254);
+                } else {
+                    $pdf->SetFillColor(235, 245, 255);
+                }
+
+                $textoTotal = $esRejilla
+                    ? 'TOTAL ' . $grupo['Codigo']
+                    : 'TOTAL ' . $grupo['Codigo'] . ' #' . $grupo['OrdenContenedor'];
+
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(8, 4.5, '', 'LRB', 0, 'C', 1);
-                $pdf->Cell(72, 4.5, 'TOTAL ' . $grupo['Codigo'] . ' #' . $grupo['OrdenContenedor'], 'LRB', 0, 'R', 1);
+                $pdf->Cell(72, 4.5, $textoTotal, 'LRB', 0, 'R', 1);
                 $pdf->Cell(24, 4.5, number_format($grupo['total_unidades'], 0, ',', '.'), 'LRB', 0, 'C', 1);
                 $pdf->Cell(30, 4.5, '', 'LRB', 0, 'C', 1);
                 $pdf->Cell(62, 4.5, 'Bs. ' . number_format($grupo['subtotal'], 2, ',', '.'), 'LRB', 1, 'C', 1);
@@ -2292,6 +2621,7 @@ class PedidoClienteController extends Controller
 
             $y += 5;
 
+            // ============ TOTALES ============
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetTextColor(0, 0, 0);
 
@@ -2312,6 +2642,7 @@ class PedidoClienteController extends Controller
             $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
             $y += 10;
 
+            // ============ RESUMEN POR TIPO ============
             if ((270 - $y) < 30) {
                 $pdf->AddPage();
                 $y = 15;
@@ -2363,6 +2694,7 @@ class PedidoClienteController extends Controller
 
             $y += 5;
 
+            // ============ RESUMEN POR PRODUCTO ============
             $productosPedido = [];
             foreach ($pedido->detalles as $det) {
                 $idProd = $det->IdProducto;
@@ -2408,7 +2740,7 @@ class PedidoClienteController extends Controller
                 $pdf->SetLineWidth(0.2);
 
                 $pdf->SetXY(10, $y);
-                $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                $pdf->Cell($anchoNum, 6, '#', 1, 0, 'C', 1);
                 $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
                 $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
                 $y += 6;
@@ -2436,7 +2768,7 @@ class PedidoClienteController extends Controller
                         $pdf->SetTextColor(26, 35, 126);
                         $pdf->SetDrawColor(120, 120, 120);
                         $pdf->SetXY(10, $y);
-                        $pdf->Cell($anchoNum,      6, '#',        1, 0, 'C', 1);
+                        $pdf->Cell($anchoNum, 6, '#', 1, 0, 'C', 1);
                         $pdf->Cell($anchoProducto, 6, 'PRODUCTO', 1, 0, 'L', 1);
                         $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
                         $y += 6;
@@ -2453,8 +2785,8 @@ class PedidoClienteController extends Controller
                     }
 
                     $pdf->SetXY(10, $y);
-                    $pdf->Cell($anchoNum,      $alturaFila, $contadorProd,                                1, 0, 'C', 0);
-                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre,                                1, 0, 'L', 0);
+                    $pdf->Cell($anchoNum, $alturaFila, $contadorProd, 1, 0, 'C', 0);
+                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre, 1, 0, 'L', 0);
                     $pdf->Cell($anchoCantidad, $alturaFila, number_format($prod['cantidad'], 2, ',', '.'), 1, 1, 'C', 0);
 
                     $sumaTotal += $prod['cantidad'];
@@ -2483,6 +2815,7 @@ class PedidoClienteController extends Controller
 
             $y += 15;
 
+            // ============ FIRMAS ============
             if ((270 - $y) < 12) {
                 $pdf->AddPage();
                 $y = 20;
@@ -2501,6 +2834,7 @@ class PedidoClienteController extends Controller
             $pdf->SetXY(115, $y + 1);
             $pdf->Cell(70, 4, 'Firma Recibido', 0, 1, 'C');
 
+            // ============ OUTPUT ============
             $nombreArchivo = 'Pedido_' . ($pedido->NumeroPedido ?? '000000') . '.pdf';
 
             if (ob_get_length()) {
@@ -2525,10 +2859,6 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
-
-    // ============================================================
-    // HELPERS FINALES
-    // ============================================================
 
     private function calcularTotales($idPedido)
     {
@@ -2682,10 +3012,6 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
-
-    // ============================================================
-    // API: VALIDAR HORA LÍMITE
-    // ============================================================
 
     public function apiValidarHoraLimite(Request $request)
     {

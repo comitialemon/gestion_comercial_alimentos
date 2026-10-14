@@ -4,6 +4,7 @@ import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
 import CreateModalProductos from './CreateModalProductos.vue'
+import CreateModalContenedorProductoUnico from './CreateModalContenedorProductoUnico.vue'
 
 defineOptions({ layout: AppLayout })
 
@@ -18,9 +19,9 @@ const props = defineProps({
     sucursalDefault: { type: [Number, String], default: null },
     idIdentificador: { type: [Number, String], default: null },
     nombreOperador: { type: String, default: '' },
-    minimosGrupos: { type: Array, default: () => [] },           // ✅ Ahora array
+    minimosGrupos: { type: Array, default: () => [] },
     minimosProductos: { type: [Array, Object], default: () => ({}) },
-    infoProductos: { type: [Array, Object], default: () => ({}) }, // ✅ NUEVO
+    infoProductos: { type: [Array, Object], default: () => ({}) },
     progresoInicial: { type: Array, default: () => [] },
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
@@ -30,6 +31,7 @@ const props = defineProps({
 // ==================== ESTADO ====================
 const loading = ref(false)
 const modalVisible = ref(false)
+const modalProductoUnicoVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 const carritoItems = ref([])
 const pedidoId = ref(null)
@@ -93,15 +95,11 @@ const acumuladoPorProducto = computed(() => {
     return acumulado
 })
 
-/**
- * ✅ PROGRESO JERÁRQUICO: grupos → productos anidados
- */
 const progresoJerarquico = computed(() => {
     const acumG = acumuladoPorGrupo.value
     const acumP = acumuladoPorProducto.value
     const resultado = {}
 
-    // 1. Inicializar grupos con mínimo
     minimos.value.forEach(minimo => {
         const idGrupo = minimo.IdGrupoAnalisis
         if (acumG[idGrupo] === undefined) return
@@ -121,7 +119,6 @@ const progresoJerarquico = computed(() => {
         }
     })
 
-    // 2. Agregar productos dentro de su grupo
     Object.keys(minimosProd.value).forEach(idProd => {
         const idProducto = Number(idProd)
         if (acumP[idProducto] === undefined) return
@@ -149,7 +146,6 @@ const progresoJerarquico = computed(() => {
         })
     })
 
-    // 3. Convertir a array
     return Object.values(resultado).filter(g => g.productos.length > 0 || g.CantidadPedida > 0)
 })
 
@@ -196,11 +192,21 @@ const inicializarCarrito = () => {
 
 const abrirModal = (contenedor) => {
     contenedorSeleccionado.value = contenedor
-    modalVisible.value = true
+
+    if (contenedor.EsProductoUnico) {
+        modalProductoUnicoVisible.value = true
+    } else {
+        modalVisible.value = true
+    }
 }
 
 const cerrarModal = () => {
     modalVisible.value = false
+    contenedorSeleccionado.value = null
+}
+
+const cerrarModalProductoUnico = () => {
+    modalProductoUnicoVisible.value = false
     contenedorSeleccionado.value = null
 }
 
@@ -285,6 +291,29 @@ const agregarContenedorAlCarrito = async (data) => {
     } catch (error) {
         console.error('Error:', error)
         toast?.error('Error', error.response?.data?.message || 'Error al agregar al carrito')
+    } finally {
+        loading.value = false
+    }
+}
+
+const agregarRejillasAlCarrito = async (data) => {
+    loading.value = true
+    try {
+        const payload = { ...data, TipoPrecio: tipoPrecioActual.value }
+        const response = await axios.post(
+            '/operacion/pedidos/clientes-mayoristas/pedidos-clientes/carrito/agregar-rejillas',
+            payload
+        )
+        if (response.data.success) {
+            toast?.success('Éxito', response.data.message || 'Rejillas agregadas al carrito')
+            if (response.data.pedido) {
+                pedidoId.value = response.data.pedido.IdPedidoCliente
+            }
+            router.reload({ only: ['carrito', 'pedidoBorrador'] })
+        }
+    } catch (error) {
+        console.error('Error:', error)
+        toast?.error('Error', error.response?.data?.message || 'Error al agregar rejillas')
     } finally {
         loading.value = false
     }
@@ -416,12 +445,11 @@ onMounted(() => {
                 </div>
             </div>
 
-            <!-- ✅ PROGRESO JERÁRQUICO -->
+            <!-- PROGRESO JERÁRQUICO -->
             <div v-if="progresoJerarquico.length > 0 && hayProductosEnCarrito"
                  class="bg-white rounded-xl shadow-sm mb-4 border-l-4 overflow-hidden"
                  :class="cumpleTodosMinimos ? 'border-green-500' : 'border-orange-500'">
 
-                <!-- Header -->
                 <div class="p-4 pb-3 flex items-center justify-between">
                     <h2 class="text-sm font-bold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-chart-line" :class="cumpleTodosMinimos ? 'text-green-500' : 'text-orange-500'"></i>
@@ -434,14 +462,12 @@ onMounted(() => {
                     </span>
                 </div>
 
-                <!-- Lista de grupos -->
                 <div class="px-4 pb-4 space-y-3">
                     <div v-for="grupo in progresoJerarquico"
                          :key="'g-' + grupo.IdGrupoAnalisis"
                          class="rounded-lg border-2 overflow-hidden"
                          :class="grupo.Cumple ? 'border-green-200 bg-green-50/30' : 'border-orange-200 bg-orange-50/30'">
 
-                        <!-- GRUPO header -->
                         <div class="p-3">
                             <div class="flex items-center justify-between mb-2">
                                 <div class="flex items-center gap-2 min-w-0 flex-1">
@@ -475,7 +501,6 @@ onMounted(() => {
                             </p>
                         </div>
 
-                        <!-- PRODUCTOS dentro del grupo -->
                         <div v-if="grupo.productos.length > 0"
                              class="border-t border-gray-200 bg-white/50 p-2 space-y-1.5">
                             <p class="text-[9px] uppercase tracking-wide font-bold text-gray-500 px-1 mb-1">
@@ -517,7 +542,6 @@ onMounted(() => {
                     </div>
                 </div>
 
-                <!-- Alerta resumen -->
                 <div v-if="!cumpleTodosMinimos" class="mx-4 mb-4 p-2 bg-orange-50 border border-orange-200 rounded-lg">
                     <p class="text-[10px] font-semibold text-orange-800 mb-1">
                         <i class="fas fa-info-circle mr-1"></i>
@@ -545,24 +569,43 @@ onMounted(() => {
                     <div v-for="contenedor in contenedoresFiltrados"
                          :key="contenedor.IdContenedor"
                          @click="abrirModal(contenedor)"
-                         class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden border-2 border-transparent hover:border-primary-300">
-                        <div class="h-24 bg-gradient-to-br from-primary-50 to-indigo-50 flex items-center justify-center">
-                            <div class="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center">
-                                <i class="fas fa-box text-primary-500 text-2xl"></i>
+                         class="bg-white rounded-xl shadow-sm hover:shadow-lg transition-all cursor-pointer overflow-hidden border-2"
+                         :class="contenedor.EsProductoUnico
+                             ? 'border-purple-200 hover:border-purple-400'
+                             : 'border-transparent hover:border-primary-300'">
+                        <div class="h-24 flex items-center justify-center"
+                             :class="contenedor.EsProductoUnico
+                                 ? 'bg-gradient-to-br from-purple-50 to-indigo-50'
+                                 : 'bg-gradient-to-br from-primary-50 to-indigo-50'">
+                            <div class="w-14 h-14 rounded-full flex items-center justify-center"
+                                 :class="contenedor.EsProductoUnico ? 'bg-purple-100' : 'bg-primary-100'">
+                                <i class="fas text-2xl"
+                                   :class="contenedor.EsProductoUnico ? 'fa-cube text-purple-500' : 'fa-box text-primary-500'"></i>
                             </div>
                         </div>
                         <div class="p-3 text-center">
                             <h3 class="font-bold text-sm text-gray-800 truncate">{{ contenedor.Codigo }}</h3>
                             <p class="text-[10px] font-mono text-gray-400">{{ contenedor.TipoContenedor }}</p>
-                            <div class="flex justify-center items-center gap-2 mt-1">
-                                <span class="text-[10px] text-gray-500">
+
+                            <div class="flex justify-center mt-1">
+                                <span v-if="contenedor.EsProductoUnico"
+                                      class="text-[9px] bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-bold">
+                                    <i class="fas fa-cube text-[8px] mr-0.5"></i>
+                                    Producto Único
+                                </span>
+                                <span v-else class="text-[10px] text-gray-500">
                                     <i class="fas fa-weight-hanging mr-0.5"></i>
                                     {{ contenedor.CapacidadTotalFormateada }} und
                                 </span>
                             </div>
-                            <button class="mt-2 w-full py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-xs transition flex items-center justify-center gap-1">
-                                <i class="fas fa-plus text-[10px]"></i>
-                                Seleccionar
+
+                            <button class="mt-2 w-full py-1.5 rounded-lg text-xs transition flex items-center justify-center gap-1 text-white"
+                                    :class="contenedor.EsProductoUnico
+                                        ? 'bg-purple-600 hover:bg-purple-700'
+                                        : 'bg-primary-600 hover:bg-primary-700'">
+                                <i class="fas text-[10px]"
+                                   :class="contenedor.EsProductoUnico ? 'fa-cube' : 'fa-plus'"></i>
+                                {{ contenedor.EsProductoUnico ? 'Elegir producto' : 'Seleccionar' }}
                             </button>
                         </div>
                     </div>
@@ -577,7 +620,7 @@ onMounted(() => {
 
         </div>
 
-        <!-- MODAL DE PRODUCTOS -->
+        <!-- MODAL DE PRODUCTOS (NORMAL) -->
         <CreateModalProductos
             :visible="modalVisible"
             :contenedor="contenedorSeleccionado"
@@ -590,6 +633,19 @@ onMounted(() => {
             @close="cerrarModal"
             @agregar="agregarContenedorAlCarrito"
             @actualizar="agregarContenedorAlCarrito"
+        />
+
+        <!-- MODAL DE PRODUCTO ÚNICO -->
+        <CreateModalContenedorProductoUnico
+            :visible="modalProductoUnicoVisible"
+            :contenedor="contenedorSeleccionado"
+            :idIdentificador="idIdentificador"
+            :tipoPrecio="tipoPrecioActual"
+            :subclientes="subclientes"
+            :idSubClienteOperadorDefault="idSubClienteDefault"
+            :nombreOperador="nombreOperador"
+            @close="cerrarModalProductoUnico"
+            @agregar="agregarRejillasAlCarrito"
         />
 
         <!-- MODAL CAMBIO TIPO -->

@@ -12,30 +12,49 @@ use Carbon\Carbon;
 
 class ContenedorController extends Controller
 {
+    // ============================================================
+    // HELPER: Normalizar código
+    // ============================================================
+
     /**
-     * Lista de contenedores
+     * ✅ Normaliza el código: quita guiones, espacios, guiones bajos
+     * y convierte a mayúsculas. Sirve para detectar duplicados semánticos.
+     *
+     * Ejemplos:
+     *   "REJILLA-45"   → "REJILLA45"
+     *   "REJILLA 45"   → "REJILLA45"
+     *   "REJILLA_45"   → "REJILLA45"
+     *   "rejilla-45"   → "REJILLA45"
+     */
+    private function normalizarCodigo(string $codigo): string
+    {
+        return preg_replace('/[^A-Z0-9]/', '', strtoupper(trim($codigo)));
+    }
+
+    /**
+     * ✅ Lista de contenedores
      */
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
-        
+
         $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
-        
+
         $query = Contenedor::porCliente()
             ->with(['tipoContenedor', 'sucursal']);
-        
+
         if ($sucursalFiltro) {
             $query->where('IdSucursal', $sucursalFiltro);
         }
-        
+
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->activos();
@@ -43,15 +62,15 @@ class ContenedorController extends Controller
                 $query->borradores();
             }
         }
-        
+
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
-            $query->where(function($q) use ($buscar) {
+            $query->where(function ($q) use ($buscar) {
                 $q->where('Codigo', 'LIKE', "%{$buscar}%");
             });
         }
-        
-        // ✅ ORDENAMIENTO NATURAL: alfabético por prefijo + numérico por sufijo
+
+        // ✅ ORDENAMIENTO NATURAL
         $contenedores = $query
             ->orderByRaw("
                 LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
@@ -59,13 +78,15 @@ class ContenedorController extends Controller
             ")
             ->paginate(20)
             ->appends($request->all());
-        
-        $contenedores->getCollection()->transform(function($contenedor) {
+
+        $contenedores->getCollection()->transform(function ($contenedor) {
             return [
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'IdTipoContenedor' => $contenedor->IdTipoContenedor,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'EsProductoUnico' => $contenedor->EsProductoUnico,
+                'TipoContenedorTexto' => $contenedor->TipoContenedorTexto,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
@@ -95,23 +116,23 @@ class ContenedorController extends Controller
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
-        
+
         $query = Contenedor::porCliente()
             ->with(['tipoContenedor', 'sucursal']);
-        
+
         if ($request->filled('sucursal_id') && $request->sucursal_id !== '') {
             $query->where('IdSucursal', $request->sucursal_id);
         } else {
             $query->where('IdSucursal', $sucursalId);
         }
-        
+
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->activos();
@@ -119,22 +140,24 @@ class ContenedorController extends Controller
                 $query->borradores();
             }
         }
-        
+
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
-            $query->where(function($q) use ($buscar) {
+            $query->where(function ($q) use ($buscar) {
                 $q->where('Codigo', 'LIKE', "%{$buscar}%");
             });
         }
-        
+
         $contenedores = $query->orderBy('IdContenedor', 'desc')->paginate(20);
         $contenedores->appends($request->all());
-        
-        $contenedores->getCollection()->transform(function($contenedor) {
+
+        $contenedores->getCollection()->transform(function ($contenedor) {
             return [
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'EsProductoUnico' => $contenedor->EsProductoUnico,
+                'TipoContenedorTexto' => $contenedor->TipoContenedorTexto,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
@@ -147,7 +170,7 @@ class ContenedorController extends Controller
                 ] : null,
             ];
         });
-        
+
         return Inertia::render('Operacion/ClientesMayoristas/Contenedores/GestionEstado', [
             'contenedores' => $contenedores,
             'sucursales' => $sucursales,
@@ -163,16 +186,15 @@ class ContenedorController extends Controller
      */
     public function create()
     {
-        // Verificar si existe un borrador para este operador
         $borrador = Contenedor::borradorPorOperador()->first();
-        
+
         if ($borrador) {
             return redirect()->route('operacion.pedidos.clientes-mayoristas.contenedores.edit', $borrador->IdContenedor)
                 ->with('info', 'Continuando con el borrador existente.');
         }
 
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');   // ✅
+        $sucursalId = session('cliente_sucursal_id');
 
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
@@ -188,13 +210,12 @@ class ContenedorController extends Controller
             ->orderBy('Nombre')
             ->get(['IdTipoContenedor as id', 'Nombre as nombre']);
 
-        // ✅ Obtener nombre de la sucursal actual
         $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['Nombre', 'NumeroSucursal']);
 
-        $sucursalActualNombre = $sucursalActual 
+        $sucursalActualNombre = $sucursalActual
             ? $sucursalActual->Nombre . ($sucursalActual->NumeroSucursal ? ' (N° ' . $sucursalActual->NumeroSucursal . ')' : '')
             : 'Sucursal Actual';
 
@@ -202,60 +223,73 @@ class ContenedorController extends Controller
             'contenedor' => null,
             'sucursales' => $sucursales,
             'tiposContenedor' => $tiposContenedor,
-            'sucursalActual' => $sucursalId,               // ✅
-            'sucursalActualNombre' => $sucursalActualNombre, // ✅
+            'sucursalActual' => $sucursalId,
+            'sucursalActualNombre' => $sucursalActualNombre,
         ]);
     }
 
     /**
      * PASO 1: Guardar cabecera del contenedor (BORRADOR)
+     *
+     * ✅ Reglas:
+     *   - Contenedor NORMAL → requiere capacidad > 0
+     *   - Contenedor PRODUCTO ÚNICO → capacidad = 0, requiere Codigo
+     *   - ✅ Bloqueo semántico: no permite códigos similares (ej: REJILLA-45 vs REJILLA 45)
      */
     public function store(Request $request)
     {
-        $request->validate([
-            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
-            'CapacidadTotal' => 'required|numeric|min:0.01',
-        ]);
-
         $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
 
-        $tipo = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('operacion_pedidos_clientes_contenedor_tipo')
-            ->where('IdTipoContenedor', $request->IdTipoContenedor)
-            ->value('Nombre');
+        // ✅ Normalizar boolean
+        $esProductoUnico = filter_var(
+            $request->input('EsProductoUnico', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
 
-        $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+        // Validación base
+        $request->validate([
+            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
+        ]);
 
-        $borradorExistente = Contenedor::borradorPorOperador()->first();
-
-        if ($borradorExistente) {
-            $borradorExistente->update([
-                'IdSucursal' => $request->IdSucursal,
-                'IdTipoContenedor' => $request->IdTipoContenedor,
-                'CapacidadTotal' => $request->CapacidadTotal,
-                'Codigo' => $codigo,
-                'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => Carbon::now('America/La_Paz'),
+        // Validación condicional
+        if ($esProductoUnico) {
+            $request->validate([
+                'Codigo' => 'required|string|max:200',
             ]);
 
-            return response()->json([
-                'success' => true,
-                'contenedor' => $borradorExistente,
-                'message' => 'Borrador actualizado correctamente'
+            $codigo = strtoupper(trim($request->input('Codigo', '')));
+            $capacidad = 0;
+        } else {
+            $request->validate([
+                'CapacidadTotal' => 'required|numeric|min:0.01',
             ]);
+
+            $tipo = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_clientes_contenedor_tipo')
+                ->where('IdTipoContenedor', $request->IdTipoContenedor)
+                ->value('Nombre');
+
+            $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+            $capacidad = $request->CapacidadTotal;
         }
 
-        // Verificar que no exista otro con el mismo código
-        $existe = Contenedor::where('IdCliente', $clienteId)
-            ->where('Codigo', $codigo)
-            ->exists();
+        // ✅ Bloqueo semántico: detecta "REJILLA-45" vs "REJILLA 45" vs "REJILLA_45"
+        $codigoNormalizado = $this->normalizarCodigo($codigo);
 
-        if ($existe) {
+        $existente = Contenedor::where('IdCliente', $clienteId)
+            ->where('IdSucursal', $request->IdSucursal)
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(UPPER(TRIM(Codigo)), '-', ''), ' ', ''), '_', '') = ?",
+                [$codigoNormalizado]
+            )
+            ->first();
+
+        if ($existente) {
             return response()->json([
                 'success' => false,
-                'message' => 'Ya existe un contenedor con el código ' . $codigo
+                'message' => "Ya existe un contenedor con un código similar: \"{$existente->Codigo}\". No se pueden crear dos contenedores parecidos (ej: 'REJILLA-45' y 'REJILLA 45')."
             ], 422);
         }
 
@@ -264,8 +298,9 @@ class ContenedorController extends Controller
         try {
             $contenedor = Contenedor::create([
                 'IdTipoContenedor' => $request->IdTipoContenedor,
+                'EsProductoUnico' => $esProductoUnico ? 1 : 0,
                 'Codigo' => $codigo,
-                'CapacidadTotal' => $request->CapacidadTotal,
+                'CapacidadTotal' => $capacidad,
                 'ActivoInactivo' => 0,
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $request->IdSucursal,
@@ -278,13 +313,15 @@ class ContenedorController extends Controller
             return response()->json([
                 'success' => true,
                 'contenedor' => $contenedor,
-                'message' => 'Contenedor creado como borrador.'
+                'message' => $esProductoUnico
+                    ? 'Contenedor de producto único creado.'
+                    : 'Contenedor creado como borrador.'
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error al crear contenedor: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al crear contenedor: ' . $e->getMessage()
@@ -298,14 +335,13 @@ class ContenedorController extends Controller
     public function edit($id)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');   // ✅
-        
+        $sucursalId = session('cliente_sucursal_id');
+
         $contenedor = Contenedor::porCliente($clienteId)
             ->where('IdContenedor', $id)
             ->with(['tipoContenedor', 'sucursal'])
             ->firstOrFail();
 
-        // ✅ Si está activo, lo pasamos automáticamente a BORRADOR
         if ($contenedor->ActivoInactivo == 1) {
             $contenedor->update([
                 'ActivoInactivo' => 0,
@@ -328,13 +364,12 @@ class ContenedorController extends Controller
             ->orderBy('Nombre')
             ->get(['IdTipoContenedor as id', 'Nombre as nombre']);
 
-        // ✅ Obtener nombre de la sucursal actual
         $sucursalActual = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['Nombre', 'NumeroSucursal']);
 
-        $sucursalActualNombre = $sucursalActual 
+        $sucursalActualNombre = $sucursalActual
             ? $sucursalActual->Nombre . ($sucursalActual->NumeroSucursal ? ' (N° ' . $sucursalActual->NumeroSucursal . ')' : '')
             : 'Sucursal Actual';
 
@@ -342,22 +377,18 @@ class ContenedorController extends Controller
             'contenedor' => $contenedor,
             'sucursales' => $sucursales,
             'tiposContenedor' => $tiposContenedor,
-            'sucursalActual' => $sucursalId,               // ✅
-            'sucursalActualNombre' => $sucursalActualNombre, // ✅
+            'sucursalActual' => $sucursalId,
+            'sucursalActualNombre' => $sucursalActualNombre,
         ]);
     }
 
     /**
      * Actualizar cabecera del contenedor
+     * 
+     * ✅ Bloqueo semántico aplicado (excluyendo el actual)
      */
     public function update(Request $request, $id)
     {
-        $request->validate([
-            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
-            'CapacidadTotal' => 'required|numeric|min:0.01',
-        ]);
-
         $contenedor = Contenedor::porCliente()
             ->where('IdContenedor', $id)
             ->firstOrFail();
@@ -369,30 +400,63 @@ class ContenedorController extends Controller
             ], 400);
         }
 
-        $tipo = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('operacion_pedidos_clientes_contenedor_tipo')
-            ->where('IdTipoContenedor', $request->IdTipoContenedor)
-            ->value('Nombre');
+        // ✅ Normalizar boolean
+        $esProductoUnico = filter_var(
+            $request->input('EsProductoUnico', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
 
-        $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+        $request->validate([
+            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
+        ]);
 
-        $existe = Contenedor::where('IdCliente', session('cliente_id'))
+        if ($esProductoUnico) {
+            $request->validate([
+                'Codigo' => 'required|string|max:200',
+            ]);
+
+            $codigo = strtoupper(trim($request->input('Codigo', $contenedor->Codigo)));
+            $capacidad = 0;
+        } else {
+            $request->validate([
+                'CapacidadTotal' => 'required|numeric|min:0.01',
+            ]);
+
+            $tipo = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_clientes_contenedor_tipo')
+                ->where('IdTipoContenedor', $request->IdTipoContenedor)
+                ->value('Nombre');
+
+            $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+            $capacidad = $request->CapacidadTotal;
+        }
+
+        // ✅ Bloqueo semántico (excluyendo el actual)
+        $codigoNormalizado = $this->normalizarCodigo($codigo);
+
+        $existente = Contenedor::where('IdCliente', session('cliente_id'))
+            ->where('IdSucursal', $request->IdSucursal)
             ->where('IdContenedor', '!=', $id)
-            ->where('Codigo', $codigo)
-            ->exists();
+            ->whereRaw(
+                "REPLACE(REPLACE(REPLACE(UPPER(TRIM(Codigo)), '-', ''), ' ', ''), '_', '') = ?",
+                [$codigoNormalizado]
+            )
+            ->first();
 
-        if ($existe) {
+        if ($existente) {
             return response()->json([
                 'success' => false,
-                'message' => 'Ya existe un contenedor con el código ' . $codigo
+                'message' => "Ya existe un contenedor con un código similar: \"{$existente->Codigo}\"."
             ], 422);
         }
 
         $contenedor->update([
             'IdTipoContenedor' => $request->IdTipoContenedor,
+            'EsProductoUnico' => $esProductoUnico ? 1 : 0,
             'IdSucursal' => $request->IdSucursal,
             'Codigo' => $codigo,
-            'CapacidadTotal' => $request->CapacidadTotal,
+            'CapacidadTotal' => $capacidad,
             'IdOperadorActualiza' => session('operador_id'),
             'FechaActualiza' => Carbon::now('America/La_Paz'),
         ]);
@@ -441,36 +505,34 @@ class ContenedorController extends Controller
             $contenedor = Contenedor::porCliente()
                 ->where('IdContenedor', $id)
                 ->firstOrFail();
-            
+
             if ($contenedor->ActivoInactivo == 1) {
-                // Desactivar (Activo → Borrador)
                 $contenedor->update([
                     'ActivoInactivo' => 0,
                     'IdOperadorActualiza' => session('operador_id'),
                     'FechaActualiza' => Carbon::now('America/La_Paz'),
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Contenedor desactivado correctamente (pasó a Borrador)',
                     'nuevo_estado' => 0
                 ]);
-                
+
             } else {
-                // Activar (Borrador → Activo)
                 $contenedor->update([
                     'ActivoInactivo' => 1,
                     'IdOperadorActualiza' => session('operador_id'),
                     'FechaActualiza' => Carbon::now('America/La_Paz'),
                 ]);
-                
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Contenedor activado correctamente',
                     'nuevo_estado' => 1,
                 ]);
             }
-            
+
         } catch (\Exception $e) {
             Log::error('Error al cambiar estado de contenedor: ' . $e->getMessage());
             return response()->json([
@@ -504,6 +566,8 @@ class ContenedorController extends Controller
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'EsProductoUnico' => $contenedor->EsProductoUnico,
+                'TipoContenedorTexto' => $contenedor->TipoContenedorTexto,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,
@@ -548,7 +612,7 @@ class ContenedorController extends Controller
     }
 
     /**
-     * ✅ EXPORTAR PDF: Contenedores con su cabecera
+     * ✅ EXPORTAR PDF
      */
     public function exportarPdf(Request $request)
     {
@@ -588,7 +652,6 @@ class ContenedorController extends Controller
 
         $y = 8;
 
-        // ============ HEADER EMPRESA ============
         $pdf->SetFont('helvetica', 'B', 13);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(10, $y);
@@ -608,7 +671,6 @@ class ContenedorController extends Controller
         $pdf->Line(10, $y, 206, $y);
         $y += 4;
 
-        // ============ TÍTULO ============
         $pdf->SetFont('helvetica', 'B', 13);
         $pdf->SetTextColor(30, 60, 120);
         $pdf->SetXY(10, $y);
@@ -621,7 +683,6 @@ class ContenedorController extends Controller
         $pdf->Cell(196, 3.5, 'Fecha de impresión: ' . $fechaImpresion . '  ·  Generado por: ' . ($operador->nombre ?? '-'), 0, 1, 'C');
         $y += 5;
 
-        // ============ CONTADORES ============
         $totalContenedores = $contenedores->count();
 
         $pdf->SetFont('helvetica', 'B', 8);
@@ -632,14 +693,12 @@ class ContenedorController extends Controller
         $pdf->Cell(196, 5, $textoContadores, 1, 1, 'C', 1);
         $y += 7;
 
-        // ============ RECORRER CONTENEDORES ============
         foreach ($contenedores as $contenedor) {
             if ($y > 250) {
                 $pdf->AddPage();
                 $y = 15;
             }
 
-            // ============ HEADER DEL CONTENEDOR ============
             $pdf->SetFont('helvetica', 'B', 10);
             $pdf->SetFillColor(230, 240, 255);
             $pdf->SetTextColor(20, 50, 110);
@@ -647,13 +706,14 @@ class ContenedorController extends Controller
             $pdf->Cell(196, 5.5, '  ' . $contenedor->Codigo, 'LTRB', 1, 'L', 1);
             $y += 5.5;
 
-            // Info del contenedor
             $pdf->SetFont('helvetica', '', 7.5);
             $pdf->SetTextColor(80, 80, 80);
             $pdf->SetXY(10, $y);
             $estado = $contenedor->ActivoInactivo == 1 ? 'Activo' : 'Borrador';
             $tipo = $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-';
+            $tipoTexto = $contenedor->EsProductoUnico ? 'Producto Único' : 'Normal';
             $info = '  Tipo: ' . $tipo
+                . ' · Clase: ' . $tipoTexto
                 . ' · Capacidad: ' . number_format($contenedor->CapacidadTotal, 2, ',', '.') . ' und'
                 . ' · Estado: ' . $estado;
             $pdf->Cell(196, 4.5, $info, 'LRB', 1, 'L', 1);
@@ -666,7 +726,7 @@ class ContenedorController extends Controller
     }
 
     /**
-     * ✅ HELPER PRIVADO: Obtener contenedores aplicando los mismos filtros del index
+     * ✅ HELPER: Reporte
      */
     private function obtenerContenedoresParaReporte(Request $request, $clienteId, $sucursalId)
     {
@@ -703,29 +763,29 @@ class ContenedorController extends Controller
     }
 
     /**
-     * ✅ LISTA DE CONTENEDORES - VERSIÓN SUPERVISOR (sin botón "Nuevo")
+     * ✅ LISTA - VERSIÓN SUPERVISOR
      */
     public function indexSupervisor(Request $request)
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
-        
+
         $sucursales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_cliente_sucursal')
             ->where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
-        
+
         $sucursalFiltro = $request->get('sucursal_id', $sucursalId);
-        
+
         $query = Contenedor::porCliente()
             ->with(['tipoContenedor', 'sucursal']);
-        
+
         if ($sucursalFiltro) {
             $query->where('IdSucursal', $sucursalFiltro);
         }
-        
+
         if ($request->filled('estado')) {
             if ($request->estado === 'activos') {
                 $query->activos();
@@ -733,14 +793,14 @@ class ContenedorController extends Controller
                 $query->borradores();
             }
         }
-        
+
         if ($request->filled('buscar')) {
             $buscar = $request->buscar;
-            $query->where(function($q) use ($buscar) {
+            $query->where(function ($q) use ($buscar) {
                 $q->where('Codigo', 'LIKE', "%{$buscar}%");
             });
         }
-        
+
         $contenedores = $query
             ->orderByRaw("
                 LOWER(SUBSTRING_INDEX(Codigo, '-', 1)) ASC,
@@ -748,13 +808,15 @@ class ContenedorController extends Controller
             ")
             ->paginate(20)
             ->appends($request->all());
-        
-        $contenedores->getCollection()->transform(function($contenedor) {
+
+        $contenedores->getCollection()->transform(function ($contenedor) {
             return [
                 'IdContenedor' => $contenedor->IdContenedor,
                 'Codigo' => $contenedor->Codigo,
                 'IdTipoContenedor' => $contenedor->IdTipoContenedor,
                 'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                'EsProductoUnico' => $contenedor->EsProductoUnico,
+                'TipoContenedorTexto' => $contenedor->TipoContenedorTexto,
                 'CapacidadTotal' => $contenedor->CapacidadTotal,
                 'CapacidadTotalFormateada' => $contenedor->CapacidadTotalFormateada,
                 'ActivoInactivo' => $contenedor->ActivoInactivo,

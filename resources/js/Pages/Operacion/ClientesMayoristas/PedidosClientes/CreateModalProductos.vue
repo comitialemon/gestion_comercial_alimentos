@@ -27,17 +27,15 @@ const errorMensaje = ref('')
 const excedeCapacidad = ref(false)
 const errorCarga = ref(false)
 
-// ✅ Subcliente seleccionado
+// Subcliente
 const subClienteSeleccionado = ref(null)
-
-// ✅ Autocomplete subcliente
 const busquedaSubCliente = ref('')
 const mostrarDropdownSubCliente = ref(false)
 const subClienteDropdownRef = ref(null)
 
 const toast = inject('toast', null)
 
-// ==================== COMPUTADOS ====================
+// ==================== COMPUTED ====================
 const productosFiltrados = computed(() => {
     if (!busquedaProducto.value || busquedaProducto.value.length < 2) {
         return productosSeleccionados.value
@@ -75,12 +73,11 @@ const porcentajeCompletado = computed(() => {
 
 const colorBarra = computed(() => {
     if (excedeCapacidad.value) return 'bg-red-500'
-    if (estaCompleto.value) return 'bg-green-500'
-    if (porcentajeCompletado.value > 70) return 'bg-yellow-500'
+    if (estaCompleto.value) return 'bg-emerald-500'
+    if (porcentajeCompletado.value > 70) return 'bg-amber-500'
     return 'bg-primary-500'
 })
 
-// ✅ Subcliente propio del operador
 const subClientePropio = computed(() => {
     if (!props.subclientes?.length || !props.idIdentificador) return null
     return props.subclientes.find(
@@ -88,13 +85,11 @@ const subClientePropio = computed(() => {
     ) || null
 })
 
-// ✅ ¿Es el propio operador?
 const esPropioOperador = computed(() => {
     if (!subClienteSeleccionado.value || !subClientePropio.value) return false
     return Number(subClienteSeleccionado.value) === Number(subClientePropio.value.IdSubClienteOperador)
 })
 
-// ✅ Nombre del subcliente seleccionado
 const subClienteNombreActual = computed(() => {
     if (!subClienteSeleccionado.value) return 'Sin subcliente'
     const sub = props.subclientes.find(
@@ -103,7 +98,6 @@ const subClienteNombreActual = computed(() => {
     return sub ? sub.Nombre : 'Sin subcliente'
 })
 
-// ✅ Filtrar subclientes por búsqueda
 const subClientesFiltrados = computed(() => {
     if (!busquedaSubCliente.value || busquedaSubCliente.value.length < 1) {
         return props.subclientes
@@ -128,63 +122,43 @@ const formatearNumero = (valor) => {
     return numero.toFixed(0)
 }
 
-// ✅ Inicializar subcliente (REFORZADO)
 const inicializarSubCliente = () => {
-    console.log('🔄 [MODAL] inicializarSubCliente')
-    console.log('   modoEdicion:', props.modoEdicion)
-    console.log('   datosEdicion.IdSubClienteOperador:', props.datosEdicion?.IdSubClienteOperador)
-    console.log('   idSubClienteOperadorDefault:', props.idSubClienteOperadorDefault)
-    console.log('   subClientePropio:', subClientePropio.value)
-
-    // 1. Modo edición: usar el subcliente existente desde datosEdicion
     if (props.modoEdicion && props.datosEdicion?.IdSubClienteOperador) {
         subClienteSeleccionado.value = Number(props.datosEdicion.IdSubClienteOperador)
         busquedaSubCliente.value = ''
-        console.log('✅ [MODAL] Aplicado (edición):', subClienteSeleccionado.value)
         return
     }
 
-    // 2. Modo edición: fallback con idSubClienteOperadorDefault
     if (props.modoEdicion && props.idSubClienteOperadorDefault) {
         subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
         busquedaSubCliente.value = ''
-        console.log('✅ [MODAL] Aplicado (default en edición):', subClienteSeleccionado.value)
         return
     }
 
-    // 3. Modo agregar: usar el default del backend
     if (props.idSubClienteOperadorDefault) {
         subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
         busquedaSubCliente.value = ''
-        console.log('✅ [MODAL] Aplicado (default):', subClienteSeleccionado.value)
         return
     }
 
-    // 4. Fallback: subcliente propio del operador
     if (subClientePropio.value) {
         subClienteSeleccionado.value = Number(subClientePropio.value.IdSubClienteOperador)
         busquedaSubCliente.value = ''
-        console.log('✅ [MODAL] Aplicado (propio):', subClienteSeleccionado.value)
         return
     }
-
-    console.log('⚠️ [MODAL] No se pudo auto-seleccionar')
 }
 
-// ✅ Seleccionar un subcliente
 const seleccionarSubCliente = (sub) => {
     subClienteSeleccionado.value = Number(sub.IdSubClienteOperador)
     busquedaSubCliente.value = ''
     mostrarDropdownSubCliente.value = false
 }
 
-// ✅ Abrir dropdown
 const abrirDropdownSubCliente = () => {
     mostrarDropdownSubCliente.value = true
     busquedaSubCliente.value = ''
 }
 
-// ✅ Cerrar dropdown al hacer click afuera
 const cerrarDropdownSiAfuera = (event) => {
     if (subClienteDropdownRef.value && !subClienteDropdownRef.value.contains(event.target)) {
         mostrarDropdownSubCliente.value = false
@@ -192,7 +166,7 @@ const cerrarDropdownSiAfuera = (event) => {
     }
 }
 
-// ==================== FUNCIONES DE CANTIDAD ====================
+// ==================== CANTIDAD ====================
 const actualizarCantidad = (producto, event) => {
     const input = event.target
     let valor = input.value.replace(/,/g, '.').trim()
@@ -255,7 +229,7 @@ const recalcularTotal = () => {
 const validarCapacidad = () => {
     if (totalUnidadesSeleccionadas.value > capacidadTotalContenedor.value && capacidadTotalContenedor.value > 0) {
         excedeCapacidad.value = true
-        errorMensaje.value = `⚠️ Máximo: ${formatearNumero(capacidadTotalContenedor.value)} und`
+        errorMensaje.value = `Máximo: ${formatearNumero(capacidadTotalContenedor.value)} und`
     } else {
         excedeCapacidad.value = false
         errorMensaje.value = ''
@@ -273,11 +247,11 @@ const limpiarTodo = () => {
     excedeCapacidad.value = false
 }
 
-// ==================== CARGAR PRODUCTOS ====================
+// ==================== CARGAR ====================
 const cargarProductos = async () => {
     if (!props.contenedor) return
     if (!props.idIdentificador) {
-        errorMensaje.value = '⚠️ Selecciona un cliente'
+        errorMensaje.value = 'Selecciona un cliente'
         return
     }
 
@@ -354,12 +328,12 @@ const cargarProductos = async () => {
 
         } else {
             errorCarga.value = true
-            errorMensaje.value = response.data.data?.mensaje || '❌ Error al cargar'
+            errorMensaje.value = response.data.data?.mensaje || 'Error al cargar'
         }
     } catch (error) {
         console.error('Error:', error)
         errorCarga.value = true
-        errorMensaje.value = '❌ Error al cargar productos'
+        errorMensaje.value = 'Error al cargar productos'
     } finally {
         loading.value = false
     }
@@ -377,30 +351,21 @@ const agregarAlCarrito = () => {
             Precio: p.PrecioFinal
         }))
 
-    // ✅ DEBUG
-    console.log('🚀 [MODAL] EMITIENDO:')
-    console.log('   modoEdicion:', props.modoEdicion)
-    console.log('   subClienteSeleccionado:', subClienteSeleccionado.value)
-
     if (props.modoEdicion && props.datosEdicion) {
-        const payload = {
+        emit('actualizar', {
             IdPedidoCliente: props.datosEdicion.IdPedidoCliente,
             IdContenedor: contenedorData.value.IdContenedor,
             OrdenContenedor: props.datosEdicion.OrdenContenedor,
             productos: productosAgregar,
             IdSubClienteOperador: subClienteSeleccionado.value
-        }
-        console.log('   payload (actualizar):', payload)
-        emit('actualizar', payload)
+        })
     } else {
-        const payload = {
+        emit('agregar', {
             IdContenedor: contenedorData.value.IdContenedor,
             productos: productosAgregar,
             TipoPrecio: props.tipoPrecio,
             IdSubClienteOperador: subClienteSeleccionado.value
-        }
-        console.log('   payload (agregar):', payload)
-        emit('agregar', payload)
+        })
     }
 
     cerrarModal()
@@ -410,7 +375,7 @@ const cerrarModal = () => {
     emit('close')
 }
 
-// ==================== WATCH ====================
+// ==================== WATCHERS ====================
 watch(() => props.visible, (newVal) => {
     if (newVal && props.contenedor) {
         cargarProductos()
@@ -457,17 +422,14 @@ watch(() => props.subclientes, (newVal) => {
     }
 }, { deep: true })
 
-// ✅ FIX: reaccionar cuando cambie datosEdicion (para modo edición)
 watch(() => props.datosEdicion, (newVal) => {
     if (newVal && props.modoEdicion && props.visible) {
-        console.log('🔄 [MODAL] datosEdicion cambió, re-inicializando...')
         nextTick(() => {
             inicializarSubCliente()
         })
     }
 }, { deep: true, immediate: true })
 
-// ✅ FIX: reaccionar cuando se abre el modal en modo edición
 watch(() => props.modoEdicion, (newVal) => {
     if (newVal && props.visible) {
         nextTick(() => {
@@ -489,52 +451,56 @@ onUnmounted(() => {
 <template>
     <div
         v-if="visible"
-        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-3"
         @click.self="cerrarModal"
     >
-        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up flex flex-col relative z-10">
+        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl animate-fade-in-up flex flex-col">
 
-            <!-- HEADER -->
-            <div class="px-4 py-3 border-b bg-primary-50 flex items-center justify-between flex-shrink-0">
-                <div class="min-w-0 flex-1">
-                    <h3 class="font-bold text-gray-800 text-sm truncate">
-                        <i class="fas fa-box text-primary-500 mr-2"></i>
-                        {{ modoEdicion ? '✏️ Editando' : '' }} {{ contenedorData?.Codigo || 'Contenedor' }}
-                        <span class="text-xs font-normal text-gray-500 ml-1">
-                            (Cap: {{ formatearNumero(capacidadTotalContenedor) }} und)
-                        </span>
-                    </h3>
-                    <p class="text-[10px] text-gray-400">
-                        {{ modoEdicion ? 'Modifica las cantidades de los productos' : 'Selecciona las cantidades a pedir' }}
-                    </p>
-                    <span class="text-[9px] px-2 py-0.5 rounded-full font-medium mt-1 inline-block"
-                        :class="tipoPrecio === 'con_factura' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'">
-                        <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-1"></i>
-                        {{ tipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}
-                    </span>
+            <!-- ==================== HEADER ==================== -->
+            <div class="px-4 py-3 bg-primary-600 flex items-center justify-between flex-shrink-0">
+                <div class="flex items-center gap-2.5 min-w-0 flex-1">
+                    <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-box text-white text-base"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <h3 class="font-bold text-sm text-white truncate flex items-center gap-1.5">
+                            <span v-if="modoEdicion" class="text-[9px] bg-white/20 px-1.5 py-0.5 rounded">
+                                <i class="fas fa-pencil-alt"></i> EDITANDO
+                            </span>
+                            {{ contenedorData?.Codigo || 'Contenedor' }}
+                            <span class="text-[10px] font-normal text-white/80">
+                                (Cap: {{ formatearNumero(capacidadTotalContenedor) }} und)
+                            </span>
+                        </h3>
+                        <div class="flex items-center gap-1.5 mt-0.5">
+                            <span class="text-[9px] px-1.5 py-0.5 rounded-full font-medium bg-white/20 text-white">
+                                <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-0.5 text-[8px]"></i>
+                                {{ tipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}
+                            </span>
+                        </div>
+                    </div>
                 </div>
-                <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0">
-                    <i class="fas fa-times"></i>
+                <button @click="cerrarModal" class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition flex-shrink-0">
+                    <i class="fas fa-times text-sm"></i>
                 </button>
             </div>
 
-            <!-- ✅ AUTOCOMPLETE SUBCLIENTE -->
+            <!-- ==================== AUTOCOMPLETE SUBCLIENTE ==================== -->
             <div class="px-4 py-2 border-b flex items-center gap-2 flex-shrink-0 transition-colors"
-                 :class="esPropioOperador ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'">
+                 :class="esPropioOperador ? 'bg-emerald-50 border-emerald-200' : 'bg-primary-50 border-primary-200'">
 
                 <label class="text-[10px] font-medium text-gray-600 whitespace-nowrap">
-                    <i class="fas fa-user-tag mr-1" :class="esPropioOperador ? 'text-green-500' : 'text-blue-500'"></i>
+                    <i class="fas fa-user-tag mr-1" :class="esPropioOperador ? 'text-emerald-500' : 'text-primary-500'"></i>
                     Pedido para:
                 </label>
 
                 <div class="flex-1 min-w-0 relative" ref="subClienteDropdownRef">
-                    <!-- Input con autocomplete -->
                     <div
                         @click="abrirDropdownSubCliente"
-                        class="w-full border rounded-lg px-2 py-1 text-xs bg-white font-medium cursor-pointer flex items-center justify-between gap-1 transition"
+                        class="w-full border rounded-md px-2.5 py-1 text-xs bg-white font-medium cursor-pointer flex items-center justify-between gap-1 transition"
                         :class="esPropioOperador
-                            ? 'border-green-300 hover:border-green-400 text-green-800'
-                            : 'border-blue-300 hover:border-blue-400 text-blue-800'"
+                            ? 'border-emerald-300 hover:border-emerald-400 text-emerald-800'
+                            : 'border-primary-300 hover:border-primary-400 text-primary-800'"
                     >
                         <span class="truncate flex-1">
                             {{ subClienteNombreActual }}
@@ -548,22 +514,20 @@ onUnmounted(() => {
                         v-if="mostrarDropdownSubCliente"
                         class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-72 overflow-hidden flex flex-col"
                     >
-                        <!-- Buscador -->
-                        <div class="p-2 border-b bg-gray-50">
+                        <div class="p-2 border-b border-gray-100 bg-gray-50">
                             <div class="relative">
                                 <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
                                 <input
                                     type="text"
                                     v-model="busquedaSubCliente"
                                     placeholder="Buscar subcliente..."
-                                    class="w-full border border-gray-200 rounded pl-7 pr-2 py-1 text-xs focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none bg-white"
+                                    class="w-full border border-gray-200 rounded-md pl-7 pr-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none bg-white"
                                     autofocus
                                     @click.stop
                                 />
                             </div>
                         </div>
 
-                        <!-- Lista -->
                         <div class="overflow-y-auto flex-1 max-h-56">
                             <div v-if="subClientesFiltrados.length === 0" class="text-center py-4 text-xs text-gray-400">
                                 <i class="fas fa-search mr-1"></i>
@@ -581,17 +545,15 @@ onUnmounted(() => {
                                     <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
                                         {{ sub.Nombre }}
                                         <span v-if="Number(sub.IdIdentificador) === Number(idIdentificador)"
-                                              class="text-[8px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold">
-                                            <i class="fas fa-user-check mr-0.5"></i>
-                                            Tú
+                                              class="text-[8px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                                            <i class="fas fa-user-check mr-0.5"></i> Tú
                                         </span>
                                     </div>
                                     <div class="text-[9px] text-gray-500 mt-0.5">
                                         <i class="fas fa-id-card mr-1"></i>
                                         {{ sub.CI_NIT || 'Sin NIT' }}
-                                        <span v-if="sub.Alias" class="ml-2 text-blue-600">
-                                            <i class="fas fa-tag mr-0.5"></i>
-                                            {{ sub.Alias }}
+                                        <span v-if="sub.Alias" class="ml-2 text-primary-600">
+                                            <i class="fas fa-tag mr-0.5"></i> {{ sub.Alias }}
                                         </span>
                                     </div>
                                 </div>
@@ -603,58 +565,57 @@ onUnmounted(() => {
                 </div>
 
                 <span v-if="esPropioOperador"
-                      class="text-[8px] bg-green-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
-                    <i class="fas fa-user-check mr-0.5"></i>
-                    Operador
+                      class="text-[8px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                    <i class="fas fa-user-check mr-0.5"></i> Operador
                 </span>
                 <span v-else
-                      class="text-[8px] bg-blue-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
-                    <i class="fas fa-user-tag mr-0.5"></i>
-                    Subcliente
+                      class="text-[8px] bg-primary-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                    <i class="fas fa-user-tag mr-0.5"></i> Subcliente
                 </span>
             </div>
 
-            <!-- BARRA DE PROGRESO -->
-            <div class="px-4 py-2 bg-gray-50 border-b flex items-center gap-3 flex-shrink-0">
+            <!-- ==================== BARRA DE PROGRESO ==================== -->
+            <div class="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center gap-3 flex-shrink-0">
                 <div class="flex-1">
-                    <div class="flex justify-between text-[10px] text-gray-500">
+                    <div class="flex justify-between text-[10px] text-gray-500 mb-0.5">
                         <span>Usado: <strong class="text-primary-600">{{ totalUnidadesSeleccionadas }}</strong></span>
-                        <span>Restante: <strong :class="totalRestante > 0 ? 'text-green-600' : 'text-red-500'">{{ totalRestante > 0 ? totalRestante : 0 }}</strong></span>
+                        <span>Restante: <strong :class="totalRestante > 0 ? 'text-emerald-600' : 'text-red-500'">{{ totalRestante > 0 ? totalRestante : 0 }}</strong></span>
                         <span>Máx: <strong>{{ formatearNumero(capacidadTotalContenedor) }}</strong></span>
                     </div>
-                    <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-0.5">
+                    <div class="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
                         <div class="h-full transition-all duration-300 rounded-full" :class="colorBarra"
                             :style="{ width: Math.min(porcentajeCompletado, 100) + '%' }"></div>
                     </div>
                 </div>
-                <span v-if="estaCompleto" class="text-[10px] text-green-600 font-medium whitespace-nowrap">
+                <span v-if="estaCompleto" class="text-[10px] text-emerald-600 font-medium whitespace-nowrap">
                     <i class="fas fa-check-circle"></i> Completo
                 </span>
             </div>
 
-            <!-- CUERPO -->
+            <!-- ==================== BODY ==================== -->
             <div class="p-3 overflow-y-auto flex-1">
-                <div v-if="!idIdentificador" class="mb-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded text-xs text-yellow-700">
+
+                <div v-if="!idIdentificador" class="mb-2 p-2 bg-amber-50 border-l-4 border-amber-400 rounded-md text-[10px] text-amber-700">
                     <i class="fas fa-exclamation-triangle mr-1"></i> Selecciona un cliente para ver los precios
                 </div>
 
-                <div v-if="errorCarga" class="mb-3 p-2 bg-red-50 border-l-4 border-red-400 rounded text-xs text-red-700">
+                <div v-if="errorCarga" class="mb-2 p-2 bg-red-50 border-l-4 border-red-400 rounded-md text-[10px] text-red-700">
                     <i class="fas fa-exclamation-triangle mr-1"></i> {{ errorMensaje }}
                     <button @click="cargarProductos" class="ml-2 text-red-600 hover:text-red-800 underline">Reintentar</button>
                 </div>
 
-                <div v-if="excedeCapacidad && !errorCarga" class="mb-3 p-2 bg-red-50 border-l-4 border-red-400 rounded text-xs text-red-700 animate-shake">
+                <div v-if="excedeCapacidad && !errorCarga" class="mb-2 p-2 bg-red-50 border-l-4 border-red-400 rounded-md text-[10px] text-red-700 animate-shake">
                     <i class="fas fa-exclamation-circle mr-1"></i> {{ errorMensaje }}
                 </div>
 
-                <div v-if="!errorCarga && productosSeleccionados.length === 0 && idIdentificador" class="mb-3 p-2 bg-blue-50 border-l-4 border-blue-400 rounded text-xs text-blue-700">
+                <div v-if="!errorCarga && productosSeleccionados.length === 0 && idIdentificador" class="mb-2 p-2 bg-primary-50 border-l-4 border-primary-400 rounded-md text-[10px] text-primary-700">
                     <i class="fas fa-info-circle mr-1"></i> No hay productos con precio para los grupos configurados
                 </div>
 
-                <div class="relative mb-3">
-                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
+                <div class="relative mb-2">
+                    <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
                     <input type="text" v-model="busquedaProducto" placeholder="Buscar producto..."
-                        class="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-primary-400 focus:border-transparent outline-none transition bg-gray-50 focus:bg-white"
+                        class="w-full border border-gray-300 rounded-md pl-7 pr-3 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none transition bg-gray-50 focus:bg-white"
                         :disabled="loading || errorCarga || !idIdentificador" />
                 </div>
 
@@ -672,12 +633,12 @@ onUnmounted(() => {
                     <div v-for="producto in productosFiltrados" :key="producto.IdProducto"
                         class="bg-gray-50 hover:bg-gray-100 rounded-lg p-2 transition-all duration-200 text-xs"
                         :class="{ 'ring-1 ring-primary-300 bg-primary-50/50': producto.Cantidad > 0 && producto.tiene_precio }">
-                        <div class="grid grid-cols-12 gap-1 items-center">
+                        <div class="grid grid-cols-12 gap-1.5 items-center">
                             <div class="col-span-12 sm:col-span-5 min-w-0">
                                 <div class="flex items-center gap-1.5 flex-wrap">
                                     <span class="text-[9px] font-mono text-gray-400 bg-white px-1.5 py-0.5 rounded">{{ producto.Codigo }}</span>
                                     <span class="font-medium text-gray-800 text-xs truncate">{{ producto.Descripcion }}</span>
-                                    <span class="text-[8px] text-indigo-500 bg-indigo-50 px-1 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
+                                    <span class="text-[8px] text-primary-500 bg-primary-50 px-1 py-0.5 rounded-full">{{ producto.GrupoAnalisis }}</span>
                                 </div>
                                 <div class="flex items-center gap-2 mt-0.5 flex-wrap">
                                     <span class="text-[9px] text-gray-400">
@@ -691,15 +652,15 @@ onUnmounted(() => {
                             </div>
 
                             <div class="col-span-3 sm:col-span-2 text-center">
-                                <span v-if="producto.tiene_precio" class="text-green-600 font-medium text-xs">
+                                <span v-if="producto.tiene_precio" class="text-emerald-600 font-medium text-xs">
                                     Bs. {{ Number(producto.PrecioFinal).toFixed(2) }}
                                 </span>
                                 <span v-else class="text-red-400 text-[9px]">Sin precio</span>
                             </div>
 
-                            <div class="col-span-6 sm:col-span-3 flex items-center gap-0.5">
+                            <div class="col-span-6 sm:col-span-3 flex items-center gap-1">
                                 <button @click="decrementarCantidad(producto)" :disabled="!producto.tiene_precio || producto.Cantidad <= 0"
-                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition">
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0">
                                     <i class="fas fa-minus text-[8px]"></i>
                                 </button>
                                 <input type="number" step="1" min="0" :max="capacidadTotalContenedor"
@@ -707,14 +668,14 @@ onUnmounted(() => {
                                     @input="actualizarCantidad(producto, $event)"
                                     @focus="$event.target.select()"
                                     :disabled="!producto.tiene_precio"
-                                    class="w-full text-center border rounded px-1 py-0.5 text-xs focus:ring-1 focus:ring-primary-400 focus:border-transparent outline-none transition bg-white"
+                                    class="w-full text-center border rounded-md px-1 py-0.5 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none transition bg-white"
                                     :class="{
                                         'border-primary-300 bg-primary-50': producto.Cantidad > 0 && producto.tiene_precio,
-                                        'border-gray-200': producto.Cantidad === 0 || !producto.tiene_precio
+                                        'border-gray-300': producto.Cantidad === 0 || !producto.tiene_precio
                                     }"
                                     placeholder="0" />
                                 <button @click="incrementarCantidad(producto)" :disabled="!producto.tiene_precio"
-                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition">
+                                    class="w-6 h-6 rounded-full bg-gray-200 hover:bg-gray-300 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0">
                                     <i class="fas fa-plus text-[8px]"></i>
                                 </button>
                             </div>
@@ -730,35 +691,35 @@ onUnmounted(() => {
                 </div>
             </div>
 
-            <!-- FOOTER -->
-            <div class="px-4 py-2.5 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
+            <!-- ==================== FOOTER ==================== -->
+            <div class="px-4 py-2.5 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
                 <div class="text-[10px] text-gray-500 text-center sm:text-left">
-                    <span v-if="!idIdentificador" class="text-yellow-600">
+                    <span v-if="!idIdentificador" class="text-amber-600">
                         <i class="fas fa-info-circle mr-1"></i> Selecciona un cliente
                     </span>
                     <span v-else-if="productosAgregados.length === 0" class="text-gray-400">
                         <i class="fas fa-info-circle mr-1"></i> Agrega productos para continuar
                     </span>
-                    <span v-else class="text-green-600">
+                    <span v-else class="text-emerald-600">
                         <i class="fas fa-check-circle mr-1"></i> {{ productosAgregados.length }} producto(s) · {{ totalUnidadesSeleccionadas }} und
-                        <span v-if="subClienteSeleccionado" class="text-blue-600 ml-1">
+                        <span v-if="subClienteSeleccionado" class="text-primary-600 ml-1">
                             · {{ subClienteNombreActual }}
                         </span>
                     </span>
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
                     <button @click="limpiarTodo"
-                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-[10px] transition flex-1 sm:flex-none"
+                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-xs font-medium transition flex-1 sm:flex-none flex items-center justify-center gap-1.5"
                         :disabled="loading || errorCarga">
-                        <i class="fas fa-eraser text-[8px] mr-1"></i> Limpiar
+                        <i class="fas fa-eraser text-[10px]"></i> Limpiar
                     </button>
                     <button @click="agregarAlCarrito"
                         :disabled="!puedeAgregar || errorCarga || !idIdentificador"
-                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-[10px] font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none">
+                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none justify-center">
                         <i v-if="loading" class="fas fa-spinner fa-spin text-[10px]"></i>
                         <i v-else class="fas fa-save text-[10px]"></i>
                         {{ loading ? 'Cargando...' : (modoEdicion ? 'Actualizar' : 'Agregar') }}
-                        <span v-if="productosAgregados.length > 0" class="bg-white/20 rounded-full px-1.5 py-0.5 text-[8px]">
+                        <span v-if="productosAgregados.length > 0" class="bg-white/25 rounded-full px-1.5 py-0.5 text-[9px] font-bold">
                             {{ productosAgregados.length }}
                         </span>
                     </button>
@@ -795,6 +756,7 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 input[type="number"] {
     -moz-appearance: textfield;
+    appearance: textfield;
 }
 
 .overflow-y-auto::-webkit-scrollbar {
@@ -810,5 +772,11 @@ input[type="number"] {
 }
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #a8a8a8;
+}
+
+@media (min-width: 1024px) {
+    input, button {
+        font-size: 13px !important;
+    }
 }
 </style>
