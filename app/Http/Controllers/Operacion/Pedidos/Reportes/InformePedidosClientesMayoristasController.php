@@ -916,7 +916,7 @@ class InformePedidosClientesMayoristasController extends Controller
 
                 if ($esRejilla) {
                     $pdf->SetFillColor(237, 233, 254); // morado claro
-                    $pdf->SetTextColor(88, 28, 135);   // morado oscuro
+                    $pdf->SetTextColor(88, 28, 135);
                 } else {
                     $pdf->SetFillColor(225, 238, 255);
                     $pdf->SetTextColor(20, 50, 110);
@@ -929,7 +929,7 @@ class InformePedidosClientesMayoristasController extends Controller
 
                 if ($esRejilla) {
                     $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']', 'L', 0, 'L', 1);
-                    $pdf->Cell(86, 6, '  ' . $grupo['CantidadRejillas'] . ' Cant.   ', 'R', 1, 'R', 1);
+                    $pdf->Cell(86, 6, '  ' . $grupo['CantidadRejillas'] . ' rejilla(s)   ', 'R', 1, 'R', 1);
                 } else {
                     $pdf->Cell(110, 6, '  [' . $grupo['Codigo'] . ']  #' . $grupo['OrdenContenedor'], 'L', 0, 'L', 1);
                     $pdf->Cell(86, 6, 'Cap: ' . number_format($grupo['CapacidadTotal'], 0, ',', '.') . ' und   ', 'R', 1, 'R', 1);
