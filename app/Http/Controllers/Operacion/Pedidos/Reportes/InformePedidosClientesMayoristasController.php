@@ -886,7 +886,15 @@ class InformePedidosClientesMayoristasController extends Controller
                 ->sortBy('OrdenContenedor')
                 ->values();
 
-            // CABECERA TABLA
+            // ============================================================
+            // ✅ CABECERA TABLA CON VERIFICACIÓN DE SALTO DE PÁGINA
+            // ============================================================
+            // Si no hay espacio para: cabecera (5) + 1 header contenedor (6) + 1 fila (4) + total (4.5) ≈ 20mm
+            if ((270 - $y) < 20) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
             $pdf->SetFont('helvetica', 'B', 7);
             $pdf->SetFillColor(240, 240, 240);
             $pdf->SetTextColor(0, 0, 0);
@@ -903,19 +911,47 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->SetFont('helvetica', '', 7);
             $contador = 0;
 
+            // ============================================================
             // LISTA POR CONTENEDOR
+            // ============================================================
             foreach ($detallesAgrupados as $idx => $grupo) {
-                if ($idx > 0) {
+                $esRejilla = !empty($grupo['EsProductoUnico']);
+
+                // ✅ Calcular cuánto ocupa este bloque mínimo
+                // Header (6) + subcliente (4 si aplica) + 1 fila (4) + total (4.5) ≈ 18.5mm
+                $espacioNecesario = 6 + 4 + 4 + 4.5;
+
+                // ✅ Verificar si cabe el header + al menos 1 fila + total
+                if ((270 - $y) < $espacioNecesario) {
+                    $pdf->AddPage();
+                    $y = 15;
+
+                    // Redibujar cabecera de tabla
+                    $pdf->SetFont('helvetica', 'B', 7);
+                    $pdf->SetFillColor(240, 240, 240);
+                    $pdf->SetTextColor(0, 0, 0);
+                    $pdf->SetDrawColor(180, 180, 180);
+
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell(8, 5, '#', 'TB', 0, 'C', 1);
+                    $pdf->Cell(72, 5, 'PRODUCTO', 'TB', 0, 'L', 1);
+                    $pdf->Cell(24, 5, 'CANTIDAD', 'TB', 0, 'C', 1);
+                    $pdf->Cell(30, 5, 'PRECIO UNIT.', 'TB', 0, 'C', 1);
+                    $pdf->Cell(62, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
+                    $y += 5;
+
+                    $pdf->SetFont('helvetica', '', 7);
+                }
+
+                if ($idx > 0 && (270 - $y) > $espacioNecesario) {
                     $y += 3;
                 }
 
-                $esRejilla = !empty($grupo['EsProductoUnico']);
-
-                // HEADER CONTENEDOR
+                // ============ HEADER CONTENEDOR ============
                 $pdf->SetFont('helvetica', 'B', 8.5);
 
                 if ($esRejilla) {
-                    $pdf->SetFillColor(237, 233, 254); // morado claro
+                    $pdf->SetFillColor(237, 233, 254);
                     $pdf->SetTextColor(88, 28, 135);
                 } else {
                     $pdf->SetFillColor(225, 238, 255);
@@ -948,11 +984,34 @@ class InformePedidosClientesMayoristasController extends Controller
 
                 $pdf->SetTextColor(0, 0, 0);
 
-                // PRODUCTOS
+                // ============ FILAS DE PRODUCTOS ============
                 $pdf->SetFont('helvetica', '', 7);
                 $fill = false;
 
                 foreach ($grupo['productos'] as $producto) {
+                    // ✅ Verificar espacio antes de cada fila (4mm + margen)
+                    if ((270 - $y) < 8) {
+                        $pdf->AddPage();
+                        $y = 15;
+
+                        // Redibujar cabecera
+                        $pdf->SetFont('helvetica', 'B', 7);
+                        $pdf->SetFillColor(240, 240, 240);
+                        $pdf->SetTextColor(0, 0, 0);
+                        $pdf->SetDrawColor(180, 180, 180);
+
+                        $pdf->SetXY(10, $y);
+                        $pdf->Cell(8, 5, '#', 'TB', 0, 'C', 1);
+                        $pdf->Cell(72, 5, 'PRODUCTO', 'TB', 0, 'L', 1);
+                        $pdf->Cell(24, 5, 'CANTIDAD', 'TB', 0, 'C', 1);
+                        $pdf->Cell(30, 5, 'PRECIO UNIT.', 'TB', 0, 'C', 1);
+                        $pdf->Cell(62, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
+                        $y += 5;
+
+                        $pdf->SetFont('helvetica', '', 7);
+                        $fill = false;
+                    }
+
                     $contador++;
                     $nombreProducto = $producto['Descripcion'] ?? '-';
                     if (mb_strlen($nombreProducto, 'UTF-8') > 42) {
@@ -973,7 +1032,13 @@ class InformePedidosClientesMayoristasController extends Controller
                     $fill = !$fill;
                 }
 
-                // TOTAL CONTENEDOR
+                // ============ TOTAL CONTENEDOR ============
+                // ✅ Verificar espacio para el total (4.5mm)
+                if ((270 - $y) < 8) {
+                    $pdf->AddPage();
+                    $y = 15;
+                }
+
                 $pdf->SetFont('helvetica', 'B', 7);
 
                 if ($esRejilla) {
@@ -997,7 +1062,15 @@ class InformePedidosClientesMayoristasController extends Controller
 
             $y += 5;
 
+            // ============================================================
             // TOTALES DEL PEDIDO
+            // ============================================================
+            // ✅ Verificar espacio para los totales (≈ 20mm)
+            if ((270 - $y) < 20) {
+                $pdf->AddPage();
+                $y = 15;
+            }
+
             $totalUnidades = $pedido->detalles->sum('Cantidad');
             $totalContenedores = $detallesAgrupados->count();
             $totalGeneral = $pedido->detalles->sum(function ($item) {
@@ -1024,16 +1097,14 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->Cell(60, 7, 'Bs. ' . number_format($totalGeneral, 2, ',', '.'), 0, 1, 'R');
             $y += 10;
 
-            // ✅ Verificar espacio antes de dibujar "RESUMEN POR TIPO DE CONTENEDOR"
+            // ============================================================
+            // RESUMEN POR TIPO DE CONTENEDOR
+            // ============================================================
             if ((270 - $y) < 30) {
                 $pdf->AddPage();
                 $y = 15;
             }
 
-            // ============================================================
-            // RESUMEN POR TIPO DE CONTENEDOR
-            // ✅ Si es rejilla → cuenta el N° real de rejillas
-            // ============================================================
             $resumenPorTipo = $detallesAgrupados
                 ->groupBy('Codigo')
                 ->map(function ($items, $codigo) {
@@ -1078,6 +1149,25 @@ class InformePedidosClientesMayoristasController extends Controller
             $fill = false;
 
             foreach ($resumenPorTipo as $item) {
+                if ((270 - $y) < 10) {
+                    $pdf->AddPage();
+                    $y = 15;
+
+                    $pdf->SetFont('helvetica', 'B', 8);
+                    $pdf->SetFillColor(240, 240, 240);
+                    $pdf->SetTextColor(0, 0, 0);
+                    $pdf->SetDrawColor(180, 180, 180);
+
+                    $pdf->SetXY(10, $y);
+                    $pdf->Cell(90, 5, 'CONTENEDOR', 'TB', 0, 'L', 1);
+                    $pdf->Cell(30, 5, 'CANT.', 'TB', 0, 'C', 1);
+                    $pdf->Cell(30, 5, 'UNIDADES', 'TB', 0, 'C', 1);
+                    $pdf->Cell(46, 5, 'SUBTOTAL', 'TB', 1, 'C', 1);
+                    $y += 5;
+
+                    $pdf->SetFont('helvetica', '', 8);
+                }
+
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(90, 5, '  ' . $item['Codigo'], 'LR', 0, 'L', $fill);
                 $pdf->Cell(30, 5, $item['cantidad_contenedores'] . ' cont.', 'LR', 0, 'C', $fill);
@@ -1085,6 +1175,11 @@ class InformePedidosClientesMayoristasController extends Controller
                 $pdf->Cell(46, 5, 'Bs. ' . number_format($item['subtotal'], 2, ',', '.'), 'LR', 1, 'C', $fill);
                 $y += 5;
                 $fill = !$fill;
+            }
+
+            if ((270 - $y) < 10) {
+                $pdf->AddPage();
+                $y = 15;
             }
 
             $pdf->SetFont('helvetica', 'B', 8);
@@ -1101,11 +1196,10 @@ class InformePedidosClientesMayoristasController extends Controller
             $pdf->SetFillColor(255, 255, 255);
 
             // ============================================================
-            // ✅ RESUMEN DE PRODUCTOS DEL PEDIDO (LISTA VERTICAL)
+            // RESUMEN DE PRODUCTOS DEL PEDIDO
             // ============================================================
             $y += 5;
 
-            // Agrupar productos del pedido por IdProducto
             $productosPedido = [];
             foreach ($pedido->detalles as $det) {
                 $idProd = $det->IdProducto;
@@ -1119,7 +1213,6 @@ class InformePedidosClientesMayoristasController extends Controller
                 $productosPedido[$idProd]['cantidad'] += floatval($det->Cantidad);
             }
 
-            // Ordenar por OrdenInformes
             uasort($productosPedido, function ($a, $b) {
                 return $a['orden'] <=> $b['orden'];
             });
@@ -1135,19 +1228,16 @@ class InformePedidosClientesMayoristasController extends Controller
                     $y = 15;
                 }
 
-                // ===== TÍTULO =====
                 $pdf->SetFont('helvetica', 'B', 9);
                 $pdf->SetTextColor(30, 60, 120);
                 $pdf->SetXY(10, $y);
                 $pdf->Cell(196, 6, 'RESUMEN DE PRODUCTOS DEL PEDIDO', 0, 1, 'C');
                 $y += 7;
 
-                // ===== ANCHOS =====
                 $anchoNum = 10;
                 $anchoProducto = 156;
                 $anchoCantidad = 30;
 
-                // ===== CABECERA DE LA TABLA =====
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetFillColor(217, 225, 242);
                 $pdf->SetTextColor(26, 35, 126);
@@ -1160,15 +1250,15 @@ class InformePedidosClientesMayoristasController extends Controller
                 $pdf->Cell($anchoCantidad, 6, 'CANTIDAD', 1, 1, 'C', 1);
                 $y += 6;
 
-                // ===== FILAS =====
                 $pdf->SetFont('helvetica', '', 7.5);
                 $pdf->SetTextColor(40, 40, 40);
 
                 $sumaTotal = 0;
-                $contador = 0;
+                $contadorProd = 0;
                 $alturaFila = 5;
 
                 foreach ($productosPedido as $prod) {
+                    // ✅ Verificar espacio antes de cada fila
                     if ((270 - $y) < ($alturaFila + 8)) {
                         $pdf->AddPage();
                         $y = 15;
@@ -1193,7 +1283,7 @@ class InformePedidosClientesMayoristasController extends Controller
                         $pdf->SetTextColor(40, 40, 40);
                     }
 
-                    $contador++;
+                    $contadorProd++;
 
                     $nombre = $prod['nombre'];
                     if (mb_strlen($nombre, 'UTF-8') > 90) {
@@ -1201,8 +1291,8 @@ class InformePedidosClientesMayoristasController extends Controller
                     }
 
                     $pdf->SetXY(10, $y);
-                    $pdf->Cell($anchoNum,      $alturaFila, $contador,                                    1, 0, 'C', 0);
-                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre,                                1, 0, 'L', 0);
+                    $pdf->Cell($anchoNum,      $alturaFila, $contadorProd,                                    1, 0, 'C', 0);
+                    $pdf->Cell($anchoProducto, $alturaFila, ' ' . $nombre,                                    1, 0, 'L', 0);
                     $pdf->Cell($anchoCantidad, $alturaFila, number_format($prod['cantidad'], 2, ',', '.'), 1, 1, 'C', 0);
 
                     $sumaTotal += $prod['cantidad'];
