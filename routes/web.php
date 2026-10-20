@@ -1308,8 +1308,12 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
 
             // ============================================================
             // CLIENTES MAYORISTAS (Contenedores + Pedidos)
+            // 🔥 Middleware anti-bfcache: evita que el navegador sirva
+            //    el Review desde memoria después de finalizar un pedido.
             // ============================================================
-            Route::prefix('clientes-mayoristas')->group(function () {
+            Route::prefix('clientes-mayoristas')
+                ->middleware(['prevent.inertia.cache'])
+                ->group(function () {
                 // ============================================================
                 // BILLETERAS
                 // ============================================================
@@ -1369,7 +1373,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.store');
                     
                     // ✅ RUTAS FIJAS (sin {id}) - DEBEN IR PRIMERO
-                    Route::get('/clientes-disponibles', [ContenedorClienteController::class, 'getClientesDisponibles'])
+                    Route::get('/clientes-disponibles', [ContenedorController::class, 'getClientesDisponibles'])
                         ->name('operacion.pedidos.clientes-mayoristas.contenedores.clientes-disponibles');
                     
                     // ✅ VERSIÓN SUPERVISOR (sin botón "Nuevo Contenedor")

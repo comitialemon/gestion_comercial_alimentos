@@ -11,29 +11,22 @@ const actualizarTokenCSRF = () => {
     const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
     if (token) {
         axios.defaults.headers.common['X-CSRF-TOKEN'] = token
-        console.log('Token CSRF actualizado')
-    } else {
-        console.warn('Token CSRF no encontrado')
     }
 }
 
-// Configurar axios inicial
 axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest'
 actualizarTokenCSRF()
 
-// 🔥 INTERCEPTOR DE AXIOS (colocar ANTES de createInertiaApp)
 axios.interceptors.response.use(
     response => response,
     error => {
         if (error.response?.status === 401 || error.response?.status === 419) {
-            // Sesión inválida, redirigir a login
             window.location.href = '/login'
         }
         return Promise.reject(error)
     }
 )
 
-// Layout global
 import AppLayout from '@/Layouts/AppLayout.vue'
 
 createInertiaApp({
@@ -67,7 +60,6 @@ createInertiaApp({
       .use(ZiggyVue, Ziggy)
       .use(pinia)
 
-    // 🔥 Actualizar token CSRF después de cada navegación de Inertia
     app.config.globalProperties.$inertia?.on('navigate', () => {
         actualizarTokenCSRF()
     })

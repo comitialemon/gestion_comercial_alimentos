@@ -13,6 +13,12 @@ use Illuminate\Support\Facades\Log;
 
 class BancoGanaderoWebhookController extends Controller
 {
+    protected $numeroPedidoService;
+
+    public function __construct(\App\Services\Pedidos\NumeroPedidoService $numeroPedidoService)
+    {
+        $this->numeroPedidoService = $numeroPedidoService;
+    }
     // ============================================================
     // LOGIN - Autenticación desde el banco
     // ============================================================
@@ -174,14 +180,11 @@ class BancoGanaderoWebhookController extends Controller
                 $pedido = PedidoCliente::find($pago->IdPedidoCliente);
 
                 if ($pedido && $pedido->EstadoPedido === 'Esperando Pago') {
-                    $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
-                        ->where('IdSucursal', $pedido->IdSucursal)
-                        ->where('NumeroPedido', '!=', '0')
-                        ->whereNotNull('NumeroPedido')
-                        ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
-
-                    $nuevoNumero = $maxNumero + 1;
-                    $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+                    // 🔥 Usar el servicio de secuencias
+                    $numeroFormateado = $this->numeroPedidoService->obtenerSiguiente(
+                        $pedido->IdCliente,
+                        $pedido->IdSucursal
+                    );
 
                     $pedido->update([
                         'EstadoPedido' => 'Pendiente',

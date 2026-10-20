@@ -1,18 +1,18 @@
 <script setup>
-import { computed, watch, ref } from 'vue'
+import { computed, watch, ref, onMounted, onUnmounted } from 'vue'
 import { usePage, router } from '@inertiajs/vue3'
 import { useBilletera } from '@/Composables/useBilletera'
 
 const page = usePage()
-const { saldoMasReciente } = useBilletera()
+const { saldoMasReciente, consultarSaldo } = useBilletera()
 
 // ============================================================
-// FUENTE DEL SALDO: primero polling, luego Inertia
+// FUENTE DEL SALDO
 // ============================================================
 const billetera = computed(() => {
-    // Si hay polling activo con datos, usar esos
+    // Si el polling tiene datos, usarlos (son los más frescos).
     if (saldoMasReciente.value) return saldoMasReciente.value
-    // Fallback: lo que viene de Inertia
+    // Fallback: lo que viene de Inertia.
     return page.props.billetera || null
 })
 
@@ -26,41 +26,31 @@ const saldoFormateado = computed(() => billetera.value?.saldo_formateado || '0,0
 // ============================================================
 const clasesBoton = computed(() => {
     if (!estaActiva.value) {
-        // Inactiva: gris, apagado
         return 'bg-gray-500/40 text-gray-200 cursor-not-allowed'
     }
     if (saldoBajo.value) {
-        // Saldo bajo: rojo con animación sutil
         return 'bg-red-500/40 text-red-50 hover:bg-red-500/50'
     }
-    // Activa normal: blanco translúcido
     return 'bg-white/15 text-white hover:bg-white/25'
 })
 
 const tooltip = computed(() => {
-    if (!estaActiva.value) {
-        return 'Billetera inactiva — contacta al encargado'
-    }
-    if (saldoBajo.value) {
-        return '⚠️ Saldo bajo. Recarga pronto.'
-    }
+    if (!estaActiva.value) return 'Billetera inactiva — contacta al encargado'
+    if (saldoBajo.value) return '⚠️ Saldo bajo. Recarga pronto.'
     return 'Ver mi billetera'
 })
 
 // ============================================================
 // ANIMACIÓN CUANDO EL SALDO CAMBIA
 // ============================================================
-const animacion = ref(null) // 'subio' | 'bajo' | null
+const animacion = ref(null)
 
 watch(() => billetera.value?.saldo, (nuevo, viejo) => {
     if (viejo === undefined || nuevo === undefined) return
     if (nuevo === viejo) return
 
-    if (nuevo > viejo) {
-        animacion.value = 'subio'
-    } else if (nuevo < viejo) {
-        animacion.value = 'bajo'
-    }
+    if (nuevo > viejo) animacion.value = 'subio'
+    else if (nuevo < viejo) animacion.value = 'bajo'
 
     setTimeout(() => {
         animacion.value = null
@@ -74,6 +64,44 @@ const irAMiBilletera = () => {
     if (!estaActiva.value) return
     router.visit('/operacion/pedidos/clientes-mayoristas/mi-billetera')
 }
+
+// ============================================================
+// 🔥 REFRESCO DEL SALDO
+// ============================================================
+// Al montar el componente, consultar el saldo al servidor.
+// Esto garantiza que si el DOM viene del bfcache (con el saldo
+// viejo pintado), se actualice con el saldo actual.
+//
+// El endpoint /api/mi-saldo consulta la BD (o cache de 1s) y
+// devuelve el saldo fresco. Se consulta:
+//   - Al montar el componente (primera carga o vuelta del bfcache)
+//   - Cuando la pestaña vuelve a estar visible
+// ============================================================
+
+const refrescarSaldo = () => {
+    // Solo consultar si el operador tiene billetera (evita requests innecesarios)
+    if (tieneBilletera.value) {
+        consultarSaldo()
+    }
+}
+
+onMounted(() => {
+    refrescarSaldo()
+})
+
+const handleVisibilityChange = () => {
+    if (!document.hidden) {
+        refrescarSaldo()
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 </script>
 
 <template>
@@ -89,13 +117,11 @@ const irAMiBilletera = () => {
             animacion === 'bajo' ? 'ring-2 ring-red-400 shadow-lg shadow-red-500/50' : '',
         ]"
     >
-        <!-- Ícono -->
-        <i 
+        <i
             :class="estaActiva ? 'fas fa-wallet' : 'fas fa-lock'"
             class="text-sm sm:text-base"
         ></i>
 
-        <!-- Texto desktop -->
         <div class="hidden sm:flex flex-col leading-tight text-left">
             <span class="text-[9px] uppercase tracking-wide opacity-80 font-medium">
                 Saldo disponible
@@ -105,7 +131,6 @@ const irAMiBilletera = () => {
             </span>
         </div>
 
-        <!-- Texto mobile (compacto) -->
         <span class="sm:hidden text-xs font-bold whitespace-nowrap">
             Bs. {{ saldoFormateado }}
         </span>
@@ -117,7 +142,6 @@ button {
     transition: all 0.2s ease;
 }
 
-/* Animación cuando el saldo sube */
 @keyframes pulse-green {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.05); }

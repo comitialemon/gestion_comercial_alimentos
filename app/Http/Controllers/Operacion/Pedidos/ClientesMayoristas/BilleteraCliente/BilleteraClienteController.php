@@ -370,7 +370,7 @@ class BilleteraClienteController extends Controller
 
         $data = Cache::remember(
             "billetera_operador_{$operadorId}",
-            5,
+            1, // ← 🔥 CAMBIO: de 5 a 1 segundo
             function () use ($operadorId) {
                 $billetera = BilleteraOperador::where('IdOperador', $operadorId)
                     ->select('IdBilletera', 'SaldoActual', 'ActivoInactivo', 'SaldoMinimoAlerta')
@@ -382,7 +382,6 @@ class BilleteraClienteController extends Controller
 
                 $saldo = (float) $billetera->SaldoActual;
 
-                // ✅ NUEVA LÓGICA: solo alerta si > 0
                 $saldoBajo = (float) $billetera->SaldoMinimoAlerta > 0
                     && $saldo <= (float) $billetera->SaldoMinimoAlerta;
 

@@ -14,25 +14,32 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // 🔥 CONFIAR EN LOS PROXIES (Nginx)
         $middleware->trustProxies(at: '*');
-        
+
         // 🔥 CSRF explícito
         $middleware->web(prepend: [
             \Illuminate\Session\Middleware\StartSession::class,
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
         ]);
-        
+
         // 🔥 EXCLUIR RUTAS DEL WEBHOOK DEL CSRF
         $middleware->validateCsrfTokens(except: [
             'api/banco-ganadero/*',
         ]);
-        
-        // 🔥 DominioCliente primero para URLs dinámicas
+
+        // 🔥 Middlewares globales del grupo web
         $middleware->web(append: [
             \App\Http\Middleware\DominioCliente::class,
             \App\Http\Middleware\SetTimezone::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
+
+            // 🔥 NUEVO: headers anti-cache para TODAS las respuestas HTML.
+            // Evita que Chrome/Edge sirvan HTML cacheado con datos viejos
+            // (saldo de billetera, pedidos finalizados, etc.).
+            // Solo afecta respuestas text/html. Los assets (CSS/JS/imágenes)
+            // no se ven afectados.
+            \App\Http\Middleware\PreventInertiaCache::class,
         ]);
 
         $middleware->alias([
@@ -43,6 +50,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'evitar.contexto.duplicado' => \App\Http\Middleware\EvitarContextoDuplicado::class,
             'verificar.fecha' => \App\Http\Middleware\VerificarFecha::class,
             'set.timezone' => \App\Http\Middleware\SetTimezone::class,
+            'prevent.inertia.cache' => \App\Http\Middleware\PreventInertiaCache::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

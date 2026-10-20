@@ -324,7 +324,9 @@ const irARevisarPedido = () => {
         toast?.warning('Carrito vacío', 'Agregue productos antes de revisar')
         return
     }
-    router.get(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${pedidoId.value}/review`)
+    router.visit(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${pedidoId.value}/review`, {
+        replace: true,
+    })
 }
 
 // ==================== WATCHERS ====================

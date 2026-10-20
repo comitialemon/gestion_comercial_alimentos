@@ -143,7 +143,9 @@ const intentarNuevoPedido = () => {
         modalNoPuedePedirVisible.value = true
         return
     }
-    router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
+    router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
+        replace: true,
+    })
 }
 
 const cerrarModalNoPuedePedir = () => {

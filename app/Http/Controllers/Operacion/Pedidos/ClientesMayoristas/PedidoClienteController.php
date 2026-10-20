@@ -32,6 +32,12 @@ use Carbon\Carbon;
 
 class PedidoClienteController extends Controller
 {
+    protected $numeroPedidoService;
+
+    public function __construct(\App\Services\Pedidos\NumeroPedidoService $numeroPedidoService)
+    {
+        $this->numeroPedidoService = $numeroPedidoService;
+    }
     // ============================================================
     // HELPERS PRIVADOS
     // ============================================================
@@ -1465,115 +1471,177 @@ class PedidoClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        try {
-            $pedido = PedidoCliente::where('IdCliente', $clienteId)
-                ->where('IdSucursal', $sucursalId)
-                ->where('IdOperador', $operadorId)
-                ->where('IdPedidoCliente', $idPedido)
-                ->first();
+        $conexion = DB::connection('mysql_gestion_comercial_alimentos');
 
-            if (!$pedido) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado o no tienes permiso.'
-                ], 404);
-            }
+        // 🔥 PASO 0: Validar IdempotencyKey
+        $idempotencyKey = $request->input('IdempotencyKey');
 
-            if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El pedido no puede finalizarse en su estado actual (' . $pedido->EstadoPedido . ').'
-                ], 422);
-            }
+        if (!$idempotencyKey || !preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $idempotencyKey)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'IdempotencyKey inválida o ausente.'
+            ], 422);
+        }
 
-            $grupoCliente = $this->getGrupoDelOperador();
-            if (!$grupoCliente) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
-                ], 400);
-            }
+        // Determinar el tipo de operación
+        $billetera = $this->getBilleteraActivaDelOperador();
+        $operationType = $billetera
+            ? 'finalizar_pedido_billetera'
+            : 'finalizar_pedido_qr';
 
-            $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
-            if ($totalDetalles === 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El pedido no tiene productos.'
-                ], 422);
-            }
+        // 🔥 PASO 0.1: Verificar idempotencia
+        $operacionExistente = $conexion
+            ->table('pedidos_clientes_operaciones_idempotentes')
+            ->where('IdempotencyKey', $idempotencyKey)
+            ->where('OperationType', $operationType)
+            ->first();
 
-            $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
-            if (!empty($productosSinMinimo)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Algunos productos ya no tienen mínimo configurado.',
-                    'errores' => array_map(fn($p) => "• {$p['Codigo']} - {$p['Descripcion']}", $productosSinMinimo),
-                ], 422);
-            }
-
-            $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
-            $gruposQueNoCumplen = collect($progresoGrupos)->filter(fn($item) => !$item['Cumple']);
-
-            if ($gruposQueNoCumplen->isNotEmpty()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No se puede finalizar. Faltan mínimos.',
-                    'errores' => $gruposQueNoCumplen->map(fn($item) => "• {$item['NombreGrupo']}: faltan {$item['Falta']} und")->toArray(),
-                ], 422);
-            }
-
-            $totalGeneral = (float) $pedido->TotalGeneral;
-            if ($totalGeneral <= 0) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'El total del pedido debe ser mayor a cero.'
-                ], 422);
-            }
-
-            $pedido->update([
-                'FechaEntrega' => $request->input('FechaEntrega'),
-                'Observaciones' => $request->input('Observaciones'),
-                'TipoPrecio' => $request->input('TipoPrecio', $pedido->TipoPrecio),
+        if ($operacionExistente) {
+            Log::info('🔄 Idempotencia: operación ya procesada', [
+                'IdempotencyKey' => $idempotencyKey,
+                'OperationType' => $operationType,
             ]);
 
-            $billetera = $this->getBilleteraActivaDelOperador();
+            return response()->json(
+                json_decode($operacionExistente->ResponsePayload, true)
+            );
+        }
 
-            if ($billetera) {
-                $saldoActual = (float) $billetera->SaldoActual;
+        // Conflicto de key con otro tipo de operación
+        $conflicto = $conexion
+            ->table('pedidos_clientes_operaciones_idempotentes')
+            ->where('IdempotencyKey', $idempotencyKey)
+            ->first();
 
-                if ($saldoActual < $totalGeneral) {
+        if ($conflicto) {
+            return response()->json([
+                'success' => false,
+                'message' => 'IdempotencyKey ya usada para otra operación distinta.'
+            ], 422);
+        }
+
+        try {
+            // 🔥 PASO 1: Abrir transacción
+            $conexion->beginTransaction();
+
+            try {
+                // 🔥 PASO 2: Leer pedido CON LOCK
+                $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
+                    ->where('IdOperador', $operadorId)
+                    ->where('IdPedidoCliente', $idPedido)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$pedido) {
+                    $conexion->rollBack();
                     return response()->json([
                         'success' => false,
-                        'message' => sprintf(
-                            'Saldo insuficiente. Tienes Bs. %s y necesitas Bs. %s. Contacta al encargado para recargar.',
-                            number_format($saldoActual, 2),
-                            number_format($totalGeneral, 2)
-                        ),
-                        'saldo_actual' => $saldoActual,
-                        'total_requerido' => $totalGeneral,
-                        'faltante' => round($totalGeneral - $saldoActual, 2),
-                        'tipo_finalizacion' => 'BILLETERA',
+                        'message' => 'Pedido no encontrado o no tienes permiso.'
+                    ], 404);
+                }
+
+                // 🔥 PASO 3: Validar estado DENTRO del lock
+                if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El pedido no puede finalizarse en su estado actual (' . $pedido->EstadoPedido . ').'
                     ], 422);
                 }
 
-                DB::connection('mysql_gestion_comercial_alimentos')->beginTransaction();
+                $grupoCliente = $this->getGrupoDelOperador();
+                if (!$grupoCliente) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Tu usuario no tiene un Grupo de Clientes asignado.'
+                    ], 400);
+                }
 
-                try {
-                    $movimiento = $billetera->descontarSaldo(
+                $totalDetalles = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)->count();
+                if ($totalDetalles === 0) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El pedido no tiene productos.'
+                    ], 422);
+                }
+
+                $productosSinMinimo = $this->validarProductosDelPedidoTienenMinimo($pedido);
+                if (!empty($productosSinMinimo)) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Algunos productos ya no tienen mínimo configurado.',
+                        'errores' => array_map(fn($p) => "• {$p['Codigo']} - {$p['Descripcion']}", $productosSinMinimo),
+                    ], 422);
+                }
+
+                $progresoGrupos = $this->calcularProgresoGrupos($pedido, $grupoCliente->IdGrupoCliente);
+                $gruposQueNoCumplen = collect($progresoGrupos)->filter(fn($item) => !$item['Cumple']);
+
+                if ($gruposQueNoCumplen->isNotEmpty()) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No se puede finalizar. Faltan mínimos.',
+                        'errores' => $gruposQueNoCumplen->map(fn($item) => "• {$item['NombreGrupo']}: faltan {$item['Falta']} und")->toArray(),
+                    ], 422);
+                }
+
+                $totalGeneral = (float) $pedido->TotalGeneral;
+                if ($totalGeneral <= 0) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'El total del pedido debe ser mayor a cero.'
+                    ], 422);
+                }
+
+                // 🔥 PASO 4: Actualizar pedido
+                $pedido->update([
+                    'FechaEntrega' => $request->input('FechaEntrega'),
+                    'Observaciones' => $request->input('Observaciones'),
+                    'TipoPrecio' => $request->input('TipoPrecio', $pedido->TipoPrecio),
+                ]);
+
+                // 🔥 PASO 5: Flujo con billetera
+                if ($billetera) {
+                    $billeteraConLock = BilleteraOperador::where('IdBilletera', $billetera->IdBilletera)
+                        ->lockForUpdate()
+                        ->first();
+
+                    $saldoActual = (float) $billeteraConLock->SaldoActual;
+
+                    if ($saldoActual < $totalGeneral) {
+                        $conexion->rollBack();
+                        return response()->json([
+                            'success' => false,
+                            'message' => sprintf(
+                                'Saldo insuficiente. Tienes Bs. %s y necesitas Bs. %s.',
+                                number_format($saldoActual, 2),
+                                number_format($totalGeneral, 2)
+                            ),
+                            'saldo_actual' => $saldoActual,
+                            'total_requerido' => $totalGeneral,
+                            'faltante' => round($totalGeneral - $saldoActual, 2),
+                            'tipo_finalizacion' => 'BILLETERA',
+                        ], 422);
+                    }
+
+                    $movimiento = $billeteraConLock->descontarSaldo(
                         $totalGeneral,
                         $pedido->IdPedidoCliente,
                         "Pedido Borrador #{$pedido->IdPedidoCliente}",
                         $operadorId
                     );
 
-                    $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
-                        ->where('IdSucursal', $pedido->IdSucursal)
-                        ->where('NumeroPedido', '!=', '0')
-                        ->whereNotNull('NumeroPedido')
-                        ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
-
-                    $nuevoNumero = $maxNumero + 1;
-                    $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+                    // 🔥 Usar el servicio de secuencias
+                    $numeroFormateado = $this->numeroPedidoService->obtenerSiguiente(
+                        $pedido->IdCliente,
+                        $pedido->IdSucursal
+                    );
 
                     $pedido->update([
                         'EstadoPedido' => 'Pendiente',
@@ -1583,23 +1651,9 @@ class PedidoClienteController extends Controller
                         'FechaActualiza' => now(),
                     ]);
 
-                    $movimiento->update([
-                        'Glosa' => "Pedido #{$numeroFormateado}",
-                    ]);
+                    $movimiento->update(['Glosa' => "Pedido #{$numeroFormateado}"]);
 
-                    DB::connection('mysql_gestion_comercial_alimentos')->commit();
-
-                    $this->invalidarCacheBilletera($operadorId);
-
-                    Log::info('✅ Pedido finalizado con billetera', [
-                        'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                        'NumeroPedido' => $numeroFormateado,
-                        'TotalGeneral' => $totalGeneral,
-                        'SaldoAntes' => $saldoActual,
-                        'SaldoDespues' => $saldoActual - $totalGeneral,
-                    ]);
-
-                    return response()->json([
+                    $responseData = [
                         'success' => true,
                         'tipo_finalizacion' => 'BILLETERA',
                         'message' => "Pedido #{$numeroFormateado} finalizado. Se descontaron Bs. " . number_format($totalGeneral, 2),
@@ -1608,139 +1662,173 @@ class PedidoClienteController extends Controller
                         'saldo_antes' => $saldoActual,
                         'saldo_despues' => round($saldoActual - $totalGeneral, 2),
                         'monto_descontado' => $totalGeneral,
+                    ];
+
+                    // 🔥 Guardar operación idempotente
+                    $conexion->table('pedidos_clientes_operaciones_idempotentes')->insert([
+                        'IdempotencyKey' => $idempotencyKey,
+                        'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                        'OperationType' => $operationType,
+                        'ResponsePayload' => json_encode($responseData),
+                        'IdOperador' => $operadorId,
+                        'CreatedAt' => now(),
                     ]);
 
-                } catch (\Exception $e) {
-                    DB::connection('mysql_gestion_comercial_alimentos')->rollBack();
-                    throw $e;
+                    $conexion->commit();
+
+                    $this->invalidarCacheBilletera($operadorId);
+
+                    Log::info('✅ Pedido finalizado con billetera', [
+                        'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                        'NumeroPedido' => $numeroFormateado,
+                        'IdempotencyKey' => $idempotencyKey,
+                    ]);
+
+                    return response()->json($responseData);
                 }
-            }
 
-            // SIN BILLETERA → QR
-            $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
-                ->where('Estado', 'PENDIENTE')
-                ->first();
+                // 🔥 PASO 6: Flujo sin billetera (QR)
+                $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                    ->where('Estado', 'PENDIENTE')
+                    ->first();
 
-            if ($pagoAnterior) {
-                try {
-                    $credencialAnterior = $pagoAnterior->credencial;
-                    if ($credencialAnterior) {
-                        $serviceAnterior = BancoFactory::desdeCredencial($credencialAnterior);
-                        $serviceAnterior->anularQR($pagoAnterior->QrId);
+                if ($pagoAnterior) {
+                    try {
+                        $credencialAnterior = $pagoAnterior->credencial;
+                        if ($credencialAnterior) {
+                            $serviceAnterior = BancoFactory::desdeCredencial($credencialAnterior);
+                            $serviceAnterior->anularQR($pagoAnterior->QrId);
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('No se pudo anular QR anterior', ['error' => $e->getMessage()]);
                     }
-                } catch (\Exception $e) {
-                    Log::warning('No se pudo anular QR anterior', ['error' => $e->getMessage()]);
+
+                    $pagoAnterior->update([
+                        'Estado' => 'ANULADO',
+                        'FechaAnulacion' => now(),
+                        'FechaUltimaActualizacion' => now(),
+                    ]);
                 }
 
-                $pagoAnterior->update([
-                    'Estado' => 'ANULADO',
-                    'FechaAnulacion' => now(),
-                    'FechaUltimaActualizacion' => now(),
-                ]);
-            }
+                $codigoBanco = $request->input('CodigoBanco');
 
-            $codigoBanco = $request->input('CodigoBanco');
+                $queryCredencial = BancoCredencial::porCliente($clienteId)
+                    ->where('ActivoInactivo', 1);
 
-            $queryCredencial = BancoCredencial::porCliente($clienteId)
-                ->where('ActivoInactivo', 1);
+                if ($codigoBanco) {
+                    $queryCredencial->porBanco($codigoBanco);
+                }
 
-            if ($codigoBanco) {
-                $queryCredencial->porBanco($codigoBanco);
-            }
+                $credencial = $queryCredencial->first();
 
-            $credencial = $queryCredencial->first();
+                if (!$credencial) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No hay credencial activa del banco. Contacta al administrador.'
+                    ], 400);
+                }
 
-            if (!$credencial) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'No hay credencial activa del banco. Contacta al administrador.'
-                ], 400);
-            }
+                $nombreOperador = $this->getNombreOperador();
+                $fechaPedido = $pedido->FechaPedido ? Carbon::parse($pedido->FechaPedido) : now();
+                $fechaFormateada = $fechaPedido->format('d/m/y');
+                $prefijo = "Pedido {$fechaFormateada}";
 
-            $nombreOperador = $this->getNombreOperador();
-            $fechaPedido = $pedido->FechaPedido
-                ? Carbon::parse($pedido->FechaPedido)
-                : now();
-            $fechaFormateada = $fechaPedido->format('d/m/y');
-            $prefijo = "Pedido {$fechaFormateada}";
+                if (!empty($nombreOperador) && $nombreOperador !== 'Sin nombre') {
+                    $glosa = "{$prefijo} - {$nombreOperador}";
+                } else {
+                    $glosa = $prefijo;
+                }
 
-            if (!empty($nombreOperador) && $nombreOperador !== 'Sin nombre') {
-                $glosa = "{$prefijo} - {$nombreOperador}";
-            } else {
-                $glosa = $prefijo;
-            }
+                if (mb_strlen($glosa) > 60) {
+                    $glosa = mb_substr($glosa, 0, 57) . '...';
+                }
 
-            if (mb_strlen($glosa) > 60) {
-                $glosa = mb_substr($glosa, 0, 57) . '...';
-            }
+                $service = BancoFactory::desdeCredencial($credencial);
 
-            $service = BancoFactory::desdeCredencial($credencial);
+                $transactionId = sprintf(
+                    'PED-%d-%d-%s',
+                    $pedido->IdPedidoCliente,
+                    $operadorId,
+                    strtoupper(substr(uniqid(), -6))
+                );
 
-            $transactionId = sprintf(
-                'PED-%d-%d-%s',
-                $pedido->IdPedidoCliente,
-                $operadorId,
-                strtoupper(substr(uniqid(), -6))
-            );
+                $qr = $service->generarQR(
+                    $transactionId,
+                    (float) $pedido->TotalGeneral,
+                    $glosa,
+                    'BOB',
+                    null,
+                    $credencial->BranchCode,
+                    true,
+                    false
+                );
 
-            $qr = $service->generarQR(
-                $transactionId,
-                (float) $pedido->TotalGeneral,
-                $glosa,
-                'BOB',
-                null,
-                $credencial->BranchCode,
-                true,
-                false
-            );
-
-            $pago = PedidoClientePago::create([
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'IdCliente' => $clienteId,
-                'IdSucursal' => $sucursalId,
-                'IdOperador' => $operadorId,
-                'IdCredencial' => $credencial->IdCredencial,
-                'QrId' => $qr->qrId,
-                'TransactionId' => $transactionId,
-                'BranchCode' => $credencial->BranchCode,
-                'CodigoBanco' => $credencial->CodigoBanco,
-                'Moneda' => 'BOB',
-                'Monto' => $pedido->TotalGeneral,
-                'Descripcion' => $glosa,
-                'FechaVencimiento' => date('Y-m-d'),
-                'Estado' => 'PENDIENTE',
-                'FechaCreacion' => now(),
-                'DatosGeneracion' => $qr->respuestaCompleta,
-            ]);
-
-            $pedido->update([
-                'EstadoPedido' => 'Esperando Pago',
-                'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => now(),
-            ]);
-
-            Log::info('✅ QR generado para pedido', [
-                'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'QrId' => $qr->qrId,
-                'Monto' => $pedido->TotalGeneral,
-                'Banco' => $credencial->CodigoBanco,
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'tipo_finalizacion' => 'QR',
-                'message' => 'QR generado. Esperando pago.',
-                'qr' => [
-                    'IdPagoPedido' => $pago->IdPagoPedido,
+                $pago = PedidoClientePago::create([
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'IdCliente' => $clienteId,
+                    'IdSucursal' => $sucursalId,
+                    'IdOperador' => $operadorId,
+                    'IdCredencial' => $credencial->IdCredencial,
                     'QrId' => $qr->qrId,
-                    'QrImage' => $qr->qrImage,
-                    'Monto' => (float) $pedido->TotalGeneral,
-                    'Descripcion' => $glosa,
-                    'ExpiraEnSegundos' => 900,
+                    'TransactionId' => $transactionId,
+                    'BranchCode' => $credencial->BranchCode,
                     'CodigoBanco' => $credencial->CodigoBanco,
-                ],
-                'pedido_id' => $pedido->IdPedidoCliente,
-            ]);
+                    'Moneda' => 'BOB',
+                    'Monto' => $pedido->TotalGeneral,
+                    'Descripcion' => $glosa,
+                    'FechaVencimiento' => date('Y-m-d'),
+                    'Estado' => 'PENDIENTE',
+                    'FechaCreacion' => now(),
+                    'DatosGeneracion' => $qr->respuestaCompleta,
+                ]);
+
+                $pedido->update([
+                    'EstadoPedido' => 'Esperando Pago',
+                    'IdOperadorActualiza' => $operadorId,
+                    'FechaActualiza' => now(),
+                ]);
+
+                $responseData = [
+                    'success' => true,
+                    'tipo_finalizacion' => 'QR',
+                    'message' => 'QR generado. Esperando pago.',
+                    'qr' => [
+                        'IdPagoPedido' => $pago->IdPagoPedido,
+                        'QrId' => $qr->qrId,
+                        'QrImage' => $qr->qrImage,
+                        'Monto' => (float) $pedido->TotalGeneral,
+                        'Descripcion' => $glosa,
+                        'ExpiraEnSegundos' => 900,
+                        'CodigoBanco' => $credencial->CodigoBanco,
+                    ],
+                    'pedido_id' => $pedido->IdPedidoCliente,
+                ];
+
+                // 🔥 Guardar operación idempotente
+                $conexion->table('pedidos_clientes_operaciones_idempotentes')->insert([
+                    'IdempotencyKey' => $idempotencyKey,
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'OperationType' => $operationType,
+                    'ResponsePayload' => json_encode($responseData),
+                    'IdOperador' => $operadorId,
+                    'CreatedAt' => now(),
+                ]);
+
+                $conexion->commit();
+
+                Log::info('✅ QR generado para pedido', [
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'QrId' => $qr->qrId,
+                    'IdempotencyKey' => $idempotencyKey,
+                ]);
+
+                return response()->json($responseData);
+
+            } catch (\Exception $e) {
+                $conexion->rollBack();
+                throw $e;
+            }
 
         } catch (\Exception $e) {
             Log::error('Error al finalizar pedido', [
@@ -1755,7 +1843,6 @@ class PedidoClienteController extends Controller
             ], 500);
         }
     }
-
     public function generarQRPedido(Request $request, $idPedido)
     {
         return $this->finalizarPedido($request, $idPedido);
@@ -1841,14 +1928,11 @@ class PedidoClienteController extends Controller
 
                     $pedido = PedidoCliente::find($pago->IdPedidoCliente);
                     if ($pedido && $pedido->EstadoPedido === 'Esperando Pago') {
-                        $maxNumero = PedidoCliente::where('IdCliente', $pedido->IdCliente)
-                            ->where('IdSucursal', $pedido->IdSucursal)
-                            ->where('NumeroPedido', '!=', '0')
-                            ->whereNotNull('NumeroPedido')
-                            ->max(DB::raw('CAST(NumeroPedido AS UNSIGNED)')) ?? 0;
-
-                        $nuevoNumero = $maxNumero + 1;
-                        $numeroFormateado = str_pad($nuevoNumero, 6, '0', STR_PAD_LEFT);
+                        // 🔥 Usar el servicio de secuencias
+                        $numeroFormateado = $this->numeroPedidoService->obtenerSiguiente(
+                            $pedido->IdCliente,
+                            $pedido->IdSucursal
+                        );
 
                         $pedido->update([
                             'EstadoPedido' => 'Pendiente',

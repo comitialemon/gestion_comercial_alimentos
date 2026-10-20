@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, inject, watch, onMounted } from 'vue'
+import { ref, computed, inject, watch, onMounted, onUnmounted } from 'vue'
 import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -26,7 +26,6 @@ const props = defineProps({
     horaLimite: { type: [Number, String], default: null },
     horaLimiteFormateada: { type: String, default: null },
     pagoPendiente: { type: Object, default: null },
-    // 🔥 Info de billetera (solo para mostrar banner informativo)
     tieneBilleteraActiva: { type: Boolean, default: false },
     billeteraInfo: { type: Object, default: null },
 })
@@ -44,18 +43,13 @@ const cambiandoTipoPrecio = ref(false)
 const horaActualCliente = ref(new Date())
 const validandoHoraLimite = ref(false)
 
-// Estado del pago pendiente
 const pagoPendienteLocal = ref(props.pagoPendiente || null)
 const mostrarModalQR = ref(false)
 const qrActual = ref(null)
 
-// Saldo local (para mostrar en banner)
 const saldoBilleteraLocal = ref(props.billeteraInfo?.SaldoActual ?? null)
 
-// Progreso como REF
 const progresoLocal = ref([...(props.progresoGrupos || [])])
-
-// Productos sin mínimo como REF
 const productosSinMinimoLocal = ref([...(props.productosSinMinimo || [])])
 
 const detallesLocal = ref(
@@ -73,8 +67,43 @@ const detallesLocal = ref(
 const modalEdicionVisible = ref(false)
 const contenedorSeleccionado = ref(null)
 
+// ✅ Flag para bloquear Atrás después de finalizar
+const pedidoYaFinalizado = ref(false)
+
+// 🔥 IdempotencyKey: se genera al abrir el modal de confirmación.
+//    Si el usuario reintenta (por error de red), se reutiliza la misma key.
+//    Si cancela y vuelve a abrir, se genera una nueva.
+const idempotencyKey = ref(null)
+
+const generarIdempotencyKey = () => {
+    // crypto.randomUUID es nativo en navegadores modernos
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID()
+    }
+    // Fallback: generar UUID v4 manual
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0
+        const v = c === 'x' ? r : (r & 0x3 | 0x8)
+        return v.toString(16)
+    })
+}
+
 // ==================== INICIALIZAR ====================
 onMounted(() => {
+    // 🔥 Bloquear Atrás si el pedido se finalizó en esta sesión.
+    const handlePopState = () => {
+        if (pedidoYaFinalizado.value) {
+            window.location.reload()
+        }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+
+    onUnmounted(() => {
+        window.removeEventListener('popstate', handlePopState)
+    })
+
+    // Advertir si hay pago pendiente
     if (props.pagoPendiente && props.pagoPendiente.Estado === 'PENDIENTE') {
         toast?.warning('Pago pendiente', 'Tienes un pago pendiente. Genera el QR de nuevo para continuar.')
     }
@@ -329,18 +358,19 @@ const saldoDespues = computed(() => {
 
 // ==================== BOTÓN ====================
 const puedeFinalizar = computed(() => {
+    if (pedidoYaFinalizado.value) return false
     if (detallesLocal.value.length === 0) return false
     if (tieneProductosSinMinimo.value) return false
     if (!cumpleTodos.value) return false
     if (fechaVacia.value) return false
     if (fechaEsInvalida.value) return false
     if (fechaEsManana.value && fueraDeHoraLimite.value) return false
-    // Si tiene billetera activa pero saldo insuficiente, bloquear (feedback temprano)
     if (props.tieneBilleteraActiva && !saldoSuficiente.value) return false
     return true
 })
 
 const textoBoton = computed(() => {
+    if (pedidoYaFinalizado.value) return 'Pedido ya finalizado'
     if (loading.value) return 'Procesando...'
     if (validandoHoraLimite.value) return 'Validando hora...'
     if (tieneProductosSinMinimo.value) return 'Productos sin mínimo'
@@ -408,7 +438,13 @@ watch(fechaEntrega, (nueva) => {
 
 // ==================== FUNCIONES ====================
 const irAtras = () => {
-    router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
+    if (pedidoYaFinalizado.value) {
+        window.location.replace('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
+        return
+    }
+    router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
+        replace: true,
+    })
 }
 
 const validarFechaEntrega = () => {
@@ -453,6 +489,7 @@ const validarHoraLimite = async () => {
 }
 
 const cambiarTipoPrecio = async (nuevoTipo) => {
+    if (pedidoYaFinalizado.value) return
     if (nuevoTipo === tipoPrecioLocal.value) return
 
     cambiandoTipoPrecio.value = true
@@ -497,6 +534,11 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
 // El backend decide: si tiene billetera → descuenta saldo; si no → QR
 // ============================================================
 const abrirModalConfirmacion = async () => {
+    if (pedidoYaFinalizado.value) {
+        toast?.error('Pedido finalizado', 'Este pedido ya fue finalizado y no puede modificarse.')
+        return
+    }
+
     if (detallesLocal.value.length === 0) {
         toast?.warning('Carrito vacío', 'Agregue productos antes de finalizar')
         return
@@ -525,7 +567,6 @@ const abrirModalConfirmacion = async () => {
     const horaOk = await validarHoraLimite()
     if (!horaOk) return
 
-    // Si tiene billetera pero saldo insuficiente, avisar antes
     if (props.tieneBilleteraActiva && !saldoSuficiente.value) {
         toast?.error(
             'Saldo insuficiente',
@@ -534,11 +575,24 @@ const abrirModalConfirmacion = async () => {
         return
     }
 
+    // 🔥 Generar una nueva key si no hay una activa
+    if (!idempotencyKey.value) {
+        idempotencyKey.value = generarIdempotencyKey()
+    }
+
     modalConfirmacionVisible.value = true
 }
 
 // 🎯 El único método que hace todo
 const finalizarPedido = async () => {
+    if (pedidoYaFinalizado.value) return
+
+    // 🔥 Validar que tenemos una key
+    if (!idempotencyKey.value) {
+        toast?.error('Error', 'No se generó la clave de operación. Recargá e intentá de nuevo.')
+        return
+    }
+
     modalConfirmacionVisible.value = false
     loading.value = true
 
@@ -549,10 +603,14 @@ const finalizarPedido = async () => {
                 FechaEntrega: fechaEntrega.value,
                 Observaciones: observaciones.value || null,
                 TipoPrecio: tipoPrecioLocal.value,
+                IdempotencyKey: idempotencyKey.value, // 🔥 NUEVO
             }
         )
 
         if (response.data.success) {
+            // 🔥 Marcar como finalizado para bloquear el Atrás
+            pedidoYaFinalizado.value = true
+
             // 🔥 Si fue con QR → abrir el modal de QR
             if (response.data.tipo_finalizacion === 'QR') {
                 qrActual.value = response.data.qr
@@ -572,8 +630,10 @@ const finalizarPedido = async () => {
                 )
 
                 setTimeout(() => {
-                    router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
-                }, 1500)
+                    router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes', {
+                        replace: true,
+                    })
+                }, 800)
             }
         } else {
             if (response.data.errores) {
@@ -591,17 +651,25 @@ const finalizarPedido = async () => {
     }
 }
 
-// ✅ Pago exitoso
+// ✅ Pago exitoso (QR)
 const onPagoExitoso = () => {
+    // ✅ Marcar como finalizado para bloquear el Atrás
+    pedidoYaFinalizado.value = true
+
     mostrarModalQR.value = false
     qrActual.value = null
     pagoPendienteLocal.value = null
 
+    // 🔥 Limpiar la key (ya no se necesita)
+    idempotencyKey.value = null
+
     toast?.success('¡Pago recibido!', 'El pedido se registró correctamente.')
 
     setTimeout(() => {
-        router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
-    }, 1500)
+        router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes', {
+            replace: true,
+        })
+    }, 800)
 }
 
 // ✅ Cancelar QR
@@ -609,6 +677,9 @@ const onCancelarQR = () => {
     mostrarModalQR.value = false
     qrActual.value = null
     pagoPendienteLocal.value = null
+
+    // 🔥 Limpiar la key (el próximo intento generará una nueva)
+    idempotencyKey.value = null
 
     toast?.info('QR cancelado', 'Puedes modificar el pedido y volver a intentar.')
 }
@@ -619,11 +690,18 @@ const onQRExpirado = () => {
     qrActual.value = null
     pagoPendienteLocal.value = null
 
+    // 🔥 Limpiar la key (el próximo intento generará una nueva)
+    idempotencyKey.value = null
+
     toast?.warning('QR expirado', 'El QR expiró. Genera uno nuevo.')
 }
 
 // ==================== EDICIÓN ====================
 const abrirModalEdicion = (item) => {
+    if (pedidoYaFinalizado.value) {
+        toast?.error('Pedido finalizado', 'No se puede editar un pedido ya finalizado.')
+        return
+    }
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
         CapacidadTotal: item.CapacidadTotal,
@@ -646,6 +724,8 @@ const abrirModalEdicion = (item) => {
 }
 
 const actualizarContenedor = async (data) => {
+    if (pedidoYaFinalizado.value) return
+
     loading.value = true
     try {
         const payload = {
@@ -728,6 +808,11 @@ const actualizarDetalleLocal = (data, payload) => {
 }
 
 const eliminarContenedor = async (item) => {
+    if (pedidoYaFinalizado.value) {
+        toast?.error('Pedido finalizado', 'No se puede eliminar un contenedor de un pedido finalizado.')
+        return
+    }
+
     const detalleId = item.productos[0]?.IdPedidoClienteDetalle
     if (!detalleId) {
         toast?.error('Error', 'No se pudo identificar el contenedor')
@@ -752,7 +837,9 @@ const eliminarContenedor = async (item) => {
             toast?.success('Éxito', 'Contenedor eliminado')
 
             if (detallesLocal.value.length === 0) {
-                router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create')
+                router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', {
+                    replace: true,
+                })
             }
         }
     } catch (error) {
@@ -1378,13 +1465,14 @@ const eliminarContenedor = async (item) => {
                         </button>
                         <button
                             @click="abrirModalConfirmacion"
-                            :disabled="loading || !puedeFinalizar || validandoHoraLimite"
+                            :disabled="loading || !puedeFinalizar || validandoHoraLimite || pedidoYaFinalizado"
                             class="px-4 py-1.5 rounded-md text-xs font-medium transition flex items-center justify-center gap-1.5 disabled:opacity-50 shadow-sm"
                             :class="puedeFinalizar
                                 ? (tieneBilleteraActiva ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-emerald-600 hover:bg-emerald-700 text-white')
                                 : 'bg-gray-300 text-gray-500 cursor-not-allowed'"
                         >
                             <i v-if="loading || validandoHoraLimite" class="fas fa-spinner fa-spin text-[10px]"></i>
+                            <i v-else-if="pedidoYaFinalizado" class="fas fa-check-circle text-[10px]"></i>
                             <i v-else-if="tieneProductosSinMinimo" class="fas fa-ban text-[10px]"></i>
                             <i v-else-if="fechaEsInvalida" class="fas fa-exclamation-triangle text-[10px]"></i>
                             <i v-else-if="fechaEsManana && fueraDeHoraLimite" class="fas fa-clock text-[10px]"></i>
@@ -1400,7 +1488,7 @@ const eliminarContenedor = async (item) => {
             </div>
         </div>
 
-        <!-- 🎯 MODAL DE CONFIRMACIÓN (uno solo, unificado) -->
+        <!-- 🎯 MODAL DE CONFIRMACIÓN -->
         <ConfirmModal
             v-model:visible="modalConfirmacionVisible"
             title="Finalizar Pedido"
