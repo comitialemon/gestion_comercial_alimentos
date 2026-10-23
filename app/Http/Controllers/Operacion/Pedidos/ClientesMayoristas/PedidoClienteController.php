@@ -2074,7 +2074,9 @@ class PedidoClienteController extends Controller
                 ->with([
                     'cliente', 'sucursal', 'operador',
                     'detalles.producto', 'detalles.contenedor',
-                    'detalles.subClienteOperador.identificador'
+                    'detalles.subClienteOperador.identificador',
+                    'envio.transportadora', // 🔥 NUEVO
+                    'historial'             // 🔥 NUEVO
                 ])
                 ->first();
 
@@ -2117,15 +2119,6 @@ class PedidoClienteController extends Controller
                 ];
             })->values();
 
-            $estados = [
-                ['key' => 'Borrador', 'label' => 'Borrador', 'icon' => 'fa-pencil-alt', 'color' => 'yellow'],
-                ['key' => 'Esperando Pago', 'label' => 'Esperando Pago', 'icon' => 'fa-qrcode', 'color' => 'purple'],
-                ['key' => 'Pendiente', 'label' => 'Pendiente', 'icon' => 'fa-clock', 'color' => 'blue'],
-                ['key' => 'En Proceso', 'label' => 'En Proceso', 'icon' => 'fa-cog', 'color' => 'orange'],
-                ['key' => 'Entregado', 'label' => 'Entregado', 'icon' => 'fa-check-circle', 'color' => 'green'],
-                ['key' => 'Cancelado', 'label' => 'Cancelado', 'icon' => 'fa-times-circle', 'color' => 'red'],
-            ];
-
             $totalGeneral = $pedido->detalles->sum(function($item) {
                 return $item->Cantidad * $item->Precio;
             });
@@ -2133,8 +2126,6 @@ class PedidoClienteController extends Controller
             return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/ShowPedido', [
                 'pedido' => $pedido,
                 'detallesAgrupados' => $detallesAgrupados,
-                'estados' => $estados,
-                'estadoActual' => $pedido->EstadoPedido,
                 'totalGeneral' => $totalGeneral,
             ]);
 
@@ -3219,6 +3210,47 @@ class PedidoClienteController extends Controller
             'mensaje' => $valido
                 ? null
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
+        ]);
+    }
+    // ============================================================
+    // VISTA: Mis Reclamos (Para el cliente)
+    // ============================================================
+    public function misReclamos()
+    {
+        $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
+
+        // Traemos solo los reclamos de los pedidos que hizo este operador
+        $reclamos = \App\Models\Operacion\Pedidos\ClientesMayoristas\Reclamo::where('IdCliente', $clienteId)
+            ->whereHas('pedido', function($query) use ($operadorId) {
+                $query->where('IdOperador', $operadorId);
+            })
+            ->with([
+                'pedido',
+                'detalles.producto'
+            ])
+            ->orderBy('FechaCreacion', 'desc')
+            ->get();
+
+        // Calculamos el monto devuelto si el reclamo está reembolsado
+        $reclamos->each(function ($reclamo) {
+            $montoTotal = 0;
+            foreach ($reclamo->detalles as $detalle) {
+                $precioProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes_detalle')
+                    ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
+                    ->where('IdProducto', $detalle->IdProducto)
+                    ->value('Precio');
+
+                if ($detalle->CantidadAprobada > 0 && $precioProducto) {
+                    $montoTotal += ($detalle->CantidadAprobada * $precioProducto);
+                }
+            }
+            $reclamo->monto_a_devolver = round($montoTotal, 2);
+        });
+
+        return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/MisReclamos', [
+            'reclamos' => $reclamos,
         ]);
     }
 }

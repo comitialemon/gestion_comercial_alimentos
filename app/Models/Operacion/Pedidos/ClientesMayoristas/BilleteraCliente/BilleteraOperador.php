@@ -514,4 +514,64 @@ class BilleteraOperador extends Model
             'FechaUltimaActualizacion' => now(),
         ]);
     }
+        /**
+     * DEVOLUCIÓN POR RECLAMO (Ticket de Calidad)
+     * Registra un movimiento de tipo 'DEVOLUCION' e incrementa el saldo.
+     */
+    public function devolverPorReclamo(
+        float $monto,
+        int $idPedidoCliente,
+        string $glosa,
+        int $idOperadorInserta
+    ): BilleteraMovimiento {
+        if ($monto <= 0) {
+            throw new \Exception('El monto a devolver debe ser mayor a cero.');
+        }
+
+        return DB::connection('mysql_gestion_comercial_alimentos')
+            ->transaction(function () use ($monto, $idPedidoCliente, $glosa, $idOperadorInserta) {
+                $billetera = self::where('IdBilletera', $this->IdBilletera)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$billetera) {
+                    throw new \Exception('Billetera no encontrada.');
+                }
+
+                $saldoAntes = (float) $billetera->SaldoActual;
+                $saldoDespues = $saldoAntes + $monto;
+
+                $movimiento = BilleteraMovimiento::create([
+                    'IdBilletera' => $billetera->IdBilletera,
+                    'IdOperadorPedidoCliente' => $billetera->IdOperadorPedidoCliente,
+                    'IdOperador' => $billetera->IdOperador,
+                    'IdCliente' => $billetera->IdCliente,
+                    'IdSucursal' => $billetera->IdSucursal,
+                    'Tipo' => 'DEVOLUCION', // 🔥 TIPO ESPECÍFICO
+                    'Monto' => $monto,
+                    'SaldoAntes' => $saldoAntes,
+                    'SaldoDespues' => $saldoDespues,
+                    'IdPedidoCliente' => $idPedidoCliente,
+                    'IdMovimientoOrigen' => null,
+                    'Glosa' => $glosa,
+                    'Observaciones' => 'Devolución por reclamo de calidad',
+                    'OrigenPago' => 'SISTEMA',
+                    'ReferenciaPago' => null,
+                    'IdOperadorInserta' => $idOperadorInserta,
+                    'FechaMovimiento' => now(),
+                    'FechaCreacion' => now(),
+                ]);
+
+                $billetera->update([
+                    'SaldoActual' => $saldoDespues,
+                    'TotalCargado' => (float) $billetera->TotalCargado + $monto,
+                    'IdOperadorActualiza' => $idOperadorInserta,
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+
+                $this->refresh();
+
+                return $movimiento;
+            });
+    }
 }

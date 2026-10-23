@@ -130,7 +130,7 @@ class BilleteraMovimiento extends Model
             'AJUSTE_POSITIVO' => 'Ajuste (+)',
             'AJUSTE_NEGATIVO' => 'Ajuste (−)',
             'ANULACION' => 'Anulación',
-            'DEVOLUCION' => 'Devolución',
+            'DEVOLUCION' => 'Devolución por Reclamo', // 🔥 Ya está en tu código original
             'TRANSFERENCIA_IN' => 'Transferencia recibida',
             'TRANSFERENCIA_OUT' => 'Transferencia enviada',
             'VENCIMIENTO' => 'Vencimiento',

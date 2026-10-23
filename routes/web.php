@@ -1492,7 +1492,10 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     // Crear nuevo pedido
                     Route::get('/create', [PedidoClienteController::class, 'create'])
                         ->name('operacion.pedidos-clientes.pedidos.create');
-                    
+                        //reclamos
+                    Route::get('/mis-reclamos', [PedidoClienteController::class, 'misReclamos'])
+                       ->name('operacion.pedidos-clientes.pedidos.mis-reclamos');
+
                     // ✅ NUEVO: API Validar hora límite para pedidos clientes mayoristas
                     Route::post('/api/validar-hora-limite', [PedidoClienteController::class, 'apiValidarHoraLimite'])
                         ->name('operacion.pedidos-clientes.api.validar-hora-limite');
@@ -1689,6 +1692,55 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         Route::get('/{id}', [ProductoMinimoController::class, 'show'])
                             ->name('operacion.pedidos.clientes-mayoristas.minimos.producto.show');
                     });
+                });
+                // ============================================================
+                // DISTRIBUCIÓN (Logística)
+                // ============================================================
+                Route::prefix('distribucion')->group(function () {
+                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'index'])
+                        ->name('operacion.pedidos-clientes.distribucion.index');
+                    Route::post('/transportadoras', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'guardarTransportadora'])
+                        ->name('operacion.pedidos-clientes.distribucion.guardar-transportadora');
+                    Route::post('/{id}/cambiar-estado', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'cambiarEstado'])
+                        ->name('operacion.pedidos-clientes.distribucion.cambiar-estado');
+                    Route::get('/{id}/historial', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'getHistorial'])
+                        ->name('operacion.pedidos-clientes.distribucion.historial');                    
+                });
+
+                // ============================================================
+                // RECLAMOS (Calidad)
+                // ============================================================
+                Route::prefix('reclamos')->group(function () {
+                    Route::post('/{id}/crear', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\ReclamoController::class, 'store'])
+                        ->name('operacion.pedidos-clientes.reclamos.crear');
+                });
+                
+                // ============================================================
+                // CALIDAD (Revisión de Reclamos)
+                // ============================================================
+                Route::prefix('calidad')->group(function () {
+                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'index'])
+                        ->name('operacion.pedidos-clientes.calidad.index');
+                    
+                    Route::post('/{id}/aprobar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'aprobar'])
+                        ->name('operacion.pedidos-clientes.calidad.aprobar');
+                    
+                    Route::post('/{id}/rechazar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'rechazar'])
+                        ->name('operacion.pedidos-clientes.calidad.rechazar');
+                    Route::post('/{id}/recibir', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'recibirEnFabrica'])
+                        ->name('operacion.pedidos-clientes.calidad.recibir');
+                    Route::get('/{id}/calcular-devolucion', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'calcularMontoDevolucion'])
+                        ->name('operacion.pedidos-clientes.calidad.calcular-devolucion');
+                });
+                // ============================================================
+                // TESORERÍA (Devoluciones)
+                // ============================================================
+                Route::prefix('tesoreria')->group(function () {
+                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\TesoreriaController::class, 'index'])
+                        ->name('operacion.pedidos-clientes.tesoreria.index');
+                    
+                    Route::post('/{id}/devolver', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\TesoreriaController::class, 'devolver'])
+                        ->name('operacion.pedidos-clientes.tesoreria.devolver');
                 });
             });
 
