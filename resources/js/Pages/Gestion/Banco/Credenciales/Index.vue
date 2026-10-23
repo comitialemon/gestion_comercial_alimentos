@@ -245,8 +245,7 @@ const guardar = async () => {
     if (!modoEdicion.value) {
         if (!form.value.Password) return toast?.error('Error', 'Password es obligatorio')
         if (esBancoEconomico.value && !form.value.AesKey) return toast?.error('Error', 'AES Key es obligatoria para Banco Económico')
-        // 🔥 CAMBIO: Ya NO exigimos ApiKey para BGAN al crear.
-        // Se puede llenar después cuando el banco la proporcione.
+        // 🔥 ELIMINADA la validación de ApiKey para BGAN
         if (!form.value.CuentaCredito) return toast?.error('Error', 'Cuenta de crédito es obligatoria')
     }
 
@@ -264,13 +263,11 @@ const guardar = async () => {
         if (response.data.success) {
             toast?.success(response.data.message)
 
-            // ✅ Si hay credenciales del webhook, mostrarlas
             if (response.data.webhook) {
                 credencialesWebhook.value = response.data.webhook
                 avisoCredencial.value = response.data.aviso || null
                 cerrarModal()
             } else if (response.data.aviso) {
-                // Si no hay webhook pero sí aviso, mostrarlo
                 toast?.warning('Aviso', response.data.aviso)
                 cerrarModal()
                 router.reload()
