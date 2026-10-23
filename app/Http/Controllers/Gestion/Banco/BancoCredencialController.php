@@ -69,6 +69,10 @@ class BancoCredencialController extends Controller
                     'FechaUltimoError' => $cred->FechaUltimoError?->format('d/m/Y H:i'),
                     'TieneWebhook' => $cred->tieneWebhook(),
                     'WebhookUser' => $cred->WebhookUser,
+                    // 🔥 NUEVO: indicar si tiene ApiKey configurada (solo BGAN)
+                    'TieneApiKey' => $cred->CodigoBanco === 'BGAN' 
+                        ? !empty($cred->getRawOriginal('ApiKeyCifrada')) 
+                        : null,
                 ];
             });
 
@@ -96,7 +100,7 @@ class BancoCredencialController extends Controller
             'Usuario' => 'required|string|max:100',
             'Password' => 'required|string|max:255',
             'AesKey' => 'nullable|string|max:255',
-            'ApiKey' => 'nullable|string|max:500',
+            'ApiKey' => 'nullable|string|max:500',  // ✅ ApiKey opcional para BGAN
             'CuentaCredito' => 'required|string|max:100',
             'BranchCode' => 'nullable|string|max:5',
             'MonedaDefault' => 'nullable|in:BOB,USD',
@@ -116,13 +120,9 @@ class BancoCredencialController extends Controller
             ], 422);
         }
 
-        if ($validated['CodigoBanco'] === 'BGAN' && empty($validated['ApiKey'])) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El X-Api-Key es obligatorio para Banco Ganadero',
-                'errors' => ['ApiKey' => ['X-Api-Key es obligatorio para Banco Ganadero']],
-            ], 422);
-        }
+        // 🔥 CAMBIO: ApiKey es OPCIONAL para BGAN al crear la credencial.
+        // El banco primero probará el webhook y luego te proporcionará la ApiKey.
+        // (Antes había una validación que la exigía, ahora ya no.)
 
         DB::beginTransaction();
 
@@ -166,17 +166,31 @@ class BancoCredencialController extends Controller
                 'IdCredencial' => $credencial->IdCredencial,
                 'CodigoBanco' => $credencial->CodigoBanco,
                 'TieneWebhook' => $webhookData !== null,
+                'TieneApiKey' => !empty($validated['ApiKey']),
             ]);
+
+            // 🔥 Mensaje dinámico + aviso si no hay ApiKey
+            $mensaje = 'Credencial creada correctamente.';
+            $aviso = null;
+
+            if ($webhookData) {
+                $mensaje .= ' Guarda las credenciales del webhook que se muestran a continuación.';
+            }
+
+            if ($validated['CodigoBanco'] === 'BGAN' && empty($validated['ApiKey'])) {
+                $aviso = 'La ApiKey no está configurada. El banco debe probar el webhook primero y luego te proporcionará la ApiKey. Cuando la tengas, edita esta credencial para agregarla.';
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Credencial creada correctamente' . ($webhookData ? '. Guarda las credenciales del webhook.' : ''),
+                'message' => $mensaje,
                 'credencial' => [
                     'IdCredencial' => $credencial->IdCredencial,
                     'CodigoBanco' => $credencial->CodigoBanco,
                     'NombreBanco' => $credencial->NombreBanco,
                 ],
                 'webhook' => $webhookData,
+                'aviso' => $aviso,
             ]);
 
         } catch (\Exception $e) {
@@ -250,6 +264,7 @@ class BancoCredencialController extends Controller
                 $updateData['AesKey'] = Crypt::encryptString($validated['AesKey']);
             }
 
+            // ✅ ApiKey: se actualiza cuando el usuario la tenga
             if (!empty($validated['ApiKey'])) {
                 $updateData['ApiKeyCifrada'] = Crypt::encryptString($validated['ApiKey']);
             }
@@ -261,6 +276,11 @@ class BancoCredencialController extends Controller
             $credencial->update($updateData);
 
             DB::commit();
+
+            Log::info('✅ Credencial actualizada', [
+                'IdCredencial' => $id,
+                'TieneApiKey' => !empty($validated['ApiKey']),
+            ]);
 
             return response()->json([
                 'success' => true,

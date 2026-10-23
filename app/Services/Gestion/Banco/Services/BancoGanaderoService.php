@@ -48,6 +48,20 @@ class BancoGanaderoService implements BancoQRInterface
         $this->retry = (int) ($credencial->Reintentos ?: 3);
         $this->retryDelay = 1000;
         $this->tokenCacheTtl = (int) ($credencial->TokenCacheTtl ?: 1500);
+
+        // ✅ VALIDACIÓN: la ApiKey solo se requiere para OPERAR contra BGAN
+        // (generar QR, consultar estado, anular, listar pagados).
+        // NO se requiere para el webhook (que es en dirección opuesta).
+        // Este service se usa SOLO para operar contra el banco, así que
+        // si falta la ApiKey, fallamos con un mensaje claro.
+        if (empty($this->apiKey)) {
+            throw new BancoQRException(
+                "La ApiKey del Banco Ganadero no está configurada para la credencial #{$credencial->IdCredencial}. " .
+                "El banco debe probar el webhook primero y luego proporcionarte la ApiKey. " .
+                "Cuando la tengas, edita la credencial para agregarla.",
+                'CONFIGURACION'
+            );
+        }
     }
 
     public function getIdCredencial(): int

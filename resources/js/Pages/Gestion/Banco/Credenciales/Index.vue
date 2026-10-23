@@ -33,9 +33,10 @@ const mostrarCuenta = ref(false)
 const errores = ref({})
 
 // ============================================================
-// ✅ Estado para credenciales del webhook
+// ✅ Estado para credenciales del webhook + aviso
 // ============================================================
 const credencialesWebhook = ref(null)
+const avisoCredencial = ref(null)
 
 // ============================================================
 // FORMULARIO
@@ -114,7 +115,6 @@ const copiarAlPortapapeles = async (texto, etiqueta = '') => {
         if (navigator.clipboard && window.isSecureContext) {
             await navigator.clipboard.writeText(texto)
         } else {
-            // Fallback para contextos no seguros (http)
             const textArea = document.createElement('textarea')
             textArea.value = texto
             textArea.style.position = 'fixed'
@@ -208,7 +208,6 @@ const cambiarBanco = () => {
         form.value.NombreBanco = nombreBancoSeleccionado.nombre
     }
 
-    // Autocompletar URL según banco y ambiente
     if (props.urlsDisponibles && props.urlsDisponibles[form.value.CodigoBanco]) {
         const url = props.urlsDisponibles[form.value.CodigoBanco][form.value.Ambiente]
         if (url) {
@@ -216,7 +215,6 @@ const cambiarBanco = () => {
         }
     }
 
-    // Limpiar campos que no aplican
     if (form.value.CodigoBanco === 'BECO') {
         form.value.ApiKey = ''
     } else if (form.value.CodigoBanco === 'BGAN') {
@@ -234,7 +232,7 @@ const cambiarAmbiente = () => {
     }
 }
 
-// Guardar (crear o editar) con axios
+// Guardar (crear o editar)
 const guardar = async () => {
     limpiarErrores()
 
@@ -247,7 +245,8 @@ const guardar = async () => {
     if (!modoEdicion.value) {
         if (!form.value.Password) return toast?.error('Error', 'Password es obligatorio')
         if (esBancoEconomico.value && !form.value.AesKey) return toast?.error('Error', 'AES Key es obligatoria para Banco Económico')
-        if (esBancoGanadero.value && !form.value.ApiKey) return toast?.error('Error', 'X-Api-Key es obligatoria para Banco Ganadero')
+        // 🔥 CAMBIO: Ya NO exigimos ApiKey para BGAN al crear.
+        // Se puede llenar después cuando el banco la proporcione.
         if (!form.value.CuentaCredito) return toast?.error('Error', 'Cuenta de crédito es obligatoria')
     }
 
@@ -268,8 +267,13 @@ const guardar = async () => {
             // ✅ Si hay credenciales del webhook, mostrarlas
             if (response.data.webhook) {
                 credencialesWebhook.value = response.data.webhook
+                avisoCredencial.value = response.data.aviso || null
                 cerrarModal()
-                // NO recargar todavía, esperar a que cierre el modal
+            } else if (response.data.aviso) {
+                // Si no hay webhook pero sí aviso, mostrarlo
+                toast?.warning('Aviso', response.data.aviso)
+                cerrarModal()
+                router.reload()
             } else {
                 cerrarModal()
                 router.reload()
@@ -291,6 +295,7 @@ const guardar = async () => {
 // ✅ Cerrar modal de credenciales del webhook
 const cerrarModalWebhook = () => {
     credencialesWebhook.value = null
+    avisoCredencial.value = null
     router.reload()
 }
 
@@ -338,6 +343,7 @@ const regenerarWebhook = async (cred) => {
         if (response.data.success) {
             toast?.success('Credenciales regeneradas')
             credencialesWebhook.value = response.data.webhook
+            avisoCredencial.value = null
         } else {
             toast?.error('Error', response.data.message)
         }
@@ -363,14 +369,8 @@ const eliminar = (cred) => {
     })
 }
 
-// Ciclo de vida
-onMounted(() => {
-    // Nada extra por ahora
-})
-
-onUnmounted(() => {
-    // Nada extra por ahora
-})
+onMounted(() => {})
+onUnmounted(() => {})
 </script>
 
 <template>
@@ -378,9 +378,7 @@ onUnmounted(() => {
         <div class="py-6 px-4">
             <div class="max-w-7xl mx-auto">
 
-                <!-- ============================================ -->
                 <!-- HEADER -->
-                <!-- ============================================ -->
                 <div class="bg-gradient-to-r from-primary-700 to-primary-800 rounded-lg shadow-md p-4 mb-6 text-white">
                     <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
                         <div class="flex items-center gap-3">
@@ -401,7 +399,6 @@ onUnmounted(() => {
                         </button>
                     </div>
 
-                    <!-- Stats -->
                     <div class="grid grid-cols-3 gap-3 mt-4 pt-4 border-t border-white/20">
                         <div class="text-center">
                             <p class="text-2xl font-bold">{{ credenciales.length }}</p>
@@ -418,9 +415,7 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- ESTADO VACÍO -->
-                <!-- ============================================ -->
                 <div v-if="credenciales.length === 0" class="bg-white rounded-lg shadow-md p-12 text-center">
                     <div class="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-university text-4xl text-gray-400"></i>
@@ -436,9 +431,7 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- ============================================ -->
-                <!-- GRID DE CREDENCIALES -->
-                <!-- ============================================ -->
+                <!-- GRID -->
                 <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <div
                         v-for="cred in credenciales"
@@ -446,7 +439,6 @@ onUnmounted(() => {
                         class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition"
                         :class="{ 'opacity-60': !cred.ActivoInactivo }"
                     >
-                        <!-- Header -->
                         <div class="px-4 py-3 border-b" :class="cred.ActivoInactivo ? 'bg-green-50' : 'bg-gray-50'">
                             <div class="flex justify-between items-start">
                                 <div class="flex-1 min-w-0">
@@ -464,23 +456,16 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Cuerpo -->
                         <div class="p-4 space-y-2 text-xs">
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-500">Banco:</span>
-                                <span
-                                    class="px-2 py-0.5 rounded-full text-[10px] font-bold border"
-                                    :class="colorBanco(cred.CodigoBanco)"
-                                >
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border" :class="colorBanco(cred.CodigoBanco)">
                                     {{ nombreBanco(cred.CodigoBanco) }}
                                 </span>
                             </div>
                             <div class="flex justify-between items-center">
                                 <span class="text-gray-500">Ambiente:</span>
-                                <span
-                                    class="px-2 py-0.5 rounded-full text-[10px] font-medium"
-                                    :class="colorAmbiente(cred.Ambiente)"
-                                >
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-medium" :class="colorAmbiente(cred.Ambiente)">
                                     {{ cred.Ambiente }}
                                 </span>
                             </div>
@@ -497,7 +482,21 @@ onUnmounted(() => {
                                 <span class="font-mono">{{ cred.BranchCode }}</span>
                             </div>
 
-                            <!-- ✅ Indicador de Webhook (solo BGAN) -->
+                            <!-- 🔥 ApiKey (solo BGAN) -->
+                            <div v-if="cred.CodigoBanco === 'BGAN'" class="flex justify-between items-center pt-2 border-t">
+                                <span class="text-gray-500">ApiKey:</span>
+                                <span
+                                    class="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                                    :class="cred.TieneApiKey
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-orange-100 text-orange-700'"
+                                >
+                                    <i :class="cred.TieneApiKey ? 'fas fa-check-circle' : 'fas fa-exclamation-circle'" class="mr-1"></i>
+                                    {{ cred.TieneApiKey ? 'Configurada' : 'Pendiente' }}
+                                </span>
+                            </div>
+
+                            <!-- Webhook (solo BGAN) -->
                             <div v-if="cred.CodigoBanco === 'BGAN'" class="flex justify-between items-center pt-2 border-t">
                                 <span class="text-gray-500">Webhook:</span>
                                 <span
@@ -521,7 +520,6 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Acciones -->
                         <div class="px-4 py-3 bg-gray-50 border-t flex flex-wrap gap-2">
                             <button
                                 @click="probarConexion(cred)"
@@ -553,7 +551,6 @@ onUnmounted(() => {
                                 {{ cred.ActivoInactivo ? 'Desactivar' : 'Activar' }}
                             </button>
 
-                            <!-- ✅ NUEVO: Botón Regenerar Webhook (solo BGAN) -->
                             <button
                                 v-if="cred.CodigoBanco === 'BGAN'"
                                 @click="regenerarWebhook(cred)"
@@ -580,15 +577,12 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- ============================================ -->
         <!-- MODAL CREAR/EDITAR -->
-        <!-- ============================================ -->
         <div
             v-if="mostrarModal"
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto"
         >
             <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full my-8">
-                <!-- Header modal -->
                 <div class="bg-gradient-to-r from-primary-700 to-primary-800 px-6 py-4 text-white rounded-t-2xl">
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-3">
@@ -608,7 +602,6 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Formulario -->
                 <div class="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
 
                     <!-- SECCIÓN: Banco -->
@@ -775,18 +768,18 @@ onUnmounted(() => {
                                 <p v-if="errores.AesKey" class="text-red-500 text-[10px] mt-1">{{ errores.AesKey }}</p>
                             </div>
 
-                            <!-- ApiKey (solo BGAN) -->
+                            <!-- 🔥 ApiKey (solo BGAN) - AHORA OPCIONAL -->
                             <div v-if="esBancoGanadero">
                                 <label class="block text-xs font-medium text-gray-600 mb-1">
                                     X-Api-Key
-                                    <span v-if="!modoEdicion" class="text-red-500">*</span>
+                                    <span class="text-gray-400 text-[10px]">(opcional - puedes llenarla después)</span>
                                 </label>
                                 <div class="relative">
                                     <input
                                         v-model="form.ApiKey"
                                         :type="mostrarApiKey ? 'text' : 'password'"
                                         class="w-full border border-gray-200 rounded-md px-3 py-2 pr-10 text-sm font-mono focus:border-primary-400 focus:ring-1 focus:ring-primary-200"
-                                        placeholder="Clave de seguridad del banco"
+                                        placeholder="Deja vacío si aún no la tienes"
                                     />
                                     <button
                                         type="button"
@@ -796,8 +789,9 @@ onUnmounted(() => {
                                         <i :class="mostrarApiKey ? 'fas fa-eye-slash' : 'fas fa-eye'" class="text-xs"></i>
                                     </button>
                                 </div>
-                                <p class="text-[10px] text-gray-400 mt-1">
-                                    Proporcionada por el Banco Ganadero
+                                <p v-if="!form.ApiKey" class="text-amber-600 text-[10px] mt-1">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    Sin ApiKey no podrás generar QRs. El banco debe probar el webhook primero y luego te dará la ApiKey.
                                 </p>
                                 <p v-if="errores.ApiKey" class="text-red-500 text-[10px] mt-1">{{ errores.ApiKey }}</p>
                             </div>
@@ -897,7 +891,7 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- SECCIÓN: Estado (solo en edición) -->
+                    <!-- Estado (solo en edición) -->
                     <div v-if="modoEdicion" class="border-t pt-4">
                         <label class="flex items-center gap-3 cursor-pointer">
                             <input
@@ -914,7 +908,6 @@ onUnmounted(() => {
 
                 </div>
 
-                <!-- Footer modal -->
                 <div class="px-6 py-4 bg-gray-50 border-t rounded-b-2xl flex justify-end gap-3">
                     <button
                         @click="cerrarModal"
@@ -936,16 +929,13 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- ============================================ -->
         <!-- MODAL: CREDENCIALES DEL WEBHOOK -->
-        <!-- ============================================ -->
         <div
             v-if="credencialesWebhook"
             class="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
             @click.self="cerrarModalWebhook"
         >
             <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full my-8">
-                <!-- Header -->
                 <div class="bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-4 text-white rounded-t-2xl">
                     <div class="flex items-center gap-3">
                         <div class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center">
@@ -958,7 +948,6 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Body -->
                 <div class="p-6 space-y-3">
                     <!-- Alerta -->
                     <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
@@ -969,6 +958,29 @@ onUnmounted(() => {
                                 Cópialas y guárdalas en un lugar seguro.
                             </span>
                         </p>
+                    </div>
+
+                    <!-- 🔥 Aviso si no hay ApiKey -->
+                    <div v-if="avisoCredencial" class="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <p class="text-xs text-blue-800 flex items-start gap-2">
+                            <i class="fas fa-info-circle text-blue-600 mt-0.5 flex-shrink-0"></i>
+                            <span>{{ avisoCredencial }}</span>
+                        </p>
+                    </div>
+
+                    <!-- Próximos pasos -->
+                    <div class="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+                        <p class="text-xs text-indigo-800 font-semibold mb-2">
+                            <i class="fas fa-list-ol mr-1"></i>
+                            Próximos pasos:
+                        </p>
+                        <ol class="text-[11px] text-indigo-700 space-y-1 list-decimal list-inside">
+                            <li>Envía estas credenciales + URLs al Banco Ganadero.</li>
+                            <li>El banco probará el webhook llamando a <code class="bg-white px-1 rounded">/login</code>.</li>
+                            <li>Si funciona, el banco te proporcionará la <strong>ApiKey</strong>.</li>
+                            <li>Cuando tengas la ApiKey, edita esta credencial y agrégala.</li>
+                            <li>¡Listo! Ya podrás generar QRs.</li>
+                        </ol>
                     </div>
 
                     <!-- Usuario -->
@@ -1061,7 +1073,6 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- Footer -->
                 <div class="px-6 py-4 bg-gray-50 border-t rounded-b-2xl flex justify-end">
                     <button
                         @click="cerrarModalWebhook"
