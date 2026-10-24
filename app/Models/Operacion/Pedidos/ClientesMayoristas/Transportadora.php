@@ -12,14 +12,17 @@ class Transportadora extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'IdCliente',
-        'Nombre',
-        'Telefono',
+        'IdIdentificador',
         'Destino',
         'ActivoInactivo',
     ];
 
-    // Relación: Una transportadora tiene muchos envíos
+    // 🔥 Relación con la tabla maestra de Identificadores
+    public function identificador()
+    {
+        return $this->belongsTo(\App\Models\Gestion\Todos\Identificador::class, 'IdIdentificador', 'IdIdentificador');
+    }
+
     public function envios()
     {
         return $this->hasMany(Envio::class, 'IdTransportadora', 'IdTransportadora');

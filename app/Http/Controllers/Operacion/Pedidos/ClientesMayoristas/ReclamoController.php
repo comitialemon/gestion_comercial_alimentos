@@ -7,6 +7,7 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Reclamo;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\ReclamoDetalle;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\HistorialPedido;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoClienteDetalle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -49,6 +50,21 @@ class ReclamoController extends Controller
             if ($reclamoExistente) {
                 $conexion->rollBack();
                 return response()->json(['success' => false, 'message' => 'Este pedido ya tiene un reclamo registrado.'], 422);
+            }
+
+            // 🔥 VALIDACIÓN DE SEGURIDAD: No reclamar más de lo pedido
+            foreach ($request->productos as $prod) {
+                $cantidadTotalPedida = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                    ->where('IdProducto', $prod['IdProducto'])
+                    ->sum('Cantidad');
+
+                if ($prod['CantidadReclamada'] > $cantidadTotalPedida) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Error: Intentaste reclamar {$prod['CantidadReclamada']} unidades, pero el pedido solo tiene {$cantidadTotalPedida} de ese producto."
+                    ], 422);
+                }
             }
 
             $reclamo = Reclamo::create([

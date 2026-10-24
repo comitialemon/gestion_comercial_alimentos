@@ -40,6 +40,7 @@ const fechaPedido = computed(() => {
     return '-'
 })
 
+// 🔥 LÍNEA DE TIEMPO
 const timelineCompacto = computed(() => {
     const estado = props.pedido?.EstadoPedido
     const historial = props.pedido?.historial || []
@@ -66,7 +67,7 @@ const timelineCompacto = computed(() => {
         let status = 'pending'
         if (index < indexActual) status = 'done'
         if (index === indexActual) status = 'current'
-        return { ...paso, status, transportadora: envio?.transportadora?.Nombre, guia: envio?.NumeroGuia }
+        return { ...paso, status }
     })
 })
 
@@ -124,24 +125,30 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
 
             <div class="flex-1 overflow-y-auto p-3 space-y-3">
 
+                <!-- LÍNEA DE TIEMPO -->
                 <div v-if="['Pendiente', 'En Cámara', 'En Distribución', 'En Transportadora', 'Recibido'].includes(pedido.EstadoPedido)"
                      class="bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4">
 
-                    <div class="flex justify-between items-center mb-1">
+                    <div class="flex justify-between items-center mb-1 flex-wrap gap-2">
                         <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Seguimiento del Pedido</span>
-                        <span v-if="pedido.envio?.NumeroGuia" class="text-[9px] font-mono bg-white border border-gray-300 px-1.5 py-0.5 rounded text-gray-600">
-                            Guía: {{ pedido.envio.NumeroGuia }}
-                        </span>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <!-- 🔥 Mostramos la transportadora desde el identificador y el costo -->
+                            <span v-if="pedido.envio?.NumeroGuia" class="text-[9px] font-mono bg-white border border-gray-300 px-1.5 py-0.5 rounded text-gray-600">
+                                Guía: {{ pedido.envio.NumeroGuia }}
+                            </span>
+                            <span v-if="pedido.envio?.CostoEnvio > 0" class="text-[9px] font-mono bg-white border border-gray-300 px-1.5 py-0.5 rounded text-gray-600">
+                                Costo Envío: Bs. {{ formatearPrecio(pedido.envio.CostoEnvio) }}
+                            </span>
+                        </div>
                     </div>
                     <p v-if="pedido.envio?.transportadora" class="text-[10px] text-gray-500 mb-3">
-                        <i class="fas fa-shipping-fast mr-1 text-gray-400"></i> {{ pedido.envio.transportadora.Nombre }}
+                        <i class="fas fa-shipping-fast mr-1 text-gray-400"></i> {{ pedido.envio.transportadora.identificador?.Nombre || 'Sin transportadora' }}
                     </p>
 
                     <div class="relative flex justify-between items-center mt-4">
                         <div class="absolute left-0 right-0 top-3 h-0.5 bg-gray-200 -z-0"></div>
 
                         <div v-for="(paso, idx) in timelineCompacto" :key="idx" class="relative flex flex-col items-center flex-1 z-10">
-
                             <div class="w-7 h-7 rounded-full flex items-center justify-center border-2 bg-white transition-all duration-300"
                                  :class="{
                                      'border-emerald-500 text-emerald-500': paso.status === 'done',
@@ -150,7 +157,6 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                                  }">
                                 <i :class="['fas', paso.icon, paso.status === 'current' ? 'fa-spin' : '']" class="text-[10px]"></i>
                             </div>
-
                             <span class="text-[9px] sm:text-[10px] font-bold mt-1.5 text-center leading-tight"
                                   :class="{
                                       'text-emerald-600': paso.status === 'done',
@@ -159,7 +165,6 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                                   }">
                                 {{ paso.short }}
                             </span>
-
                             <span v-if="paso.fecha" class="text-[8px] text-gray-500 mt-0.5 bg-gray-100 px-1 rounded">
                                 {{ paso.fecha }}
                             </span>
@@ -167,6 +172,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                     </div>
                 </div>
 
+                <!-- FECHA PEDIDO / ENTREGA -->
                 <div class="grid grid-cols-2 gap-2">
                     <div class="bg-gray-50 rounded-lg p-2.5 border border-gray-200 flex items-center gap-2">
                         <i class="fas fa-calendar text-gray-500 text-sm"></i>
@@ -184,6 +190,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                     </div>
                 </div>
 
+                <!-- KPIS -->
                 <div class="grid grid-cols-3 gap-2">
                     <div class="bg-primary-50 rounded-lg p-2.5 border border-primary-100 text-center">
                         <span class="text-[9px] text-gray-500 font-medium uppercase block">Contenedores</span>
@@ -199,6 +206,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                     </div>
                 </div>
 
+                <!-- OBSERVACIONES -->
                 <div v-if="pedido.Observaciones" class="bg-amber-50 rounded-lg p-2.5 border border-amber-100">
                     <div class="flex items-start gap-2">
                         <i class="fas fa-comment-alt text-amber-600 text-sm mt-0.5 flex-shrink-0"></i>
@@ -209,6 +217,7 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
                     </div>
                 </div>
 
+                <!-- LISTA DE CONTENEDORES -->
                 <div>
                     <h4 class="text-xs font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
                         <i class="fas fa-layer-group text-primary-500 text-[10px]"></i> Detalle de Productos

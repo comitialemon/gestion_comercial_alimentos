@@ -2064,7 +2064,7 @@ class PedidoClienteController extends Controller
         }
     }
 
-    public function show($id)
+     public function show($id)
     {
         try {
             $clienteId = session('cliente_id');
@@ -2072,11 +2072,14 @@ class PedidoClienteController extends Controller
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->with([
-                    'cliente', 'sucursal', 'operador',
-                    'detalles.producto', 'detalles.contenedor',
+                    'cliente', 
+                    'sucursal', 
+                    'operador',
+                    'detalles.producto', 
+                    'detalles.contenedor',
                     'detalles.subClienteOperador.identificador',
-                    'envio.transportadora', // 🔥 NUEVO
-                    'historial'             // 🔥 NUEVO
+                    'envio.transportadora.identificador', // 🔥 ACTUALIZADO
+                    'historial'             
                 ])
                 ->first();
 
@@ -2135,6 +2138,76 @@ class PedidoClienteController extends Controller
                 ->with('error', 'Error al cargar el pedido: ' . $e->getMessage());
         }
     }
+    // ============================================================
+    // VISTA: Mis Reclamos (Para el cliente)
+    // ============================================================
+    public function misReclamos()
+    {
+        $clienteId = session('cliente_id');
+        $operadorId = session('operador_id');
+
+        $reclamos = \App\Models\Operacion\Pedidos\ClientesMayoristas\Reclamo::where('IdCliente', $clienteId)
+            ->whereHas('pedido', function($query) use ($operadorId) {
+                $query->where('IdOperador', $operadorId);
+            })
+            ->with([
+                'pedido.envio.transportadora.identificador', // 🔥 ACTUALIZADO
+                'detalles.producto'
+            ])
+            ->orderBy('FechaCreacion', 'desc')
+            ->get();
+
+        // Calculamos el monto devuelto si el reclamo está reembolsado
+        $reclamos->each(function ($reclamo) {
+            $montoTotal = 0;
+            foreach ($reclamo->detalles as $detalle) {
+                $precioProducto = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes_detalle')
+                    ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
+                    ->where('IdProducto', $detalle->IdProducto)
+                    ->value('Precio');
+
+                if ($detalle->CantidadAprobada > 0 && $precioProducto) {
+                    $montoTotal += ($detalle->CantidadAprobada * $precioProducto);
+                }
+            }
+            $reclamo->monto_a_devolver = round($montoTotal, 2);
+        });
+
+        return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/MisReclamos', [
+            'reclamos' => $reclamos,
+        ]);
+    }
+
+    public function getHistorial($id)
+    {
+        try {
+            $clienteId = session('cliente_id');
+
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdPedidoCliente', $id)
+                ->with(['envio.transportadora.identificador']) // 🔥 ACTUALIZADO
+                ->first();
+
+            if (!$pedido) {
+                return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
+            }
+
+            $historial = \App\Models\Operacion\Pedidos\ClientesMayoristas\HistorialPedido::where('IdPedidoCliente', $id)
+                ->orderBy('FechaCambio', 'asc')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'estado_actual' => $pedido->EstadoPedido,
+                'historial' => $historial,
+                'envio' => $pedido->envio,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
 
     public function getDetalles($id)
     {
@@ -2157,6 +2230,7 @@ class PedidoClienteController extends Controller
                 ], 404);
             }
 
+            // 🔥 1. AGRUPAR POR CONTENEDOR (Para la vista de ShowPedido)
             $detallesAgrupados = $pedido->detalles->groupBy('OrdenContenedor')->map(function($items, $orden) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
@@ -2191,9 +2265,25 @@ class PedidoClienteController extends Controller
                 ];
             })->values();
 
+            // 🔥 2. AGRUPAR POR PRODUCTO (Para el modal de Reclamo)
+            $productosParaReclamo = $pedido->detalles->groupBy('IdProducto')->map(function($items, $idProducto) {
+                $primerItem = $items->first();
+                $producto = $primerItem->producto;
+                
+                return [
+                    'IdProducto' => $idProducto,
+                    'Codigo' => $producto ? $producto->Codigo : '-',
+                    'Descripcion' => $producto ? $producto->Descripcion : '-',
+                    // 🔥 Sumamos todas las cantidades de todos los contenedores para este producto
+                    'CantidadTotalPedida' => $items->sum('Cantidad'), 
+                    'Precio' => $primerItem->Precio,
+                ];
+            })->values();
+
             return response()->json([
                 'success' => true,
-                'detalles' => $detallesAgrupados
+                'detalles' => $detallesAgrupados,
+                'productos_reclamo' => $productosParaReclamo // 🔥 Nueva data agrupada
             ]);
 
         } catch (\Exception $e) {
@@ -3212,45 +3302,5 @@ class PedidoClienteController extends Controller
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
         ]);
     }
-    // ============================================================
-    // VISTA: Mis Reclamos (Para el cliente)
-    // ============================================================
-    public function misReclamos()
-    {
-        $clienteId = session('cliente_id');
-        $operadorId = session('operador_id');
 
-        // Traemos solo los reclamos de los pedidos que hizo este operador
-        $reclamos = \App\Models\Operacion\Pedidos\ClientesMayoristas\Reclamo::where('IdCliente', $clienteId)
-            ->whereHas('pedido', function($query) use ($operadorId) {
-                $query->where('IdOperador', $operadorId);
-            })
-            ->with([
-                'pedido',
-                'detalles.producto'
-            ])
-            ->orderBy('FechaCreacion', 'desc')
-            ->get();
-
-        // Calculamos el monto devuelto si el reclamo está reembolsado
-        $reclamos->each(function ($reclamo) {
-            $montoTotal = 0;
-            foreach ($reclamo->detalles as $detalle) {
-                $precioProducto = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('pedidos_clientes_detalle')
-                    ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
-                    ->where('IdProducto', $detalle->IdProducto)
-                    ->value('Precio');
-
-                if ($detalle->CantidadAprobada > 0 && $precioProducto) {
-                    $montoTotal += ($detalle->CantidadAprobada * $precioProducto);
-                }
-            }
-            $reclamo->monto_a_devolver = round($montoTotal, 2);
-        });
-
-        return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/MisReclamos', [
-            'reclamos' => $reclamos,
-        ]);
-    }
 }

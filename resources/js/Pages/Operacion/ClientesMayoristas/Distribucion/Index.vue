@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { router, usePage } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -24,14 +24,14 @@ const pedidoSeleccionado = ref(null)
 const nuevoEstado = ref('')
 const transportadoraSeleccionada = ref('')
 const numeroGuia = ref('')
-
-const nuevaTransportadora = ref({ Nombre: '', Telefono: '', Destino: '' })
+const costoEnvio = ref(0)
 
 const abrirModalEstado = (pedido, estado) => {
     pedidoSeleccionado.value = pedido
     nuevoEstado.value = estado
     transportadoraSeleccionada.value = ''
     numeroGuia.value = ''
+    costoEnvio.value = 0
     modalEstadoVisible.value = true
 }
 
@@ -43,8 +43,10 @@ const confirmarCambioEstado = async () => {
                 nuevo_estado: nuevoEstado.value,
                 id_transportadora: transportadoraSeleccionada.value || null,
                 numero_guia: numeroGuia.value || null,
+                costo_envio: costoEnvio.value || 0,
             }
         )
+
         if (response.data.success) {
             toast?.success('Éxito', response.data.message)
             modalEstadoVisible.value = false
@@ -55,7 +57,19 @@ const confirmarCambioEstado = async () => {
     }
 }
 
+const nuevaTransportadora = ref({ Nombre: '', CI_NIT: '' })
+
 const crearTransportadora = async () => {
+    // Validación en el frontend
+    if (!nuevaTransportadora.value.Nombre.trim()) {
+        toast?.warning('Atención', 'El nombre de la transportadora es obligatorio.')
+        return
+    }
+    if (!nuevaTransportadora.value.CI_NIT.toString().trim()) {
+        toast?.warning('Atención', 'El CI/NIT es obligatorio.')
+        return
+    }
+
     try {
         const response = await axios.post(
             '/operacion/pedidos/clientes-mayoristas/distribucion/transportadoras',
@@ -64,7 +78,7 @@ const crearTransportadora = async () => {
         if (response.data.success) {
             toast?.success('Éxito', 'Transportadora creada correctamente')
             modalTransportadoraVisible.value = false
-            nuevaTransportadora.value = { Nombre: '', Telefono: '', Destino: '' }
+            nuevaTransportadora.value = { Nombre: '', CI_NIT: '' }
             router.reload()
         }
     } catch (error) {
@@ -161,8 +175,8 @@ const formatoFecha = (fecha) => {
                             <td class="px-4 py-3 text-sm">{{ p.cliente?.Nombre }}</td>
                             <td class="px-4 py-3 text-sm">{{ formatoFecha(p.FechaPedido) }}</td>
                             <td class="px-4 py-3 text-sm">
-                                <div class="font-bold text-cyan-700">{{ p.envio?.transportadora?.Nombre }}</div>
-                                <div class="text-xs text-gray-500">Guía: {{ p.envio?.NumeroGuia }}</div>
+                                <div class="font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</div>
+                                <div class="text-xs text-gray-500">Guía: {{ p.envio?.NumeroGuia }} | Costo: Bs. {{ p.envio?.CostoEnvio }}</div>
                             </td>
                             <td class="px-4 py-3 text-right">
                                 <button @click="abrirModalEstado(p, 'Recibido')" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs font-medium">
@@ -198,12 +212,20 @@ const formatoFecha = (fecha) => {
                         <label class="block text-xs font-bold text-gray-700 mb-1">Transportadora</label>
                         <select v-model="transportadoraSeleccionada" class="w-full border border-gray-300 rounded p-2 text-sm">
                             <option value="">Seleccione...</option>
-                            <option v-for="t in transportadoras" :key="t.IdTransportadora" :value="t.IdTransportadora">{{ t.Nombre }}</option>
+                            <option v-for="t in transportadoras" :key="t.IdTransportadora" :value="t.IdTransportadora">
+                                {{ t.identificador?.Nombre || 'Sin nombre' }}
+                            </option>
                         </select>
                     </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1">Número de Guía</label>
-                        <input v-model="numeroGuia" type="text" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: ABC-123456">
+                    <div class="grid grid-cols-2 gap-2">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Número de Guía</label>
+                            <input v-model="numeroGuia" type="text" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: ABC-123">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1">Costo Envío (Bs.)</label>
+                            <input v-model.number="costoEnvio" type="number" min="0" step="0.01" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="0.00">
+                        </div>
                     </div>
                 </div>
 
@@ -217,21 +239,20 @@ const formatoFecha = (fecha) => {
         <!-- MODAL CREAR TRANSPORTADORA -->
         <div v-if="modalTransportadoraVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-xl w-full max-w-md p-6">
-                <h3 class="text-lg font-bold mb-4">Nueva Transportadora</h3>
+                <h3 class="text-lg font-bold mb-1">Nueva Transportadora</h3>
+                <p class="text-xs text-gray-500 mb-4">Se creará automáticamente en la tabla de Identificadores.</p>
+                
                 <div class="space-y-3">
                     <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1">Nombre</label>
+                        <label class="block text-xs font-bold text-gray-700 mb-1">Nombre *</label>
                         <input v-model="nuevaTransportadora.Nombre" type="text" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: Transportes Illimani">
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1">Teléfono (opcional)</label>
-                        <input v-model="nuevaTransportadora.Telefono" type="text" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: 777-12345">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-gray-700 mb-1">Destino (opcional)</label>
-                        <input v-model="nuevaTransportadora.Destino" type="text" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: Santa Cruz">
+                        <label class="block text-xs font-bold text-gray-700 mb-1">CI / NIT *</label>
+                        <input v-model.number="nuevaTransportadora.CI_NIT" type="number" class="w-full border border-gray-300 rounded p-2 text-sm" placeholder="Ej: 12345678">
                     </div>
                 </div>
+                
                 <div class="flex justify-end gap-2 mt-6">
                     <button @click="modalTransportadoraVisible = false" class="px-4 py-2 text-sm text-gray-600 bg-gray-100 rounded hover:bg-gray-200">Cancelar</button>
                     <button @click="crearTransportadora" class="px-4 py-2 text-sm text-white bg-primary-600 rounded hover:bg-primary-700">Guardar</button>

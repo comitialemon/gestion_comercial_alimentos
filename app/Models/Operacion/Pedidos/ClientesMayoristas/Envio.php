@@ -15,6 +15,7 @@ class Envio extends Model
         'IdPedidoCliente',
         'IdTransportadora',
         'NumeroGuia',
+        'CostoEnvio', // 🔥 NUEVO
         'FechaEnvio',
         'FechaEntregaReal',
         'IdOperadorDespacha',
@@ -24,6 +25,7 @@ class Envio extends Model
     protected $casts = [
         'FechaEnvio' => 'datetime',
         'FechaEntregaReal' => 'datetime',
+        'CostoEnvio' => 'decimal:2', // 🔥 NUEVO
     ];
 
     // Relación: Un envío pertenece a un pedido

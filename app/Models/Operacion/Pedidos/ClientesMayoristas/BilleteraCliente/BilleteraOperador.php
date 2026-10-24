@@ -574,4 +574,69 @@ class BilleteraOperador extends Model
                 return $movimiento;
             });
     }
+        /**
+     * COBRO DE ENVÍO (Costo logístico)
+     * Resta el monto del saldo y registra un movimiento de tipo TRANSFERENCIA_OUT.
+     */
+    public function cobrarEnvio(
+        float $monto,
+        int $idPedidoCliente,
+        string $glosa,
+        int $idOperadorInserta
+    ): BilleteraMovimiento {
+        if ($monto <= 0) {
+            throw new \Exception('El monto a cobrar debe ser mayor a cero.');
+        }
+
+        return DB::connection('mysql_gestion_comercial_alimentos')
+            ->transaction(function () use ($monto, $idPedidoCliente, $glosa, $idOperadorInserta) {
+                $billetera = self::where('IdBilletera', $this->IdBilletera)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$billetera) {
+                    throw new \Exception('Billetera no encontrada.');
+                }
+
+                $saldoAntes = (float) $billetera->SaldoActual;
+
+                if ($saldoAntes < $monto) {
+                    throw new \Exception('Saldo insuficiente para cobrar el envío.');
+                }
+
+                $saldoDespues = $saldoAntes - $monto;
+
+                $movimiento = BilleteraMovimiento::create([
+                    'IdBilletera' => $billetera->IdBilletera,
+                    'IdOperadorPedidoCliente' => $billetera->IdOperadorPedidoCliente,
+                    'IdOperador' => $billetera->IdOperador,
+                    'IdCliente' => $billetera->IdCliente,
+                    'IdSucursal' => $billetera->IdSucursal,
+                    'Tipo' => 'TRANSFERENCIA_OUT',
+                    'Monto' => -$monto, // Monto negativo para que reste
+                    'SaldoAntes' => $saldoAntes,
+                    'SaldoDespues' => $saldoDespues,
+                    'IdPedidoCliente' => $idPedidoCliente,
+                    'IdMovimientoOrigen' => null,
+                    'Glosa' => $glosa, // 🔥 Aquí va "Cobro Envío - Pedido #XXX"
+                    'Observaciones' => 'Cobro de costo de envío logístico',
+                    'OrigenPago' => 'SISTEMA',
+                    'ReferenciaPago' => null,
+                    'IdOperadorInserta' => $idOperadorInserta,
+                    'FechaMovimiento' => now(),
+                    'FechaCreacion' => now(),
+                ]);
+
+                $billetera->update([
+                    'SaldoActual' => $saldoDespues,
+                    'TotalConsumido' => (float) $billetera->TotalConsumido + $monto,
+                    'IdOperadorActualiza' => $idOperadorInserta,
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+
+                $this->refresh();
+
+                return $movimiento;
+            });
+    }
 }

@@ -57,17 +57,6 @@ const getEstadoBadge = (estado) => {
     return badges[estado] || 'bg-gray-100 text-gray-700 border-gray-300'
 }
 
-const getEstadoIcono = (estado) => {
-    const iconos = {
-        'Pendiente de Revisión': 'fa-clock',
-        'En Revisión': 'fa-search',
-        'Aprobado por Calidad': 'fa-check-circle',
-        'Rechazado': 'fa-times-circle',
-        'Reembolsado': 'fa-wallet',
-    }
-    return iconos[estado] || 'fa-circle'
-}
-
 const volverAPedidos = () => {
     router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes')
 }
@@ -86,7 +75,7 @@ onUnmounted(() => {
 <template>
     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
-            <div class="max-w-5xl mx-auto">
+            <div class="max-w-7xl mx-auto">
 
                 <!-- ============================================ -->
                 <!-- HEADER -->
@@ -164,15 +153,15 @@ onUnmounted(() => {
                 </div>
 
                 <!-- ============================================ -->
-                <!-- LISTA DE RECLAMOS (CARDS) -->
+                <!-- LISTA DE TARJETAS -->
                 <!-- ============================================ -->
-                <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                     <div
                         v-for="reclamo in reclamosFiltrados"
                         :key="reclamo.IdReclamo"
                         class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col hover:shadow-md transition-shadow"
                     >
-                        <!-- Header del card -->
+                        <!-- ========== HEADER ========== -->
                         <div class="px-3 py-2 border-b border-gray-200 bg-gray-50 flex justify-between items-center">
                             <div>
                                 <span class="text-[9px] font-bold text-gray-500 uppercase tracking-wide">
@@ -190,7 +179,7 @@ onUnmounted(() => {
                             </span>
                         </div>
 
-                        <!-- Body del card -->
+                        <!-- ========== BODY ========== -->
                         <div class="p-2.5 flex-1 space-y-2">
                             <!-- Fecha -->
                             <div class="text-[10px] text-gray-500 flex items-center gap-1">
@@ -221,6 +210,25 @@ onUnmounted(() => {
                                     Respuesta de Calidad
                                 </p>
                                 <p class="text-[10px] text-gray-700 italic line-clamp-2">"{{ reclamo.RespuestaCalidad }}"</p>
+                            </div>
+
+                            <!-- Envío (si existe) -->
+                            <div v-if="reclamo.pedido?.envio" class="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                                <p class="text-[9px] font-bold text-blue-800 uppercase mb-0.5 flex items-center gap-1">
+                                    <i class="fas fa-shipping-fast text-[8px]"></i>
+                                    Envío
+                                </p>
+                                <div class="text-[10px] text-gray-700">
+                                    <p class="truncate">
+                                        {{ reclamo.pedido.envio.transportadora?.identificador?.Nombre || 'Transportadora' }}
+                                    </p>
+                                    <p v-if="reclamo.pedido.envio.NumeroGuia" class="font-mono text-[9px] text-blue-700 mt-0.5">
+                                        Guía: {{ reclamo.pedido.envio.NumeroGuia }}
+                                    </p>
+                                    <p v-if="reclamo.pedido.envio.CostoEnvio > 0" class="text-[9px] text-gray-500 mt-0.5">
+                                        Costo: Bs. {{ formatearPrecio(reclamo.pedido.envio.CostoEnvio) }}
+                                    </p>
+                                </div>
                             </div>
 
                             <!-- Productos -->
