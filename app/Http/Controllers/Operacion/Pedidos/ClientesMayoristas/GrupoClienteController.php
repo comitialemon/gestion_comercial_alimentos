@@ -322,7 +322,6 @@ class GrupoClienteController extends Controller
                 ->where('IdGrupoCliente', $id)
                 ->firstOrFail();
 
-            // ✅ Con borrado físico, ya no necesitamos filtrar por ActivoInactivo
             $idsEnEsteGrupo = GrupoClienteDetalle::where('IdGrupoCliente', $id)
                 ->pluck('IdIdentificador')
                 ->toArray();
@@ -333,12 +332,16 @@ class GrupoClienteController extends Controller
                 ->pluck('IdIdentificador')
                 ->toArray();
 
+            // ✅ FIX: JOIN a sucursaldb para filtrar por la empresa/sucursal logueada
             $clientes = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_identificador as i')
                 ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
                 ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
+                ->join('todos_operador_sucursaldb as osd', 'osd.IdOperador', '=', 'o.IdOperador')  // ✅ JOIN
                 ->where('ot.Detalle', 'PedidoClientes')
                 ->where('o.ActivoInactivo', 0)
+                ->where('osd.IdCliente', $clienteId)    // ✅ filtrar por empresa
+                ->where('osd.IdSucursal', $sucursalId)  // ✅ filtrar por sucursal
                 ->select('i.IdIdentificador', 'i.Nombre', 'i.CI_NIT')
                 ->orderBy('i.Nombre')
                 ->distinct()
@@ -841,13 +844,16 @@ class GrupoClienteController extends Controller
         }
 
         try {
-            // Buscar clientes (operadores PedidoClientes)
+            // ✅ FIX: JOIN a sucursaldb y filtrar por empresa/sucursal
             $clientes = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_identificador as i')
                 ->join('todos_operador as o', 'i.IdIdentificador', '=', 'o.IdIdentificador')
                 ->join('todos_operador_tipo as ot', 'o.IdOperadorTipo', '=', 'ot.IdOperadorTipo')
+                ->join('todos_operador_sucursaldb as osd', 'osd.IdOperador', '=', 'o.IdOperador')
                 ->where('ot.Detalle', 'PedidoClientes')
                 ->where('o.ActivoInactivo', 0)
+                ->where('osd.IdCliente', $clienteId)
+                ->where('osd.IdSucursal', $sucursalId)
                 ->where(function ($q) use ($termino) {
                     $q->where('i.Nombre', 'LIKE', "%{$termino}%")
                     ->orWhere('i.CI_NIT', 'LIKE', "%{$termino}%");
