@@ -1574,17 +1574,23 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 // OPERADORES PEDIDOCLIENTES
                 // ============================================================
                 Route::prefix('operadores-pedidoclientes')->group(function () {
+                    // ============================================================
+                    // ✅ RUTAS FIJAS (SIN {id}) - DEBEN IR PRIMERO
+                    // ============================================================
+                    
                     Route::get('/', [OperadorPedidoClientesController::class, 'index'])
                         ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.index');
-                    
-                    Route::get('/create', [OperadorPedidoClientesController::class, 'create'])
-                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.create');
                     
                     Route::post('/', [OperadorPedidoClientesController::class, 'store'])
                         ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.store');
                     
-                    Route::get('/{id}/edit', [OperadorPedidoClientesController::class, 'edit'])
-                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.edit');
+                    // ✅ Buscar operador existente por identificador (para autocompletar el modal)
+                    Route::get('/buscar-identificador/{idIdentificador}', [OperadorPedidoClientesController::class, 'buscarPorIdentificador'])
+                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.buscar-identificador');
+                    
+                    // ============================================================
+                    // ✅ RUTAS CON {id} - DEBEN IR AL FINAL
+                    // ============================================================
                     
                     Route::put('/{id}', [OperadorPedidoClientesController::class, 'update'])
                         ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.update');
@@ -1594,14 +1600,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     
                     Route::delete('/{id}', [OperadorPedidoClientesController::class, 'destroy'])
                         ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.destroy');
-                    
-                    Route::get('/create-data', [OperadorPedidoClientesController::class, 'createData'])
-                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.create-data');
-                    
-                    Route::get('/disponibles', [OperadorPedidoClientesController::class, 'getDisponibles'])
-                        ->name('operacion.pedidos.clientes-mayoristas.operadores-pedidoclientes.disponibles');
                 });
-
                 // ============================================================
                 // GRUPOS DE CLIENTES (TARIFAS)
                 // ============================================================

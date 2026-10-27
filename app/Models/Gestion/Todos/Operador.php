@@ -172,15 +172,40 @@ class Operador extends Model
             ? 'bg-green-100 text-green-800' 
             : 'bg-red-100 text-red-800';
     }
-    // app/Models/Gestion/Todos/Operador.php
+    // ==================== RELACIONES PEDIDOCLIENTES ====================
 
+    /**
+     * Asignaciones del operador a sucursales (empresa + sucursal)
+     * Cada fila representa DÓNDE trabaja el operador.
+     */
     public function asignacionesSucursal()
     {
         return $this->hasMany(OperadorSucursalDb::class, 'IdOperador', 'IdOperador');
     }
+
     /**
-     * Configuración específica para operadores de tipo PedidoClientes
-     * (Ciudad, Provincia, Destino)
+     * Configs de PedidoClientes por CADA asignación (N por operador).
+     * Cada config tiene su propia Ciudad/Provincia/Destino.
+     * 
+     * La config cuelga de IdSucursalDB, NO del operador.
+     */
+    public function pedidoClienteConfigs()
+    {
+        return $this->hasMany(
+            \App\Models\Operacion\Pedidos\ClientesMayoristas\OperadorPedidoCliente::class,
+            'IdOperador',
+            'IdOperador'
+        );
+    }
+
+    /**
+     * @deprecated Método legacy. La config ahora cuelga de IdSucursalDB.
+     * Si necesitas la config de UNA sucursal específica, usa:
+     *   $operador->asignacionesSucursal()->where('IdCliente', $clienteId)
+     *       ->with('pedidoClienteConfig')->get()
+     * 
+     * Este método trae solo la PRIMERA config del operador (puede ser de otra empresa).
+     * NO lo uses en código nuevo.
      */
     public function pedidoClienteConfig()
     {

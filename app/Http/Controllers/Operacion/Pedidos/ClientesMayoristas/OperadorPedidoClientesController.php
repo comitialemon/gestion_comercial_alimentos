@@ -18,19 +18,19 @@ use Illuminate\Support\Facades\Log;
 class OperadorPedidoClientesController extends Controller
 {
     /**
-     * Mostrar listado de operadores PedidoClientes
+     * Listado de operadores PedidoClientes de la empresa actual.
+     * Cada operador viene con sus N asignaciones a sucursales (de esta empresa)
+     * y la config Ciudad/Provincia/Destino de cada asignación.
      */
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
-        $sucursalId = session('cliente_sucursal_id');
 
         if (!$clienteId) {
             return redirect()->route('contexto.index')
                 ->with('error', 'Debes seleccionar una empresa primero');
         }
 
-        // ✅ Filtrar operadores que tengan asignación en ESTE cliente
         $query = Operador::whereHas('tipo', function ($q) {
                 $q->where('Detalle', 'PedidoClientes');
             })
@@ -40,10 +40,13 @@ class OperadorPedidoClientesController extends Controller
             ->with([
                 'identificador',
                 'tipo',
-                'pedidoClienteConfig',
+                'asignacionesSucursal' => function ($q) use ($clienteId) {
+                    $q->where('IdCliente', $clienteId)
+                      ->with(['sucursal', 'pedidoClienteConfig']);
+                },
             ]);
 
-        // Filtros
+        // Filtro búsqueda
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -54,6 +57,7 @@ class OperadorPedidoClientesController extends Controller
             });
         }
 
+        // Filtro estado
         if ($request->filled('estado') && $request->estado !== '') {
             $query->where('ActivoInactivo', $request->estado);
         }
@@ -62,25 +66,14 @@ class OperadorPedidoClientesController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // ✅ Asignaciones filtradas por cliente
-        $asignaciones = OperadorSucursalDb::where('IdCliente', $clienteId)
-            ->with(['sucursal', 'operador'])
-            ->get()
-            ->groupBy('IdOperador')
-            ->map(function ($items) {
-                return $items->first();
-            });
-
-        // ✅ Sucursales filtradas por cliente
+        // Sucursales activas de esta empresa
         $sucursales = ClienteSucursal::where('IdCliente', $clienteId)
             ->where('ActivoInactivo', 0)
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
 
-        // ============================================================
-        // ✅ IDs de identificadores que YA tienen operador PedidoClientes
-        // en este cliente
-        // ============================================================
+        // Identificadores que YA tienen un operador PedidoClientes en esta empresa
+        // (no tiene sentido mostrarlos en el select de "nuevo")
         $idsIdentificadoresConOperador = Operador::whereHas('tipo', function ($q) {
                 $q->where('Detalle', 'PedidoClientes');
             })
@@ -92,9 +85,7 @@ class OperadorPedidoClientesController extends Controller
             ->unique()
             ->toArray();
 
-        // ============================================================
-        // ✅ Identificadores DISPONIBLES (sin operador PedidoClientes)
-        // ============================================================
+        // Identificadores disponibles para crear
         $identificadores = Identificador::whereNotIn('IdIdentificador', $idsIdentificadoresConOperador)
             ->orderBy('Nombre')
             ->get(['IdIdentificador as id', 'CI_NIT as ci', 'Nombre as nombre']);
@@ -103,7 +94,6 @@ class OperadorPedidoClientesController extends Controller
 
         return Inertia::render('Operacion/ClientesMayoristas/OperadoresClientes/Index', [
             'operadores' => $operadores,
-            'asignaciones' => $asignaciones,
             'sucursales' => $sucursales,
             'identificadores' => $identificadores,
             'tipoOperador' => $tipoOperador,
@@ -115,11 +105,77 @@ class OperadorPedidoClientesController extends Controller
     }
 
     /**
-     * Almacenar un nuevo operador PedidoClientes
+     * Buscar operador PedidoClientes por identificador.
+     * Usado por el modal para autocompletar cuando el usuario elige
+     * un CI/NIT que ya tiene operador en esta u otra empresa.
+     */
+    public function buscarPorIdentificador($idIdentificador)
+    {
+        $clienteId = session('cliente_id');
+
+        $operador = Operador::where('IdIdentificador', $idIdentificador)
+            ->whereHas('tipo', fn($q) => $q->where('Detalle', 'PedidoClientes'))
+            ->with([
+                'identificador',
+                'asignacionesSucursal' => function ($q) use ($clienteId) {
+                    $q->where('IdCliente', $clienteId)
+                      ->with(['sucursal', 'pedidoClienteConfig']);
+                },
+            ])
+            ->first();
+
+        if (!$operador) {
+            return response()->json(['existe' => false, 'operador' => null]);
+        }
+
+        // ¿Ya tiene asignación en esta empresa?
+        $asignacionActual = $operador->asignacionesSucursal->first();
+
+        return response()->json([
+            'existe' => true,
+            'ya_en_esta_empresa' => (bool) $asignacionActual,
+            'operador' => [
+                'IdOperador'        => $operador->IdOperador,
+                'IdIdentificador'   => $operador->IdIdentificador,
+                'Iniciales'         => $operador->Iniciales,
+                'NombreAcceso'      => $operador->NombreAcceso,
+                'DireccionDomicilio'=> $operador->DireccionDomicilio,
+                'TelefonoDomicilio' => $operador->TelefonoDomicilio,
+                'NumeroCelular'     => $operador->NumeroCelular,
+                'ActivoInactivo'    => $operador->ActivoInactivo,
+                'nombre_persona'    => $operador->identificador?->Nombre,
+                'ci_nit'            => $operador->identificador?->CI_NIT,
+                'asignaciones_en_esta_empresa' => $operador->asignacionesSucursal->map(function ($a) {
+                    return [
+                        'IdSucursalDB'    => $a->IdSucursalDB,
+                        'IdSucursal'      => $a->IdSucursal,
+                        'sucursal_nombre' => $a->sucursal?->Nombre,
+                        'Ciudad'          => $a->pedidoClienteConfig?->Ciudad,
+                        'Provincia'       => $a->pedidoClienteConfig?->Provincia,
+                        'Destino'         => $a->pedidoClienteConfig?->Destino,
+                    ];
+                }),
+            ],
+        ]);
+    }
+
+    /**
+     * Crear operador nuevo O agregar sucursal a un operador existente.
+     *
+     * Flujo:
+     *  1. ¿Existe ya un Operador PedidoClientes con este IdIdentificador?
+     *     - SÍ  → Reutilizarlo (actualizar datos si los editaron).
+     *             NO se crea otro operador. Solo se agrega una fila en
+     *             OperadorSucursalDb + una config en OperadorPedidoCliente.
+     *     - NO  → Crear Operador + asignación + config.
+     *  2. La asignación (OperadorSucursalDb) se crea con firstOrCreate,
+     *     así no falla si ya existe (empresa + sucursal + operador).
+     *  3. La config (OperadorPedidoCliente) se crea con updateOrCreate
+     *     usando IdSucursalDB como clave única.
      */
     public function store(Request $request)
     {
-        $clienteId = session('cliente_id');
+        $clienteId  = session('cliente_id');
         $operadorId = session('operador_id');
 
         if (!$clienteId) {
@@ -130,7 +186,6 @@ class OperadorPedidoClientesController extends Controller
         }
 
         $tipoOperador = OperadorTipo::where('Detalle', 'PedidoClientes')->first();
-
         if (!$tipoOperador) {
             return response()->json([
                 'success' => false,
@@ -138,96 +193,113 @@ class OperadorPedidoClientesController extends Controller
             ], 422);
         }
 
-        // Convertir teléfonos a string
+        // Convertir teléfonos a string antes de validar
         $request->merge([
             'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== ''
-                ? (string) $request->TelefonoDomicilio
-                : null,
+                ? (string) $request->TelefonoDomicilio : null,
             'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== ''
-                ? (string) $request->NumeroCelular
-                : null,
+                ? (string) $request->NumeroCelular : null,
         ]);
 
-        // ✅ Validación SIN 'unique:' en NombreAcceso
         $request->validate([
-            'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
-            'Iniciales' => 'required|string|max:5',
-            'Clave' => 'required|string|min:4|max:15',
-            'NombreAcceso' => 'required|string|max:20',
-            'DireccionDomicilio' => 'nullable|string',
+            'IdIdentificador'   => 'required|exists:todos_identificador,IdIdentificador',
+            'Iniciales'         => 'required|string|max:5',
+            'Clave'             => 'nullable|string|min:4|max:15',
+            'NombreAcceso'      => 'required|string|max:20',
+            'DireccionDomicilio'=> 'nullable|string',
             'TelefonoDomicilio' => 'nullable|string|max:20',
-            'NumeroCelular' => 'nullable|string|max:20',
-            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'Ciudad' => 'nullable|boolean',
-            'Provincia' => 'nullable|boolean',
-            'Destino' => 'nullable|string|max:150',
+            'NumeroCelular'     => 'nullable|string|max:20',
+            'IdSucursal'        => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
+            'Ciudad'            => 'nullable|boolean',
+            'Provincia'         => 'nullable|boolean',
+            'Destino'           => 'nullable|string|max:150',
         ]);
-
-        // ============================================================
-        // ✅ VALIDACIÓN MANUAL: NombreAcceso único SOLO en este cliente
-        // ============================================================
-        $nombreAccesoExiste = Operador::where('NombreAcceso', $request->NombreAcceso)
-            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
-                $q->where('IdCliente', $clienteId);
-            })
-            ->exists();
-
-        if ($nombreAccesoExiste) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El Nombre de Acceso ya está en uso por otro operador de tu empresa.'
-            ], 422);
-        }
 
         try {
             DB::beginTransaction();
 
-            // 1. Crear el operador genérico
-            $operador = Operador::create([
-                'IdIdentificador' => $request->IdIdentificador,
-                'Iniciales' => strtoupper($request->Iniciales),
-                'Clave' => $request->Clave,
-                'NombreAcceso' => $request->NombreAcceso,
-                'DireccionDomicilio' => $request->DireccionDomicilio,
-                'TelefonoDomicilio' => $request->TelefonoDomicilio,
-                'NumeroCelular' => $request->NumeroCelular,
-                'IdOperadorTipo' => $tipoOperador->IdOperadorTipo,
-                'ActivoInactivo' => 0,
-            ]);
+            // 1. ¿Existe ya un Operador PedidoClientes con este IdIdentificador?
+            $operador = Operador::where('IdIdentificador', $request->IdIdentificador)
+                ->whereHas('tipo', fn($q) => $q->where('Detalle', 'PedidoClientes'))
+                ->first();
 
-            // 2. Asignar a la sucursal
-            $asignacion = OperadorSucursalDb::create([
-                'IdCliente' => $clienteId,
-                'IdSucursal' => $request->IdSucursal,
-                'IdOperador' => $operador->IdOperador,
-            ]);
+            if ($operador) {
+                // REUTILIZAR: actualizar datos personales si los editaron.
+                // Nota: como el operador es global (IdIdentificador único),
+                // estos cambios afectan también a las otras empresas donde
+                // esté asignado. Eso es coherente con el modelo actual.
+                $operador->update([
+                    'Iniciales'         => strtoupper($request->Iniciales),
+                    'NombreAcceso'      => $request->NombreAcceso,
+                    'DireccionDomicilio'=> $request->DireccionDomicilio,
+                    'TelefonoDomicilio' => $request->TelefonoDomicilio,
+                    'NumeroCelular'     => $request->NumeroCelular,
+                ]);
 
-            // 3. Crear la config específica de PedidoClientes
-            OperadorPedidoCliente::create([
-                'IdOperador' => $operador->IdOperador,
-                'Ciudad' => $request->boolean('Ciudad') ? 1 : 0,
-                'Provincia' => $request->boolean('Provincia') ? 1 : 0,
-                'Destino' => $request->Destino,
-                'ActivoInactivo' => 1,
-                'IdOperadorInserta' => $operadorId,
-                'FechaInserta' => now('America/La_Paz'),
-            ]);
+                // Solo cambiar clave si la enviaron
+                if ($request->filled('Clave')) {
+                    $operador->update(['Clave' => $request->Clave]);
+                }
+            } else {
+                // CREAR: la clave es obligatoria
+                $request->validate(['Clave' => 'required|string|min:4|max:15']);
+
+                $operador = Operador::create([
+                    'IdIdentificador'   => $request->IdIdentificador,
+                    'Iniciales'         => strtoupper($request->Iniciales),
+                    'Clave'             => $request->Clave,
+                    'NombreAcceso'      => $request->NombreAcceso,
+                    'DireccionDomicilio'=> $request->DireccionDomicilio,
+                    'TelefonoDomicilio' => $request->TelefonoDomicilio,
+                    'NumeroCelular'     => $request->NumeroCelular,
+                    'IdOperadorTipo'    => $tipoOperador->IdOperadorTipo,
+                    'ActivoInactivo'    => 0,
+                ]);
+            }
+
+            // 2. Asignación a la sucursal (idempotente)
+            $asignacion = OperadorSucursalDb::firstOrCreate(
+                [
+                    'IdCliente'  => $clienteId,
+                    'IdSucursal' => $request->IdSucursal,
+                    'IdOperador' => $operador->IdOperador,
+                ]
+            );
+
+            // 3. Config PedidoClientes por asignación
+            OperadorPedidoCliente::updateOrCreate(
+                ['IdSucursalDB' => $asignacion->IdSucursalDB],
+                [
+                    'IdOperador' => $operador->IdOperador,
+                    'IdCliente'  => $clienteId,
+                    'Ciudad'     => $request->boolean('Ciudad') ? 'Sí' : 'No',
+                    'Provincia'  => $request->boolean('Provincia') ? 'Sí' : 'No',
+                    'Destino'    => $request->Destino,
+                    'ActivoInactivo'      => 1,
+                    'IdOperadorActualiza' => $operadorId,
+                    'FechaActualiza'      => now('America/La_Paz'),
+                    'IdOperadorInserta'   => $operadorId,
+                    'FechaInserta'        => now('America/La_Paz'),
+                ]
+            );
 
             DB::commit();
 
-            $operador->load(['identificador', 'tipo', 'pedidoClienteConfig']);
-            $asignacion->load(['sucursal', 'operador.identificador']);
-
             return response()->json([
                 'success' => true,
-                'message' => 'Operador PedidoClientes creado correctamente',
-                'operador' => $operador,
-                'asignacion' => $asignacion,
+                'message' => $operador->wasRecentlyCreated
+                    ? 'Operador PedidoClientes creado correctamente'
+                    : 'Sucursal agregada al operador existente correctamente',
+                'operador'   => $operador->load(['identificador', 'tipo']),
+                'asignacion' => $asignacion->load(['sucursal', 'pedidoClienteConfig']),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error al crear operador PedidoClientes: ' . $e->getMessage());
+            Log::error('Error al crear operador PedidoClientes: ' . $e->getMessage(), [
+                'request' => $request->all(),
+                'trace'   => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Error al crear operador: ' . $e->getMessage()
@@ -236,111 +308,79 @@ class OperadorPedidoClientesController extends Controller
     }
 
     /**
-     * Actualizar operador
+     * Actualizar datos del operador Y la config de UNA asignación específica.
+     * Se identifica por IdSucursalDB (no por IdOperador).
      */
     public function update(Request $request, $id)
     {
-        $clienteId = session('cliente_id');
         $operadorId = session('operador_id');
 
         $operador = Operador::findOrFail($id);
 
-        // Convertir teléfonos a string
         $request->merge([
             'TelefonoDomicilio' => $request->TelefonoDomicilio !== null && $request->TelefonoDomicilio !== ''
-                ? (string) $request->TelefonoDomicilio
-                : null,
+                ? (string) $request->TelefonoDomicilio : null,
             'NumeroCelular' => $request->NumeroCelular !== null && $request->NumeroCelular !== ''
-                ? (string) $request->NumeroCelular
-                : null,
+                ? (string) $request->NumeroCelular : null,
         ]);
 
-        // ✅ Validación SIN 'unique:' en NombreAcceso
         $request->validate([
-            'IdIdentificador' => 'required|exists:todos_identificador,IdIdentificador',
-            'Iniciales' => 'required|string|max:5',
-            'Clave' => 'nullable|string|min:4|max:15',
-            'NombreAcceso' => 'required|string|max:20',
-            'DireccionDomicilio' => 'nullable|string',
+            'IdIdentificador'   => 'required|exists:todos_identificador,IdIdentificador',
+            'Iniciales'         => 'required|string|max:5',
+            'Clave'             => 'nullable|string|min:4|max:15',
+            'NombreAcceso'      => 'required|string|max:20',
+            'DireccionDomicilio'=> 'nullable|string',
             'TelefonoDomicilio' => 'nullable|string|max:20',
-            'NumeroCelular' => 'nullable|string|max:20',
-            'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
-            'Ciudad' => 'nullable|boolean',
-            'Provincia' => 'nullable|boolean',
-            'Destino' => 'nullable|string|max:150',
+            'NumeroCelular'     => 'nullable|string|max:20',
+            'IdSucursalDB'      => 'required|exists:todos_operador_sucursaldb,IdSucursalDB',
+            'Ciudad'            => 'nullable|boolean',
+            'Provincia'         => 'nullable|boolean',
+            'Destino'           => 'nullable|string|max:150',
         ]);
-
-        // ============================================================
-        // ✅ VALIDACIÓN MANUAL: NombreAcceso único SOLO en este cliente
-        // (excluyendo el operador actual)
-        // ============================================================
-        $nombreAccesoExiste = Operador::where('NombreAcceso', $request->NombreAcceso)
-            ->where('IdOperador', '!=', $id)
-            ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
-                $q->where('IdCliente', $clienteId);
-            })
-            ->exists();
-
-        if ($nombreAccesoExiste) {
-            return response()->json([
-                'success' => false,
-                'message' => 'El Nombre de Acceso ya está en uso por otro operador de tu empresa.'
-            ], 422);
-        }
 
         try {
             DB::beginTransaction();
 
-            // 1. Actualizar operador genérico
+            // 1. Datos personales del operador
             $datos = [
-                'IdIdentificador' => $request->IdIdentificador,
-                'Iniciales' => strtoupper($request->Iniciales),
-                'NombreAcceso' => $request->NombreAcceso,
-                'DireccionDomicilio' => $request->DireccionDomicilio,
+                'IdIdentificador'   => $request->IdIdentificador,
+                'Iniciales'         => strtoupper($request->Iniciales),
+                'NombreAcceso'      => $request->NombreAcceso,
+                'DireccionDomicilio'=> $request->DireccionDomicilio,
                 'TelefonoDomicilio' => $request->TelefonoDomicilio,
-                'NumeroCelular' => $request->NumeroCelular,
+                'NumeroCelular'     => $request->NumeroCelular,
             ];
-
             if ($request->filled('Clave')) {
                 $datos['Clave'] = $request->Clave;
             }
-
             $operador->update($datos);
 
-            // 2. Actualizar asignación de sucursal
-            if ($clienteId) {
-                OperadorSucursalDb::updateOrCreate(
-                    [
-                        'IdCliente' => $clienteId,
-                        'IdOperador' => $id,
-                    ],
-                    [
-                        'IdSucursal' => $request->IdSucursal,
-                    ]
-                );
-            }
+            // 2. Solo la asignación específica que se está editando
+            $asignacion = OperadorSucursalDb::where('IdSucursalDB', $request->IdSucursalDB)
+                ->where('IdOperador', $operador->IdOperador)
+                ->firstOrFail();
 
-            // 3. Actualizar o crear la config específica
+            // 3. Config de esa asignación
             OperadorPedidoCliente::updateOrCreate(
-                ['IdOperador' => $operador->IdOperador],
+                ['IdSucursalDB' => $asignacion->IdSucursalDB],
                 [
-                    'Ciudad' => $request->boolean('Ciudad') ? 1 : 0,
-                    'Provincia' => $request->boolean('Provincia') ? 1 : 0,
-                    'Destino' => $request->Destino,
-                    'ActivoInactivo' => 1,
+                    'IdOperador' => $operador->IdOperador,
+                    'IdCliente'  => $asignacion->IdCliente, // viene de la asignación, no de session
+                    'Ciudad'     => $request->boolean('Ciudad') ? 'Sí' : 'No',
+                    'Provincia'  => $request->boolean('Provincia') ? 'Sí' : 'No',
+                    'Destino'    => $request->Destino,
+                    'ActivoInactivo'      => 1,
                     'IdOperadorActualiza' => $operadorId,
-                    'FechaActualiza' => now('America/La_Paz'),
+                    'FechaActualiza'      => now('America/La_Paz'),
                 ]
             );
 
             DB::commit();
 
-            $operador->load(['identificador', 'tipo', 'pedidoClienteConfig']);
-
             return response()->json([
-                'success' => true,
-                'message' => 'Operador actualizado correctamente',
-                'operador' => $operador,
+                'success'  => true,
+                'message'  => 'Operador actualizado correctamente',
+                'operador' => $operador->load(['identificador', 'tipo']),
             ]);
 
         } catch (\Exception $e) {
@@ -354,7 +394,7 @@ class OperadorPedidoClientesController extends Controller
     }
 
     /**
-     * Cambiar estado (activar/desactivar)
+     * Cambiar estado activo/inactivo del operador.
      */
     public function toggle($id)
     {
@@ -363,15 +403,13 @@ class OperadorPedidoClientesController extends Controller
         try {
             $nuevoEstado = $operador->ActivoInactivo == 0 ? 1 : 0;
             $operador->update(['ActivoInactivo' => $nuevoEstado]);
-
             $mensaje = $nuevoEstado == 0 ? 'activado' : 'desactivado';
 
             return response()->json([
                 'success' => true,
                 'message' => "Operador {$mensaje} correctamente",
-                'estado' => $nuevoEstado,
+                'estado'  => $nuevoEstado,
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error al cambiar estado: ' . $e->getMessage());
             return response()->json([
@@ -382,7 +420,7 @@ class OperadorPedidoClientesController extends Controller
     }
 
     /**
-     * Eliminar (desactivar lógicamente)
+     * Desactivar operador (soft delete).
      */
     public function destroy($id)
     {
@@ -390,12 +428,10 @@ class OperadorPedidoClientesController extends Controller
 
         try {
             $operador->update(['ActivoInactivo' => 1]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Operador desactivado correctamente',
             ]);
-
         } catch (\Exception $e) {
             Log::error('Error al desactivar operador: ' . $e->getMessage());
             return response()->json([

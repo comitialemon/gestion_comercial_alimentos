@@ -4,6 +4,7 @@ namespace App\Models\Operacion\Pedidos\ClientesMayoristas;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Gestion\Todos\Operador;
+use App\Models\Gestion\Todos\OperadorSucursalDb;
 
 class OperadorPedidoCliente extends Model
 {
@@ -14,9 +15,11 @@ class OperadorPedidoCliente extends Model
 
     protected $fillable = [
         'IdOperador',
-        'Ciudad',       // 1 = marcado, 0 = no marcado (por ahora)
-        'Provincia',    // 1 = marcado, 0 = no marcado (por ahora)
-        'Destino',      // Texto libre: "Cochabamba", "Cercado", etc.
+        'IdSucursalDB',   // ✅ NUEVO: asignación (operador+cliente+sucursal)
+        'IdCliente',      // ✅ NUEVO: cliente explícito
+        'Ciudad',
+        'Provincia',
+        'Destino',
         'ActivoInactivo',
         'IdOperadorInserta',
         'FechaInserta',
@@ -25,8 +28,6 @@ class OperadorPedidoCliente extends Model
     ];
 
     protected $casts = [
-        'Ciudad' => 'integer',
-        'Provincia' => 'integer',
         'ActivoInactivo' => 'integer',
         'FechaInserta' => 'datetime',
         'FechaActualiza' => 'datetime',
@@ -37,6 +38,16 @@ class OperadorPedidoCliente extends Model
     public function operador()
     {
         return $this->belongsTo(Operador::class, 'IdOperador', 'IdOperador');
+    }
+
+    public function asignacion()
+    {
+        return $this->belongsTo(OperadorSucursalDb::class, 'IdSucursalDB', 'IdSucursalDB');
+    }
+
+    public function cliente()
+    {
+        return $this->belongsTo(\App\Models\Gestion\Todos\Cliente::class, 'IdCliente', 'IdCliente');
     }
 
     // ==================== SCOPES ====================
@@ -51,21 +62,20 @@ class OperadorPedidoCliente extends Model
         return $query->where('IdOperador', $idOperador);
     }
 
-    // ==================== ACCESORS ====================
-
-    /**
-     * Texto para Ciudad (útil para mostrar en UI)
-     */
-    public function getCiudadTextoAttribute()
+    public function scopePorCliente($query, $idCliente)
     {
-        return $this->Ciudad == 1 ? 'Sí' : 'No';
+        return $query->where('IdCliente', $idCliente);
     }
 
-    /**
-     * Texto para Provincia
-     */
+    // ==================== ACCESORS ====================
+
+    public function getCiudadTextoAttribute()
+    {
+        return $this->Ciudad == 'Sí' ? 'Sí' : 'No';
+    }
+
     public function getProvinciaTextoAttribute()
     {
-        return $this->Provincia == 1 ? 'Sí' : 'No';
+        return $this->Provincia == 'Sí' ? 'Sí' : 'No';
     }
 }
