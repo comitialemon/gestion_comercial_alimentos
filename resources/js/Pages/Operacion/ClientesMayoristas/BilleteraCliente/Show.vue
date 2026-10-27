@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
 import { Link, router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
@@ -14,12 +14,21 @@ const props = defineProps({
     filtros: { type: Object, default: () => ({}) },
 })
 
-// Modales
+// ==================== DETECTAR DISPOSITIVO ====================
+const isMobile = ref(false)
+const isTablet = ref(false)
+
+const handleResize = () => {
+    const width = window.innerWidth
+    isMobile.value = width < 640
+    isTablet.value = width >= 640 && width < 1024
+}
+
+// ==================== ESTADO ====================
 const mostrarModalCargar = ref(false)
 const mostrarModalAjuste = ref(false)
 const mostrarModalInactivar = ref(false)
 
-// Formulario cargar
 const formCargar = ref({
     Monto: '',
     OrigenPago: 'EFECTIVO',
@@ -27,13 +36,11 @@ const formCargar = ref({
     Observaciones: '',
 })
 
-// Formulario ajuste
 const formAjuste = ref({
     Monto: '',
     Motivo: '',
 })
 
-// Formulario inactivar
 const formInactivar = ref({
     MotivoInactivacion: '',
 })
@@ -45,7 +52,9 @@ const filtroTipo = ref(props.filtros.tipo || '')
 const filtroDesde = ref(props.filtros.desde || '')
 const filtroHasta = ref(props.filtros.hasta || '')
 
+// ==================== COMPUTED ====================
 const estaActiva = computed(() => props.billetera.ActivoInactivo === 0)
+
 const saldoFormateado = computed(() => {
     return parseFloat(props.billetera.SaldoActual || 0).toLocaleString('es-BO', {
         minimumFractionDigits: 2,
@@ -53,6 +62,21 @@ const saldoFormateado = computed(() => {
     })
 })
 
+const totalCargadoFormateado = computed(() => {
+    return parseFloat(props.billetera.TotalCargado || 0).toLocaleString('es-BO', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })
+})
+
+const totalConsumidoFormateado = computed(() => {
+    return parseFloat(props.billetera.TotalConsumido || 0).toLocaleString('es-BO', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })
+})
+
+// ==================== FUNCIONES ====================
 const aplicarFiltros = () => {
     router.get(`/operacion/pedidos/clientes-mayoristas/billeteras/${props.billetera.IdBilletera}`, {
         tipo: filtroTipo.value || undefined,
@@ -66,6 +90,16 @@ const limpiarFiltros = () => {
     filtroDesde.value = ''
     filtroHasta.value = ''
     aplicarFiltros()
+}
+
+// 🔥 NUEVA FUNCIÓN PARA EXPORTAR PDF
+const exportarPdf = () => {
+    const params = new URLSearchParams({
+        tipo: filtroTipo.value || '',
+        desde: filtroDesde.value || '',
+        hasta: filtroHasta.value || ''
+    }).toString();
+    window.open(`/operacion/pedidos/clientes-mayoristas/billeteras/${props.billetera.IdBilletera}/pdf-movimientos?${params}`, '_blank');
 }
 
 const cargarSaldo = async () => {
@@ -184,13 +218,13 @@ const esPositivo = (monto) => parseFloat(monto) >= 0
 
 const getTipoBadge = (tipo) => {
     const badges = {
-        'ABONO': 'bg-green-100 text-green-800',
-        'CARGO': 'bg-red-100 text-red-800',
-        'AJUSTE_POSITIVO': 'bg-blue-100 text-blue-800',
-        'AJUSTE_NEGATIVO': 'bg-orange-100 text-orange-800',
-        'ANULACION': 'bg-purple-100 text-purple-800',
+        'ABONO': 'bg-emerald-100 text-emerald-700',
+        'CARGO': 'bg-red-100 text-red-700',
+        'AJUSTE_POSITIVO': 'bg-blue-100 text-blue-700',
+        'AJUSTE_NEGATIVO': 'bg-orange-100 text-orange-700',
+        'ANULACION': 'bg-purple-100 text-purple-700',
     }
-    return badges[tipo] || 'bg-gray-100 text-gray-800'
+    return badges[tipo] || 'bg-gray-100 text-gray-600'
 }
 
 const getTipoLabel = (tipo) => {
@@ -203,395 +237,423 @@ const getTipoLabel = (tipo) => {
     }
     return labels[tipo] || tipo
 }
+
+// ==================== LIFECYCLE ====================
+onMounted(() => {
+    handleResize()
+    window.addEventListener('resize', handleResize)
+})
+
+onUnmounted(() => {
+    window.removeEventListener('resize', handleResize)
+})
 </script>
 
 <template>
-    <div class="min-h-screen bg-gray-100 pb-10">
-        <div class="max-w-5xl mx-auto px-3 py-4">
+    <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
+        <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
+            <div class="max-w-5xl mx-auto">
 
-            <!-- BREADCRUMB -->
-            <div class="mb-3 flex items-center gap-2 text-xs">
-                <Link
-                    href="/operacion/pedidos/clientes-mayoristas/billeteras"
-                    class="text-gray-500 hover:text-primary-600 transition"
-                >
-                    <i class="fas fa-arrow-left mr-1"></i>
-                    Billeteras
-                </Link>
-                <span class="text-gray-300">/</span>
-                <span class="text-gray-800 font-medium">
-                    {{ billetera.operador?.identificador?.Nombre || 'Sin nombre' }}
-                </span>
-            </div>
-
-            <!-- HEADER BILLETERA -->
-            <div
-                class="rounded-2xl shadow-lg p-6 mb-4 text-white"
-                :class="estaActiva
-                    ? 'bg-gradient-to-br from-primary-600 to-primary-800'
-                    : 'bg-gradient-to-br from-gray-600 to-gray-800'"
-            >
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div class="flex-1 min-w-[200px]">
-                        <p class="text-xs uppercase tracking-wider opacity-80">
-                            <i :class="estaActiva ? 'fas fa-wallet' : 'fas fa-lock'" class="mr-1"></i>
-                            {{ estaActiva ? 'Saldo disponible' : 'Saldo congelado' }}
-                        </p>
-                        <p class="text-4xl sm:text-5xl font-bold mt-2">
-                            Bs. {{ saldoFormateado }}
-                        </p>
-
-                        <div class="mt-3 flex flex-wrap items-center gap-3 text-xs">
-                            <span class="flex items-center gap-1">
-                                <i class="fas fa-user"></i>
-                                {{ billetera.operador?.identificador?.Nombre }}
-                            </span>
-                            <span class="flex items-center gap-1 opacity-70">
-                                CI: {{ billetera.operador?.identificador?.CI_NIT }}
-                            </span>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                                :class="estaActiva ? 'bg-green-400/30 text-green-50' : 'bg-gray-400/30 text-gray-100'">
-                                {{ estaActiva ? 'ACTIVA' : 'INACTIVA' }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- Stats -->
-                    <div class="grid grid-cols-2 gap-3 text-right">
-                        <div>
-                            <p class="text-[10px] opacity-70 uppercase">Total cargado</p>
-                            <p class="text-sm font-bold">
-                                Bs. {{ parseFloat(billetera.TotalCargado || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
-                            </p>
-                        </div>
-                        <div>
-                            <p class="text-[10px] opacity-70 uppercase">Total consumido</p>
-                            <p class="text-sm font-bold">
-                                Bs. {{ parseFloat(billetera.TotalConsumido || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Motivo inactivación -->
-                <div v-if="!estaActiva && billetera.MotivoInactivacion" class="mt-4 p-3 bg-white/10 rounded-lg text-xs">
-                    <i class="fas fa-info-circle mr-1"></i>
-                    <strong>Motivo:</strong> {{ billetera.MotivoInactivacion }}
-                </div>
-            </div>
-
-            <!-- ACCIONES PRINCIPALES -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                <button
-                    @click="mostrarModalCargar = true"
-                    :disabled="!estaActiva"
-                    class="p-3 bg-white hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-xl transition flex flex-col items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    <i class="fas fa-plus-circle text-green-500 text-xl"></i>
-                    <span class="text-xs font-medium text-gray-700">Cargar Saldo</span>
-                </button>
-
-                <button
-                    @click="mostrarModalAjuste = true"
-                    class="p-3 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl transition flex flex-col items-center gap-1"
-                >
-                    <i class="fas fa-balance-scale text-blue-500 text-xl"></i>
-                    <span class="text-xs font-medium text-gray-700">Ajustar</span>
-                </button>
-
-                <button
-                    v-if="estaActiva"
-                    @click="abrirModalInactivar"
-                    class="p-3 bg-white hover:bg-orange-50 border border-gray-200 hover:border-orange-300 rounded-xl transition flex flex-col items-center gap-1"
-                >
-                    <i class="fas fa-lock text-orange-500 text-xl"></i>
-                    <span class="text-xs font-medium text-gray-700">Inactivar</span>
-                </button>
-
-                <button
-                    v-else
-                    @click="activar"
-                    class="p-3 bg-white hover:bg-green-50 border border-gray-200 hover:border-green-300 rounded-xl transition flex flex-col items-center gap-1"
-                >
-                    <i class="fas fa-unlock text-green-500 text-xl"></i>
-                    <span class="text-xs font-medium text-gray-700">Activar</span>
-                </button>
-            </div>
-
-            <!-- HISTORIAL -->
-            <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-                <div class="px-4 py-3 border-b border-gray-100">
-                    <h3 class="font-bold text-gray-800 text-sm">
-                        <i class="fas fa-history text-primary-500 mr-2"></i>
-                        Historial de movimientos
-                    </h3>
-                </div>
-
-                <!-- Filtros -->
-                <div class="px-4 py-3 border-b border-gray-100 bg-gray-50 flex flex-wrap gap-2 items-center">
-                    <select
-                        v-model="filtroTipo"
-                        @change="aplicarFiltros"
-                        class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none"
+                <!-- ==================== BREADCRUMB ==================== -->
+                <div class="mb-3 flex items-center gap-1.5 text-xs">
+                    <Link
+                        href="/operacion/pedidos/clientes-mayoristas/billeteras"
+                        class="text-gray-500 hover:text-primary-600 transition flex items-center gap-1"
                     >
-                        <option value="">Todos los tipos</option>
-                        <option value="ABONO">Abonos</option>
-                        <option value="CARGO">Cargos (pedidos)</option>
-                        <option value="AJUSTE_POSITIVO">Ajustes (+)</option>
-                        <option value="AJUSTE_NEGATIVO">Ajustes (−)</option>
-                        <option value="ANULACION">Anulaciones</option>
-                    </select>
+                        <i class="fas fa-arrow-left text-[10px]"></i>
+                        Billeteras
+                    </Link>
+                    <span class="text-gray-300">/</span>
+                    <span class="text-gray-800 font-medium truncate">
+                        {{ billetera.operador?.identificador?.Nombre || 'Sin nombre' }}
+                    </span>
+                </div>
 
-                    <input type="date" v-model="filtroDesde" @change="aplicarFiltros"
-                        class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none" />
-                    <input type="date" v-model="filtroHasta" @change="aplicarFiltros"
-                        class="border border-gray-200 rounded-lg px-2 py-1 text-xs outline-none" />
+                <!-- ==================== HEADER BILLETERA ==================== -->
+                <div
+                    class="rounded-xl shadow-sm p-4 mb-4 text-white overflow-hidden relative"
+                    :class="estaActiva
+                        ? 'bg-gradient-to-br from-primary-600 to-primary-800'
+                        : 'bg-gradient-to-br from-gray-600 to-gray-800'"
+                >
+                    <!-- Fondo decorativo -->
+                    <div class="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/10 blur-2xl -mr-20 -mt-20 pointer-events-none"></div>
+
+                    <div class="flex flex-wrap items-start justify-between gap-3 relative z-10">
+                        <div class="flex-1 min-w-[200px]">
+                            <p class="text-[10px] uppercase tracking-wider opacity-80 flex items-center gap-1">
+                                <i :class="estaActiva ? 'fas fa-wallet' : 'fas fa-lock'" class="text-[10px]"></i>
+                                {{ estaActiva ? 'Saldo disponible' : 'Saldo congelado' }}
+                            </p>
+                            <p class="text-3xl sm:text-4xl font-bold mt-1">
+                                Bs. {{ saldoFormateado }}
+                            </p>
+
+                            <div class="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                <span class="flex items-center gap-1">
+                                    <i class="fas fa-user text-[9px]"></i>
+                                    {{ billetera.operador?.identificador?.Nombre }}
+                                </span>
+                                <span class="flex items-center gap-1 opacity-70">
+                                    <i class="fas fa-id-card text-[9px]"></i>
+                                    CI: {{ billetera.operador?.identificador?.CI_NIT }}
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full text-[9px] font-bold"
+                                    :class="estaActiva ? 'bg-emerald-400/30 text-emerald-50' : 'bg-gray-400/30 text-gray-100'">
+                                    <i :class="estaActiva ? 'fas fa-check-circle' : 'fas fa-lock'" class="text-[7px] mr-0.5"></i>
+                                    {{ estaActiva ? 'ACTIVA' : 'INACTIVA' }}
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Stats -->
+                        <div class="grid grid-cols-2 gap-3 text-right">
+                            <div>
+                                <p class="text-[9px] opacity-70 uppercase">Total cargado</p>
+                                <p class="text-sm font-bold">Bs. {{ totalCargadoFormateado }}</p>
+                            </div>
+                            <div>
+                                <p class="text-[9px] opacity-70 uppercase">Total consumido</p>
+                                <p class="text-sm font-bold">Bs. {{ totalConsumidoFormateado }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Motivo inactivación -->
+                    <div v-if="!estaActiva && billetera.MotivoInactivacion" class="mt-3 p-2 bg-white/10 rounded-md text-[10px] relative z-10">
+                        <i class="fas fa-info-circle mr-1 text-[10px]"></i>
+                        <strong>Motivo:</strong> {{ billetera.MotivoInactivacion }}
+                    </div>
+                </div>
+
+                <!-- ==================== ACCIONES ==================== -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                    <button
+                        @click="mostrarModalCargar = true"
+                        :disabled="!estaActiva"
+                        class="p-2.5 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 rounded-xl transition flex flex-col items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <i class="fas fa-plus-circle text-emerald-500 text-base"></i>
+                        <span class="text-[10px] font-medium text-gray-700">Cargar Saldo</span>
+                    </button>
 
                     <button
-                        v-if="filtroTipo || filtroDesde || filtroHasta"
-                        @click="limpiarFiltros"
-                        class="text-xs text-gray-400 hover:text-gray-600"
+                        @click="mostrarModalAjuste = true"
+                        class="p-2.5 bg-white hover:bg-blue-50 border border-gray-200 hover:border-blue-300 rounded-xl transition flex flex-col items-center gap-1"
                     >
-                        <i class="fas fa-times mr-1"></i>Limpiar
+                        <i class="fas fa-balance-scale text-blue-500 text-base"></i>
+                        <span class="text-[10px] font-medium text-gray-700">Ajustar</span>
+                    </button>
+
+                    <button
+                        v-if="estaActiva"
+                        @click="abrirModalInactivar"
+                        class="p-2.5 bg-white hover:bg-orange-50 border border-gray-200 hover:border-orange-300 rounded-xl transition flex flex-col items-center gap-1"
+                    >
+                        <i class="fas fa-lock text-orange-500 text-base"></i>
+                        <span class="text-[10px] font-medium text-gray-700">Inactivar</span>
+                    </button>
+
+                    <button
+                        v-else
+                        @click="activar"
+                        class="p-2.5 bg-white hover:bg-emerald-50 border border-gray-200 hover:border-emerald-300 rounded-xl transition flex flex-col items-center gap-1"
+                    >
+                        <i class="fas fa-unlock text-emerald-500 text-base"></i>
+                        <span class="text-[10px] font-medium text-gray-700">Activar</span>
                     </button>
                 </div>
 
-                <!-- Lista -->
-                <div v-if="movimientos.data.length > 0" class="divide-y divide-gray-100">
-                    <div
-                        v-for="mov in movimientos.data"
-                        :key="mov.IdMovimiento"
-                        class="px-4 py-3 hover:bg-gray-50 transition"
-                    >
-                        <div class="flex items-center gap-3">
-                            <div
-                                class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                                :class="esPositivo(mov.Monto) ? 'bg-green-100' : 'bg-red-100'"
+                <!-- ==================== HISTORIAL ==================== -->
+                <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+                    <div class="px-3 py-2 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+                        <h3 class="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                            <i class="fas fa-history text-primary-500 text-[10px]"></i>
+                            Historial de movimientos
+                        </h3>
+                        <span class="text-[10px] text-gray-500">{{ movimientos.total || 0 }} mov.</span>
+                    </div>
+
+                    <!-- Filtros -->
+                    <div class="px-3 py-2 border-b border-gray-200 bg-gray-50 flex flex-wrap gap-2 items-center justify-between">
+                        <div class="flex flex-wrap gap-2 items-center">
+                            <select
+                                v-model="filtroTipo"
+                                @change="aplicarFiltros"
+                                class="border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none"
                             >
-                                <i
-                                    :class="esPositivo(mov.Monto) ? 'fas fa-arrow-down text-green-600' : 'fas fa-arrow-up text-red-600'"
-                                    class="text-xs"
-                                ></i>
-                            </div>
+                                <option value="">Todos los tipos</option>
+                                <option value="ABONO">Abonos</option>
+                                <option value="CARGO">Cargos</option>
+                                <option value="AJUSTE_POSITIVO">Ajustes (+)</option>
+                                <option value="AJUSTE_NEGATIVO">Ajustes (−)</option>
+                                <option value="ANULACION">Anulaciones</option>
+                            </select>
 
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center gap-2 flex-wrap">
-                                    <span
-                                        class="px-2 py-0.5 text-[10px] rounded-full font-medium"
-                                        :class="getTipoBadge(mov.Tipo)"
-                                    >
-                                        {{ getTipoLabel(mov.Tipo) }}
-                                    </span>
-                                    <span class="text-[10px] text-gray-400">
-                                        {{ formatearFechaHora(mov.FechaMovimiento) }}
-                                    </span>
-                                </div>
-                                <p class="text-xs text-gray-600 mt-0.5 truncate">{{ mov.Glosa }}</p>
-                                <p class="text-[10px] text-gray-400 mt-0.5">
-                                    <i class="fas fa-user-edit mr-1"></i>
-                                    {{ mov.operador_inserta?.identificador?.Nombre || 'Sistema' }}
-                                    <span v-if="mov.Observaciones"> · {{ mov.Observaciones }}</span>
-                                </p>
-                            </div>
+                            <input type="date" v-model="filtroDesde" @change="aplicarFiltros"
+                                class="border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none" />
+                            <input type="date" v-model="filtroHasta" @change="aplicarFiltros"
+                                class="border border-gray-300 rounded-md px-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none" />
 
-                            <div class="text-right flex-shrink-0">
-                                <p
-                                    class="text-sm font-bold"
-                                    :class="esPositivo(mov.Monto) ? 'text-green-600' : 'text-red-600'"
+                            <button
+                                v-if="filtroTipo || filtroDesde || filtroHasta"
+                                @click="limpiarFiltros"
+                                class="px-2.5 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-[10px] font-medium transition flex items-center gap-1"
+                            >
+                                <i class="fas fa-times text-[9px]"></i> Limpiar
+                            </button>
+                        </div>
+
+                        <!-- 🔥 BOTÓN DE EXPORTAR PDF -->
+                        <button 
+                            @click="exportarPdf" 
+                            class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md text-[10px] font-medium transition flex items-center gap-1 shadow-sm" 
+                            title="Exportar Estado de Cuenta a PDF"
+                        >
+                            <i class="fas fa-file-pdf text-[10px]"></i>
+                            Exportar PDF
+                        </button>
+                    </div>
+
+                    <!-- Lista de movimientos -->
+                    <div v-if="movimientos.data.length > 0" class="divide-y divide-gray-100">
+                        <div
+                            v-for="mov in movimientos.data"
+                            :key="mov.IdMovimiento"
+                            class="px-3 py-2 hover:bg-gray-50 transition"
+                        >
+                            <div class="flex items-center gap-2">
+                                <!-- Icono -->
+                                <div
+                                    class="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                                    :class="esPositivo(mov.Monto) ? 'bg-emerald-100' : 'bg-red-100'"
                                 >
-                                    {{ formatearMonto(mov.Monto) }}
-                                </p>
-                                <p class="text-[10px] text-gray-400">
-                                    Bs. {{ parseFloat(mov.SaldoDespues || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
-                                </p>
+                                    <i
+                                        :class="esPositivo(mov.Monto) ? 'fas fa-arrow-down text-emerald-600' : 'fas fa-arrow-up text-red-600'"
+                                        class="text-xs"
+                                    ></i>
+                                </div>
+
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span
+                                            class="px-1.5 py-0.5 text-[9px] rounded-full font-medium"
+                                            :class="getTipoBadge(mov.Tipo)"
+                                        >
+                                            {{ getTipoLabel(mov.Tipo) }}
+                                        </span>
+                                        <span class="text-[9px] text-gray-400">
+                                            {{ formatearFechaHora(mov.FechaMovimiento) }}
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-gray-600 mt-0.5 truncate">{{ mov.Glosa }}</p>
+                                    <p class="text-[9px] text-gray-400 mt-0.5">
+                                        <i class="fas fa-user-edit mr-1 text-[8px]"></i>
+                                        {{ mov.operador_inserta?.identificador?.Nombre || 'Sistema' }}
+                                        <span v-if="mov.Observaciones"> · {{ mov.Observaciones }}</span>
+                                    </p>
+                                </div>
+
+                                <div class="text-right flex-shrink-0">
+                                    <p
+                                        class="text-sm font-bold"
+                                        :class="esPositivo(mov.Monto) ? 'text-emerald-600' : 'text-red-600'"
+                                    >
+                                        {{ formatearMonto(mov.Monto) }}
+                                    </p>
+                                    <p class="text-[9px] text-gray-400">
+                                        Bs. {{ parseFloat(mov.SaldoDespues || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div v-else class="p-12 text-center">
-                    <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                        <i class="fas fa-inbox text-gray-400 text-xl"></i>
+                    <div v-else class="p-10 text-center">
+                        <div class="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                            <i class="fas fa-inbox text-gray-400 text-lg"></i>
+                        </div>
+                        <p class="text-xs text-gray-500">No hay movimientos registrados</p>
                     </div>
-                    <p class="text-sm text-gray-500">No hay movimientos</p>
-                </div>
 
-                <!-- Paginación -->
-                <div v-if="movimientos.links?.length > 3" class="px-4 py-3 border-t border-gray-100 flex justify-center">
-                    <div class="flex gap-1 flex-wrap">
-                        <Link
-                            v-for="link in movimientos.links"
-                            :key="link.label"
-                            :href="link.url || '#'"
-                            class="px-2.5 py-1 rounded text-xs transition"
-                            :class="{
-                                'bg-primary-600 text-white': link.active,
-                                'bg-gray-100 text-gray-700 hover:bg-gray-200': !link.active && link.url,
-                                'opacity-50 cursor-not-allowed': !link.url
-                            }"
-                            v-html="link.label"
-                            preserve-state
-                        />
+                    <!-- Paginación -->
+                    <div v-if="movimientos.links?.length > 3" class="px-3 py-2 border-t border-gray-200 bg-gray-50 flex justify-center">
+                        <div class="flex gap-1 flex-wrap">
+                            <Link
+                                v-for="link in movimientos.links"
+                                :key="link.label"
+                                :href="link.url || '#'"
+                                class="px-2.5 py-1 rounded-lg border text-[10px] transition"
+                                :class="{
+                                    'bg-primary-600 text-white border-primary-600': link.active,
+                                    'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,
+                                    'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url
+                                }"
+                                v-html="link.label"
+                                preserve-state
+                            />
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- MODAL CARGAR SALDO -->
-        <!-- ============================================================ -->
-        <div v-if="mostrarModalCargar" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="mostrarModalCargar = false">
-            <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h2 class="text-base font-bold text-gray-800">
-                        <i class="fas fa-plus-circle text-green-500 mr-2"></i>
-                        Cargar Saldo
-                    </h2>
-                    <button @click="mostrarModalCargar = false" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
+        <!-- ==================== MODAL CARGAR SALDO ==================== -->
+        <div v-if="mostrarModalCargar" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="mostrarModalCargar = false">
+            <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div class="px-4 py-2.5 bg-emerald-600 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <i class="fas fa-plus-circle text-xs"></i>
+                            Cargar Saldo
+                        </h2>
+                        <p class="text-[9px] text-white/80">Aumenta el saldo disponible del operador</p>
+                    </div>
+                    <button @click="mostrarModalCargar = false" class="text-white/80 hover:text-white transition">
+                        <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
 
-                <div class="p-6 space-y-4">
+                <div class="p-4 space-y-3">
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Monto *</label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Monto *</label>
                         <div class="relative">
-                            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-semibold">Bs.</span>
+                            <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-semibold">Bs.</span>
                             <input
                                 type="number"
                                 v-model="formCargar.Monto"
                                 placeholder="0.00"
                                 step="0.01"
                                 min="0.01"
-                                class="w-full border border-gray-200 rounded-lg pl-10 pr-3 py-2 text-lg font-bold outline-none focus:ring-2 focus:ring-primary-400"
+                                class="w-full border border-gray-300 rounded-md pl-8 pr-2.5 py-1.5 text-base font-bold focus:ring-primary-500 focus:border-primary-500 outline-none"
                             />
                         </div>
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Origen *</label>
-                        <select v-model="formCargar.OrigenPago" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-400">
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Origen *</label>
+                        <select v-model="formCargar.OrigenPago" class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                             <option value="EFECTIVO">Efectivo</option>
                             <option value="TRANSFERENCIA">Transferencia</option>
                         </select>
                     </div>
 
                     <div v-if="formCargar.OrigenPago === 'TRANSFERENCIA'">
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Nro. Referencia</label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Nro. Referencia</label>
                         <input type="text" v-model="formCargar.ReferenciaPago" placeholder="Ej: 123456789"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-400" />
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" />
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Observaciones (opcional)</label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Observaciones (opcional)</label>
                         <textarea v-model="formCargar.Observaciones" rows="2" placeholder="Notas adicionales..."
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary-400 resize-none"></textarea>
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"></textarea>
                     </div>
                 </div>
 
-                <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-2 justify-end">
-                    <button @click="mostrarModalCargar = false" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition">
+                <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2">
+                    <button @click="mostrarModalCargar = false" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition">
                         Cancelar
                     </button>
                     <button @click="cargarSaldo" :disabled="procesando"
-                        class="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition flex items-center gap-2">
-                        <i v-if="procesando" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-check"></i>
+                        class="px-3 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-md transition flex items-center gap-1.5 font-medium">
+                        <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                        <i v-else class="fas fa-check text-[10px]"></i>
                         Cargar Saldo
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- MODAL AJUSTAR SALDO -->
-        <!-- ============================================================ -->
-        <div v-if="mostrarModalAjuste" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="mostrarModalAjuste = false">
-            <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h2 class="text-base font-bold text-gray-800">
-                        <i class="fas fa-balance-scale text-blue-500 mr-2"></i>
-                        Ajustar Saldo
-                    </h2>
-                    <button @click="mostrarModalAjuste = false" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
+        <!-- ==================== MODAL AJUSTAR SALDO ==================== -->
+        <div v-if="mostrarModalAjuste" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="mostrarModalAjuste = false">
+            <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div class="px-4 py-2.5 bg-blue-600 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <i class="fas fa-balance-scale text-xs"></i>
+                            Ajustar Saldo
+                        </h2>
+                        <p class="text-[9px] text-white/80">Usa (+) para sumar, (−) para restar</p>
+                    </div>
+                    <button @click="mostrarModalAjuste = false" class="text-white/80 hover:text-white transition">
+                        <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
 
-                <div class="p-6 space-y-4">
-                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-xs text-yellow-800">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        Usa el signo (+) para sumar, (−) para restar. El motivo es obligatorio.
+                <div class="p-4 space-y-3">
+                    <div class="p-2 bg-amber-50 border border-amber-200 rounded-md text-[10px] text-amber-800 flex items-start gap-1.5">
+                        <i class="fas fa-exclamation-triangle mt-0.5 text-[10px]"></i>
+                        <span>El motivo es obligatorio (mínimo 5 caracteres)</span>
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Monto *</label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Monto *</label>
                         <input type="number" v-model="formAjuste.Monto" placeholder="Ej: 100.00 o -50.00" step="0.01"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-lg font-bold outline-none focus:ring-2 focus:ring-blue-400" />
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base font-bold focus:ring-primary-500 focus:border-primary-500 outline-none" />
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">Motivo *</label>
-                        <textarea v-model="formAjuste.Motivo" rows="3" placeholder="Explica por qué se hace este ajuste (mínimo 5 caracteres)"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-400 resize-none"></textarea>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Motivo *</label>
+                        <textarea v-model="formAjuste.Motivo" rows="3" placeholder="Explica por qué se hace este ajuste"
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"></textarea>
                     </div>
                 </div>
 
-                <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-2 justify-end">
-                    <button @click="mostrarModalAjuste = false" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition">
+                <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2">
+                    <button @click="mostrarModalAjuste = false" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition">
                         Cancelar
                     </button>
                     <button @click="ajustarSaldo" :disabled="procesando"
-                        class="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition flex items-center gap-2">
-                        <i v-if="procesando" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-check"></i>
+                        class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-md transition flex items-center gap-1.5 font-medium">
+                        <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                        <i v-else class="fas fa-check text-[10px]"></i>
                         Aplicar Ajuste
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================================ -->
-        <!-- MODAL INACTIVAR -->
-        <!-- ============================================================ -->
-        <div v-if="mostrarModalInactivar" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="mostrarModalInactivar = false">
-            <div class="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
-                <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                    <h2 class="text-base font-bold text-gray-800">
-                        <i class="fas fa-lock text-orange-500 mr-2"></i>
-                        Inactivar Billetera
-                    </h2>
-                    <button @click="mostrarModalInactivar = false" class="text-gray-400 hover:text-gray-600">
-                        <i class="fas fa-times"></i>
+        <!-- ==================== MODAL INACTIVAR ==================== -->
+        <div v-if="mostrarModalInactivar" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="mostrarModalInactivar = false">
+            <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
+                <div class="px-4 py-2.5 bg-orange-600 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-sm font-bold text-white flex items-center gap-1.5">
+                            <i class="fas fa-lock text-xs"></i>
+                            Inactivar Billetera
+                        </h2>
+                        <p class="text-[9px] text-white/80">Esta acción congelará el saldo</p>
+                    </div>
+                    <button @click="mostrarModalInactivar = false" class="text-white/80 hover:text-white transition">
+                        <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
 
-                <div class="p-6 space-y-4">
-                    <div class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-800">
-                        <i class="fas fa-exclamation-triangle mr-1"></i>
-                        <strong>Importante:</strong> Si esta billetera tiene saldo
-                        (Bs. {{ saldoFormateado }}), quedará <strong>congelado</strong> hasta que la reactives.
-                        El operador dejará de poder usarla y tendrá que pagar con QR.
+                <div class="p-4 space-y-3">
+                    <div class="p-2 bg-orange-50 border border-orange-200 rounded-md text-[10px] text-orange-800 flex items-start gap-1.5">
+                        <i class="fas fa-exclamation-triangle mt-0.5 text-[10px]"></i>
+                        <span>
+                            Si esta billetera tiene saldo <strong>Bs. {{ saldoFormateado }}</strong>, quedará <strong>congelado</strong> hasta que la reactives.
+                        </span>
                     </div>
 
                     <div>
-                        <label class="text-xs font-medium text-gray-600 block mb-1">
-                            Motivo (opcional)
-                        </label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Motivo (opcional)</label>
                         <textarea v-model="formInactivar.MotivoInactivacion" rows="3"
                             placeholder="Ej: El operador cambiará a pago con QR"
-                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-400 resize-none"></textarea>
+                            class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"></textarea>
                     </div>
                 </div>
 
-                <div class="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-2 justify-end">
-                    <button @click="mostrarModalInactivar = false" class="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg transition">
+                <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2">
+                    <button @click="mostrarModalInactivar = false" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition">
                         Cancelar
                     </button>
                     <button @click="inactivar" :disabled="procesando"
-                        class="px-4 py-2 text-sm bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg transition flex items-center gap-2">
-                        <i v-if="procesando" class="fas fa-spinner fa-spin"></i>
-                        <i v-else class="fas fa-lock"></i>
+                        class="px-3 py-1.5 text-xs bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-md transition flex items-center gap-1.5 font-medium">
+                        <i v-if="procesando" class="fas fa-spinner fa-spin text-[10px]"></i>
+                        <i v-else class="fas fa-lock text-[10px]"></i>
                         Sí, inactivar
                     </button>
                 </div>
@@ -599,3 +661,47 @@ const getTipoLabel = (tipo) => {
         </div>
     </div>
 </template>
+
+<style scoped>
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
+}
+
+.overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+}
+
+.overflow-x-auto::-webkit-scrollbar {
+    height: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+    background: #f1f5f9;
+}
+
+.overflow-y-auto::-webkit-scrollbar {
+    width: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+    background: #9ca3af;
+}
+</style>

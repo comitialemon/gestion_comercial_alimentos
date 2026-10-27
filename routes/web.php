@@ -1341,6 +1341,8 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     
                     Route::post('/{id}/inactivar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'inactivar'])
                         ->name('operacion.pedidos.clientes-mayoristas.billeteras.inactivar');
+                    Route::get('/{id}/pdf-movimientos', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'exportarPdfMovimientos'])
+                         ->name('operacion.pedidos.clientes-mayoristas.billeteras.pdf-movimientos');
                 });
 
                 // ============================================================

@@ -12,6 +12,7 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use Carbon\Carbon;
 
 class BilleteraClienteController extends Controller
 {
@@ -423,5 +424,231 @@ class BilleteraClienteController extends Controller
             });
 
         return response()->json($operadores);
+    }
+    //IMPRIMIR MOVIMIENTOS POR PERSONA EN PDF
+    public function exportarPdfMovimientos(Request $request, $id)
+    {
+        $clienteId = session('cliente_id');
+
+        $billetera = BilleteraOperador::where('IdCliente', $clienteId)
+            ->with(['operador.identificador', 'sucursal'])
+            ->findOrFail($id);
+
+        $query = BilleteraMovimiento::where('IdBilletera', $billetera->IdBilletera)
+            ->with(['operadorInserta.identificador', 'pedido']);
+
+        // Aplicar los mismos filtros que en la vista
+        if ($request->filled('tipo')) {
+            $query->where('Tipo', $request->tipo);
+        }
+        if ($request->filled('desde')) {
+            $query->whereDate('FechaMovimiento', '>=', $request->desde);
+        }
+        if ($request->filled('hasta')) {
+            $query->whereDate('FechaMovimiento', '<=', $request->hasta);
+        }
+
+        $movimientos = $query->orderBy('FechaMovimiento', 'asc')->get();
+
+        $empresa = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_cliente')
+            ->where('IdCliente', $clienteId)
+            ->first(['Nombre', 'NIT', 'Direccion']);
+
+        $pdf = new \TCPDF('P', 'mm', 'LETTER', true, 'UTF-8', false);
+        $pdf->setPrintHeader(false);
+        $pdf->setPrintFooter(false);
+        $pdf->SetMargins(10, 10, 10);
+        $pdf->SetAutoPageBreak(true, 12);
+        $pdf->AddPage();
+
+        $y = 10;
+
+        // --- HEADER ---
+        $pdf->SetFont('helvetica', 'B', 14);
+        $pdf->SetTextColor(30, 60, 120);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 6, 'ESTADO DE CUENTA - BILLETERA', 0, 1, 'C');
+        $y += 7;
+
+        $pdf->SetFont('helvetica', 'B', 11);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 5, mb_strtoupper($empresa->Nombre ?? 'EMPRESA', 'UTF-8'), 0, 1, 'C');
+        $y += 6;
+
+        if (!empty($empresa->NIT)) {
+            $pdf->SetFont('helvetica', '', 8);
+            $pdf->SetXY(10, $y);
+            $pdf->Cell(196, 4, 'NIT: ' . $empresa->NIT, 0, 1, 'C');
+            $y += 4;
+        }
+
+        $pdf->SetDrawColor(180, 180, 180);
+        $pdf->Line(10, $y, 206, $y);
+        $y += 6;
+
+        // --- INFO BILLETERA ---
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(30, 5, 'Operador:', 0, 0);
+        $pdf->SetFont('helvetica', '', 9);
+        $pdf->Cell(70, 5, $billetera->operador->identificador->Nombre ?? 'Sin nombre', 0, 0);
+        
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->Cell(30, 5, 'Saldo Actual:', 0, 0);
+        $pdf->SetFont('helvetica', 'B', 10);
+        $pdf->SetTextColor(0, 128, 0);
+        $pdf->Cell(50, 5, 'Bs. ' . number_format($billetera->SaldoActual, 2, ',', '.'), 0, 1);
+        $y += 5;
+
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(30, 5, 'CI/NIT:', 0, 0);
+        $pdf->SetFont('helvetica', '', 9);
+        $pdf->Cell(70, 5, $billetera->operador->identificador->CI_NIT ?? '-', 0, 0);
+
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->Cell(30, 5, 'Estado:', 0, 0);
+        $pdf->SetFont('helvetica', 'B', 9);
+        $pdf->SetTextColor($billetera->ActivoInactivo == 0 ? 0 : 200, $billetera->ActivoInactivo == 0 ? 128 : 0, 0);
+        $pdf->Cell(50, 5, $billetera->ActivoInactivo == 0 ? 'ACTIVA' : 'INACTIVA', 0, 1);
+        $y += 5;
+
+        // Fechas de filtro
+        $textoFiltros = "Movimientos";
+        if ($request->filled('desde') || $request->filled('hasta')) {
+            $textoFiltros .= " (";
+            if ($request->filled('desde')) $textoFiltros .= "Desde: " . Carbon::parse($request->desde)->format('d/m/Y') . " ";
+            if ($request->filled('hasta')) $textoFiltros .= "Hasta: " . Carbon::parse($request->hasta)->format('d/m/Y');
+            $textoFiltros .= ")";
+        }
+        
+        $pdf->SetTextColor(100, 100, 100);
+        $pdf->SetFont('helvetica', 'I', 8);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 5, $textoFiltros, 0, 1);
+        $y += 8;
+
+        // --- TABLA CABECERA ---
+        $pdf->SetFont('helvetica', 'B', 7);
+        $pdf->SetFillColor(240, 240, 240);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->SetDrawColor(180, 180, 180);
+
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(20, 5, 'FECHA', 'TB', 0, 'C', 1);
+        $pdf->Cell(20, 5, 'TIPO', 'TB', 0, 'C', 1);
+        $pdf->Cell(80, 5, 'GLOSA / DETALLE', 'TB', 0, 'L', 1);
+        $pdf->Cell(26, 5, 'INGRESO', 'TB', 0, 'C', 1);
+        $pdf->Cell(26, 5, 'EGRESO', 'TB', 0, 'C', 1);
+        $pdf->Cell(24, 5, 'SALDO', 'TB', 1, 'C', 1);
+        $y += 5;
+
+        // --- FILAS ---
+        $pdf->SetFont('helvetica', '', 7);
+        
+        foreach ($movimientos as $mov) {
+            $monto = (float) $mov->Monto;
+            $esPositivo = $monto >= 0;
+            $ingreso = $esPositivo ? number_format($monto, 2) : '';
+            $egreso = !$esPositivo ? number_format(abs($monto), 2) : '';
+            
+            $fecha = Carbon::parse($mov->FechaMovimiento)->format('d/m/Y');
+            $tipo = $mov->Tipo ?? 'MOV';
+            $glosa = $mov->Glosa ?? '-';
+            $saldo = number_format($mov->SaldoDespues, 2);
+
+            // Calcular la altura de la fila para que se ajuste al texto más largo
+            // MultiCell usa el ancho para calcular cuántas líneas ocupará
+            $alturaFecha = $pdf->getStringHeight(20, $fecha);
+            $alturaTipo = $pdf->getStringHeight(20, $tipo);
+            $alturaGlosa = $pdf->getStringHeight(80, $glosa);
+            $alturaMax = max($alturaFecha, $alturaTipo, $alturaGlosa, 4.5); // mínimo 4.5mm
+
+            if ((270 - $y) < $alturaMax + 5) {
+                $pdf->AddPage();
+                $y = 15;
+                // Redibujar cabecera
+                $pdf->SetFont('helvetica', 'B', 7);
+                $pdf->SetFillColor(240, 240, 240);
+                $pdf->SetXY(10, $y);
+                $pdf->Cell(20, 5, 'FECHA', 'TB', 0, 'C', 1);
+                $pdf->Cell(20, 5, 'TIPO', 'TB', 0, 'C', 1);
+                $pdf->Cell(80, 5, 'GLOSA / DETALLE', 'TB', 0, 'L', 1);
+                $pdf->Cell(26, 5, 'INGRESO', 'TB', 0, 'C', 1);
+                $pdf->Cell(26, 5, 'EGRESO', 'TB', 0, 'C', 1);
+                $pdf->Cell(24, 5, 'SALDO', 'TB', 1, 'C', 1);
+                $y += 5;
+                $pdf->SetFont('helvetica', '', 7);
+            }
+
+            $x_inicial = 10;
+
+            // Columna Fecha
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(20, $alturaMax, $fecha, 'LR', 'C', false, 0, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            // Columna Tipo
+            $x_inicial += 20;
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(20, $alturaMax, $tipo, 'LR', 'C', false, 0, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            // Columna Glosa
+            $x_inicial += 20;
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(80, $alturaMax, ' ' . $glosa, 'LR', 'L', false, 0, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            // Columna Ingreso
+            $x_inicial += 80;
+            $pdf->SetTextColor(0, 128, 0);
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(26, $alturaMax, $ingreso, 'LR', 'R', false, 0, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            // Columna Egreso
+            $x_inicial += 26;
+            $pdf->SetTextColor(200, 0, 0);
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(26, $alturaMax, $egreso, 'LR', 'R', false, 0, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            // Columna Saldo
+            $x_inicial += 26;
+            $pdf->SetTextColor(0, 0, 0);
+            $pdf->SetXY($x_inicial, $y);
+            $pdf->MultiCell(24, $alturaMax, $saldo, 'LR', 'R', false, 1, '', '', true, 0, false, true, $alturaMax, 'M');
+
+            $y += $alturaMax;
+        }
+
+        // --- TOTALES ---
+        $pdf->SetFont('helvetica', 'B', 7);
+        $pdf->SetFillColor(235, 245, 255);
+        $pdf->SetXY(10, $y);
+        
+        $pdf->Cell(120, 6, 'TOTALES DEL PERIODO', 'LRB', 0, 'R', 1);
+        
+        $totalIngresos = $movimientos->where('Monto', '>', 0)->sum('Monto');
+        $totalEgresos = abs($movimientos->where('Monto', '<', 0)->sum('Monto'));
+        
+        $pdf->SetTextColor(0, 128, 0);
+        $pdf->Cell(26, 6, number_format($totalIngresos, 2), 'LRB', 0, 'R', 1);
+        $pdf->SetTextColor(200, 0, 0);
+        $pdf->Cell(26, 6, number_format($totalEgresos, 2), 'LRB', 0, 'R', 1);
+        $pdf->SetTextColor(0, 0, 0);
+        $pdf->Cell(24, 6, number_format($billetera->SaldoActual, 2), 'LRB', 1, 'R', 1);
+        $y += 8;
+
+        // --- PIE ---
+        $pdf->SetFont('helvetica', '', 7);
+        $pdf->SetTextColor(150, 150, 150);
+        $pdf->SetXY(10, $y);
+        $pdf->Cell(196, 4, 'Documento generado el ' . Carbon::now('America/La_Paz')->format('d/m/Y H:i') . ' por ' . session('operador_nombre', 'Sistema'), 0, 1, 'C');
+
+        if (ob_get_length()) ob_end_clean();
+        
+        $nombreArchivo = 'Estado_Cuenta_' . ($billetera->operador->identificador->CI_NIT ?? 'Billetera') . '.pdf';
+        $pdf->Output($nombreArchivo, 'D');
+        exit;
     }
 }
