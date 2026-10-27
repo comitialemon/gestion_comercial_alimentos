@@ -179,6 +179,7 @@ const actualizarCantidad = (producto, event) => {
     }
 
     let cantidad = parseInt(valor)
+    const PASO = 45
 
     if (isNaN(cantidad) || cantidad < 0) {
         producto.Cantidad = 0
@@ -188,35 +189,46 @@ const actualizarCantidad = (producto, event) => {
         return
     }
 
+    // 🔥 Si escribe un número que no es múltiplo de 45, lo ajustamos al múltiplo más cercano
+    if (cantidad > 0 && cantidad % PASO !== 0) {
+        cantidad = Math.round(cantidad / PASO) * PASO
+    }
+
     const otrasUnidades = totalUnidadesSeleccionadas.value - (producto.Cantidad || 0)
     const disponible = capacidadTotalContenedor.value - otrasUnidades
 
     if (cantidad > disponible) {
-        cantidad = disponible
-        input.value = disponible
+        // Si el ajuste supera el límite, lo bajamos al múltiplo de 45 que sí quepa
+        cantidad = Math.floor(disponible / PASO) * PASO
         if (cantidad < 0) cantidad = 0
     }
 
     producto.Cantidad = cantidad
+    input.value = cantidad
     recalcularTotal()
     validarCapacidad()
 }
-
 const incrementarCantidad = (producto) => {
     const actual = producto.Cantidad || 0
+    const PASO = 45
+    
     const otrasUnidades = totalUnidadesSeleccionadas.value - actual
     const disponible = capacidadTotalContenedor.value - otrasUnidades
 
     if (actual < disponible) {
-        producto.Cantidad = Math.min(actual + 1, disponible)
+        // Suma de 45 en 45, sin pasar el límite disponible
+        producto.Cantidad = Math.min(actual + PASO, disponible)
         recalcularTotal()
         validarCapacidad()
     }
 }
 
 const decrementarCantidad = (producto) => {
+    const PASO = 45
+    
     if (producto.Cantidad > 0) {
-        producto.Cantidad--
+        // Resta de 45 en 45, sin bajar de 0
+        producto.Cantidad = Math.max(0, producto.Cantidad - PASO)
         recalcularTotal()
         validarCapacidad()
     }

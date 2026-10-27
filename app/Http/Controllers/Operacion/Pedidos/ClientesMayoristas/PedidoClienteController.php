@@ -303,7 +303,7 @@ class PedidoClienteController extends Controller
 
             if ($contenedoresCount === 0) {
                 $puedeHacerPedidos = false;
-                $razonNoPuedePedir = "Tu grupo '{$grupoCliente->Nombre}' no tiene contenedores asignados.\n\n📞 Contacta al administrador del sistema para que te asigne al menos un contenedor a tu grupo.";
+                $razonNoPuedePedir = "Tu grupo no tiene contenedores asignados.\n\n📞 Contacta al administrador del sistema para que te asigne al menos un contenedor a tu grupo.";
             }
         }
 
@@ -412,7 +412,7 @@ class PedidoClienteController extends Controller
                 'TipoContenedor' => $c->TipoContenedor ?: '-',
                 'CapacidadTotal' => $c->CapacidadTotal,
                 'CapacidadTotalFormateada' => number_format($c->CapacidadTotal, 0, ',', '.'),
-                'EsProductoUnico' => (bool) $c->EsProductoUnico,   // ✅
+                'EsProductoUnico' => (bool) $c->EsProductoUnico,
                 'total_productos' => $totalProductosDelGrupo,
                 'grupos' => $grupoCliente->Nombre,
             ];
@@ -439,7 +439,7 @@ class PedidoClienteController extends Controller
                 ->orderBy('IdProducto')
                 ->get();
 
-            $carrito = $detalles->groupBy('OrdenContenedor')->map(function ($items, $orden) {
+            $carrito = $detalles->groupBy('OrdenContenedor')->map(function ($items, $orden) use ($pedidoBorrador) {
                 $primerItem = $items->first();
                 $contenedor = $primerItem->contenedor;
                 $total = $items->sum('Cantidad');
@@ -450,6 +450,7 @@ class PedidoClienteController extends Controller
                     : null;
 
                 return [
+                    'IdPedidoCliente' => $pedidoBorrador->IdPedidoCliente, // 🔥 AQUÍ ESTÁ LA MAGIA
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
@@ -1223,7 +1224,6 @@ class PedidoClienteController extends Controller
     // ============================================================
     // REVISAR PEDIDO
     // ============================================================
-
     public function review($id)
     {
         try {
@@ -1280,6 +1280,7 @@ class PedidoClienteController extends Controller
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),
                     'CapacidadTotal' => $contenedor ? $contenedor->CapacidadTotal : 0,
+                    'EsProductoUnico' => $contenedor ? (bool)$contenedor->EsProductoUnico : false, // 🔥 AGREGADO
                     'IdSubClienteOperador' => $primerItem->IdSubClienteOperador,
                     'SubClienteNombre' => $subClienteNombre,
                     'productos' => $items->map(function($item) {

@@ -5,6 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
 import ConfirmModal from './ConfirmModal.vue'
 import CreateModalProductos from './CreateModalProductos.vue'
+import CreateModalContenedorProductoUnico from './CreateModalContenedorProductoUnico.vue'
 import PagoQRModal from './PagoQRModal.vue'
 
 defineOptions({ layout: AppLayout })
@@ -64,23 +65,22 @@ const detallesLocal = ref(
     }))
 )
 
+// 🔥 ESTADO PARA LOS MODALES DE EDICIÓN
 const modalEdicionVisible = ref(false)
+const modalEdicionProductoUnicoVisible = ref(false)
+const esProductoUnicoEdicion = ref(false)
 const contenedorSeleccionado = ref(null)
 
 // ✅ Flag para bloquear Atrás después de finalizar
 const pedidoYaFinalizado = ref(false)
 
-// 🔥 IdempotencyKey: se genera al abrir el modal de confirmación.
-//    Si el usuario reintenta (por error de red), se reutiliza la misma key.
-//    Si cancela y vuelve a abrir, se genera una nueva.
+// 🔥 IdempotencyKey
 const idempotencyKey = ref(null)
 
 const generarIdempotencyKey = () => {
-    // crypto.randomUUID es nativo en navegadores modernos
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
         return crypto.randomUUID()
     }
-    // Fallback: generar UUID v4 manual
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
         const r = Math.random() * 16 | 0
         const v = c === 'x' ? r : (r & 0x3 | 0x8)
@@ -90,7 +90,6 @@ const generarIdempotencyKey = () => {
 
 // ==================== INICIALIZAR ====================
 onMounted(() => {
-    // 🔥 Bloquear Atrás si el pedido se finalizó en esta sesión.
     const handlePopState = () => {
         if (pedidoYaFinalizado.value) {
             window.location.reload()
@@ -103,7 +102,6 @@ onMounted(() => {
         window.removeEventListener('popstate', handlePopState)
     })
 
-    // Advertir si hay pago pendiente
     if (props.pagoPendiente && props.pagoPendiente.Estado === 'PENDIENTE') {
         toast?.warning('Pago pendiente', 'Tienes un pago pendiente. Genera el QR de nuevo para continuar.')
     }
@@ -530,8 +528,7 @@ const cambiarTipoPrecio = async (nuevoTipo) => {
 }
 
 // ============================================================
-// 🔥 FINALIZAR PEDIDO → Un solo endpoint
-// El backend decide: si tiene billetera → descuenta saldo; si no → QR
+// 🔥 FINALIZAR PEDIDO
 // ============================================================
 const abrirModalConfirmacion = async () => {
     if (pedidoYaFinalizado.value) {
@@ -575,7 +572,6 @@ const abrirModalConfirmacion = async () => {
         return
     }
 
-    // 🔥 Generar una nueva key si no hay una activa
     if (!idempotencyKey.value) {
         idempotencyKey.value = generarIdempotencyKey()
     }
@@ -583,11 +579,8 @@ const abrirModalConfirmacion = async () => {
     modalConfirmacionVisible.value = true
 }
 
-// 🎯 El único método que hace todo
 const finalizarPedido = async () => {
     if (pedidoYaFinalizado.value) return
-
-    // 🔥 Validar que tenemos una key
     if (!idempotencyKey.value) {
         toast?.error('Error', 'No se generó la clave de operación. Recargá e intentá de nuevo.')
         return
@@ -603,22 +596,19 @@ const finalizarPedido = async () => {
                 FechaEntrega: fechaEntrega.value,
                 Observaciones: observaciones.value || null,
                 TipoPrecio: tipoPrecioLocal.value,
-                IdempotencyKey: idempotencyKey.value, // 🔥 NUEVO
+                IdempotencyKey: idempotencyKey.value,
             }
         )
 
         if (response.data.success) {
-            // 🔥 Marcar como finalizado para bloquear el Atrás
             pedidoYaFinalizado.value = true
 
-            // 🔥 Si fue con QR → abrir el modal de QR
             if (response.data.tipo_finalizacion === 'QR') {
                 qrActual.value = response.data.qr
                 mostrarModalQR.value = true
                 return
             }
 
-            // 🔥 Si fue con billetera → mostrar éxito y redirigir
             if (response.data.tipo_finalizacion === 'BILLETERA') {
                 if (response.data.saldo_despues !== undefined) {
                     saldoBilleteraLocal.value = response.data.saldo_despues
@@ -651,16 +641,11 @@ const finalizarPedido = async () => {
     }
 }
 
-// ✅ Pago exitoso (QR)
 const onPagoExitoso = () => {
-    // ✅ Marcar como finalizado para bloquear el Atrás
     pedidoYaFinalizado.value = true
-
     mostrarModalQR.value = false
     qrActual.value = null
     pagoPendienteLocal.value = null
-
-    // 🔥 Limpiar la key (ya no se necesita)
     idempotencyKey.value = null
 
     toast?.success('¡Pago recibido!', 'El pedido se registró correctamente.')
@@ -672,27 +657,19 @@ const onPagoExitoso = () => {
     }, 800)
 }
 
-// ✅ Cancelar QR
 const onCancelarQR = () => {
     mostrarModalQR.value = false
     qrActual.value = null
     pagoPendienteLocal.value = null
-
-    // 🔥 Limpiar la key (el próximo intento generará una nueva)
     idempotencyKey.value = null
-
     toast?.info('QR cancelado', 'Puedes modificar el pedido y volver a intentar.')
 }
 
-// ✅ QR expirado
 const onQRExpirado = () => {
     mostrarModalQR.value = false
     qrActual.value = null
     pagoPendienteLocal.value = null
-
-    // 🔥 Limpiar la key (el próximo intento generará una nueva)
     idempotencyKey.value = null
-
     toast?.warning('QR expirado', 'El QR expiró. Genera uno nuevo.')
 }
 
@@ -702,11 +679,17 @@ const abrirModalEdicion = (item) => {
         toast?.error('Pedido finalizado', 'No se puede editar un pedido ya finalizado.')
         return
     }
+
+    // 🔥 DETECTAR SI ES PRODUCTO ÚNICO
+    // Si el backend envía EsProductoUnico, lo usamos. Si no, inferimos por CapacidadTotal === 0
+    const esRejilla = item.EsProductoUnico === true || item.CapacidadTotal === 0
+
     contenedorSeleccionado.value = {
         IdContenedor: item.IdContenedor,
         CapacidadTotal: item.CapacidadTotal,
         Codigo: item.Codigo,
         TipoContenedor: item.TipoContenedor || '',
+        EsProductoUnico: esRejilla,
         _datosEdicion: {
             IdPedidoCliente: props.pedido.IdPedidoCliente,
             IdContenedor: item.IdContenedor,
@@ -720,7 +703,15 @@ const abrirModalEdicion = (item) => {
             }))
         }
     }
-    modalEdicionVisible.value = true
+
+    // 🔥 ABRIR EL MODAL CORRECTO
+    if (esRejilla) {
+        esProductoUnicoEdicion.value = true
+        modalEdicionProductoUnicoVisible.value = true
+    } else {
+        esProductoUnicoEdicion.value = false
+        modalEdicionVisible.value = true
+    }
 }
 
 const actualizarContenedor = async (data) => {
@@ -743,7 +734,6 @@ const actualizarContenedor = async (data) => {
         if (response.data.success) {
             actualizarDetalleLocal(data, payload)
             await recargarProgreso()
-
             toast?.success('Éxito', 'Contenedor actualizado correctamente')
         } else {
             toast?.error('Error', response.data.message || 'Error al actualizar')
@@ -753,7 +743,9 @@ const actualizarContenedor = async (data) => {
         toast?.error('Error', error.response?.data?.message || 'Error al actualizar el contenedor')
     } finally {
         loading.value = false
+        // Cerramos ambos modales por si acaso
         modalEdicionVisible.value = false
+        modalEdicionProductoUnicoVisible.value = false
     }
 }
 
@@ -831,9 +823,7 @@ const eliminarContenedor = async (item) => {
             detallesLocal.value = detallesLocal.value.filter(
                 d => Number(d.Orden) !== Number(item.Orden)
             )
-
             await recargarProgreso()
-
             toast?.success('Éxito', 'Contenedor eliminado')
 
             if (detallesLocal.value.length === 0) {
@@ -879,7 +869,7 @@ const eliminarContenedor = async (item) => {
                     </div>
                 </div>
 
-                <!-- 🔥 BANNER DE BILLETERA (informativo) -->
+                <!-- 🔥 BANNER DE BILLETERA -->
                 <div
                     v-if="tieneBilleteraActiva"
                     class="mb-3 rounded-xl border-2 overflow-hidden"
@@ -1501,8 +1491,9 @@ const eliminarContenedor = async (item) => {
             @confirm="finalizarPedido"
         />
 
-        <!-- MODAL DE EDICIÓN -->
+        <!-- MODAL DE EDICIÓN NORMAL -->
         <CreateModalProductos
+            v-if="!esProductoUnicoEdicion"
             :visible="modalEdicionVisible"
             :contenedor="contenedorSeleccionado"
             :idIdentificador="idIdentificador"
@@ -1512,6 +1503,22 @@ const eliminarContenedor = async (item) => {
             :nombreOperador="operadorNombre"
             :idSubClienteOperadorDefault="contenedorSeleccionado?._datosEdicion?.IdSubClienteOperador || null"
             @close="modalEdicionVisible = false"
+            @actualizar="actualizarContenedor"
+        />
+
+        <!-- 🔥 MODAL DE EDICIÓN PRODUCTO ÚNICO (REJILLAS) -->
+        <CreateModalContenedorProductoUnico
+            v-if="esProductoUnicoEdicion"
+            :visible="modalEdicionProductoUnicoVisible"
+            :contenedor="contenedorSeleccionado"
+            :idIdentificador="idIdentificador"
+            :modoEdicion="true"
+            :datosEdicion="contenedorSeleccionado?._datosEdicion || null"
+            :subclientes="subclientes"
+            :nombreOperador="operadorNombre"
+            :idSubClienteOperadorDefault="contenedorSeleccionado?._datosEdicion?.IdSubClienteOperador || null"
+            :tipoPrecio="tipoPrecioLocal"
+            @close="modalEdicionProductoUnicoVisible = false"
             @actualizar="actualizarContenedor"
         />
 

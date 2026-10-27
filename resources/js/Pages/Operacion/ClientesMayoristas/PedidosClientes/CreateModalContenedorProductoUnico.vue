@@ -9,10 +9,12 @@ const props = defineProps({
     tipoPrecio: { type: String, default: 'sin_factura' },
     subclientes: { type: Array, default: () => [] },
     idSubClienteOperadorDefault: { type: [Number, String], default: null },
-    nombreOperador: { type: String, default: '' }
+    nombreOperador: { type: String, default: '' },
+    modoEdicion: { type: Boolean, default: false },
+    datosEdicion: { type: Object, default: null }
 })
 
-const emit = defineEmits(['close', 'agregar'])
+const emit = defineEmits(['close', 'agregar', 'actualizar'])
 
 const toast = inject('toast', null)
 
@@ -112,6 +114,10 @@ const formatearPrecio = (valor) => {
 
 // ==================== INICIALIZAR SUBCLIENTE ====================
 const inicializarSubCliente = () => {
+    if (props.modoEdicion && props.datosEdicion?.IdSubClienteOperador) {
+        subClienteSeleccionado.value = Number(props.datosEdicion.IdSubClienteOperador)
+        return
+    }
     if (props.idSubClienteOperadorDefault) {
         subClienteSeleccionado.value = Number(props.idSubClienteOperadorDefault)
         return
@@ -147,10 +153,13 @@ const seleccionarProducto = (prod) => {
         return
     }
     productoSeleccionado.value = prod
-    cantidadRejillas.value = 1
+    if (!props.modoEdicion) {
+        cantidadRejillas.value = 1
+    }
 }
 
 const limpiarSeleccion = () => {
+    if (props.modoEdicion) return
     productoSeleccionado.value = null
     cantidadRejillas.value = 1
     busquedaProducto.value = ''
@@ -191,8 +200,12 @@ const cargarProductos = async () => {
     loading.value = true
     errorCarga.value = false
     productos.value = []
-    productoSeleccionado.value = null
-    cantidadRejillas.value = 1
+    
+    if (!props.modoEdicion) {
+        productoSeleccionado.value = null
+        cantidadRejillas.value = 1
+    }
+    
     busquedaProducto.value = ''
     errorMensaje.value = ''
 
@@ -229,6 +242,21 @@ const cargarProductos = async () => {
 
             productos.value = productosRaw.filter(p => p.tiene_precio && p.MinimoProducto > 0)
 
+            if (props.modoEdicion && props.datosEdicion && props.datosEdicion.productos?.length > 0) {
+                const prodEdit = props.datosEdicion.productos[0]
+                const prodEncontrado = productos.value.find(p => p.IdProducto === prodEdit.IdProducto)
+                
+                if (prodEncontrado) {
+                    productoSeleccionado.value = prodEncontrado
+                    
+                    if (props.datosEdicion.CantidadRejillas) {
+                        cantidadRejillas.value = Number(props.datosEdicion.CantidadRejillas)
+                    } else if (prodEncontrado.MinimoProducto > 0) {
+                        cantidadRejillas.value = Math.round(Number(prodEdit.Cantidad) / prodEncontrado.MinimoProducto)
+                    }
+                }
+            }
+
             if (productos.value.length === 0) {
                 errorMensaje.value = 'No hay productos con precio y mínimo configurados.'
             }
@@ -245,7 +273,7 @@ const cargarProductos = async () => {
     }
 }
 
-// ==================== AGREGAR ====================
+// ==================== AGREGAR / ACTUALIZAR ====================
 const agregarRejillas = () => {
     if (!puedeAgregar.value) return
 
@@ -254,10 +282,26 @@ const agregarRejillas = () => {
         IdProducto: productoSeleccionado.value.IdProducto,
         CantidadRejillas: Number(cantidadRejillas.value),
         TipoPrecio: props.tipoPrecio,
-        IdSubClienteOperador: subClienteSeleccionado.value
+        IdSubClienteOperador: subClienteSeleccionado.value,
+        Precio: productoSeleccionado.value.PrecioFinal,
+        CantidadPorRejilla: cantidadPorRejilla.value
     }
 
-    emit('agregar', payload)
+    if (props.modoEdicion && props.datosEdicion) {
+        emit('actualizar', {
+            ...payload,
+            IdPedidoCliente: props.datosEdicion.IdPedidoCliente,
+            OrdenContenedor: props.datosEdicion.OrdenContenedor,
+            productos: [{
+                IdProducto: productoSeleccionado.value.IdProducto,
+                Cantidad: Number(cantidadRejillas.value) * cantidadPorRejilla.value,
+                Precio: productoSeleccionado.value.PrecioFinal
+            }]
+        })
+    } else {
+        emit('agregar', payload)
+    }
+    
     cerrarModal()
 }
 
@@ -292,6 +336,15 @@ watch(() => props.idSubClienteOperadorDefault, (newVal) => {
     }
 })
 
+watch(() => props.datosEdicion, (newVal) => {
+    if (newVal && props.modoEdicion && props.visible) {
+        cargarProductos()
+        nextTick(() => {
+            inicializarSubCliente()
+        })
+    }
+}, { deep: true, immediate: true })
+
 // ==================== LIFECYCLE ====================
 onMounted(() => {
     inicializarSubCliente()
@@ -306,75 +359,81 @@ onUnmounted(() => {
 <template>
     <div
         v-if="visible"
-        class="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3"
         @click.self="cerrarModal"
     >
-        <div class="bg-white rounded-xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative z-10">
+        <div class="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl flex flex-col relative z-10">
 
-            <!-- HEADER -->
-            <div class="px-4 py-3 border-b bg-purple-50 flex items-center justify-between flex-shrink-0">
+            <!-- ==================== HEADER ==================== -->
+            <div class="px-4 py-2.5 bg-primary-600 flex items-center justify-between flex-shrink-0">
                 <div class="min-w-0 flex-1">
-                    <h3 class="font-bold text-gray-800 text-sm truncate flex items-center gap-2">
-                        <span class="w-7 h-7 bg-purple-500 text-white rounded-full flex items-center justify-center text-xs flex-shrink-0">
+                    <h3 class="font-bold text-white text-sm truncate flex items-center gap-2">
+                        <span class="w-6 h-6 bg-white/20 text-white rounded-full flex items-center justify-center text-[10px] flex-shrink-0">
                             <i class="fas fa-cube"></i>
                         </span>
                         {{ contenedor?.Codigo || 'Producto Único' }}
+                        <span v-if="modoEdicion" class="text-[9px] bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
+                            <i class="fas fa-pencil-alt"></i> EDITANDO
+                        </span>
                     </h3>
-                    <p class="text-[10px] text-gray-500 mt-0.5">
-                        Elige <strong>1 producto</strong> y la <strong>cantidad de rejillas</strong>. Cada rejilla lleva la cantidad mínima del producto.
+                    <p class="text-[10px] text-white/80 mt-0.5">
+                        Elige <strong>1 producto</strong> y la <strong>cantidad de rejillas</strong>.
                     </p>
-                    <span class="text-[9px] px-2 py-0.5 rounded-full font-medium mt-1 inline-block"
-                        :class="tipoPrecio === 'con_factura' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'">
-                        <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-1"></i>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-[9px] px-2 py-0.5 rounded-full font-medium"
+                        :class="tipoPrecio === 'con_factura' ? 'bg-blue-100 text-blue-700' : 'bg-white/20 text-white'">
+                        <i :class="tipoPrecio === 'con_factura' ? 'fas fa-file-invoice-dollar' : 'fas fa-receipt'" class="mr-1 text-[8px]"></i>
                         {{ tipoPrecio === 'con_factura' ? 'Con Factura' : 'Sin Factura' }}
                     </span>
+                    <button @click="cerrarModal" class="text-white/80 hover:text-white hover:bg-white/10 rounded-md p-1.5 transition flex-shrink-0">
+                        <i class="fas fa-times text-sm"></i>
+                    </button>
                 </div>
-                <button @click="cerrarModal" class="text-gray-400 hover:text-gray-600 hover:bg-white/50 rounded-lg p-1.5 transition flex-shrink-0">
-                    <i class="fas fa-times"></i>
-                </button>
             </div>
 
-            <!-- SUBCLIENTE -->
-            <div class="px-4 py-2 border-b flex items-center gap-2 flex-shrink-0 transition-colors"
-                 :class="esPropioOperador ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'">
+            <!-- ==================== SUBCLIENTE ==================== -->
+            <div class="px-4 py-2 border-b border-gray-200 flex items-center gap-2 flex-shrink-0"
+                 :class="esPropioOperador ? 'bg-emerald-50' : 'bg-blue-50'">
                 <label class="text-[10px] font-medium text-gray-600 whitespace-nowrap">
-                    <i class="fas fa-user-tag mr-1" :class="esPropioOperador ? 'text-green-500' : 'text-blue-500'"></i>
+                    <i class="fas fa-user-tag mr-1" :class="esPropioOperador ? 'text-emerald-500' : 'text-blue-500'"></i>
                     Pedido para:
                 </label>
                 <div class="flex-1 min-w-0 relative" ref="subClienteDropdownRef">
                     <div
-                        @click="abrirDropdownSubCliente"
-                        class="w-full border rounded-lg px-2 py-1 text-xs bg-white font-medium cursor-pointer flex items-center justify-between gap-1 transition"
-                        :class="esPropioOperador
-                            ? 'border-green-300 hover:border-green-400 text-green-800'
-                            : 'border-blue-300 hover:border-blue-400 text-blue-800'"
+                        @click="!modoEdicion && abrirDropdownSubCliente()"
+                        class="w-full border rounded-md px-2 py-1 text-xs bg-white font-medium flex items-center justify-between gap-1 transition"
+                        :class="[
+                            esPropioOperador ? 'border-emerald-300 text-emerald-800' : 'border-blue-300 text-blue-800',
+                            modoEdicion ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer hover:border-opacity-80'
+                        ]"
                     >
                         <span class="truncate flex-1">
                             {{ subClienteNombreActual }}
                             {{ esPropioOperador ? ' — (Tú)' : '' }}
                         </span>
-                        <i class="fas fa-chevron-down text-[9px] opacity-60 flex-shrink-0"></i>
+                        <i v-if="!modoEdicion" class="fas fa-chevron-down text-[9px] opacity-60 flex-shrink-0"></i>
                     </div>
 
                     <div
-                        v-if="mostrarDropdownSubCliente"
-                        class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-72 overflow-hidden flex flex-col"
+                        v-if="mostrarDropdownSubCliente && !modoEdicion"
+                        class="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-64 overflow-hidden flex flex-col"
                     >
-                        <div class="p-2 border-b bg-gray-50">
+                        <div class="p-2 border-b border-gray-100 bg-gray-50">
                             <div class="relative">
                                 <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
                                 <input
                                     type="text"
                                     v-model="busquedaSubCliente"
                                     placeholder="Buscar subcliente..."
-                                    class="w-full border border-gray-200 rounded pl-7 pr-2 py-1 text-xs focus:ring-2 focus:ring-primary-400 outline-none bg-white"
+                                    class="w-full border border-gray-200 rounded-md pl-7 pr-2 py-1 text-xs focus:ring-primary-500 focus:border-primary-500 outline-none bg-white"
                                     autofocus
                                     @click.stop
                                 />
                             </div>
                         </div>
 
-                        <div class="overflow-y-auto flex-1 max-h-56">
+                        <div class="overflow-y-auto flex-1 max-h-52">
                             <div v-if="subClientesFiltrados.length === 0" class="text-center py-4 text-xs text-gray-400">
                                 <i class="fas fa-search mr-1"></i>
                                 No se encontraron subclientes
@@ -391,7 +450,7 @@ onUnmounted(() => {
                                     <div class="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
                                         {{ sub.Nombre }}
                                         <span v-if="Number(sub.IdIdentificador) === Number(idIdentificador)"
-                                              class="text-[8px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-bold">
+                                              class="text-[8px] bg-emerald-500 text-white px-1.5 py-0.5 rounded-full font-bold">
                                             <i class="fas fa-user-check mr-0.5"></i>
                                             Tú
                                         </span>
@@ -408,7 +467,7 @@ onUnmounted(() => {
                     </div>
                 </div>
                 <span v-if="esPropioOperador"
-                      class="text-[8px] bg-green-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
+                      class="text-[8px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-bold whitespace-nowrap">
                     <i class="fas fa-user-check mr-0.5"></i>
                     Operador
                 </span>
@@ -419,7 +478,7 @@ onUnmounted(() => {
                 </span>
             </div>
 
-            <!-- CUERPO -->
+            <!-- ==================== CUERPO ==================== -->
             <div class="p-3 overflow-y-auto flex-1">
 
                 <div v-if="!idIdentificador" class="mb-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 rounded text-xs text-yellow-700">
@@ -432,7 +491,7 @@ onUnmounted(() => {
                 </div>
 
                 <div v-if="loading" class="flex justify-center items-center py-10">
-                    <div class="w-8 h-8 border-3 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+                    <div class="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
                 </div>
 
                 <div v-else-if="!productoSeleccionado" class="space-y-3">
@@ -442,12 +501,12 @@ onUnmounted(() => {
                             type="text"
                             v-model="busquedaProducto"
                             placeholder="Buscar producto por nombre o código..."
-                            class="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-2 focus:ring-purple-400 focus:border-transparent outline-none bg-gray-50 focus:bg-white"
+                            class="w-full border border-gray-300 rounded-md pl-8 pr-3 py-1.5 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none bg-gray-50 focus:bg-white"
                         />
                     </div>
 
                     <p class="text-[10px] text-gray-500 font-medium">
-                        <i class="fas fa-info-circle mr-1 text-purple-500"></i>
+                        <i class="fas fa-info-circle mr-1 text-primary-500"></i>
                         Selecciona el producto ({{ productosFiltrados.length }} disponible{{ productosFiltrados.length !== 1 ? 's' : '' }})
                     </p>
 
@@ -461,13 +520,13 @@ onUnmounted(() => {
                             v-for="prod in productosFiltrados"
                             :key="prod.IdProducto"
                             @click="seleccionarProducto(prod)"
-                            class="text-left border-2 border-gray-200 hover:border-purple-400 hover:bg-purple-50/50 rounded-lg p-2.5 transition group"
+                            class="text-left border-2 border-gray-200 hover:border-primary-400 hover:bg-primary-50/50 rounded-md p-2 transition group"
                         >
                             <div class="flex items-center justify-between gap-2 mb-1">
                                 <span class="font-mono text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
                                     {{ prod.Codigo }}
                                 </span>
-                                <span class="text-[9px] text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">
+                                <span class="text-[9px] text-primary-600 bg-primary-100 px-1.5 py-0.5 rounded-full font-bold whitespace-nowrap">
                                     <i class="fas fa-cube text-[8px] mr-0.5"></i>
                                     {{ formatearNumero(prod.MinimoProducto) }} und
                                 </span>
@@ -477,7 +536,7 @@ onUnmounted(() => {
                             </p>
                             <div class="flex items-center justify-between">
                                 <span class="text-[10px] text-gray-500">{{ prod.GrupoAnalisis }}</span>
-                                <span class="text-sm font-bold text-green-600">
+                                <span class="text-sm font-bold text-emerald-600">
                                     Bs. {{ formatearPrecio(prod.PrecioFinal) }}
                                 </span>
                             </div>
@@ -485,26 +544,27 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <div v-else class="space-y-4">
-                    <div class="bg-purple-50 border-2 border-purple-200 rounded-lg p-3">
-                        <div class="flex items-start justify-between gap-3">
+                <div v-else class="space-y-3">
+                    <!-- Producto seleccionado -->
+                    <div class="bg-primary-50 border-2 border-primary-200 rounded-lg p-2.5">
+                        <div class="flex items-start justify-between gap-2">
                             <div class="flex items-start gap-2 min-w-0 flex-1">
-                                <div class="w-10 h-10 bg-purple-500 text-white rounded-full flex items-center justify-center flex-shrink-0">
-                                    <i class="fas fa-cube"></i>
+                                <div class="w-8 h-8 bg-primary-500 text-white rounded-full flex items-center justify-center flex-shrink-0">
+                                    <i class="fas fa-cube text-sm"></i>
                                 </div>
                                 <div class="min-w-0 flex-1">
-                                    <p class="font-mono text-[10px] text-purple-600 bg-purple-100 px-1.5 py-0.5 rounded inline-block">
+                                    <p class="font-mono text-[9px] text-primary-600 bg-primary-100 px-1.5 py-0.5 rounded inline-block">
                                         {{ productoSeleccionado.Codigo }}
                                     </p>
-                                    <p class="text-sm font-bold text-purple-900 mt-1 leading-tight">
+                                    <p class="text-xs font-bold text-primary-900 mt-0.5 leading-tight">
                                         {{ productoSeleccionado.Descripcion }}
                                     </p>
-                                    <div class="flex items-center gap-3 mt-1.5 flex-wrap">
-                                        <span class="text-[10px] text-purple-700">
+                                    <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                        <span class="text-[9px] text-primary-700">
                                             <i class="fas fa-tag mr-0.5"></i>
                                             {{ productoSeleccionado.GrupoAnalisis }}
                                         </span>
-                                        <span class="text-[10px] text-green-700 font-bold">
+                                        <span class="text-[9px] text-emerald-700 font-bold">
                                             <i class="fas fa-money-bill mr-0.5"></i>
                                             Bs. {{ formatearPrecio(productoSeleccionado.PrecioFinal) }}
                                         </span>
@@ -512,97 +572,103 @@ onUnmounted(() => {
                                 </div>
                             </div>
                             <button
+                                v-if="!modoEdicion"
                                 @click="limpiarSeleccion"
-                                class="text-purple-500 hover:text-purple-700 hover:bg-purple-100 rounded-lg p-1.5 transition flex-shrink-0"
+                                class="text-primary-500 hover:text-primary-700 hover:bg-primary-100 rounded-md p-1 transition flex-shrink-0"
                                 title="Cambiar producto"
                             >
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-
-                        <div class="mt-3 bg-white rounded-lg border border-purple-200 p-2.5">
-                            <div class="flex items-center gap-2">
-                                <i class="fas fa-info-circle text-purple-500 text-xs"></i>
-                                <p class="text-[11px] text-purple-800">
-                                    Cantidad por rejilla:
-                                    <strong class="text-purple-900 text-sm ml-1">{{ formatearNumero(cantidadPorRejilla) }} und</strong>
-                                    <span class="text-purple-600 ml-1">(mínimo del producto)</span>
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="bg-white border-2 border-purple-200 rounded-lg p-3">
-                        <label class="block text-xs font-bold text-gray-700 mb-2">
-                            <i class="fas fa-layer-group text-purple-500 mr-1"></i>
-                            ¿Cuántas rejillas quieres?
-                        </label>
-
-                        <div class="flex items-center justify-center gap-3">
-                            <button
-                                type="button"
-                                @click="decrementarRejillas"
-                                :disabled="cantidadRejillas <= 1"
-                                class="w-12 h-12 rounded-full bg-purple-100 hover:bg-purple-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0"
-                            >
-                                <i class="fas fa-minus text-purple-600 text-lg"></i>
-                            </button>
-
-                            <input
-                                type="text"
-                                inputmode="numeric"
-                                :value="cantidadRejillas"
-                                @input="actualizarRejillas"
-                                @focus="$event.target.select()"
-                                class="w-24 text-center text-3xl font-extrabold border-2 border-purple-300 rounded-lg py-2 focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none bg-white text-purple-700 tabular-nums"
-                            />
-
-                            <button
-                                type="button"
-                                @click="incrementarRejillas"
-                                :disabled="cantidadRejillas >= 999"
-                                class="w-12 h-12 rounded-full bg-purple-500 hover:bg-purple-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0"
-                            >
-                                <i class="fas fa-plus text-white text-lg"></i>
-                            </button>
-                        </div>
-
-                        <div class="flex flex-wrap justify-center gap-1.5 mt-3">
-                            <button
-                                v-for="n in [1, 2, 3, 5, 10]"
-                                :key="n"
-                                @click="cantidadRejillas = n"
-                                class="px-3 py-1 text-[10px] font-bold rounded-full transition"
-                                :class="Number(cantidadRejillas) === n
-                                    ? 'bg-purple-500 text-white'
-                                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'"
-                            >
-                                {{ n }}
+                                <i class="fas fa-times text-xs"></i>
                             </button>
                         </div>
                     </div>
 
-                    <div class="bg-gradient-to-br from-purple-50 to-indigo-50 border-2 border-purple-300 rounded-lg p-3">
-                        <div class="grid grid-cols-2 gap-3">
-                            <div class="text-center">
-                                <p class="text-[10px] text-purple-600 font-semibold uppercase">Rejillas</p>
-                                <p class="text-2xl font-extrabold text-purple-700 tabular-nums">
-                                    {{ formatearNumero(cantidadRejillas) }}
-                                </p>
+                    <!-- Cantidad de rejillas + Totales (lado a lado) -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <!-- Cantidad de rejillas -->
+                        <div class="bg-white border-2 border-primary-200 rounded-lg p-2.5">
+                            <label class="block text-[10px] font-bold text-gray-700 mb-1.5">
+                                <i class="fas fa-layer-group text-primary-500 mr-1"></i>
+                                Rejillas
+                            </label>
+
+                            <div class="flex items-center justify-center gap-2">
+                                <button
+                                    type="button"
+                                    @click="decrementarRejillas"
+                                    :disabled="cantidadRejillas <= 1"
+                                    class="w-8 h-8 rounded-full bg-primary-100 hover:bg-primary-200 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0"
+                                >
+                                    <i class="fas fa-minus text-primary-600 text-[10px]"></i>
+                                </button>
+
+                                <input
+                                    type="text"
+                                    inputmode="numeric"
+                                    :value="cantidadRejillas"
+                                    @input="actualizarRejillas"
+                                    @focus="$event.target.select()"
+                                    class="w-16 text-center text-2xl font-extrabold border-2 border-primary-300 rounded-md py-1 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none bg-white text-primary-700 tabular-nums"
+                                />
+
+                                <button
+                                    type="button"
+                                    @click="incrementarRejillas"
+                                    :disabled="cantidadRejillas >= 999"
+                                    class="w-8 h-8 rounded-full bg-primary-500 hover:bg-primary-600 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition flex-shrink-0"
+                                >
+                                    <i class="fas fa-plus text-white text-[10px]"></i>
+                                </button>
                             </div>
-                            <div class="text-center">
-                                <p class="text-[10px] text-purple-600 font-semibold uppercase">Total unidades</p>
-                                <p class="text-2xl font-extrabold text-purple-700 tabular-nums">
-                                    {{ formatearNumero(totalUnidades) }}
-                                </p>
+
+                            <div class="flex flex-wrap justify-center gap-1 mt-2">
+                                <button
+                                    v-for="n in [1, 2, 3, 5, 10]"
+                                    :key="n"
+                                    @click="cantidadRejillas = n"
+                                    class="px-2 py-0.5 text-[9px] font-bold rounded-full transition"
+                                    :class="Number(cantidadRejillas) === n
+                                        ? 'bg-primary-500 text-white'
+                                        : 'bg-primary-100 text-primary-700 hover:bg-primary-200'"
+                                >
+                                    {{ n }}
+                                </button>
                             </div>
-                        </div>
-                        <div class="mt-3 pt-3 border-t border-purple-200 text-center">
-                            <p class="text-[10px] text-purple-600 font-semibold uppercase">Monto total</p>
-                            <p class="text-2xl font-extrabold text-emerald-600 tabular-nums">
-                                Bs. {{ formatearPrecio(totalMonto) }}
+
+                            <p class="text-[9px] text-gray-400 text-center mt-1.5">
+                                <i class="fas fa-info-circle mr-0.5"></i>
+                                {{ formatearNumero(cantidadPorRejilla) }} und por rejilla
                             </p>
-                            <p class="text-[10px] text-purple-500 mt-0.5">
+                        </div>
+
+                        <!-- Totales -->
+                        <div class="bg-gradient-to-br from-primary-50 to-indigo-50 border-2 border-primary-300 rounded-lg p-2.5">
+                            <p class="text-[9px] text-primary-600 font-semibold uppercase text-center mb-1.5">
+                                <i class="fas fa-calculator mr-1"></i>
+                                Resumen
+                            </p>
+                            
+                            <div class="space-y-1.5">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-[10px] text-gray-600">Rejillas:</span>
+                                    <span class="text-sm font-bold text-primary-700 tabular-nums">
+                                        {{ formatearNumero(cantidadRejillas) }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-[10px] text-gray-600">Unidades:</span>
+                                    <span class="text-sm font-bold text-primary-700 tabular-nums">
+                                        {{ formatearNumero(totalUnidades) }}
+                                    </span>
+                                </div>
+                                <div class="flex justify-between items-center pt-1.5 border-t border-primary-200">
+                                    <span class="text-[10px] text-gray-600 font-semibold">Total:</span>
+                                    <span class="text-base font-extrabold text-emerald-600 tabular-nums">
+                                        Bs. {{ formatearPrecio(totalMonto) }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <p class="text-[8px] text-primary-500 text-center mt-1.5">
                                 {{ formatearNumero(cantidadRejillas) }} × {{ formatearNumero(cantidadPorRejilla) }} und × Bs. {{ formatearPrecio(productoSeleccionado.PrecioFinal) }}
                             </p>
                         </div>
@@ -610,13 +676,13 @@ onUnmounted(() => {
                 </div>
             </div>
 
-            <!-- FOOTER -->
-            <div class="px-4 py-2.5 border-t bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
+            <!-- ==================== FOOTER ==================== -->
+            <div class="px-4 py-2 border-t border-gray-200 bg-gray-50 flex flex-col sm:flex-row justify-between items-center gap-2 flex-shrink-0">
                 <div class="text-[10px] text-gray-500 text-center sm:text-left">
                     <span v-if="!productoSeleccionado" class="text-gray-400">
                         <i class="fas fa-info-circle mr-1"></i> Selecciona un producto
                     </span>
-                    <span v-else class="text-purple-600">
+                    <span v-else class="text-primary-600">
                         <i class="fas fa-check-circle mr-1"></i>
                         {{ formatearNumero(cantidadRejillas) }} rejilla(s) · {{ formatearNumero(totalUnidades) }} und
                         <span v-if="subClienteSeleccionado" class="text-blue-600 ml-1">
@@ -626,19 +692,19 @@ onUnmounted(() => {
                 </div>
                 <div class="flex gap-2 w-full sm:w-auto">
                     <button
-                        v-if="productoSeleccionado"
+                        v-if="productoSeleccionado && !modoEdicion"
                         @click="limpiarSeleccion"
-                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-[10px] transition flex-1 sm:flex-none"
+                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-md text-xs font-medium transition flex-1 sm:flex-none flex items-center justify-center gap-1.5"
                     >
-                        <i class="fas fa-eraser text-[8px] mr-1"></i> Cambiar
+                        <i class="fas fa-eraser text-[10px]"></i> Cambiar
                     </button>
                     <button
                         @click="agregarRejillas"
                         :disabled="!puedeAgregar"
-                        class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 flex-1 sm:flex-none"
+                        class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5 flex-1 sm:flex-none"
                     >
-                        <i class="fas fa-cube text-[10px]"></i>
-                        Agregar {{ formatearNumero(cantidadRejillas) }} rejilla(s)
+                        <i :class="modoEdicion ? 'fas fa-save' : 'fas fa-cube'" class="text-[10px]"></i>
+                        {{ modoEdicion ? 'Actualizar' : `Agregar ${formatearNumero(cantidadRejillas)} rejilla(s)` }}
                     </button>
                 </div>
             </div>
@@ -647,6 +713,12 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+@media (min-width: 1024px) {
+    input, select, button {
+        font-size: 13px !important;
+    }
+}
+
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
