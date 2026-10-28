@@ -1720,18 +1720,20 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 // CALIDAD (Revisión de Reclamos)
                 // ============================================================
                 Route::prefix('calidad')->group(function () {
+                    
+                    // Pantalla principal (Acordeón Operador -> Cliente -> Tickets)
                     Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'index'])
                         ->name('operacion.pedidos-clientes.calidad.index');
-                    
+
+                    // Acciones sobre un reclamo (el {id} es el IdReclamo)
                     Route::post('/{id}/aprobar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'aprobar'])
                         ->name('operacion.pedidos-clientes.calidad.aprobar');
-                    
+
                     Route::post('/{id}/rechazar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'rechazar'])
                         ->name('operacion.pedidos-clientes.calidad.rechazar');
+
                     Route::post('/{id}/recibir', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'recibirEnFabrica'])
                         ->name('operacion.pedidos-clientes.calidad.recibir');
-                    Route::get('/{id}/calcular-devolucion', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\CalidadController::class, 'calcularMontoDevolucion'])
-                        ->name('operacion.pedidos-clientes.calidad.calcular-devolucion');
                 });
                 // ============================================================
                 // TESORERÍA (Devoluciones)

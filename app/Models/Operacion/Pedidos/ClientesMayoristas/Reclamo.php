@@ -11,14 +11,25 @@ class Reclamo extends Model
     protected $primaryKey = 'IdReclamo';
     public $timestamps = false;
 
+    // Tipos válidos como constantes para no repetir strings mágicos
+    public const TIPO_DEFECTUOSO = 'DEFECTUOSO';
+    public const TIPO_FALTANTE   = 'FALTANTE';
+
     protected $fillable = [
-        'IdPedidoCliente', 'IdCliente', 'IdOperador', 'Estado', 'Descripcion', 
-        'RespuestaCalidad', // 🔥 NUEVO
-        'FotoUrl', 'FechaCreacion', 'FechaActualizacion'
+        'IdPedidoCliente',
+        'IdCliente',
+        'IdOperador',
+        'Estado',
+        'TipoReclamo',        // 🔥 FALTABA
+        'Descripcion',
+        'RespuestaCalidad',
+        'FotoUrl',
+        'FechaCreacion',
+        'FechaActualizacion',
     ];
 
     protected $casts = [
-        'FechaCreacion' => 'datetime',
+        'FechaCreacion'      => 'datetime',
         'FechaActualizacion' => 'datetime',
     ];
 
@@ -30,5 +41,15 @@ class Reclamo extends Model
     public function detalles()
     {
         return $this->hasMany(ReclamoDetalle::class, 'IdReclamo', 'IdReclamo');
+    }
+
+    public function esFaltante(): bool
+    {
+        return $this->TipoReclamo === self::TIPO_FALTANTE;
+    }
+
+    public function esDefectuoso(): bool
+    {
+        return $this->TipoReclamo === self::TIPO_DEFECTUOSO;
     }
 }

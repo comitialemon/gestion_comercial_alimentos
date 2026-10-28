@@ -29,7 +29,9 @@ class OperadorPedidoCliente extends Model
 
     protected $casts = [
         'ActivoInactivo' => 'integer',
-        'FechaInserta' => 'datetime',
+        'Ciudad'         => 'boolean', // 🔥 NUEVO
+        'Provincia'      => 'boolean', // 🔥 NUEVO
+        'FechaInserta'   => 'datetime',
         'FechaActualiza' => 'datetime',
     ];
 
@@ -68,7 +70,7 @@ class OperadorPedidoCliente extends Model
     }
 
     // ==================== ACCESORS ====================
-
+/*
     public function getCiudadTextoAttribute()
     {
         return $this->Ciudad == 'Sí' ? 'Sí' : 'No';
@@ -77,5 +79,5 @@ class OperadorPedidoCliente extends Model
     public function getProvinciaTextoAttribute()
     {
         return $this->Provincia == 'Sí' ? 'Sí' : 'No';
-    }
+    }*/
 }

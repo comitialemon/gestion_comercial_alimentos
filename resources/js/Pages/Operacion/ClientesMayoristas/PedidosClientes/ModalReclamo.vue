@@ -4,48 +4,55 @@ import axios from 'axios'
 
 const props = defineProps({
     visible: { type: Boolean, default: false },
-    pedido: { type: Object, default: null },
+    pedido:  { type: Object,  default: null },
 })
 
 const emit = defineEmits(['close', 'success'])
 
 // ==================== DETECTAR DISPOSITIVO ====================
 const isMobile = ref(false)
-const handleResize = () => {
-    isMobile.value = window.innerWidth < 640
-}
+const handleResize = () => { isMobile.value = window.innerWidth < 640 }
 
 // ==================== ESTADO ====================
-const descripcion = ref('')
-const productos = ref([])
-const buscador = ref('')
-const cargando = ref(false)
-const enviando = ref(false)
+const tipoReclamo  = ref('DEFECTUOSO') // 🔥 NUEVO
+const descripcion  = ref('')
+const productos    = ref([])
+const buscador     = ref('')
+const cargando     = ref(false)
+const enviando     = ref(false)
 
 // ==================== COMPUTED ====================
+const esFaltante = computed(() => tipoReclamo.value === 'FALTANTE')
+
 const productosFiltrados = computed(() => {
     if (!buscador.value) return productos.value
-    const termino = buscador.value.toLowerCase()
+    const t = buscador.value.toLowerCase()
     return productos.value.filter(p =>
-        p.Descripcion.toLowerCase().includes(termino) ||
-        p.Codigo.toLowerCase().includes(termino)
+        p.Descripcion.toLowerCase().includes(t) ||
+        p.Codigo.toLowerCase().includes(t)
     )
 })
 
-const totalProductosReclamados = computed(() => {
-    return productos.value.filter(p => p.CantidadReclamada > 0).length
-})
+const totalProductosReclamados = computed(() =>
+    productos.value.filter(p => p.CantidadReclamada > 0).length
+)
 
-const totalUnidadesReclamadas = computed(() => {
-    return productos.value.reduce((sum, p) => sum + (Number(p.CantidadReclamada) || 0), 0)
+const totalUnidadesReclamadas = computed(() =>
+    productos.value.reduce((s, p) => s + (Number(p.CantidadReclamada) || 0), 0)
+)
+
+// Al cambiar de tipo, reseteamos cantidades para no mezclar semántica
+watch(tipoReclamo, () => {
+    productos.value.forEach(p => { p.CantidadReclamada = 0 })
 })
 
 // ==================== FUNCIONES ====================
 const cargarProductos = async () => {
-    cargando.value = true
+    cargando.value  = true
     descripcion.value = ''
-    buscador.value = ''
-    productos.value = []
+    buscador.value    = ''
+    productos.value   = []
+    tipoReclamo.value = 'DEFECTUOSO' // reset al abrir
 
     try {
         const response = await axios.get(
@@ -56,9 +63,10 @@ const cargarProductos = async () => {
             productos.value = response.data.productos_reclamo.map(p => ({
                 ...p,
                 CantidadReclamada: 0,
-                Motivo: ''
+                Motivo: '',
             }))
         } else {
+            // Fallback: agrupar SIEMPRE por IdProducto (no por contenedor)
             const agrupados = {}
             response.data.detalles.forEach(container => {
                 container.productos.forEach(prod => {
@@ -70,7 +78,7 @@ const cargarProductos = async () => {
                             Descripcion: prod.Descripcion,
                             CantidadTotalPedida: 0,
                             CantidadReclamada: 0,
-                            Motivo: ''
+                            Motivo: '',
                         }
                     }
                     agrupados[id].CantidadTotalPedida += Number(prod.Cantidad) || 0
@@ -109,12 +117,13 @@ const enviar = async () => {
         const response = await axios.post(
             `/operacion/pedidos/clientes-mayoristas/reclamos/${props.pedido.IdPedidoCliente}/crear`,
             {
+                tipo_reclamo: tipoReclamo.value, // 🔥 AHORA SÍ SE ENVÍA
                 descripcion: descripcion.value,
                 productos: productosAReclamar.map(p => ({
                     IdProducto: p.IdProducto,
                     CantidadReclamada: p.CantidadReclamada,
-                    Motivo: p.Motivo || null
-                }))
+                    Motivo: p.Motivo || null,
+                })),
             }
         )
 
@@ -123,21 +132,22 @@ const enviar = async () => {
             cerrar()
         }
     } catch (error) {
-        emit('success', { tipo: 'error', message: error.response?.data?.message || 'Error al enviar el reclamo' })
+        emit('success', {
+            tipo: 'error',
+            message: error.response?.data?.message || 'Error al enviar el reclamo',
+        })
     } finally {
         enviando.value = false
     }
 }
 
 const cerrar = () => {
-    if (!enviando.value) {
-        emit('close')
-    }
+    if (!enviando.value) emit('close')
 }
 
 // ==================== WATCHERS ====================
-watch(() => props.visible, async (nuevoValor) => {
-    if (nuevoValor && props.pedido) {
+watch(() => props.visible, async (nuevo) => {
+    if (nuevo && props.pedido) {
         await cargarProductos()
     }
 })
@@ -147,7 +157,6 @@ onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
 })
-
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
 })
@@ -191,8 +200,59 @@ onUnmounted(() => {
                     <div class="bg-primary-50 border border-primary-200 rounded-lg p-2 flex items-start gap-2">
                         <i class="fas fa-info-circle text-primary-500 text-[10px] mt-0.5 flex-shrink-0"></i>
                         <p class="text-[10px] text-primary-700">
-                            Indica cuántos productos llegaron en mal estado. Calidad revisará tu reclamo.
+                            <template v-if="esFaltante">
+                                Indica cuántas unidades <b>no llegaron</b>. Calidad revisará el faltante.
+                            </template>
+                            <template v-else>
+                                Indica cuántos productos llegaron en <b>mal estado</b>. Calidad revisará tu reclamo.
+                            </template>
                         </p>
+                    </div>
+
+                    <!-- Tipo de reclamo -->
+                    <div>
+                        <label class="text-[10px] font-bold text-gray-700 block mb-1">
+                            Tipo de reclamo <span class="text-red-500">*</span>
+                        </label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label
+                                class="flex items-start gap-1.5 p-2 rounded-md border cursor-pointer transition"
+                                :class="tipoReclamo === 'DEFECTUOSO'
+                                    ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
+                                    : 'border-gray-300 hover:border-gray-400'"
+                            >
+                                <input
+                                    type="radio" value="DEFECTUOSO" v-model="tipoReclamo"
+                                    class="mt-0.5 accent-primary-600" :disabled="enviando"
+                                />
+                                <div class="min-w-0">
+                                    <p class="text-[11px] font-bold text-gray-800">Producto defectuoso</p>
+                                    <p class="text-[9px] text-gray-500 leading-tight">Llegó en mal estado o dañado.</p>
+                                </div>
+                            </label>
+                            <label
+                                class="flex items-start gap-1.5 p-2 rounded-md border cursor-pointer transition"
+                                :class="tipoReclamo === 'FALTANTE'
+                                    ? 'border-primary-500 bg-primary-50 ring-1 ring-primary-500'
+                                    : 'border-gray-300 hover:border-gray-400'"
+                            >
+                                <input
+                                    type="radio" value="FALTANTE" v-model="tipoReclamo"
+                                    class="mt-0.5 accent-primary-600" :disabled="enviando"
+                                />
+                                <div class="min-w-0">
+                                    <p class="text-[11px] font-bold text-gray-800">Faltante de unidades</p>
+                                    <p class="text-[9px] text-gray-500 leading-tight">No llegaron todas las unidades.</p>
+                                </div>
+                            </label>
+                        </div>
+
+                        <div v-if="esFaltante" class="mt-1.5 bg-amber-50 border border-amber-200 rounded-md p-1.5 flex items-start gap-1.5">
+                            <i class="fas fa-bolt text-amber-500 text-[9px] mt-0.5"></i>
+                            <p class="text-[9px] text-amber-700">
+                                Este reclamo va directo a revisión de Calidad (no requiere recepción en fábrica).
+                            </p>
+                        </div>
                     </div>
 
                     <!-- Descripción -->
@@ -275,7 +335,9 @@ onUnmounted(() => {
                                         </p>
                                     </div>
                                     <div class="flex items-center gap-1 flex-shrink-0">
-                                        <label class="text-[9px] text-gray-500 whitespace-nowrap">Fallida:</label>
+                                        <label class="text-[9px] text-gray-500 whitespace-nowrap">
+                                            {{ esFaltante ? 'Faltaron:' : 'Fallida:' }}
+                                        </label>
                                         <input
                                             type="number"
                                             min="0"
@@ -332,14 +394,10 @@ onUnmounted(() => {
 <style scoped>
 @keyframes fadeInUp {
     from { opacity: 0; transform: translateY(10px) scale(0.97); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
+.animate-fade-in-up { animation: fadeInUp 0.2s ease-out; }
 
-.animate-fade-in-up {
-    animation: fadeInUp 0.2s ease-out;
-}
-
-/* Quitar flechas de inputs number */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
     -webkit-appearance: none;
@@ -350,25 +408,12 @@ input[type="number"] {
     appearance: textfield;
 }
 
-/* Scrollbar personalizada */
-.overflow-y-auto::-webkit-scrollbar {
-    width: 4px;
-}
-.overflow-y-auto::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 4px;
-}
-.overflow-y-auto::-webkit-scrollbar-thumb {
-    background: #d1d5db;
-    border-radius: 4px;
-}
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
-}
+.overflow-y-auto::-webkit-scrollbar { width: 4px; }
+.overflow-y-auto::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+.overflow-y-auto::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
+.overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
 @media (min-width: 1024px) {
-    input, textarea, button {
-        font-size: 13px !important;
-    }
+    input, textarea, button { font-size: 13px !important; }
 }
-</style>
+</style>    

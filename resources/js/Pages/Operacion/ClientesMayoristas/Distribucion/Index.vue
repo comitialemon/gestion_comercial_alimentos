@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, inject, onMounted, onUnmounted } from 'vue'
-import { router, usePage } from '@inertiajs/vue3'
+import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import axios from 'axios'
 
@@ -15,7 +15,6 @@ const props = defineProps({
 })
 
 const toast = inject('toast')
-const page = usePage()
 
 // ==================== DETECTAR DISPOSITIVO ====================
 const isMobile = ref(false)
@@ -41,13 +40,6 @@ const costoEnvio = ref(0)
 const nuevaTransportadora = ref({ Nombre: '', CI_NIT: '' })
 
 // ==================== COMPUTED ====================
-const totalPedidos = computed(() => {
-    return props.pedidosPendientes.length +
-        props.pedidosEnCamara.length +
-        props.pedidosEnDistribucion.length +
-        props.pedidosEnTransportadora.length
-})
-
 const pedidosActuales = computed(() => {
     switch (tabActiva.value) {
         case 'pendiente': return props.pedidosPendientes
@@ -121,6 +113,10 @@ const formatoFecha = (fecha) => {
     return new Date(fecha).toLocaleDateString('es-BO')
 }
 
+const verPdf = (idPedido) => {
+    window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${idPedido}/pdf`, '_blank')
+}
+
 // ==================== LIFECYCLE ====================
 onMounted(() => {
     handleResize()
@@ -150,7 +146,7 @@ onUnmounted(() => {
                     </div>
                     <button
                         @click="modalTransportadoraVisible = true"
-                        class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition"
+                        class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm"
                     >
                         <i class="fas fa-plus text-[10px]"></i> Nueva Transportadora
                     </button>
@@ -221,6 +217,7 @@ onUnmounted(() => {
                 <!-- ==================== TABLA ==================== -->
                 <div class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
+                        
                         <!-- VISTA MÓVIL -->
                         <div v-if="isMobile" class="p-2 space-y-2">
                             <div v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
@@ -228,8 +225,17 @@ onUnmounted(() => {
                                     <span class="text-xs font-bold text-primary-700 font-mono">#{{ p.NumeroPedido }}</span>
                                     <span class="text-[9px] text-gray-400">{{ formatoFecha(p.FechaPedido) }}</span>
                                 </div>
-                                <p class="text-xs font-medium text-gray-800 truncate">{{ p.cliente?.Nombre || '-' }}</p>
-                                <p class="text-[10px] text-gray-500">{{ p.TotalContenedores }} contenedores</p>
+                                
+                                <!-- Operador y Zona -->
+                                <div class="mb-1">
+                                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Operador:</p>
+                                    <p class="text-xs font-bold text-gray-800 truncate">{{ p.OperadorNombre || 'Sin operador' }}</p>
+                                </div>
+                                <div class="flex items-center gap-1 mt-1 mb-2">
+                                    <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
+                                    <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                    <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                </div>
                                 
                                 <!-- Info transportadora -->
                                 <div v-if="tabActiva === 'transportadora'" class="mt-1.5 pt-1.5 border-t border-gray-200">
@@ -237,19 +243,31 @@ onUnmounted(() => {
                                     <p class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</p>
                                 </div>
 
-                                <div class="flex justify-end mt-2">
+                                <div class="flex justify-end items-center mt-3 pt-2 border-t border-gray-200 gap-2">
+                                    <!-- BOTÓN PDF MÓVIL -->
+                                    <button @click="verPdf(p.IdPedidoCliente)" class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition border border-rose-200">
+                                        <i class="fas fa-file-pdf"></i> PDF
+                                    </button>
+
                                     <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Cámara')" 
-                                        class="bg-orange-500 hover:bg-orange-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition flex items-center gap-1">
-                                        <i class="fas fa-play text-[8px]"></i> Comenzar Armado
+                                        class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                        <i class="fas fa-play text-[8px]"></i> Comenzar
                                     </button>
                                     <button v-else-if="tabActiva === 'camara'" @click="abrirModalEstado(p, 'En Distribución')" 
-                                        class="bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition flex items-center gap-1">
-                                        <i class="fas fa-check text-[8px]"></i> Termo Listo
+                                        class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                        <i class="fas fa-check text-[8px]"></i> Listo
                                     </button>
-                                    <button v-else-if="tabActiva === 'distribucion'" @click="abrirModalEstado(p, 'En Transportadora')" 
-                                        class="bg-cyan-500 hover:bg-cyan-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition flex items-center gap-1">
-                                        <i class="fas fa-truck text-[8px]"></i> Entregar a Transportadora
-                                    </button>
+                                    
+                                    <!-- 🔥 CIUDAD NO TIENE BOTÓN, SOLO PROVINCIA -->
+                                    <template v-else-if="tabActiva === 'distribucion'">
+                                        <button v-if="p.Provincia === true" @click="abrirModalEstado(p, 'En Transportadora')" 
+                                            class="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                            <i class="fas fa-truck text-[8px]"></i> Despachar
+                                        </button>
+                                        <span v-else class="text-[10px] text-gray-400 italic font-medium">
+                                            <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
+                                        </span>
+                                    </template>
                                 </div>
                             </div>
                             <div v-if="pedidosActuales.length === 0" class="text-center text-gray-400 py-8">
@@ -260,23 +278,34 @@ onUnmounted(() => {
 
                         <!-- VISTA TABLET Y ESCRITORIO -->
                         <table v-else class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-primary-50 sticky top-0 z-10">
+                            <thead class="bg-gray-50 sticky top-0 z-10">
                                 <tr>
-                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase w-20">Pedido</th>
-                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Cliente</th>
-                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase w-24">Fecha</th>
-                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase w-20">Cont.</th>
-                                    <th class="px-3 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Detalle / Guía</th>
-                                    <th class="px-3 py-1.5 text-right text-[9px] font-medium text-primary-700 uppercase w-40">Acción</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Pedido</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Operador</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Fecha</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Contenedores</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Detalle / Guía</th>
+                                    <th class="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-64">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="hover:bg-gray-50 transition">
-                                    <td class="px-3 py-2 text-xs font-mono font-bold text-primary-700">#{{ p.NumeroPedido }}</td>
-                                    <td class="px-3 py-2 text-xs text-gray-700 max-w-[150px] truncate" :title="p.cliente?.Nombre">{{ p.cliente?.Nombre || '-' }}</td>
-                                    <td class="px-3 py-2 text-xs text-gray-500 whitespace-nowrap">{{ formatoFecha(p.FechaPedido) }}</td>
-                                    <td class="px-3 py-2 text-xs text-gray-500">{{ p.TotalContenedores }} cont.</td>
-                                    <td class="px-3 py-2 text-xs">
+                                    <td class="px-4 py-3 text-xs font-mono font-bold text-primary-700">#{{ p.NumeroPedido }}</td>
+                                    
+                                    <!-- OPERADOR Y ZONA -->
+                                    <td class="px-4 py-3">
+                                        <div class="text-xs text-gray-800 mb-1"><span class="text-gray-400 font-medium">Operador:</span> <b>{{ p.OperadorNombre || 'Sin operador' }}</b></div>
+                                        <div class="flex items-center gap-1">
+                                            <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
+                                            <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                            <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                        </div>
+                                    </td>
+
+                                    <td class="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{{ formatoFecha(p.FechaPedido) }}</td>
+                                    <td class="px-4 py-3 text-xs text-gray-600 font-medium">{{ p.TotalContenedores }} cont.</td>
+                                    
+                                    <td class="px-4 py-3 text-xs">
                                         <template v-if="tabActiva === 'transportadora'">
                                             <div class="font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</div>
                                             <div class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</div>
@@ -285,23 +314,39 @@ onUnmounted(() => {
                                             <span class="text-gray-500">{{ p.TotalContenedores }} contenedores</span>
                                         </template>
                                     </td>
-                                    <td class="px-3 py-2 text-right">
-                                        <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Cámara')" 
-                                            class="inline-flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition">
-                                            <i class="fas fa-play text-[8px]"></i> Comenzar Armado
-                                        </button>
-                                        <button v-else-if="tabActiva === 'camara'" @click="abrirModalEstado(p, 'En Distribución')" 
-                                            class="inline-flex items-center gap-1 bg-indigo-500 hover:bg-indigo-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition">
-                                            <i class="fas fa-check text-[8px]"></i> Termo Listo
-                                        </button>
-                                        <button v-else-if="tabActiva === 'distribucion'" @click="abrirModalEstado(p, 'En Transportadora')" 
-                                            class="inline-flex items-center gap-1 bg-cyan-500 hover:bg-cyan-600 text-white px-2.5 py-1 rounded-md text-[10px] font-medium transition">
-                                            <i class="fas fa-truck text-[8px]"></i> Entregar a Transportadora
-                                        </button>
-                                        <!-- 🔥 En la pestaña Transportadora NO HAY BOTÓN -->
-                                        <span v-else class="text-[10px] text-gray-400 italic">
-                                            <i class="fas fa-info-circle mr-1"></i> En tránsito
-                                        </span>
+
+                                    <td class="px-4 py-3 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            
+                                            <!-- BOTÓN PDF -->
+                                            <button @click="verPdf(p.IdPedidoCliente)" class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 border border-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm" title="Imprimir PDF">
+                                                <i class="fas fa-file-pdf"></i> PDF
+                                            </button>
+
+                                            <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Cámara')" 
+                                                class="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                                <i class="fas fa-play text-[9px]"></i> Comenzar Armado
+                                            </button>
+                                            <button v-else-if="tabActiva === 'camara'" @click="abrirModalEstado(p, 'En Distribución')" 
+                                                class="inline-flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                                <i class="fas fa-check text-[9px]"></i> Termo Listo
+                                            </button>
+                                            
+                                            <!-- 🔥 CIUDAD NO TIENE BOTÓN, SOLO PROVINCIA -->
+                                            <template v-else-if="tabActiva === 'distribucion'">
+                                                <button v-if="p.Provincia === true" @click="abrirModalEstado(p, 'En Transportadora')" 
+                                                    class="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                                    <i class="fas fa-truck text-[9px]"></i> A Transportadora
+                                                </button>
+                                                <span v-else class="text-[10px] text-gray-400 italic font-medium px-2">
+                                                    <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
+                                                </span>
+                                            </template>
+
+                                            <span v-else class="text-[10px] text-gray-400 italic font-medium px-2">
+                                                <i class="fas fa-info-circle mr-1"></i> En tránsito
+                                            </span>
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr v-if="pedidosActuales.length === 0">
@@ -318,7 +363,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- ==================== MODAL CAMBIO DE ESTADO ==================== -->
+        <!-- MODAL CAMBIO DE ESTADO -->
         <div v-if="modalEstadoVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="modalEstadoVisible = false">
             <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
                 <div class="px-4 py-2.5 bg-primary-600 flex items-center justify-between">
@@ -339,8 +384,8 @@ onUnmounted(() => {
                         Vas a cambiar el estado del pedido a <strong class="text-primary-600">{{ nuevoEstado }}</strong>.
                     </p>
 
-                    <!-- Datos transportadora (solo si cambia a transportadora) -->
-                    <div v-if="nuevoEstado === 'En Transportadora'" class="space-y-2">
+                    <!-- Si es provincia, mostramos los campos de transportadora -->
+                    <div v-if="nuevoEstado === 'En Transportadora' && pedidoSeleccionado?.Provincia === true" class="space-y-2">
                         <div>
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Transportadora</label>
                             <select v-model="transportadoraSeleccionada" class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
@@ -374,7 +419,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- ==================== MODAL CREAR TRANSPORTADORA ==================== -->
+        <!-- MODAL CREAR TRANSPORTADORA -->
         <div v-if="modalTransportadoraVisible" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3" @click.self="modalTransportadoraVisible = false">
             <div class="bg-white rounded-xl w-full max-w-md shadow-xl overflow-hidden">
                 <div class="px-4 py-2.5 bg-primary-600 flex items-center justify-between">

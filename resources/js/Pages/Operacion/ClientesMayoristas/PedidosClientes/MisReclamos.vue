@@ -30,6 +30,40 @@ const reclamosFiltrados = computed(() => {
     return tabActiva.value === 'activos' ? reclamosActivos.value : reclamosFinalizados.value
 })
 
+// ==================== BARRA DE PROGRESO (4 PASOS) ====================
+const pasosReclamo = [
+    { key: 'Pendiente de Revisión', label: 'Ingresado', icon: 'fa-inbox' },
+    { key: 'En Revisión', label: 'En Calidad', icon: 'fa-search' },
+    { key: 'Aprobado por Calidad', label: 'Aprobado', icon: 'fa-check-circle' },
+    { key: 'Reembolsado', label: 'Reembolsado', icon: 'fa-wallet' },
+]
+
+const getPasoActualIndex = (estado) => {
+    if (estado === 'Pendiente de Revisión') return 0
+    if (estado === 'En Revisión') return 1
+    if (estado === 'Aprobado por Calidad') return 2
+    if (estado === 'Reembolsado') return 3
+    if (estado === 'Rechazado') return 2 // El rechazo ocurre en el paso de Calidad
+    return -1
+}
+
+const getEstadoPaso = (estadoActual, pasoIndex) => {
+    const actualIndex = getPasoActualIndex(estadoActual)
+    
+    if (actualIndex === -1) return 'pendiente'
+    
+    // Si el ticket fue rechazado, se detiene en el paso 2 (Calidad) y se pinta de rojo
+    if (estadoActual === 'Rechazado') {
+        if (pasoIndex < 2) return 'completado'
+        if (pasoIndex === 2) return 'rechazado'
+        return 'pendiente'
+    }
+
+    if (pasoIndex < actualIndex) return 'completado'
+    if (pasoIndex === actualIndex) return 'actual'
+    return 'pendiente'
+}
+
 // ==================== HELPERS ====================
 const formatearFecha = (fecha) => {
     if (!fecha) return '-'
@@ -52,7 +86,7 @@ const getEstadoBadge = (estado) => {
         'En Revisión': 'bg-blue-100 text-blue-700 border-blue-300',
         'Aprobado por Calidad': 'bg-primary-100 text-primary-700 border-primary-300',
         'Rechazado': 'bg-red-100 text-red-700 border-red-300',
-        'Reembolsado': 'bg-gray-200 text-gray-700 border-gray-300',
+        'Reembolsado': 'bg-emerald-100 text-emerald-700 border-emerald-300',
     }
     return badges[estado] || 'bg-gray-100 text-gray-700 border-gray-300'
 }
@@ -187,6 +221,43 @@ onUnmounted(() => {
                                 {{ formatearFecha(reclamo.FechaCreacion) }}
                             </div>
 
+                            <!-- 🔥 BARRA DE PROGRESO COMPLETA (4 PASOS) -->
+                            <div class="px-2 py-2 bg-gray-50 rounded-md border border-gray-100">
+                                <div class="flex items-center gap-1">
+                                    <template v-for="(paso, index) in pasosReclamo" :key="paso.key">
+                                        <!-- Punto del paso -->
+                                        <div
+                                            class="w-2 h-2 rounded-full transition-all duration-300 flex-shrink-0"
+                                            :class="{
+                                                'bg-primary-500': getEstadoPaso(reclamo.Estado, index) === 'completado',
+                                                'bg-primary-500 ring-2 ring-primary-200': getEstadoPaso(reclamo.Estado, index) === 'actual',
+                                                'bg-red-500 ring-2 ring-red-200': getEstadoPaso(reclamo.Estado, index) === 'rechazado',
+                                                'bg-gray-300': getEstadoPaso(reclamo.Estado, index) === 'pendiente',
+                                            }"
+                                            :title="paso.label"
+                                        ></div>
+
+                                        <!-- Línea conectora -->
+                                        <div
+                                            v-if="index < pasosReclamo.length - 1"
+                                            class="flex-1 h-0.5 transition-colors duration-300"
+                                            :class="{
+                                                'bg-primary-500': getEstadoPaso(reclamo.Estado, index + 1) === 'completado' || getEstadoPaso(reclamo.Estado, index + 1) === 'actual',
+                                                'bg-red-500': getEstadoPaso(reclamo.Estado, index + 1) === 'rechazado',
+                                                'bg-gray-200': getEstadoPaso(reclamo.Estado, index + 1) === 'pendiente',
+                                            }"
+                                        ></div>
+                                    </template>
+                                </div>
+                                
+                                <!-- Label del paso actual (debajo de la barra) -->
+                                <div class="mt-1 flex justify-between text-[8px] text-gray-500 px-0.5">
+                                    <span>Ingresado</span>
+                                    <span class="text-primary-600 font-bold text-[9px]">{{ pasosReclamo[getPasoActualIndex(reclamo.Estado)]?.label }}</span>
+                                    <span>Reembolsado</span>
+                                </div>
+                            </div>
+
                             <!-- Motivo cliente -->
                             <div class="bg-amber-50 border border-amber-200 rounded-lg p-2">
                                 <p class="text-[9px] font-bold text-amber-800 uppercase mb-0.5 flex items-center gap-1">
@@ -263,13 +334,13 @@ onUnmounted(() => {
                             <!-- Monto reembolsado -->
                             <div
                                 v-if="reclamo.Estado === 'Reembolsado'"
-                                class="bg-primary-50 border border-primary-200 rounded-lg p-2 text-center"
+                                class="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center"
                             >
-                                <p class="text-[9px] font-bold text-primary-700 uppercase mb-0.5">
+                                <p class="text-[9px] font-bold text-emerald-700 uppercase mb-0.5">
                                     <i class="fas fa-wallet mr-0.5"></i>
-                                    Monto devuelto
+                                    Monto devuelto a billetera
                                 </p>
-                                <p class="text-base font-extrabold text-primary-800">
+                                <p class="text-base font-extrabold text-emerald-800">
                                     Bs. {{ formatearPrecio(reclamo.monto_a_devolver) }}
                                 </p>
                             </div>

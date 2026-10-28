@@ -115,27 +115,33 @@ const getEstadoIcono = (estado) => {
     return iconos[estado] || 'fa-circle'
 }
 
-// ==================== PROGRESO COMPACTO ====================
-const pasosProgreso = [
-    { key: 'Pendiente', label: 'Pagado' },
-    { key: 'En Cámara', label: 'Armado' },
-    { key: 'En Distribución', label: 'Despachado' },
-    { key: 'En Transportadora', label: 'En Camino' },
-    { key: 'Recibido', label: 'Recibido' },
-]
+// ==================== PROGRESO INTELIGENTE ====================
 
-const getPasoActualIndex = (estado) => {
-    if (estado === 'Con Reclamo') return pasosProgreso.length - 1
-    return pasosProgreso.findIndex(p => p.key === estado)
+const getPasosProgreso = (pedido) => {
+    // 🔥 AHORA EVALUAMOS SI TIENE ENVÍO O SI EL ESTADO ES EN TRANSPORTADORA
+    const esProvincia = pedido.es_provincia === true || pedido.EstadoPedido === 'En Transportadora';
+    
+    const base = [
+        { key: 'Pendiente', label: 'Pagado' },
+        { key: 'En Cámara', label: 'Armado' },
+        { key: 'En Distribución', label: 'En Reparto' }
+    ]
+    
+    if (esProvincia) {
+        return [ ...base, { key: 'En Transportadora', label: 'En Camino' }, { key: 'Recibido', label: 'Recibido' } ]
+    }
+    return [ ...base, { key: 'Recibido', label: 'Recibido' } ]
 }
 
-const getEstadoPaso = (estadoActual, pasoIndex) => {
-    const actualIndex = getPasoActualIndex(estadoActual)
+const getPasoActualIndex = (pedido) => {
+    if (pedido.EstadoPedido === 'Con Reclamo') return getPasosProgreso(pedido).length - 1
+    let estado = pedido.EstadoPedido ? pedido.EstadoPedido.trim() : ''
+    return getPasosProgreso(pedido).findIndex(p => p.key === estado)
+}
 
-    if (estadoActual === 'Con Reclamo') {
-        return pasoIndex <= actualIndex ? 'completado-reclamo' : 'pendiente'
-    }
-
+const getEstadoPaso = (pedido, pasoIndex) => {
+    const actualIndex = getPasoActualIndex(pedido)
+    if (pedido.EstadoPedido === 'Con Reclamo') return pasoIndex <= actualIndex ? 'completado-reclamo' : 'pendiente'
     if (actualIndex === -1) return 'pendiente'
     if (pasoIndex < actualIndex) return 'completado'
     if (pasoIndex === actualIndex) return 'actual'
@@ -255,22 +261,14 @@ onUnmounted(() => {
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-7xl mx-auto">
 
-                <!-- ============================================ -->
                 <!-- ALERTAS FLASH -->
-                <!-- ============================================ -->
                 <div
                     v-if="alertaFlash.visible"
                     class="mb-4 p-2.5 rounded-xl border-l-4 shadow-sm flex items-start gap-2 animate-fade-in"
                     :class="alertaFlash.tipo === 'error' ? 'bg-red-50 border-red-500 text-red-800' : 'bg-emerald-50 border-emerald-500 text-emerald-800'"
                 >
-                    <div
-                        class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0"
-                        :class="alertaFlash.tipo === 'error' ? 'bg-red-100' : 'bg-emerald-100'"
-                    >
-                        <i
-                            :class="alertaFlash.tipo === 'error' ? 'fas fa-exclamation-circle text-red-600' : 'fas fa-check-circle text-emerald-600'"
-                            class="text-xs"
-                        ></i>
+                    <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" :class="alertaFlash.tipo === 'error' ? 'bg-red-100' : 'bg-emerald-100'">
+                        <i :class="alertaFlash.tipo === 'error' ? 'fas fa-exclamation-circle text-red-600' : 'fas fa-check-circle text-emerald-600'" class="text-xs"></i>
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs font-bold mb-0.5">{{ alertaFlash.tipo === 'error' ? 'No se puede continuar' : 'Éxito' }}</p>
@@ -281,9 +279,7 @@ onUnmounted(() => {
                     </button>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- HEADER -->
-                <!-- ============================================ -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
@@ -295,57 +291,31 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <button
-                            @click="router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/mis-reclamos')"
-                            class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5"
-                        >
-                            <i class="fas fa-exclamation-circle text-[10px]"></i>
-                            Mis Reclamos
+                        <button @click="router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/mis-reclamos')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5">
+                            <i class="fas fa-exclamation-circle text-[10px]"></i> Mis Reclamos
                         </button>
-
-                        <button
-                            @click="intentarNuevoPedido"
-                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
-                        >
-                            <i class="fas fa-plus text-[10px]"></i>
-                            Nuevo Pedido
+                        <button @click="intentarNuevoPedido" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm">
+                            <i class="fas fa-plus text-[10px]"></i> Nuevo Pedido
                         </button>
                     </div>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- FILTROS -->
-                <!-- ============================================ -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4 border border-gray-200">
                     <div class="flex flex-wrap items-end gap-2">
                         <div class="flex-1 min-w-[180px] max-w-[320px]">
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Buscar</label>
                             <div class="relative">
                                 <i class="fas fa-search absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-[10px]"></i>
-                                <input
-                                    type="text"
-                                    v-model="buscador"
-                                    @input="aplicarFiltros"
-                                    placeholder="Número o cliente..."
-                                    class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
-                                />
-                                <button
-                                    v-if="buscador"
-                                    @click="buscador = ''; aplicarFiltros()"
-                                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                                >
+                                <input type="text" v-model="buscador" @input="aplicarFiltros" placeholder="Número o cliente..." class="w-full border border-gray-300 rounded-md pl-7 pr-7 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none" />
+                                <button v-if="buscador" @click="buscador = ''; aplicarFiltros()" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                                     <i class="fas fa-times text-[10px]"></i>
                                 </button>
                             </div>
                         </div>
-
                         <div>
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Estado</label>
-                            <select
-                                v-model="estadoFiltro"
-                                @change="aplicarFiltros"
-                                class="w-40 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
-                            >
+                            <select v-model="estadoFiltro" @change="aplicarFiltros" class="w-40 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
                                 <option value="Pendiente">Pendiente</option>
                                 <option value="En Cámara">En Cámara</option>
@@ -356,265 +326,142 @@ onUnmounted(() => {
                                 <option value="Cancelado">Cancelado</option>
                             </select>
                         </div>
-
-                        <button
-                            v-if="buscador || estadoFiltro"
-                            @click="limpiarFiltros"
-                            class="px-2.5 py-1 text-[10px] text-gray-600 hover:text-gray-800 bg-gray-100 rounded-md transition flex items-center gap-1"
-                        >
-                            <i class="fas fa-eraser text-[9px]"></i>
-                            Limpiar
+                        <button v-if="buscador || estadoFiltro" @click="limpiarFiltros" class="px-2.5 py-1 text-[10px] text-gray-600 hover:text-gray-800 bg-gray-100 rounded-md transition flex items-center gap-1">
+                            <i class="fas fa-eraser text-[9px]"></i> Limpiar
                         </button>
                     </div>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- LISTA DE PEDIDOS -->
-                <!-- ============================================ -->
                 <div v-if="pedidosFiltrados.length > 0" class="space-y-3">
-                    <div
-                        v-for="pedido in pedidosFiltrados"
-                        :key="pedido.IdPedidoCliente"
-                        class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden border border-gray-200"
-                    >
-                        <!-- ========== HEADER DEL PEDIDO ========== -->
+                    <div v-for="pedido in pedidosFiltrados" :key="pedido.IdPedidoCliente" class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden border border-gray-200">
+                        
                         <div class="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    <span class="font-bold text-primary-700 text-sm font-mono">
-                                        #{{ pedido.NumeroPedido || 'Nuevo' }}
-                                    </span>
-                                    <span
-                                        class="px-1.5 py-0.5 text-[9px] rounded-full font-bold border"
-                                        :class="getEstadoBadge(pedido.EstadoPedido)"
-                                    >
+                                    <span class="font-bold text-primary-700 text-sm font-mono">#{{ pedido.NumeroPedido || 'Nuevo' }}</span>
+                                    <span class="px-1.5 py-0.5 text-[9px] rounded-full font-bold border" :class="getEstadoBadge(pedido.EstadoPedido)">
                                         <i :class="getEstadoIcono(pedido.EstadoPedido)" class="mr-0.5 text-[8px]"></i>
                                         {{ pedido.EstadoPedido || 'Borrador' }}
                                     </span>
-                                    <span class="text-[10px] text-gray-500">
-                                        <i class="fas fa-boxes mr-1"></i>
-                                        {{ pedido.TotalContenedores || 0 }} cont.
-                                    </span>
-                                    <span class="text-[10px] font-semibold text-primary-600">
-                                        {{ formatearNumero(pedido.TotalUnidades) }} und
-                                    </span>
+                                    <span class="text-[10px] text-gray-500"><i class="fas fa-boxes mr-1"></i> {{ pedido.TotalContenedores || 0 }} cont.</span>
+                                    <span class="text-[10px] font-semibold text-primary-600">{{ formatearNumero(pedido.TotalUnidades) }} und</span>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-3 mt-0.5 text-[10px] text-gray-500">
                                     <span><i class="fas fa-calendar mr-1"></i>{{ formatearFechaHora(pedido.FechaPedido) }}</span>
-                                    <span v-if="pedido.FechaEntrega">
-                                        <i class="fas fa-calendar-check mr-1 text-primary-500"></i>
-                                        Entrega: {{ formatearFecha(pedido.FechaEntrega) }}
-                                    </span>
+                                    <span v-if="pedido.FechaEntrega"><i class="fas fa-calendar-check mr-1 text-primary-500"></i> Entrega: {{ formatearFecha(pedido.FechaEntrega) }}</span>
                                 </div>
                             </div>
 
                             <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
-                                <button
-                                    v-if="pedido.EstadoPedido === 'En Transportadora'"
-                                    @click="marcarRecibido(pedido)"
-                                    class="px-2.5 py-1 text-[10px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-md transition flex items-center gap-1 shadow-sm font-medium"
-                                >
-                                    <i class="fas fa-check-double text-[9px]"></i>
-                                    Recibido
+                                <button v-if="pedido.EstadoPedido === 'En Distribución' || pedido.EstadoPedido === 'En Transportadora'" @click="marcarRecibido(pedido)" class="px-2.5 py-1 text-[10px] bg-emerald-500 hover:bg-emerald-600 text-white rounded-md transition flex items-center gap-1 shadow-sm font-medium">
+                                    <i class="fas fa-check-double text-[9px]"></i> Recibido
                                 </button>
 
-                                <button
-                                    v-if="pedido.EstadoPedido === 'Recibido'"
-                                    @click="abrirModalReclamo(pedido)"
-                                    class="px-2.5 py-1 text-[10px] bg-red-500 hover:bg-red-600 text-white rounded-md transition flex items-center gap-1 shadow-sm font-medium"
-                                >
-                                    <i class="fas fa-exclamation-triangle text-[9px]"></i>
-                                    Reclamo
+                                <button v-if="pedido.EstadoPedido === 'Recibido'" @click="abrirModalReclamo(pedido)" class="px-2.5 py-1 text-[10px] bg-red-500 hover:bg-red-600 text-white rounded-md transition flex items-center gap-1 shadow-sm font-medium">
+                                    <i class="fas fa-exclamation-triangle text-[9px]"></i> Reclamo
                                 </button>
 
-                                <button
-                                    @click="verDetalle(pedido)"
-                                    class="px-2.5 py-1 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition flex items-center gap-1 font-medium"
-                                >
-                                    <i class="fas fa-eye text-[9px]"></i>
-                                    Ver
+                                <button @click="verDetalle(pedido)" class="px-2.5 py-1 text-[10px] bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md transition flex items-center gap-1 font-medium">
+                                    <i class="fas fa-eye text-[9px]"></i> Ver
                                 </button>
 
-                                <button
-                                    v-if="pedido.ActivoInactivo === 1"
-                                    @click="abrirPdf(pedido.IdPedidoCliente)"
-                                    class="px-2.5 py-1 text-[10px] bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition flex items-center gap-1 font-medium"
-                                >
-                                    <i class="fas fa-file-pdf text-[9px]"></i>
-                                    PDF
+                                <button v-if="pedido.ActivoInactivo === 1" @click="abrirPdf(pedido.IdPedidoCliente)" class="px-2.5 py-1 text-[10px] bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition flex items-center gap-1 font-medium">
+                                    <i class="fas fa-file-pdf text-[9px]"></i> PDF
                                 </button>
                             </div>
                         </div>
 
-                        <!-- ========== BARRA DE PROGRESO COMPACTA ========== -->
-                        <div
-                            v-if="getPasoActualIndex(pedido.EstadoPedido) !== -1"
-                            class="px-3 pb-2.5 pt-1 border-t border-gray-100 bg-gray-50/50"
-                        >
+                        <!-- BARRA DE PROGRESO INTELIGENTE -->
+                        <div v-if="getPasoActualIndex(pedido) !== -1" class="px-3 pb-2.5 pt-1 border-t border-gray-100 bg-gray-50/50">
                             <div class="flex items-center gap-1">
-                                <template v-for="(paso, index) in pasosProgreso" :key="paso.key">
+                                <template v-for="(paso, index) in getPasosProgreso(pedido)" :key="paso.key">
                                     <!-- Punto del paso -->
                                     <div
                                         class="w-2 h-2 rounded-full transition-all duration-300 flex-shrink-0"
                                         :class="{
-                                            'bg-primary-500': getEstadoPaso(pedido.EstadoPedido, index) === 'completado',
-                                            'bg-primary-500 ring-2 ring-primary-200': getEstadoPaso(pedido.EstadoPedido, index) === 'actual',
-                                            'bg-red-500': getEstadoPaso(pedido.EstadoPedido, index) === 'completado-reclamo',
-                                            'bg-gray-300': getEstadoPaso(pedido.EstadoPedido, index) === 'pendiente',
+                                            'bg-primary-500': getEstadoPaso(pedido, index) === 'completado',
+                                            'bg-primary-500 ring-2 ring-primary-200': getEstadoPaso(pedido, index) === 'actual',
+                                            'bg-red-500': getEstadoPaso(pedido, index) === 'completado-reclamo',
+                                            'bg-gray-300': getEstadoPaso(pedido, index) === 'pendiente',
                                         }"
                                         :title="paso.label"
                                     ></div>
 
                                     <!-- Línea conectora -->
                                     <div
-                                        v-if="index < pasosProgreso.length - 1"
+                                        v-if="index < getPasosProgreso(pedido).length - 1"
                                         class="flex-1 h-0.5 transition-colors duration-300"
                                         :class="{
-                                            'bg-primary-500': getEstadoPaso(pedido.EstadoPedido, index + 1) === 'completado' || getEstadoPaso(pedido.EstadoPedido, index + 1) === 'actual',
-                                            'bg-red-500': getEstadoPaso(pedido.EstadoPedido, index + 1) === 'completado-reclamo',
-                                            'bg-gray-200': getEstadoPaso(pedido.EstadoPedido, index + 1) === 'pendiente',
+                                            'bg-primary-500': getEstadoPaso(pedido, index + 1) === 'completado' || getEstadoPaso(pedido, index + 1) === 'actual',
+                                            'bg-red-500': getEstadoPaso(pedido, index + 1) === 'completado-reclamo',
+                                            'bg-gray-200': getEstadoPaso(pedido, index + 1) === 'pendiente',
                                         }"
                                     ></div>
                                 </template>
 
                                 <!-- Label del paso actual -->
-                                <span
-                                    class="ml-2 text-[9px] font-medium whitespace-nowrap"
-                                    :class="pedido.EstadoPedido === 'Con Reclamo' ? 'text-red-600' : 'text-gray-500'"
-                                >
-                                    {{ pasosProgreso[getPasoActualIndex(pedido.EstadoPedido)]?.label || '' }}
+                                <span class="ml-2 text-[9px] font-medium whitespace-nowrap" :class="pedido.EstadoPedido === 'Con Reclamo' ? 'text-red-600' : 'text-gray-500'">
+                                    {{ getPasosProgreso(pedido)[getPasoActualIndex(pedido)]?.label || '' }}
                                 </span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- ============================================ -->
                     <!-- PAGINACIÓN -->
-                    <!-- ============================================ -->
                     <div v-if="props.pedidos?.links && props.pedidos.links.length > 3" class="bg-white rounded-xl shadow-sm px-3 py-2 border border-gray-200 mt-3">
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
-                            <div class="text-[10px] text-gray-500">
-                                Mostrando {{ props.pedidos.from || 0 }} a {{ props.pedidos.to || 0 }} de {{ props.pedidos.total || 0 }}
-                            </div>
+                            <div class="text-[10px] text-gray-500">Mostrando {{ props.pedidos.from || 0 }} a {{ props.pedidos.to || 0 }} de {{ props.pedidos.total || 0 }}</div>
                             <div class="flex gap-1 flex-wrap justify-center">
-                                <Link
-                                    v-for="link in props.pedidos.links"
-                                    :key="link.label"
-                                    :href="link.url || '#'"
-                                    class="px-2.5 py-1 rounded-lg border text-[10px] transition"
-                                    :class="{
-                                        'bg-primary-600 text-white border-primary-600': link.active,
-                                        'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,
-                                        'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url
-                                    }"
-                                    v-html="link.label"
-                                    preserve-state
-                                />
+                                <Link v-for="link in props.pedidos.links" :key="link.label" :href="link.url || '#'" class="px-2.5 py-1 rounded-lg border text-[10px] transition" :class="{'bg-primary-600 text-white border-primary-600': link.active,'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url}" v-html="link.label" preserve-state />
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- ============================================ -->
                 <!-- SIN PEDIDOS -->
-                <!-- ============================================ -->
                 <div v-else class="bg-white rounded-xl shadow-sm p-10 text-center border border-gray-200">
                     <div class="w-16 h-16 bg-primary-50 rounded-full flex items-center justify-center mx-auto mb-3">
                         <i class="fas fa-inbox text-primary-400 text-3xl"></i>
                     </div>
                     <h3 class="text-sm font-semibold text-gray-700">No hay pedidos</h3>
-                    <p class="text-xs text-gray-400 mt-1">
-                        {{ buscador || estadoFiltro ? 'No hay pedidos que coincidan con los filtros' : 'Aún no has realizado ningún pedido' }}
-                    </p>
-                    <button
-                        v-if="!buscador && !estadoFiltro"
-                        @click="intentarNuevoPedido"
-                        class="inline-block mt-3 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition"
-                    >
-                        <i class="fas fa-plus mr-1 text-[10px]"></i>
-                        Crear primer pedido
+                    <p class="text-xs text-gray-400 mt-1">{{ buscador || estadoFiltro ? 'No hay pedidos que coincidan con los filtros' : 'Aún no has realizado ningún pedido' }}</p>
+                    <button v-if="!buscador && !estadoFiltro" @click="intentarNuevoPedido" class="inline-block mt-3 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition">
+                        <i class="fas fa-plus mr-1 text-[10px]"></i> Crear primer pedido
                     </button>
                 </div>
             </div>
         </div>
 
-        <!-- ============================================ -->
         <!-- MODAL SHOW PEDIDO -->
-        <!-- ============================================ -->
         <Teleport to="body">
-            <div
-                v-if="mostrarModal && pedidoSeleccionado"
-                class="fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-3"
-                @click.self="cerrarModal"
-            >
+            <div v-if="mostrarModal && pedidoSeleccionado" class="fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-3" @click.self="cerrarModal">
                 <div class="bg-white rounded-xl w-full max-w-4xl max-h-[95vh] overflow-hidden shadow-2xl animate-fade-in-up">
                     <div v-if="cargandoDetalle" class="flex items-center justify-center h-64">
-                        <div class="text-center">
-                            <i class="fas fa-spinner fa-spin text-3xl text-primary-500"></i>
-                            <p class="text-xs text-gray-400 mt-2">Cargando detalles...</p>
-                        </div>
+                        <div class="text-center"><i class="fas fa-spinner fa-spin text-3xl text-primary-500"></i><p class="text-xs text-gray-400 mt-2">Cargando detalles...</p></div>
                     </div>
-                    <ShowPedido
-                        v-else
-                        :pedido="pedidoSeleccionado"
-                        :detalles-agrupados="detallesAgrupados"
-                        :cliente-nombre="pedidoSeleccionado.cliente?.Nombre || 'Sin cliente'"
-                        :sucursal-nombre="pedidoSeleccionado.sucursal?.Nombre || 'Sin sucursal'"
-                        :operador-nombre="pedidoSeleccionado.operador?.Nombre || 'Sin operador'"
-                        @cerrar="cerrarModal"
-                    />
+                    <ShowPedido v-else :pedido="pedidoSeleccionado" :detalles-agrupados="detallesAgrupados" :cliente-nombre="pedidoSeleccionado.cliente?.Nombre || 'Sin cliente'" :sucursal-nombre="pedidoSeleccionado.sucursal?.Nombre || 'Sin sucursal'" :operador-nombre="pedidoSeleccionado.operador?.Nombre || 'Sin operador'" @cerrar="cerrarModal" />
                 </div>
             </div>
         </Teleport>
 
-        <!-- ============================================ -->
         <!-- MODAL RECLAMO -->
-        <!-- ============================================ -->
-        <ModalReclamo
-            :visible="modalReclamoVisible"
-            :pedido="pedidoParaReclamo"
-            @close="cerrarModalReclamo"
-            @success="onReclamoSuccess"
-        />
+        <ModalReclamo :visible="modalReclamoVisible" :pedido="pedidoParaReclamo" @close="cerrarModalReclamo" @success="onReclamoSuccess" />
 
-        <!-- ============================================ -->
         <!-- MODAL NO PUEDE PEDIR -->
-        <!-- ============================================ -->
         <Teleport to="body">
-            <div
-                v-if="modalNoPuedePedirVisible"
-                class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-fade-in"
-                @click.self="cerrarModalNoPuedePedir"
-            >
+            <div v-if="modalNoPuedePedirVisible" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-fade-in" @click.self="cerrarModalNoPuedePedir">
                 <div class="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-scale-in">
                     <div class="bg-primary-600 px-4 py-3 flex items-center justify-between">
                         <div class="flex items-center gap-2.5">
-                            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-box-open text-white text-base"></i>
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-sm text-white">No puedes hacer pedidos</h3>
-                            </div>
+                            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0"><i class="fas fa-box-open text-white text-base"></i></div>
+                            <div><h3 class="font-bold text-sm text-white">No puedes hacer pedidos</h3></div>
                         </div>
-                        <button @click="cerrarModalNoPuedePedir" class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition">
-                            <i class="fas fa-times text-sm"></i>
-                        </button>
+                        <button @click="cerrarModalNoPuedePedir" class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition"><i class="fas fa-times text-sm"></i></button>
                     </div>
-
-                    <div class="p-4">
-                        <p class="text-sm text-gray-700 text-center leading-relaxed whitespace-pre-line break-words">
-                            {{ razonNoPuedePedir || 'Contacta al administrador para más información.' }}
-                        </p>
-                    </div>
-
+                    <div class="p-4"><p class="text-sm text-gray-700 text-center leading-relaxed whitespace-pre-line break-words">{{ razonNoPuedePedir || 'Contacta al administrador para más información.' }}</p></div>
                     <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end">
-                        <button
-                            @click="cerrarModalNoPuedePedir"
-                            class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5"
-                        >
-                            <i class="fas fa-check text-[10px]"></i>
-                            Entendido
-                        </button>
+                        <button @click="cerrarModalNoPuedePedir" class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5"><i class="fas fa-check text-[10px]"></i> Entendido</button>
                     </div>
                 </div>
             </div>
@@ -623,22 +470,11 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px) scale(0.95); }
-    to { opacity: 1; transform: translateY(0) scale(1); }
-}
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(20px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes scaleIn {
-    from { opacity: 0; transform: scale(0.9); }
-    to { opacity: 1; transform: scale(1); }
-}
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
 .animate-fade-in-up { animation: fadeInUp 0.25s ease-out; }
 .animate-fade-in { animation: fadeIn 0.2s ease-out; }
 .animate-scale-in { animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
-
-@media (min-width: 1024px) {
-    input, select, button {
-        font-size: 13px !important;
-    }
-}
+@media (min-width: 1024px) { input, select, button { font-size: 13px !important; } }
 </style>

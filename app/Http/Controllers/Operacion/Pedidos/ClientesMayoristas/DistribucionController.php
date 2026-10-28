@@ -19,29 +19,86 @@ class DistribucionController extends Controller
     {
         $clienteId = session('cliente_id');
 
-        $pedidosPendientes = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('EstadoPedido', 'Pendiente')
-            ->with(['cliente', 'sucursal'])
-            ->orderBy('FechaPedido', 'asc')
-            ->get();
+        $queryPedidos = function ($estado) use ($clienteId) {
+            $pedidos = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+                ->where('EstadoPedido', $estado)
+                ->with(['cliente', 'sucursal'])
+                ->orderBy('pedidos_clientes.FechaPedido', 'asc')
+                ->get();
 
-        $pedidosEnCamara = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('EstadoPedido', 'En Cámara')
-            ->with(['cliente', 'sucursal'])
-            ->orderBy('FechaPedido', 'asc')
-            ->get();
+            return $pedidos->map(function ($pedido) use ($clienteId) {
+                // 1. Nombre del operador
+                $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('todos_operador')
+                    ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                    ->where('todos_operador.IdOperador', $pedido->IdOperador)
+                    ->first(['todos_identificador.Nombre']);
+                
+                $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
 
-        $pedidosEnDistribucion = PedidoCliente::where('IdCliente', $clienteId)
-            ->where('EstadoPedido', 'En Distribución')
-            ->with(['cliente', 'sucursal'])
-            ->orderBy('FechaPedido', 'asc')
-            ->get();
+                // 2. Ciudad o Provincia
+                $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('operacion_pedidos_operadores_clientes')
+                    ->where('IdOperador', $pedido->IdOperador)
+                    ->where('IdCliente', $clienteId) 
+                    ->where('IdSucursalDB', $pedido->IdSucursal) 
+                    ->first(['Ciudad', 'Provincia']);
 
-        $pedidosEnTransportadora = PedidoCliente::where('IdCliente', $clienteId)
+                if (!$asignacion) {
+                    $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                        ->table('operacion_pedidos_operadores_clientes')
+                        ->where('IdOperador', $pedido->IdOperador)
+                        ->where('IdCliente', $clienteId) 
+                        ->first(['Ciudad', 'Provincia']);
+                }
+
+                $pedido->Ciudad = $asignacion ? (bool)$asignacion->Ciudad : false;
+                $pedido->Provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+
+                return $pedido;
+            });
+        };
+
+        $pedidosPendientes = $queryPedidos('Pendiente');
+        $pedidosEnCamara = $queryPedidos('En Cámara');
+        $pedidosEnDistribucion = $queryPedidos('En Distribución');
+
+        // Hacemos lo mismo para los que están en transportadora
+        $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
             ->where('EstadoPedido', 'En Transportadora')
             ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
-            ->orderBy('FechaPedido', 'desc')
+            ->orderBy('pedidos_clientes.FechaPedido', 'desc')
             ->get();
+
+        $pedidosEnTransportadora = $pedidosTransportadoraRaw->map(function ($pedido) use ($clienteId) {
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                ->where('todos_operador.IdOperador', $pedido->IdOperador)
+                ->first(['todos_identificador.Nombre']);
+            
+            $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
+
+            $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_operadores_clientes')
+                ->where('IdOperador', $pedido->IdOperador)
+                ->where('IdCliente', $clienteId) 
+                ->where('IdSucursalDB', $pedido->IdSucursal)
+                ->first(['Ciudad', 'Provincia']);
+
+            if (!$asignacion) {
+                $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('operacion_pedidos_operadores_clientes')
+                    ->where('IdOperador', $pedido->IdOperador)
+                    ->where('IdCliente', $clienteId) 
+                    ->first(['Ciudad', 'Provincia']);
+            }
+
+            $pedido->Ciudad = $asignacion ? (bool)$asignacion->Ciudad : false;
+            $pedido->Provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+
+            return $pedido;
+        });
 
         $transportadoras = Transportadora::with('identificador')
             ->where('ActivoInactivo', 1)
@@ -56,11 +113,11 @@ class DistribucionController extends Controller
         ]);
     }
 
-        public function cambiarEstado(Request $request, $id)
+    public function cambiarEstado(Request $request, $id)
     {
+        // 1. Quitamos el 'required_if' de la transportadora
         $request->validate([
             'nuevo_estado' => 'required|in:En Cámara,En Distribución,En Transportadora,Recibido',
-            'id_transportadora' => 'nullable|required_if:nuevo_estado,En Transportadora|exists:pedidos_clientes_transportadoras,IdTransportadora',
             'numero_guia' => 'nullable|string|max:100',
             'costo_envio' => 'nullable|numeric|min:0',
             'observacion' => 'nullable|string|max:255',
@@ -83,8 +140,27 @@ class DistribucionController extends Controller
                 return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
             }
 
-            $estadoAnterior = $pedido->EstadoPedido;
             $nuevoEstado = $request->input('nuevo_estado');
+
+            // 2. Si va a transportadora, verificamos si es ciudad o provincia
+            if ($nuevoEstado === 'En Transportadora') {
+                $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('operacion_pedidos_operadores_clientes')
+                    ->where('IdOperador', $pedido->IdOperador)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursalDB', $pedido->IdSucursal)
+                    ->first(['Ciudad']);
+
+                $esCiudad = $asignacion ? (bool)$asignacion->Ciudad : false;
+
+                // Si es PROVINCIA, sí o sí necesita transportadora
+                if (!$esCiudad && !$request->filled('id_transportadora')) {
+                    $conexion->rollBack();
+                    return response()->json(['success' => false, 'message' => 'Debes seleccionar una transportadora para envíos a provincia.'], 422);
+                }
+            }
+
+            $estadoAnterior = $pedido->EstadoPedido;
 
             $pedido->update([
                 'EstadoPedido' => $nuevoEstado,
@@ -95,10 +171,9 @@ class DistribucionController extends Controller
             if ($nuevoEstado === 'En Transportadora') {
                 $costoEnvio = (float) $request->input('costo_envio', 0);
 
-                // 1. Creamos el registro del Envío
                 Envio::create([
                     'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                    'IdTransportadora' => $request->input('id_transportadora'),
+                    'IdTransportadora' => $request->input('id_transportadora'), // Puede ser null si es ciudad
                     'NumeroGuia' => $request->input('numero_guia'),
                     'CostoEnvio' => $costoEnvio,
                     'FechaEnvio' => now(),
@@ -106,7 +181,6 @@ class DistribucionController extends Controller
                     'Observaciones' => $request->input('observacion'),
                 ]);
 
-                // 2. 🔥 DESCONTAR EL ENVÍO SI TIENE BILLETERA Y SALDO
                 if ($costoEnvio > 0) {
                     $billeteraCliente = \App\Models\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraOperador::where('IdOperador', $pedido->IdOperador)
                         ->where('ActivoInactivo', 0)
@@ -114,25 +188,16 @@ class DistribucionController extends Controller
                         ->first();
 
                     if ($billeteraCliente && (float)$billeteraCliente->SaldoActual >= $costoEnvio) {
-                        // Tiene saldo suficiente: descontamos
                         $billeteraCliente->cobrarEnvio(
                             $costoEnvio,
                             $pedido->IdPedidoCliente,
                             "Cobro Envío - Pedido #{$pedido->NumeroPedido}",
                             $operadorId
                         );
-                        
-                        Log::info("✅ Costo de envío descontado", [
-                            'IdPedido' => $pedido->IdPedidoCliente,
-                            'Monto' => $costoEnvio
-                        ]);
+                        Log::info("✅ Costo de envío descontado", ['IdPedido' => $pedido->IdPedidoCliente, 'Monto' => $costoEnvio]);
                     } else {
-                        // No tiene billetera o no tiene saldo: 
-                        // Por ahora dejamos pasar (Caso 2 se hará después)
                         Log::warning("Pedido despachado sin cobrar envío (falta de saldo/billetera)", [
-                            'IdPedido' => $pedido->IdPedidoCliente,
-                            'Operador' => $pedido->IdOperador,
-                            'Costo' => $costoEnvio
+                            'IdPedido' => $pedido->IdPedidoCliente, 'Operador' => $pedido->IdOperador, 'Costo' => $costoEnvio
                         ]);
                     }
                 }
@@ -172,7 +237,6 @@ class DistribucionController extends Controller
     {
         try {
             $clienteId = session('cliente_id');
-
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
                 ->with(['envio.transportadora.identificador'])
@@ -192,7 +256,6 @@ class DistribucionController extends Controller
                 'historial' => $historial,
                 'envio' => $pedido->envio,
             ]);
-
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
@@ -210,7 +273,6 @@ class DistribucionController extends Controller
 
         try {
             $conexion->beginTransaction();
-
             $identificador = null;
             if ($request->filled('CI_NIT')) {
                 $identificador = Identificador::where('CI_NIT', $request->CI_NIT)->first();
@@ -218,8 +280,6 @@ class DistribucionController extends Controller
 
             if (!$identificador) {
                 $ciNit = $request->filled('CI_NIT') ? (int)$request->CI_NIT : mt_rand(1000000, 9999999);
-
-                // 🔥 AGREGADOS FechaIngreso y FechaEdita
                 $identificador = Identificador::create([
                     'Nombre' => $request->Nombre,
                     'CI_NIT' => $ciNit,
@@ -236,17 +296,11 @@ class DistribucionController extends Controller
             ]);
 
             $conexion->commit();
-
             $trans->load('identificador');
 
             return response()->json(['success' => true, 'transportadora' => $trans]);
         } catch (\Exception $e) {
             $conexion->rollBack();
-            Log::error('Error al crear transportadora', [
-                'message' => $e->getMessage(),
-                'operadorId' => $operadorId,
-                'payload' => $request->all()
-            ]);
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }

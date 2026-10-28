@@ -17,16 +17,17 @@ class ReclamoController extends Controller
     public function store(Request $request, $id)
     {
         $request->validate([
-            'descripcion' => 'required|string|max:1000',
-            'productos' => 'required|array|min:1',
-            'productos.*.IdProducto' => 'required|exists:inventario_productodetalle,IdProducto',
-            'productos.*.CantidadReclamada' => 'required|integer|min:1',
-            'productos.*.Motivo' => 'nullable|string|max:255',
+            'tipo_reclamo' => 'required|in:DEFECTUOSO,FALTANTE',
+            'descripcion'  => 'required|string|max:1000',
+            'productos'    => 'required|array|min:1',
+            'productos.*.IdProducto'         => 'required|exists:inventario_productodetalle,IdProducto',
+            'productos.*.CantidadReclamada'  => 'required|integer|min:1',
+            'productos.*.Motivo'             => 'nullable|string|max:255',
         ]);
 
-        $clienteId = session('cliente_id');
+        $clienteId  = session('cliente_id');
         $operadorId = session('operador_id');
-        $conexion = DB::connection('mysql_gestion_comercial_alimentos');
+        $conexion   = DB::connection('mysql_gestion_comercial_alimentos');
 
         try {
             $conexion->beginTransaction();
@@ -46,17 +47,24 @@ class ReclamoController extends Controller
                 return response()->json(['success' => false, 'message' => 'Solo se pueden reclamar pedidos que ya fueron recibidos.'], 422);
             }
 
-            $reclamoExistente = Reclamo::where('IdPedidoCliente', $id)->first();
-            if ($reclamoExistente) {
+            if (Reclamo::where('IdPedidoCliente', $id)->exists()) {
                 $conexion->rollBack();
                 return response()->json(['success' => false, 'message' => 'Este pedido ya tiene un reclamo registrado.'], 422);
             }
 
-            // 🔥 VALIDACIÓN DE SEGURIDAD: No reclamar más de lo pedido
+            // Validación explícita: el producto debe pertenecer al pedido y no reclamar más de lo pedido
             foreach ($request->productos as $prod) {
                 $cantidadTotalPedida = PedidoClienteDetalle::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                     ->where('IdProducto', $prod['IdProducto'])
                     ->sum('Cantidad');
+
+                if ($cantidadTotalPedida <= 0) {
+                    $conexion->rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Uno de los productos seleccionados no pertenece a este pedido.'
+                    ], 422);
+                }
 
                 if ($prod['CantidadReclamada'] > $cantidadTotalPedida) {
                     $conexion->rollBack();
@@ -69,45 +77,46 @@ class ReclamoController extends Controller
 
             $reclamo = Reclamo::create([
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'IdCliente' => $clienteId,
-                'IdOperador' => $operadorId,
-                'Estado' => 'Pendiente de Revisión',
-                'Descripcion' => $request->descripcion,
-                'FechaCreacion' => now(),
+                'IdCliente'       => $clienteId,
+                'IdOperador'      => $operadorId,
+                'TipoReclamo'     => $request->tipo_reclamo,
+                'Estado'          => 'Pendiente de Revisión',
+                'Descripcion'     => $request->descripcion,
+                'FechaCreacion'   => now(),
             ]);
 
             foreach ($request->productos as $prod) {
                 ReclamoDetalle::create([
-                    'IdReclamo' => $reclamo->IdReclamo,
-                    'IdProducto' => $prod['IdProducto'],
+                    'IdReclamo'         => $reclamo->IdReclamo,
+                    'IdProducto'        => $prod['IdProducto'],
                     'CantidadReclamada' => $prod['CantidadReclamada'],
-                    'Motivo' => $prod['Motivo'] ?? null,
+                    'Motivo'            => $prod['Motivo'] ?? null,
                 ]);
             }
 
             $estadoAnterior = $pedido->EstadoPedido;
 
             $pedido->update([
-                'EstadoPedido' => 'Con Reclamo',
+                'EstadoPedido'        => 'Con Reclamo',
                 'IdOperadorActualiza' => $operadorId,
-                'FechaActualiza' => now(),
+                'FechaActualiza'      => now(),
             ]);
 
             HistorialPedido::create([
                 'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                'EstadoAnterior' => $estadoAnterior,
-                'EstadoNuevo' => 'Con Reclamo',
-                'IdOperador' => $operadorId,
-                'Observacion' => 'Reclamo creado: ' . $request->descripcion,
-                'FechaCambio' => now(),
+                'EstadoAnterior'  => $estadoAnterior,
+                'EstadoNuevo'     => 'Con Reclamo',
+                'IdOperador'      => $operadorId,
+                'Observacion'     => "[{$request->tipo_reclamo}] Reclamo creado: {$request->descripcion}",
+                'FechaCambio'     => now(),
             ]);
 
             $conexion->commit();
 
             return response()->json([
-                'success' => true,
-                'message' => 'Reclamo enviado al área de calidad.',
-                'id_reclamo' => $reclamo->IdReclamo
+                'success'    => true,
+                'message'    => 'Reclamo enviado al área de calidad.',
+                'id_reclamo' => $reclamo->IdReclamo,
             ]);
 
         } catch (\Exception $e) {

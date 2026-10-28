@@ -262,10 +262,9 @@ class PedidoClienteController extends Controller
         return $progreso;
     }
 
-    // ============================================================
+// ============================================================
     // LISTA DE PEDIDOS
     // ============================================================
-
     public function index()
     {
         $clienteId = session('cliente_id');
@@ -283,6 +282,20 @@ class PedidoClienteController extends Controller
             ])
             ->orderBy('IdPedidoCliente', 'desc')
             ->paginate(20);
+
+        // 🔥 INYECTAMOS SI ES CIUDAD O PROVINCIA A CADA PEDIDO
+        $pedidos->getCollection()->transform(function ($pedido) use ($clienteId) {
+            $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_operadores_clientes')
+                ->where('IdOperador', $pedido->IdOperador)
+                ->where('IdCliente', $clienteId)
+                ->where('IdSucursalDB', $pedido->IdSucursal)
+                ->first(['Provincia']);
+
+            // Si la asignación existe y Provincia es 1, entonces es provincia
+            $pedido->es_provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+            return $pedido;
+        });
 
         $grupoCliente = $this->getGrupoDelOperador();
         $puedeHacerPedidos = true;

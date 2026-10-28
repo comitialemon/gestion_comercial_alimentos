@@ -25,6 +25,7 @@ class OperadorPedidoClientesController extends Controller
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id'); // 🔥 Traemos la sucursal de la sesión
 
         if (!$clienteId) {
             return redirect()->route('contexto.index')
@@ -35,12 +36,14 @@ class OperadorPedidoClientesController extends Controller
                 $q->where('Detalle', 'PedidoClientes');
             })
             ->whereHas('asignacionesSucursal', function ($q) use ($clienteId) {
+                // 🔥 Solo operadores que tengan asignación en ESTA empresa
                 $q->where('IdCliente', $clienteId);
             })
             ->with([
                 'identificador',
                 'tipo',
                 'asignacionesSucursal' => function ($q) use ($clienteId) {
+                    // 🔥 Solo traemos las asignaciones de ESTA empresa
                     $q->where('IdCliente', $clienteId)
                       ->with(['sucursal', 'pedidoClienteConfig']);
                 },
@@ -73,7 +76,6 @@ class OperadorPedidoClientesController extends Controller
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal']);
 
         // Identificadores que YA tienen un operador PedidoClientes en esta empresa
-        // (no tiene sentido mostrarlos en el select de "nuevo")
         $idsIdentificadoresConOperador = Operador::whereHas('tipo', function ($q) {
                 $q->where('Detalle', 'PedidoClientes');
             })
@@ -272,8 +274,8 @@ class OperadorPedidoClientesController extends Controller
                 [
                     'IdOperador' => $operador->IdOperador,
                     'IdCliente'  => $clienteId,
-                    'Ciudad'     => $request->boolean('Ciudad') ? 'Sí' : 'No',
-                    'Provincia'  => $request->boolean('Provincia') ? 'Sí' : 'No',
+                    'Ciudad'     => $request->boolean('Ciudad') ? 1 : 0, // 🔥 Cambiado
+                    'Provincia'  => $request->boolean('Provincia') ? 1 : 0, // 🔥 Cambiado
                     'Destino'    => $request->Destino,
                     'ActivoInactivo'      => 1,
                     'IdOperadorActualiza' => $operadorId,
@@ -366,8 +368,8 @@ class OperadorPedidoClientesController extends Controller
                 [
                     'IdOperador' => $operador->IdOperador,
                     'IdCliente'  => $asignacion->IdCliente, // viene de la asignación, no de session
-                    'Ciudad'     => $request->boolean('Ciudad') ? 'Sí' : 'No',
-                    'Provincia'  => $request->boolean('Provincia') ? 'Sí' : 'No',
+                    'Ciudad'     => $request->boolean('Ciudad') ? 1 : 0, // 🔥 Cambiado
+                    'Provincia'  => $request->boolean('Provincia') ? 1 : 0, // 🔥 Cambiado
                     'Destino'    => $request->Destino,
                     'ActivoInactivo'      => 1,
                     'IdOperadorActualiza' => $operadorId,
