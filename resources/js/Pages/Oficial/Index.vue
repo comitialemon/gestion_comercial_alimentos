@@ -1,6 +1,6 @@
 <script setup>
 import AppLayout from '@/Layouts/AppLayout.vue'
-import { Link } from '@inertiajs/vue3'
+import { Link, router } from '@inertiajs/vue3'
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 
 defineOptions({ layout: AppLayout })
@@ -8,13 +8,14 @@ defineOptions({ layout: AppLayout })
 const props = defineProps({
     gestion: Object,
     facturacion: Object,
-    esVentaMostrador: Boolean,  // 🔥 NUEVO PROP
+    esVentaMostrador: Boolean,
     diaActual: Object,
     fechasPendientes: Array,
     flash: Object,
+    notificacionesInicio: { type: Array, default: () => [] } 
 })
 
-// 🔥 RESTO DE TU SCRIPT IGUAL QUE ANTES...
+// 🔥 RESTO DEL SCRIPT
 const windowWidth = ref(window.innerWidth)
 const isMobile = computed(() => windowWidth.value < 640)
 const handleResize = () => (windowWidth.value = window.innerWidth)
@@ -73,17 +74,70 @@ const getColorConcepto = (nombre, index) => {
     ]
     return fallback[index % 4]
 }
+
+const irANotificacion = (url) => {
+    router.visit(url)
+}
 </script>
 
 <template>
-    <!-- 🔥 SI NO ES VENTAMOSTRADOR → MENSAJE SIMPLE -->
-    <div v-if="!esVentaMostrador" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-4">
-        <div class="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
-            <div class="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <i class="fas fa-info-circle text-primary-600 text-2xl"></i>
-            </div>
-            <h1 class="text-lg font-bold text-gray-800 mb-1">Inicio Oficial</h1>
+    <!-- 🔥 SI NO ES VENTAMOSTRADOR → DASHBOARD DE NOTIFICACIONES -->
+    <div v-if="!esVentaMostrador" class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 p-4 sm:p-6">
+        <div class="max-w-5xl mx-auto pt-6">
             
+            <!-- HEADER -->
+            <div class="mb-6 text-center sm:text-left">
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center justify-center sm:justify-start gap-2">
+                    <i class="fas fa-satellite-dish text-primary-600"></i> Centro de Tareas
+                </h1>
+                <p class="text-sm text-gray-500 mt-1">Panel de control rápido para tu jornada</p>
+            </div>
+
+            <!-- 🔥 TARJETAS DE NOTIFICACIÓN (DASHBOARD LLAMATIVO) -->
+            <div v-if="notificacionesInicio.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div 
+                    v-for="notif in notificacionesInicio" 
+                    :key="notif.tipo"
+                    @click="irANotificacion(notif.url)"
+                    class="relative overflow-hidden rounded-2xl border-2 cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group"
+                    :class="[notif.color_bg, notif.color_border]"
+                >
+                    <!-- Icono de fondo gigante (decorativo) -->
+                    <i :class="['fas', notif.icono, 'absolute -right-4 -bottom-4 text-8xl opacity-10 group-hover:scale-110 transition-transform duration-500']"></i>
+
+                    <div class="p-5 relative z-10">
+                        <div class="flex justify-between items-start mb-4">
+                            <div class="w-12 h-12 rounded-xl flex items-center justify-center shadow-sm" :class="notif.color_icon">
+                                <i :class="['fas', notif.icono, 'text-xl']"></i>
+                            </div>
+                            <span class="flex h-3 w-3 relative">
+                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                        </div>
+                        
+                        <h3 class="text-sm font-semibold text-gray-600 mb-1">{{ notif.titulo }}</h3>
+                        <div class="flex items-baseline gap-2">
+                            <span class="text-4xl font-extrabold" :class="notif.color_text">{{ notif.cantidad }}</span>
+                            <span class="text-sm font-medium text-gray-500">pendientes</span>
+                        </div>
+                        
+                        <div class="mt-4 flex items-center text-xs font-bold gap-1 group-hover:gap-2 transition-all" :class="notif.color_text">
+                            Revisar ahora <i class="fas fa-arrow-right"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ESTADO VACÍO -->
+            <div v-else class="bg-white rounded-2xl shadow-sm border border-gray-200 p-10 text-center">
+                <div class="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-check-double text-emerald-400 text-3xl"></i>
+                </div>
+                <h3 class="text-lg font-bold text-gray-800">¡Todo al día!</h3>
+                <p class="text-sm text-gray-500 mt-1">No tienes tareas pendientes en este momento.</p>
+            </div>
+
         </div>
     </div>
 
@@ -115,6 +169,32 @@ const getColorConcepto = (nombre, index) => {
                         <i :class="facturacionCompleta ? 'fas fa-check-circle' : 'fas fa-exclamation-triangle'" class="text-[9px]"></i>
                         <span class="hidden sm:inline">{{ facturacionCompleta ? 'Facturación activa' : 'Facturación pendiente' }}</span>
                     </span>
+                </div>
+
+                <!-- 🔥 NOTIFICACIONES DE SISTEMA (TAMBIÉN PARA VENTAMOSTRADOR) -->
+                <div v-if="notificacionesInicio.length > 0" class="mb-4 space-y-2">
+                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
+                        <i class="fas fa-bell mr-1"></i> Tienes tareas pendientes
+                    </p>
+                    <div 
+                        v-for="notif in notificacionesInicio" 
+                        :key="notif.tipo"
+                        @click="irANotificacion(notif.url)"
+                        class="bg-white rounded-xl border border-gray-200 p-3 flex items-center justify-between cursor-pointer hover:shadow-md transition group"
+                    >
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" :class="notif.color_icon">
+                                <i :class="['fas', notif.icono, 'text-sm']"></i>
+                            </div>
+                            <div>
+                                <p class="text-sm font-bold text-gray-800">{{ notif.titulo }}</p>
+                                <p class="text-[11px] text-gray-500">{{ notif.cantidad }} pendiente(s) de revisar</p>
+                            </div>
+                        </div>
+                        <div class="w-8 h-8 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-primary-50 transition">
+                            <i class="fas fa-chevron-right text-gray-400 group-hover:text-primary-500 text-xs transition"></i>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- ALERTA: FECHAS PENDIENTES -->

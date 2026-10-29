@@ -32,7 +32,85 @@ class OficialController extends Controller
             $esVentaMostrador = ($tipoOperadorId == 6);
         }
 
-        // Si NO es VentaMostrador, devolvemos la vista sin datos
+        // =============================================
+        // 🔥 NOTIFICACIONES PARA EL INICIO
+        // =============================================
+        $notificacionesInicio = [];
+        if ($operadorId && $clienteId) {
+            $roles = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operador_notificaciones as on')
+                ->join('notificaciones_tipos as nt', 'on.IdNotificacionTipo', '=', 'nt.IdNotificacionTipo')
+                ->where('on.IdOperador', $operadorId)
+                ->where('on.IdCliente', $clienteId)
+                ->where('on.ActivoInactivo', 1)
+                ->pluck('nt.Nombre')
+                ->toArray();
+
+            if (in_array('CALIDAD', $roles)) {
+                $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes_reclamos')
+                    ->where('IdCliente', $clienteId)
+                    ->whereIn('Estado', ['Pendiente de Revisión', 'En Revisión'])
+                    ->count();
+                if ($cantidad > 0) {
+                    $notificacionesInicio[] = [
+                        'tipo' => 'CALIDAD',
+                        'titulo' => 'Reclamos en Calidad',
+                        'cantidad' => $cantidad,
+                        'url' => '/operacion/pedidos/clientes-mayoristas/calidad',
+                        'icono' => 'fa-clipboard-check',
+                        'color_bg' => 'bg-rose-50',
+                        'color_border' => 'border-rose-200',
+                        'color_text' => 'text-rose-600',
+                        'color_icon' => 'text-rose-500 bg-rose-100'
+                    ];
+                }
+            }
+
+            if (in_array('TESORERIA', $roles)) {
+                $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes_reclamos')
+                    ->where('IdCliente', $clienteId)
+                    ->where('Estado', 'Aprobado por Calidad')
+                    ->count();
+                if ($cantidad > 0) {
+                    $notificacionesInicio[] = [
+                        'tipo' => 'TESORERIA',
+                        'titulo' => 'Devoluciones por Reembolsar',
+                        'cantidad' => $cantidad,
+                        'url' => '/operacion/pedidos/clientes-mayoristas/tesoreria',
+                        'icono' => 'fa-wallet',
+                        'color_bg' => 'bg-emerald-50',
+                        'color_border' => 'border-emerald-200',
+                        'color_text' => 'text-emerald-600',
+                        'color_icon' => 'text-emerald-500 bg-emerald-100'
+                    ];
+                }
+            }
+
+            if (in_array('DISTRIBUCION', $roles)) {
+                $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes')
+                    ->where('IdCliente', $clienteId)
+                    ->where('EstadoPedido', 'Pendiente')
+                    ->count();
+                if ($cantidad > 0) {
+                    $notificacionesInicio[] = [
+                        'tipo' => 'DISTRIBUCION',
+                        'titulo' => 'Pedidos por Armar',
+                        'cantidad' => $cantidad,
+                        'url' => '/operacion/pedidos/clientes-mayoristas/distribucion',
+                        'icono' => 'fa-truck',
+                        'color_bg' => 'bg-orange-50',
+                        'color_border' => 'border-orange-200',
+                        'color_text' => 'text-orange-600',
+                        'color_icon' => 'text-orange-500 bg-orange-100'
+                    ];
+                }
+            }
+        }
+
+        // Si NO es VentaMostrador, devolvemos la vista sin datos de ventas, pero CON las notificaciones
         if (!$esVentaMostrador) {
             return Inertia::render('Oficial/Index', [
                 'gestion' => [
@@ -50,6 +128,7 @@ class OficialController extends Controller
                 'esVentaMostrador' => false,
                 'diaActual'        => null,
                 'fechasPendientes' => [],
+                'notificacionesInicio' => $notificacionesInicio, 
                 'flash' => [
                     'ok'   => session('ok'),
                     'warn' => session('warn'),
@@ -176,6 +255,7 @@ class OficialController extends Controller
             'esVentaMostrador' => true,
             'diaActual'        => $diaActual,
             'fechasPendientes' => $otrasFechas,
+            'notificacionesInicio' => $notificacionesInicio, 
             'flash' => [
                 'ok'   => session('ok'),
                 'warn' => session('warn'),
@@ -194,4 +274,4 @@ class OficialController extends Controller
             'tiene_facturacion'       => session('tiene_facturacion'),
         ]);
     }
-}
+}   
