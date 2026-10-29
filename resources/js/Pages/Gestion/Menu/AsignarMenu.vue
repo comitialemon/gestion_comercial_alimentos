@@ -13,7 +13,8 @@ const page = usePage()
 const props = defineProps({
     operadores: Array,
     menuCompleto: Array,
-    clienteId: Number
+    clienteId: Number,
+    notificacionesTipos: { type: Array, default: () => [] } // 🔥 NUEVO PROP
 })
 
 // ==================== DETECTAR DISPOSITIVO ====================
@@ -29,6 +30,7 @@ const handleResize = () => {
 // ==================== ESTADO ====================
 const selectedOperador = ref('')
 const menusAsignados = ref([])
+const notificacionesAsignadas = ref([]) // 🔥 NUEVO ESTADO
 const loading = ref(false)
 const saving = ref(false)
 const searchTerm = ref('')
@@ -50,7 +52,6 @@ const hayOperadorSeleccionado = computed(() => {
 
 // ==================== FUNCIONES ====================
 const cerrarDropdown = () => {
-    // 🔥 AUMENTAR EL TIMEOUT PARA QUE EL CLICK SE REGISTRE ANTES DE CERRAR
     setTimeout(() => {
         showDropdown.value = false
     }, 300)
@@ -61,12 +62,14 @@ const seleccionarOperador = (operador) => {
     searchTerm.value = `${operador.ci} - ${operador.nombre}`
     showDropdown.value = false
     cargarMenusAsignados()
+    cargarNotificacionesAsignadas() // 🔥 NUEVA CARGA
 }
 
 const limpiarSeleccion = () => {
     selectedOperador.value = ''
     searchTerm.value = ''
     menusAsignados.value = []
+    notificacionesAsignadas.value = []
     showDropdown.value = false
 }
 
@@ -85,6 +88,18 @@ const cargarMenusAsignados = async () => {
     }
 }
 
+// 🔥 NUEVA FUNCIÓN PARA CARGAR NOTIFICACIONES
+const cargarNotificacionesAsignadas = async () => {
+    if (!selectedOperador.value) return
+    try {
+        const response = await axios.get(`/gestion/menu/notificaciones/${selectedOperador.value}`)
+        notificacionesAsignadas.value = response.data || []
+    } catch (error) {
+        console.error('Error al cargar notificaciones:', error)
+        notificacionesAsignadas.value = []
+    }
+}
+
 const guardarAsignacion = () => {
     if (!selectedOperador.value) {
         toast?.warning('Advertencia', 'Selecciona un operador primero')
@@ -96,7 +111,8 @@ const guardarAsignacion = () => {
     router.post('/gestion/menu/asignar', {
         operador_id: selectedOperador.value,
         cliente_id: props.clienteId,
-        menus: menusAsignados.value
+        menus: menusAsignados.value,
+        notificaciones: notificacionesAsignadas.value // 🔥 ENVIAMOS LAS NOTIFICACIONES
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -127,7 +143,16 @@ const actualizarMenusAsignados = (nuevosAsignados) => {
     menusAsignados.value = nuevosAsignados
 }
 
-// 🔥 CERRAR DROPDOWN AL HACER CLICK FUERA
+// 🔥 FUNCIÓN PARA TOGGLE DE NOTIFICACIÓN
+const toggleNotificacion = (id) => {
+    const index = notificacionesAsignadas.value.indexOf(id)
+    if (index > -1) {
+        notificacionesAsignadas.value.splice(index, 1)
+    } else {
+        notificacionesAsignadas.value.push(id)
+    }
+}
+
 const handleClickOutside = (event) => {
     const container = document.querySelector('.dropdown-container')
     if (container && !container.contains(event.target)) {
@@ -155,6 +180,7 @@ onMounted(() => {
     
     if (selectedOperador.value) {
         cargarMenusAsignados()
+        cargarNotificacionesAsignadas()
     }
 })
 
@@ -162,10 +188,6 @@ onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
     document.removeEventListener('click', handleClickOutside)
 })
-
-watch([() => props.menuCompleto, menusAsignados], () => {
-    console.log('🔄 Datos actualizados')
-}, { deep: true })
 </script>
 
 <template>
@@ -209,7 +231,6 @@ watch([() => props.menuCompleto, menusAsignados], () => {
                             </div>
                         </div>
                         
-                        <!-- 🔥 DROPDOWN - USANDO @mousedown EN VEZ DE @click -->
                         <div 
                             v-if="showDropdown && operadoresFiltrados.length > 0"
                             class="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto"
@@ -243,6 +264,33 @@ watch([() => props.menuCompleto, menusAsignados], () => {
                     
                     <div v-if="loading" class="mt-1.5 text-[10px] text-gray-500 flex items-center gap-1.5">
                         <i class="fas fa-spinner fa-spin text-[9px]"></i> Cargando menús asignados...
+                    </div>
+                </div>
+
+                <!-- 🔥 NUEVA SECCIÓN: ASIGNACIÓN DE NOTIFICACIONES -->
+                <div v-if="hayOperadorSeleccionado" class="bg-white rounded-xl shadow-sm p-3 mb-4">
+                    <h2 class="text-sm font-semibold text-gray-800 flex items-center gap-1.5 mb-3">
+                        <i class="fas fa-bell text-primary-600 text-[10px]"></i> Roles de Notificación
+                    </h2>
+                    <p class="text-xs text-gray-500 mb-3">
+                        Marca los módulos de los cuales este operador recibirá alertas en la campanita del sistema.
+                    </p>
+                    
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        <label 
+                            v-for="tipo in notificacionesTipos" 
+                            :key="tipo.IdNotificacionTipo"
+                            class="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition"
+                            :class="{ 'border-primary-500 bg-primary-50': notificacionesAsignadas.includes(tipo.IdNotificacionTipo) }"
+                        >
+                            <input 
+                                type="checkbox" 
+                                :checked="notificacionesAsignadas.includes(tipo.IdNotificacionTipo)"
+                                @change="toggleNotificacion(tipo.IdNotificacionTipo)"
+                                class="w-4 h-4 accent-primary-600 cursor-pointer"
+                            >
+                            <span class="text-xs font-medium text-gray-700">{{ tipo.Nombre }}</span>
+                        </label>
                     </div>
                 </div>
 
@@ -284,7 +332,7 @@ watch([() => props.menuCompleto, menusAsignados], () => {
                 <!-- ==================== MENSAJE SIN OPERADOR ==================== -->
                 <div v-else class="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400">
                     <i class="fas fa-user-circle text-3xl mb-2 block"></i>
-                    <p class="text-sm">Selecciona un operador para asignar sus menús</p>
+                    <p class="text-sm">Selecciona un operador para asignar sus menús y notificaciones</p>
                 </div>
             </div>
         </div>

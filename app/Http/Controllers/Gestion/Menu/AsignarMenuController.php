@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestion\Menu\AsignarMenuRequest;
 use App\Models\Gestion\Todos\Operador;
 use App\Models\Gestion\Todos\Cliente;
+use App\Models\Gestion\Menu\Notificaciones\NotificacionTipo;
+use App\Models\Gestion\Menu\Notificaciones\OperadorNotificacion;
 use App\Services\Gestion\Menu\MenuService;
 use App\Services\Gestion\Menu\MenuOperadorService;
 use Illuminate\Http\Request;
@@ -75,49 +77,6 @@ class AsignarMenuController extends Controller
         
         $idTipoMenuPorOperador = $tipo->IdOperadorTipo;
 
-        // 🔥 ========== DEPURACIÓN COMPLETA ==========
-        \Log::info('=== DEPURACIÓN ASIGNAR MENÚ ===');
-        \Log::info('Cliente ID: ' . $clienteId);
-        \Log::info('ID Tipo MenuPorOperador: ' . $idTipoMenuPorOperador);
-
-        // 1. Verificar operadores de tipo MenuPorOperador (sin importar empresa)
-        $operadoresTipo = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_operador')
-            ->where('IdOperadorTipo', $idTipoMenuPorOperador)
-            ->where('ActivoInactivo', 0)
-            ->get();
-        
-        \Log::info('Operadores con tipo ' . $idTipoMenuPorOperador . ' y ACTIVOS (ActivoInactivo=0): ' . $operadoresTipo->count());
-        foreach ($operadoresTipo as $op) {
-            \Log::info('  - ID: ' . $op->IdOperador);
-        }
-
-        // 2. Verificar operadores asignados a la empresa (con sus sucursales)
-        $operadoresAsignados = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('todos_operador_sucursaldb as os')
-            ->join('todos_cliente_sucursal as cs', 'os.IdSucursal', '=', 'cs.IdClienteSucursal')
-            ->where('cs.IdCliente', $clienteId)
-            ->get();
-        
-        \Log::info('Operadores asignados a empresa ' . $clienteId . ': ' . $operadoresAsignados->count());
-        foreach ($operadoresAsignados as $op) {
-            \Log::info('  - ID: ' . $op->IdOperador . ', Sucursal ID: ' . $op->IdSucursal);
-        }
-
-        // 3. Obtener IDs de operadores de tipo MenuPorOperador
-        $idsTipo = $operadoresTipo->pluck('IdOperador')->toArray();
-        \Log::info('IDs de tipo MenuPorOperador: ' . implode(',', $idsTipo));
-
-        // 4. Obtener IDs de operadores asignados a la empresa
-        $idsAsignados = $operadoresAsignados->pluck('IdOperador')->toArray();
-        \Log::info('IDs asignados a empresa: ' . implode(',', $idsAsignados));
-
-        // 5. Intersección (operadores que cumplen ambas condiciones)
-        $idsIntersect = array_intersect($idsTipo, $idsAsignados);
-        \Log::info('IDs que cumplen ambas condiciones: ' . count($idsIntersect));
-        \Log::info('IDs: ' . implode(',', $idsIntersect));
-        // =============================================
-
         // 🔥 PASO 2: Usar ese ID en la consulta principal
         $operadores = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('todos_operador as o')
@@ -143,14 +102,16 @@ class AsignarMenuController extends Controller
                 'tipo' => $op->tipo,
             ]);
 
-        \Log::info('RESULTADO FINAL: ' . $operadores->count() . ' operadores encontrados');
-
         $menuCompleto = $this->menuService->getMenuCompleto();
+
+        // 🔥 PASO 3: Traer los tipos de notificaciones disponibles
+        $notificacionesTipos = NotificacionTipo::where('ActivoInactivo', 1)->get();
 
         return Inertia::render('Gestion/Menu/AsignarMenu', [
             'operadores' => $operadores,
             'menuCompleto' => $menuCompleto,
             'clienteId' => $clienteId,
+            'notificacionesTipos' => $notificacionesTipos, // 🔥 SE LO PASAMOS A LA VISTA
             'total_operadores' => $operadores->count()
         ]);
     }
@@ -172,7 +133,27 @@ class AsignarMenuController extends Controller
     }
 
     /**
-     * 🔥 GUARDA LA ASIGNACIÓN DE MENÚS - CON FLASH MESSAGES PARA TOAST
+     * 🔥 NUEVO: Obtiene las notificaciones asignadas a un operador
+     */
+    public function getNotificaciones(Request $request, int $operadorId)
+    {
+        $clienteId = $request->session()->get('cliente_id');
+        
+        if (!$clienteId) {
+            return response()->json(['error' => 'No hay cliente seleccionado'], 400);
+        }
+
+        $asignadas = OperadorNotificacion::where('IdOperador', $operadorId)
+            ->where('IdCliente', $clienteId)
+            ->where('ActivoInactivo', 1)
+            ->pluck('IdNotificacionTipo')
+            ->toArray();
+
+        return response()->json($asignadas);
+    }
+
+    /**
+     * 🔥 GUARDA LA ASIGNACIÓN DE MENÚS Y NOTIFICACIONES
      */
     public function store(AsignarMenuRequest $request)
     {
@@ -181,6 +162,7 @@ class AsignarMenuController extends Controller
             $operadorId = $request->input('operador_id');
             $clienteId = $request->input('cliente_id');
             $menuIds = $request->input('menus', []);
+            $notificacionesIds = $request->input('notificaciones', []); // 🔥 NUEVO
 
             // Validación adicional
             if (!$operadorId) {
@@ -191,39 +173,56 @@ class AsignarMenuController extends Controller
                 return redirect()->back()->with('error', 'Cliente no especificado');
             }
 
-            // Log para depuración
-            Log::info('=== ASIGNACIÓN DE MENÚS RECIBIDA ===');
-            Log::info('Operador ID: ' . $operadorId);
-            Log::info('Cliente ID: ' . $clienteId);
-            Log::info('Menús IDs: ' . json_encode($menuIds));
-            Log::info('Total menús: ' . count($menuIds));
-
             // Si no hay menús, enviar array vacío
             if (!is_array($menuIds)) {
                 $menuIds = [];
             }
 
-            // 🔥 Llamar al servicio para asignar
+            // Si no hay notificaciones, enviar array vacío
+            if (!is_array($notificacionesIds)) {
+                $notificacionesIds = [];
+            }
+
+            // 1. GUARDAR MENÚS
             $this->menuOperadorService->asignarMenusConPadres($operadorId, $clienteId, $menuIds);
+
+            // 2. GUARDAR NOTIFICACIONES
+            // Primero borramos las asignaciones anteriores de este operador en esta empresa
+            OperadorNotificacion::where('IdOperador', $operadorId)
+                ->where('IdCliente', $clienteId)
+                ->delete();
+
+            // Luego insertamos las nuevas
+            foreach ($notificacionesIds as $idNotif) {
+                OperadorNotificacion::create([
+                    'IdOperador' => $operadorId,
+                    'IdNotificacionTipo' => $idNotif,
+                    'IdCliente' => $clienteId,
+                    'ActivoInactivo' => 1,
+                    'IdOperadorInserta' => $request->session()->get('operador_id'),
+                    'FechaInserta' => now(),
+                ]);
+            }
 
             // Limpiar cache del menú para este operador
             $cacheKey = "menu_tree_op_{$operadorId}_cli_{$clienteId}";
             session()->forget($cacheKey);
 
-            Log::info('✅ Menús asignados correctamente', [
+            Log::info('✅ Menús y notificaciones asignados correctamente', [
                 'operador_id' => $operadorId,
-                'total' => count($menuIds)
+                'total_menus' => count($menuIds),
+                'total_notificaciones' => count($notificacionesIds)
             ]);
 
             // ✅ REDIRECCIONAR CON MENSAJE FLASH PARA TOAST
-            return redirect()->back()->with('success', 'Menús asignados correctamente (' . count($menuIds) . ' menús)');
+            return redirect()->back()->with('success', 'Asignación guardada correctamente');
 
         } catch (\Exception $e) {
-            Log::error('❌ Error al asignar menús: ' . $e->getMessage(), [
+            Log::error('❌ Error al asignar menús/notificaciones: ' . $e->getMessage(), [
                 'trace' => $e->getTraceAsString()
             ]);
 
-            return redirect()->back()->with('error', 'Error al asignar menús: ' . $e->getMessage());
+            return redirect()->back()->with('error', 'Error al guardar la asignación: ' . $e->getMessage());
         }
     }
 }

@@ -11,7 +11,7 @@ use App\Http\Controllers\Gestion\Inventario\ProductoVentaController;
 use App\Http\Controllers\Operacion\Produccion\CronogramaController;
 use App\Http\Controllers\Operacion\Pedidos\HoraLimiteController;
 use App\Http\Controllers\Gestion\Banco\BancoGanaderoWebhookController;
-
+use App\Http\Controllers\Gestion\Menu\Notificaciones\NotificacionController;
 // ============================================================
 // APIS INTERNAS (con sesión)
 // ============================================================
@@ -79,7 +79,9 @@ Route::middleware(['web', 'auth.operador'])->group(function () {
         
         return response()->json($pendientes);
     })->name('api.notificaciones.pendientes');
-    
+    // ==================== NOTIFICACIONES POR ROL (CALIDAD, TESORERIA, ETC) ====================
+    Route::get('/mis-notificaciones', [\App\Http\Controllers\Gestion\Menu\Notificaciones\NotificacionController::class, 'index'])
+        ->name('api.mis-notificaciones');
     // ==================== CONCEPTOS DE LIQUIDACIÓN (SIN FACTURACIÓN) ====================
     Route::get('/conceptos-liquidacion', [App\Http\Controllers\Gestion\Impuestos\LiquidacionConceptoController::class, 'getConceptosPorCliente'])
         ->name('api.conceptos-liquidacion');

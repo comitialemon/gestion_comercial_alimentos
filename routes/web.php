@@ -140,6 +140,8 @@ use App\Http\Controllers\Gestion\Banco\BancoCredencialController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController;
+
+
 // ============================================
 // RUTAS PÚBLICAS (Sin autenticación)
 // ============================================
@@ -215,6 +217,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::get('/', [ReporteMenuController::class, 'index'])->name('gestion.menu.reporte');
                 Route::get('/arbol/{operadorId}', [ReporteMenuController::class, 'getArbol'])->name('gestion.menu.reporte.arbol');
             });
+            Route::get('/notificaciones/{operadorId}', [AsignarMenuController::class, 'getNotificaciones'])->name('gestion.menu.asignar.notificaciones');
         });
 
         // ---------- 3.4 SUCURSALES ----------
