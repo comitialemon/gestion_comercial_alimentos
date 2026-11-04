@@ -8,7 +8,6 @@ defineOptions({ layout: AppLayout })
 
 const props = defineProps({
     pedidosPendientes: { type: Array, default: () => [] },
-    pedidosEnCamara: { type: Array, default: () => [] },
     pedidosEnDistribucion: { type: Array, default: () => [] },
     pedidosEnTransportadora: { type: Array, default: () => [] },
     transportadoras: { type: Array, default: () => [] },
@@ -43,7 +42,6 @@ const nuevaTransportadora = ref({ Nombre: '', CI_NIT: '' })
 const pedidosActuales = computed(() => {
     switch (tabActiva.value) {
         case 'pendiente': return props.pedidosPendientes
-        case 'camara': return props.pedidosEnCamara
         case 'distribucion': return props.pedidosEnDistribucion
         case 'transportadora': return props.pedidosEnTransportadora
         default: return []
@@ -141,7 +139,7 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <h1 class="text-base lg:text-lg font-bold text-gray-800">Panel de Distribución</h1>
-                            <p class="text-xs text-gray-500">Gestiona el flujo de pedidos desde Cámara hasta la entrega</p>
+                            <p class="text-xs text-gray-500">Gestiona el flujo de pedidos desde Pendiente hasta la entrega</p>
                         </div>
                     </div>
                     <button
@@ -167,20 +165,6 @@ onUnmounted(() => {
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                 :class="tabActiva === 'pendiente' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
                                 {{ pedidosPendientes.length }}
-                            </span>
-                        </button>
-                        <button
-                            @click="tabActiva = 'camara'"
-                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'camara'
-                                ? 'bg-orange-500 text-white shadow-sm'
-                                : 'text-gray-600 hover:bg-gray-100'"
-                        >
-                            <i class="fas fa-warehouse text-[10px]"></i>
-                            En Cámara
-                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
-                                :class="tabActiva === 'camara' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
-                                {{ pedidosEnCamara.length }}
                             </span>
                         </button>
                         <button
@@ -249,13 +233,9 @@ onUnmounted(() => {
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
 
-                                    <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Cámara')" 
-                                        class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
-                                        <i class="fas fa-play text-[8px]"></i> Comenzar
-                                    </button>
-                                    <button v-else-if="tabActiva === 'camara'" @click="abrirModalEstado(p, 'En Distribución')" 
+                                    <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Distribución')" 
                                         class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
-                                        <i class="fas fa-check text-[8px]"></i> Listo
+                                        <i class="fas fa-play text-[8px]"></i> Comenzar
                                     </button>
                                     
                                     <!-- 🔥 CIUDAD NO TIENE BOTÓN, SOLO PROVINCIA -->
@@ -323,13 +303,9 @@ onUnmounted(() => {
                                                 <i class="fas fa-file-pdf"></i> PDF
                                             </button>
 
-                                            <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Cámara')" 
-                                                class="inline-flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
-                                                <i class="fas fa-play text-[9px]"></i> Comenzar Armado
-                                            </button>
-                                            <button v-else-if="tabActiva === 'camara'" @click="abrirModalEstado(p, 'En Distribución')" 
+                                            <button v-if="tabActiva === 'pendiente'" @click="abrirModalEstado(p, 'En Distribución')" 
                                                 class="inline-flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
-                                                <i class="fas fa-check text-[9px]"></i> Termo Listo
+                                                <i class="fas fa-play text-[9px]"></i> Comenzar Distribución
                                             </button>
                                             
                                             <!-- 🔥 CIUDAD NO TIENE BOTÓN, SOLO PROVINCIA -->

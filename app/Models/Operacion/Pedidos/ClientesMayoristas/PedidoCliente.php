@@ -49,7 +49,6 @@ class PedidoCliente extends Model
     const ESTADO_BORRADOR = 'Borrador';
     const ESTADO_ESPERANDO_PAGO = 'Esperando Pago';
     const ESTADO_PENDIENTE = 'Pendiente';           
-    const ESTADO_EN_CAMARA = 'En Cámara';           
     const ESTADO_EN_DISTRIBUCION = 'En Distribución'; 
     const ESTADO_EN_TRANSPORTADORA = 'En Transportadora'; 
     const ESTADO_RECIBIDO = 'Recibido';             
@@ -224,7 +223,6 @@ class PedidoCliente extends Model
             self::ESTADO_BORRADOR => 'yellow',
             self::ESTADO_ESPERANDO_PAGO => 'purple',
             self::ESTADO_PENDIENTE => 'blue',
-            self::ESTADO_EN_CAMARA => 'orange',
             self::ESTADO_EN_DISTRIBUCION => 'indigo',
             self::ESTADO_EN_TRANSPORTADORA => 'cyan',
             self::ESTADO_RECIBIDO => 'green',        
@@ -240,7 +238,6 @@ class PedidoCliente extends Model
             self::ESTADO_BORRADOR => 'fa-pencil-alt',
             self::ESTADO_ESPERANDO_PAGO => 'fa-qrcode',
             self::ESTADO_PENDIENTE => 'fa-clock',
-            self::ESTADO_EN_CAMARA => 'fa-box-open',
             self::ESTADO_EN_DISTRIBUCION => 'fa-truck',
             self::ESTADO_EN_TRANSPORTADORA => 'fa-shipping-fast',
             self::ESTADO_RECIBIDO => 'fa-check-double',   
@@ -256,7 +253,6 @@ class PedidoCliente extends Model
             self::ESTADO_BORRADOR => 'bg-yellow-100 text-yellow-800',
             self::ESTADO_ESPERANDO_PAGO => 'bg-purple-100 text-purple-800',
             self::ESTADO_PENDIENTE => 'bg-blue-100 text-blue-800',
-            self::ESTADO_EN_CAMARA => 'bg-orange-100 text-orange-800',
             self::ESTADO_EN_DISTRIBUCION => 'bg-indigo-100 text-indigo-800',
             self::ESTADO_EN_TRANSPORTADORA => 'bg-cyan-100 text-cyan-800',
             self::ESTADO_RECIBIDO => 'bg-green-100 text-green-800',    
@@ -364,6 +360,7 @@ class PedidoCliente extends Model
     {
         return $this->EstadoPedido === self::ESTADO_BORRADOR;
     }
+    
     public function reclamo()
     {
         return $this->hasOne(Reclamo::class, 'IdPedidoCliente', 'IdPedidoCliente');

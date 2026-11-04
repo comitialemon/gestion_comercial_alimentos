@@ -60,7 +60,6 @@ class DistribucionController extends Controller
         };
 
         $pedidosPendientes = $queryPedidos('Pendiente');
-        $pedidosEnCamara = $queryPedidos('En Cámara');
         $pedidosEnDistribucion = $queryPedidos('En Distribución');
 
         // Hacemos lo mismo para los que están en transportadora
@@ -106,7 +105,6 @@ class DistribucionController extends Controller
 
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Index', [
             'pedidosPendientes' => $pedidosPendientes,
-            'pedidosEnCamara' => $pedidosEnCamara,
             'pedidosEnDistribucion' => $pedidosEnDistribucion,
             'pedidosEnTransportadora' => $pedidosEnTransportadora,
             'transportadoras' => $transportadoras,
@@ -115,9 +113,9 @@ class DistribucionController extends Controller
 
     public function cambiarEstado(Request $request, $id)
     {
-        // 1. Quitamos el 'required_if' de la transportadora
+        // 1. Quitamos el 'required_if' de la transportadora y el estado "En Cámara"
         $request->validate([
-            'nuevo_estado' => 'required|in:En Cámara,En Distribución,En Transportadora,Recibido',
+            'nuevo_estado' => 'required|in:En Distribución,En Transportadora,Recibido',
             'numero_guia' => 'nullable|string|max:100',
             'costo_envio' => 'nullable|numeric|min:0',
             'observacion' => 'nullable|string|max:255',

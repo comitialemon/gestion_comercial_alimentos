@@ -362,10 +362,48 @@ class PedidoClienteController extends Controller
     {
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
+        $operadorId = session('operador_id');
 
         if (!$clienteId || !$sucursalId) {
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', 'Tu sesión expiró. Por favor, vuelve a iniciar sesión.');
+        }
+
+        // 🔥 VALIDACIÓN: Si hay un pedido "Esperando Pago", redirigir a su review
+        $pedidoEsperandoPago = PedidoCliente::porContexto()
+            ->where('IdOperador', $operadorId)
+            ->where('EstadoPedido', 'Esperando Pago')
+            ->with(['pagoPendiente'])
+            ->latest('IdPedidoCliente')
+            ->first();
+
+        if ($pedidoEsperandoPago) {
+            $pagoPendiente = $pedidoEsperandoPago->pagoPendiente;
+
+            // Solo bloqueamos si el QR sigue vigente
+            $pagoVigente = $pagoPendiente
+                && $pagoPendiente->Estado === 'PENDIENTE'
+                && !$pagoPendiente->haExpirado();
+
+            if ($pagoVigente) {
+                return redirect()->route('operacion.pedidos-clientes.pedidos.review', $pedidoEsperandoPago->IdPedidoCliente)
+                    ->with('info', 'Tienes un pedido pendiente de pago. Termínalo o cancélalo antes de crear uno nuevo.');
+            }
+
+            // Si el pago expiró, regresamos el pedido a Borrador
+            $pedidoEsperandoPago->update([
+                'EstadoPedido' => 'Borrador',
+                'IdOperadorActualiza' => $operadorId,
+                'FechaActualiza' => now(),
+            ]);
+
+            if ($pagoPendiente && $pagoPendiente->Estado === 'PENDIENTE') {
+                $pagoPendiente->update([
+                    'Estado' => 'EXPIRADO',
+                    'FechaExpiracion' => now(),
+                    'FechaUltimaActualizacion' => now(),
+                ]);
+            }
         }
 
         $tipoPrecio = $request->get('tipo_precio', 'sin_factura');
@@ -414,7 +452,7 @@ class PedidoClienteController extends Controller
             ->where('ActivoInactivo', 1)
             ->where(function ($q) {
                 $q->where('PrecioSinFactura', '>', 0)
-                  ->orWhere('PrecioConFactura', '>', 0);
+                ->orWhere('PrecioConFactura', '>', 0);
             })
             ->count();
 
@@ -463,7 +501,7 @@ class PedidoClienteController extends Controller
                     : null;
 
                 return [
-                    'IdPedidoCliente' => $pedidoBorrador->IdPedidoCliente, // 🔥 AQUÍ ESTÁ LA MAGIA
+                    'IdPedidoCliente' => $pedidoBorrador->IdPedidoCliente,
                     'IdContenedor' => $primerItem->IdContenedor,
                     'Codigo' => $contenedor ? $contenedor->Codigo : '-',
                     'Orden' => intval($orden),

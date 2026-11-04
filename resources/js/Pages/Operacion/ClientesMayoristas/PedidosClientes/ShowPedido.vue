@@ -40,27 +40,37 @@ const fechaPedido = computed(() => {
     return '-'
 })
 
-// 🔥 LÍNEA DE TIEMPO
+// 🔥 LÍNEA DE TIEMPO (SIN "En Cámara")
 const timelineCompacto = computed(() => {
     const estado = props.pedido?.EstadoPedido
     const historial = props.pedido?.historial || []
     const envio = props.pedido?.envio
 
+    // Detectar si es provincia (tiene envío por transportadora)
+    const esProvincia = envio?.IdTransportadora != null || estado === 'En Transportadora'
+    
     const getFechaEstado = (estadoNombre) => {
         const h = historial.find(item => item.EstadoNuevo === estadoNombre)
         if (h) return new Date(h.FechaCambio).toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit' })
         return null
     }
 
+    // ❌ ELIMINADO: paso 'En Cámara' / 'Armado'
     const pasos = [
         { key: 'Pendiente', short: 'Pagado', icon: 'fa-credit-card', fecha: getFechaEstado('Pendiente') },
-        { key: 'En Cámara', short: 'Armado', icon: 'fa-box-open', fecha: getFechaEstado('En Cámara') },
         { key: 'En Distribución', short: 'Despachado', icon: 'fa-truck', fecha: getFechaEstado('En Distribución') },
-        { key: 'En Transportadora', short: 'En Viaje', icon: 'fa-shipping-fast', fecha: getFechaEstado('En Transportadora') },
-        { key: 'Recibido', short: 'Recibido', icon: 'fa-check-double', fecha: getFechaEstado('Recibido') },
     ]
 
-    const ordenEstados = ['Pendiente', 'En Cámara', 'En Distribución', 'En Transportadora', 'Recibido']
+    if (esProvincia) {
+        pasos.push({ key: 'En Transportadora', short: 'En Viaje', icon: 'fa-shipping-fast', fecha: getFechaEstado('En Transportadora') })
+    }
+
+    pasos.push({ key: 'Recibido', short: 'Recibido', icon: 'fa-check-double', fecha: getFechaEstado('Recibido') })
+
+    const ordenEstados = esProvincia
+        ? ['Pendiente', 'En Distribución', 'En Transportadora', 'Recibido']
+        : ['Pendiente', 'En Distribución', 'Recibido']
+
     const indexActual = ordenEstados.indexOf(estado)
 
     return pasos.map((paso, index) => {
@@ -125,8 +135,8 @@ onUnmounted(() => window.removeEventListener('resize', handleResize))
 
             <div class="flex-1 overflow-y-auto p-3 space-y-3">
 
-                <!-- LÍNEA DE TIEMPO -->
-                <div v-if="['Pendiente', 'En Cámara', 'En Distribución', 'En Transportadora', 'Recibido'].includes(pedido.EstadoPedido)"
+                <!-- LÍNEA DE TIEMPO (SIN "En Cámara") -->
+                <div v-if="['Pendiente', 'En Distribución', 'En Transportadora', 'Recibido'].includes(pedido.EstadoPedido)"
                      class="bg-gray-50 border border-gray-200 rounded-xl p-3 sm:p-4">
 
                     <div class="flex justify-between items-center mb-1 flex-wrap gap-2">

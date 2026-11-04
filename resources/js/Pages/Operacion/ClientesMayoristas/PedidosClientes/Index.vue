@@ -15,6 +15,9 @@ const props = defineProps({
     pedidos: { type: Object, default: () => ({ data: [] }) },
     puedeHacerPedidos: { type: Boolean, default: true },
     razonNoPuedePedir: { type: String, default: null },
+    // 🔥 NUEVOS PROPS para controlar el flujo de "Esperando Pago"
+    tienePedidoEsperandoPago: { type: Boolean, default: false },
+    pedidoEsperandoPago: { type: Object, default: null },
 })
 
 // ==================== DETECTAR DISPOSITIVO ====================
@@ -36,6 +39,9 @@ const alertaFlash = ref({ visible: false, tipo: 'error', mensaje: '' })
 
 const modalReclamoVisible = ref(false)
 const pedidoParaReclamo = ref(null)
+
+// 🔥 Modal para advertir sobre pedido pendiente de pago
+const modalPedidoPendienteVisible = ref(false)
 
 // ==================== COMPUTED ====================
 const pedidosFiltrados = computed(() => {
@@ -66,6 +72,7 @@ const mostrarFlash = (tipo, mensaje) => {
 watch(() => page.props.flash, (flash) => {
     if (flash?.error) mostrarFlash('error', flash.error)
     if (flash?.success) mostrarFlash('success', flash.success)
+    if (flash?.info) mostrarFlash('success', flash.info)
 }, { deep: true, immediate: true })
 
 // ==================== FORMATEO ====================
@@ -90,7 +97,6 @@ const getEstadoBadge = (estado) => {
         'Borrador': 'bg-yellow-100 text-yellow-700 border-yellow-300',
         'Esperando Pago': 'bg-purple-100 text-purple-700 border-purple-300',
         'Pendiente': 'bg-blue-100 text-blue-700 border-blue-300',
-        'En Cámara': 'bg-orange-100 text-orange-700 border-orange-300',
         'En Distribución': 'bg-indigo-100 text-indigo-700 border-indigo-300',
         'En Transportadora': 'bg-cyan-100 text-cyan-700 border-cyan-300',
         'Recibido': 'bg-emerald-100 text-emerald-700 border-emerald-300',
@@ -105,7 +111,6 @@ const getEstadoIcono = (estado) => {
         'Borrador': 'fa-pencil-alt',
         'Esperando Pago': 'fa-qrcode',
         'Pendiente': 'fa-clock',
-        'En Cámara': 'fa-box-open',
         'En Distribución': 'fa-truck',
         'En Transportadora': 'fa-shipping-fast',
         'Recibido': 'fa-check-double',
@@ -118,15 +123,13 @@ const getEstadoIcono = (estado) => {
 // ==================== PROGRESO INTELIGENTE ====================
 
 const getPasosProgreso = (pedido) => {
-    // 🔥 AHORA EVALUAMOS SI TIENE ENVÍO O SI EL ESTADO ES EN TRANSPORTADORA
     const esProvincia = pedido.es_provincia === true || pedido.EstadoPedido === 'En Transportadora';
-    
+
     const base = [
         { key: 'Pendiente', label: 'Pagado' },
-        { key: 'En Cámara', label: 'Armado' },
         { key: 'En Distribución', label: 'En Reparto' }
     ]
-    
+
     if (esProvincia) {
         return [ ...base, { key: 'En Transportadora', label: 'En Camino' }, { key: 'Recibido', label: 'Recibido' } ]
     }
@@ -153,15 +156,37 @@ const abrirPdf = (id) => {
     window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`, '_blank')
 }
 
+/**
+ * 🔥 Redirige al review del pedido pendiente de pago
+ */
+const irAPagarPedidoPendiente = () => {
+    if (!props.pedidoEsperandoPago) return
+    modalPedidoPendienteVisible.value = false
+    router.visit(
+        `/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${props.pedidoEsperandoPago.IdPedidoCliente}/review`,
+        { replace: true }
+    )
+}
+
 const intentarNuevoPedido = () => {
+    // 1. Validar si puede hacer pedidos
     if (!props.puedeHacerPedidos) {
         modalNoPuedePedirVisible.value = true
         return
     }
+
+    // 2. 🔥 Si hay un pedido esperando pago, mostrar modal para ir a pagarlo
+    if (props.tienePedidoEsperandoPago && props.pedidoEsperandoPago) {
+        modalPedidoPendienteVisible.value = true
+        return
+    }
+
+    // 3. Flujo normal
     router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', { replace: true })
 }
 
 const cerrarModalNoPuedePedir = () => { modalNoPuedePedirVisible.value = false }
+const cerrarModalPedidoPendiente = () => { modalPedidoPendienteVisible.value = false }
 
 const verDetalle = async (pedido) => {
     pedidoSeleccionado.value = pedido
@@ -291,13 +316,49 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap">
+                        <!-- 🔥 BOTÓN DINÁMICO: si hay pedido esperando pago, mostrar "Terminar Pago" -->
+                        <button
+                            v-if="tienePedidoEsperandoPago && pedidoEsperandoPago"
+                            @click="irAPagarPedidoPendiente"
+                            class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm animate-pulse"
+                        >
+                            <i class="fas fa-qrcode text-[10px]"></i> Terminar Pago
+                        </button>
+                        <button
+                            v-else
+                            @click="intentarNuevoPedido"
+                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
+                        >
+                            <i class="fas fa-plus text-[10px]"></i> Nuevo Pedido
+                        </button>
                         <button @click="router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/mis-reclamos')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5">
                             <i class="fas fa-exclamation-circle text-[10px]"></i> Mis Reclamos
                         </button>
-                        <button @click="intentarNuevoPedido" class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm">
-                            <i class="fas fa-plus text-[10px]"></i> Nuevo Pedido
-                        </button>
                     </div>
+                </div>
+
+                <!-- BANNER PEDIDO PENDIENTE DE PAGO -->
+                <div
+                    v-if="tienePedidoEsperandoPago && pedidoEsperandoPago"
+                    class="mb-4 bg-purple-50 border border-purple-200 rounded-xl p-3 flex items-start gap-3 shadow-sm"
+                >
+                    <div class="w-9 h-9 bg-purple-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-qrcode text-purple-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-purple-900">Tienes un pedido pendiente de pago</p>
+                        <p class="text-[11px] text-purple-700 mt-0.5">
+                            Pedido <b>#{{ pedidoEsperandoPago.NumeroPedido || 'Nuevo' }}</b>
+                            por <b>Bs. {{ Number(pedidoEsperandoPago.TotalGeneral || 0).toFixed(2) }}</b>.
+                            Termínalo o cancélalo antes de crear uno nuevo.
+                        </p>
+                    </div>
+                    <button
+                        @click="irAPagarPedidoPendiente"
+                        class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 flex-shrink-0"
+                    >
+                        <i class="fas fa-arrow-right text-[9px]"></i> Ir a pagar
+                    </button>
                 </div>
 
                 <!-- FILTROS -->
@@ -318,7 +379,6 @@ onUnmounted(() => {
                             <select v-model="estadoFiltro" @change="aplicarFiltros" class="w-40 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                                 <option value="">Todos</option>
                                 <option value="Pendiente">Pendiente</option>
-                                <option value="En Cámara">En Cámara</option>
                                 <option value="En Distribución">En Distribución</option>
                                 <option value="En Transportadora">En Transportadora</option>
                                 <option value="Recibido">Recibido</option>
@@ -376,7 +436,6 @@ onUnmounted(() => {
                         <div v-if="getPasoActualIndex(pedido) !== -1" class="px-3 pb-2.5 pt-1 border-t border-gray-100 bg-gray-50/50">
                             <div class="flex items-center gap-1">
                                 <template v-for="(paso, index) in getPasosProgreso(pedido)" :key="paso.key">
-                                    <!-- Punto del paso -->
                                     <div
                                         class="w-2 h-2 rounded-full transition-all duration-300 flex-shrink-0"
                                         :class="{
@@ -388,7 +447,6 @@ onUnmounted(() => {
                                         :title="paso.label"
                                     ></div>
 
-                                    <!-- Línea conectora -->
                                     <div
                                         v-if="index < getPasosProgreso(pedido).length - 1"
                                         class="flex-1 h-0.5 transition-colors duration-300"
@@ -400,7 +458,6 @@ onUnmounted(() => {
                                     ></div>
                                 </template>
 
-                                <!-- Label del paso actual -->
                                 <span class="ml-2 text-[9px] font-medium whitespace-nowrap" :class="pedido.EstadoPedido === 'Con Reclamo' ? 'text-red-600' : 'text-gray-500'">
                                     {{ getPasosProgreso(pedido)[getPasoActualIndex(pedido)]?.label || '' }}
                                 </span>
@@ -462,6 +519,45 @@ onUnmounted(() => {
                     <div class="p-4"><p class="text-sm text-gray-700 text-center leading-relaxed whitespace-pre-line break-words">{{ razonNoPuedePedir || 'Contacta al administrador para más información.' }}</p></div>
                     <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end">
                         <button @click="cerrarModalNoPuedePedir" class="px-4 py-1.5 bg-primary-600 hover:bg-primary-700 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5"><i class="fas fa-check text-[10px]"></i> Entendido</button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- 🔥 MODAL PEDIDO PENDIENTE DE PAGO -->
+        <Teleport to="body">
+            <div v-if="modalPedidoPendienteVisible" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-fade-in" @click.self="cerrarModalPedidoPendiente">
+                <div class="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-scale-in">
+                    <div class="bg-purple-600 px-4 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-qrcode text-white text-base"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm text-white">Pedido pendiente de pago</h3>
+                            </div>
+                        </div>
+                        <button @click="cerrarModalPedidoPendiente" class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition">
+                            <i class="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+                    <div class="p-4 space-y-2">
+                        <p class="text-sm text-gray-700 text-center leading-relaxed">
+                            Tienes el pedido <b>#{{ pedidoEsperandoPago?.NumeroPedido || 'Nuevo' }}</b>
+                            por <b>Bs. {{ Number(pedidoEsperandoPago?.TotalGeneral || 0).toFixed(2) }}</b>
+                            esperando pago.
+                        </p>
+                        <p class="text-xs text-gray-500 text-center">
+                            Debes terminarlo o cancelarlo antes de poder crear un pedido nuevo.
+                        </p>
+                    </div>
+                    <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2">
+                        <button @click="cerrarModalPedidoPendiente" class="px-3 py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition">
+                            Cancelar
+                        </button>
+                        <button @click="irAPagarPedidoPendiente" class="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md transition flex items-center gap-1.5 font-medium">
+                            <i class="fas fa-arrow-right text-[10px]"></i> Ir a pagar
+                        </button>
                     </div>
                 </div>
             </div>
