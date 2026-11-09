@@ -14,6 +14,7 @@ const props = defineProps({
     fechaInicial: String,
     fechaFinal: String,
     sucursalSeleccionada: Number,
+    sucursalNombreInicial: String,
     search: String,
     soloConMovimiento: Boolean,
 })
@@ -23,12 +24,15 @@ const isMobile = ref(false)
 const handleResize = () => { isMobile.value = window.innerWidth < 640 }
 
 // ==================== ESTADO ====================
-const sucursalId        = ref(props.sucursalSeleccionada || '')
-const mostrarLista      = ref(false)
-const fechaInicial      = ref(props.fechaInicial || '')
-const fechaFinal        = ref(props.fechaFinal   || '')
-const search            = ref(props.search       || '')
-const sucursalSearch    = ref('')
+const sucursalId = ref(props.sucursalSeleccionada || '')
+const mostrarLista = ref(false)
+const fechaInicial = ref(props.fechaInicial || '')
+const fechaFinal = ref(props.fechaFinal || '')
+const search = ref(props.search || '')
+
+// 🔥 Precargar el nombre de la sucursal desde el backend
+const sucursalSearch = ref(props.sucursalNombreInicial || '')
+
 const soloConMovimiento = ref(props.soloConMovimiento ?? false)
 
 const haySucursalSeleccionada = computed(() => Number(sucursalId.value) > 0)
@@ -61,25 +65,25 @@ const aplicarFiltros = () => {
 }
 
 const limpiarFiltros = () => {
-    sucursalId.value     = ''
+    sucursalId.value = ''
     sucursalSearch.value = ''
-    fechaInicial.value   = new Date().toISOString().slice(0, 10)
-    fechaFinal.value     = new Date().toISOString().slice(0, 10)
-    search.value         = ''
+    fechaInicial.value = new Date().toISOString().slice(0, 10)
+    fechaFinal.value = new Date().toISOString().slice(0, 10)
+    search.value = ''
     router.get('/gestion/inventario/reporte-productos-base-por-combo', {}, { preserveState: true, replace: true })
 }
 
 const seleccionarSucursal = (suc) => {
-    sucursalId.value     = suc.id
+    sucursalId.value = suc.id
     sucursalSearch.value = suc.nombre
-    mostrarLista.value   = false
+    mostrarLista.value = false
     aplicarFiltros()
 }
 
 const limpiarSucursal = () => {
-    sucursalId.value     = ''
+    sucursalId.value = ''
     sucursalSearch.value = ''
-    mostrarLista.value   = false
+    mostrarLista.value = false
     router.get('/gestion/inventario/reporte-productos-base-por-combo', {}, { preserveState: true, replace: true })
 }
 
@@ -117,10 +121,19 @@ watch(search, () => {
     }, 500)
 })
 
+// 🔥 Si cambia la sucursal desde el backend, actualizar el nombre en el input
+watch(() => props.sucursalNombreInicial, (newVal) => {
+    if (newVal) {
+        sucursalSearch.value = newVal
+    }
+})
+
 onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
-    cargarSucursalNombre()
+    if (sucursalId.value && !sucursalSearch.value) {
+        cargarSucursalNombre()
+    }
 })
 onUnmounted(() => {
     window.removeEventListener('resize', handleResize)
@@ -167,6 +180,12 @@ onUnmounted(() => {
                                     <i class="fas fa-times text-[10px]"></i>
                                 </button>
                             </div>
+                            <span v-if="sucursalId" class="text-[9px] text-primary-600 font-medium">
+                                <i class="fas fa-check-circle"></i> {{ sucursalSearch }}
+                            </span>
+                            <span v-else class="text-[9px] text-gray-400">
+                                <i class="fas fa-store"></i> Ninguna
+                            </span>
                             <div v-if="mostrarLista && sucursalesFiltradas.length > 0"
                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
                                 <div v-for="suc in sucursalesFiltradas" :key="suc.id"
@@ -176,6 +195,10 @@ onUnmounted(() => {
                                     <div class="font-medium text-xs">{{ suc.nombre }}</div>
                                     <div class="text-[9px] text-gray-400">N° {{ suc.numero }}</div>
                                 </div>
+                            </div>
+                            <div v-if="mostrarLista && sucursalesFiltradas.length === 0 && sucursalSearch"
+                                class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-[10px]">
+                                No se encontraron sucursales
                             </div>
                         </div>
 

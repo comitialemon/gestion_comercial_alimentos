@@ -31,7 +31,11 @@ const mostrarListaSucursales = ref(false)
 const fechaInicial = ref(props.fechaInicial || new Date().toISOString().slice(0, 10))
 const fechaFinal = ref(props.fechaFinal || new Date().toISOString().slice(0, 10))
 const search = ref(props.search || '')
-const sucursalSearch = ref('')
+
+// 🔥 Precargar el nombre de la sucursal ya seleccionada
+const sucursalSearch = ref(
+    props.sucursales?.find(s => s.id === Number(props.sucursalSeleccionada))?.nombre || ''
+)
 
 // Modal
 const modalVisible = ref(false)
@@ -102,11 +106,9 @@ const cerrarModal = () => {
     productoSeleccionado.value = null
 }
 
-// 🔥 Formato adaptado (2 decimales si aplica, sin decimales si es entero)
 const formatNumber = (num) => {
     if (num === undefined || num === null || num === 0) return '0'
     const n = Number(num)
-    // Si es entero, sin decimales; si tiene decimales, con 2
     return Number.isInteger(n) ? n.toString() : n.toFixed(2)
 }
 
@@ -123,7 +125,10 @@ watch(search, () => {
 onMounted(() => {
     handleResize()
     window.addEventListener('resize', handleResize)
-    cargarSucursalNombre()
+    // 🔥 Si por alguna razón no vino el nombre, cargarlo
+    if (sucursalId.value && !sucursalSearch.value) {
+        cargarSucursalNombre()
+    }
 })
 
 onUnmounted(() => {
@@ -136,7 +141,7 @@ onUnmounted(() => {
     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
-                <!-- ==================== HEADER ==================== -->
+                <!-- HEADER -->
                 <div class="flex items-center justify-between gap-3 mb-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
@@ -147,14 +152,13 @@ onUnmounted(() => {
                             <p class="text-xs text-gray-500">Salidas reales por producto base, con desglose suelto vs combo</p>
                         </div>
                     </div>
-                    <!-- 🔥 Botón para ir al reporte matriz -->
                     <a href="/gestion/inventario/reporte-productos-base-por-combo"
                        class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1">
                         <i class="fas fa-table-cells text-[10px]"></i> Ver matriz por combo
                     </a>
                 </div>
 
-                <!-- ==================== FILTROS ==================== -->
+                <!-- FILTROS -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-end gap-2">
                         <!-- Sucursal -->
@@ -227,13 +231,13 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- ==================== SIN SUCURSAL ==================== -->
+                <!-- SIN SUCURSAL -->
                 <div v-if="!haySucursalSeleccionada" class="bg-white rounded-xl shadow-sm p-10 text-center">
                     <i class="fas fa-building text-4xl text-gray-300 mb-2 block"></i>
                     <p class="text-sm font-medium text-gray-600">Selecciona una sucursal para ver el reporte</p>
                 </div>
 
-                <!-- ==================== TABLA ==================== -->
+                <!-- TABLA -->
                 <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
 
@@ -347,7 +351,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- ==================== MODAL ==================== -->
+        <!-- MODAL -->
         <ModalDetalleProductoBase
             v-model:visible="modalVisible"
             :producto="productoSeleccionado"

@@ -31,7 +31,8 @@ class ReporteProductosBaseController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
 
-        $sucursalId        = $request->sucursal_id;
+        // 🔥 Usar la sucursal logueada si no viene en la URL
+        $sucursalId        = $request->sucursal_id ?? session('cliente_sucursal_id');
         $fechaInicial      = $request->fecha_inicial ?? date('Y-m-01');
         $fechaFinal        = $request->fecha_final   ?? date('Y-m-d');
         $search            = $request->search;
@@ -147,7 +148,6 @@ class ReporteProductosBaseController extends Controller
                 ->pluck('id_detalle_producto')
                 ->toArray();
         }
-        // Convertir a set para búsqueda rápida
         $setProductosVentaEnComboPack = array_flip($idsProductosVentaEnComboPack);
 
         // =============================================
@@ -213,9 +213,6 @@ class ReporteProductosBaseController extends Controller
 
         // =============================================
         // 9. VENTAS LÍNEA POR LÍNEA
-        //    Clasificación:
-        //      - SUELTO: producto de venta NO está en categoría PACK/COMBOS
-        //      - COMBO/PACK: producto de venta SÍ está en categoría PACK/COMBOS
         // =============================================
         $detallesVentaPorProducto = [];
         $ventasCompuestasPorBase  = [];
@@ -251,13 +248,10 @@ class ReporteProductosBaseController extends Controller
                 }
 
                 $composicion = $composicionPorProductoVenta[$idProductoVenta] ?? [];
-
-                // 🔥 CLASIFICACIÓN ROBUSTA: ¿está en categoría PACK/COMBOS?
                 $esComboPack = isset($setProductosVentaEnComboPack[$idProductoVenta]);
 
                 if (!$esComboPack) {
                     // ==================== SUELTO ====================
-                    // El producto de venta es el producto base
                     $idProductoBase = $idProductoVenta;
 
                     $detallesVentaPorProducto[$idProductoBase][] = [
@@ -274,8 +268,6 @@ class ReporteProductosBaseController extends Controller
                 } else {
                     // ==================== COMBO / PACK ====================
                     if (empty($composicion)) {
-                        // Está en categoría combo pero no tiene composición
-                        // → tratar como suelto para no perder el dato
                         $idProductoBase = $idProductoVenta;
 
                         $detallesVentaPorProducto[$idProductoBase][] = [
@@ -292,7 +284,6 @@ class ReporteProductosBaseController extends Controller
                         continue;
                     }
 
-                    // Calcular productos reales (con sustitutos)
                     $productosReales = $this->calcularProductosReales(
                         $composicion,
                         $personalizacion,
@@ -336,8 +327,6 @@ class ReporteProductosBaseController extends Controller
             $ventaSuelto    = max(0, $totalReal - $ventaCompuesta);
 
             $detalles = $detallesVentaPorProducto[$idProducto] ?? [];
-
-            // Consolidar detalles por producto de venta
             $detallesConsolidados = $this->consolidarDetalles($detalles);
 
             $tieneMovimiento = $totalReal > 0;
@@ -354,7 +343,6 @@ class ReporteProductosBaseController extends Controller
             $resultado->push($producto);
         }
 
-        // Ordenar: con movimiento primero, luego por total descendente
         return $resultado->sortByDesc(function ($item) {
             return ($item->tiene_movimiento ? 1000000 : 0) + $item->total_vendido;
         })->values();
@@ -368,16 +356,13 @@ class ReporteProductosBaseController extends Controller
         $productosReales = [];
 
         if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
-            // Con personalización: cada elemento = 1 combo vendido
             foreach ($personalizacion as $comboData) {
                 $sustitutos = $comboData['sustitutos'] ?? [];
 
                 if (empty($sustitutos)) {
-                    // Sin sustitutos en este combo → usar composición completa
                     foreach ($composicion as $comp) {
                         $idBase   = $comp['id_producto_base'];
                         $cantidad = $comp['porcion'];
-
                         if ($cantidad > 0) {
                             $productosReales[$idBase] = ($productosReales[$idBase] ?? 0) + $cantidad;
                         }
@@ -385,28 +370,23 @@ class ReporteProductosBaseController extends Controller
                     continue;
                 }
 
-                // Agrupar sustitutos por producto original
                 $sustitutosPorOriginal = [];
                 foreach ($sustitutos as $sust) {
                     $idOriginal   = (int) ($sust['id_producto_original'] ?? 0);
                     $idSustituto  = (int) ($sust['id_producto_sustituto'] ?? 0);
                     $cantidad     = (float) ($sust['cantidad'] ?? 0);
-
                     if ($idOriginal <= 0 || $cantidad <= 0) continue;
-
                     $sustitutosPorOriginal[$idOriginal][] = [
                         'id_sustituto' => $idSustituto,
                         'cantidad'     => $cantidad,
                     ];
                 }
 
-                // Recorrer la composición
                 foreach ($composicion as $comp) {
                     $idOriginal      = $comp['id_producto_base'];
                     $porcionOriginal = $comp['porcion'];
 
                     if (!isset($sustitutosPorOriginal[$idOriginal])) {
-                        // No se sustituyó nada de este producto → va completo
                         if ($porcionOriginal > 0) {
                             $productosReales[$idOriginal] =
                                 ($productosReales[$idOriginal] ?? 0) + $porcionOriginal;
@@ -414,21 +394,17 @@ class ReporteProductosBaseController extends Controller
                         continue;
                     }
 
-                    // Hay sustituciones de este original
                     $sustitutosDeEste = $sustitutosPorOriginal[$idOriginal];
                     $totalSustituido  = 0;
 
                     foreach ($sustitutosDeEste as $s) {
                         $idSust   = $s['id_sustituto'];
                         $cantidad = $s['cantidad'];
-
-                        // Cuenta como producto real (sea original o sustituto)
                         $productosReales[$idSust] =
                             ($productosReales[$idSust] ?? 0) + $cantidad;
                         $totalSustituido += $cantidad;
                     }
 
-                    // Si no se sustituyó toda la porción, queda remanente del original
                     $remanente = $porcionOriginal - $totalSustituido;
                     if ($remanente > 0) {
                         $productosReales[$idOriginal] =
@@ -437,11 +413,9 @@ class ReporteProductosBaseController extends Controller
                 }
             }
         } else {
-            // Sin personalización: composición × unidades vendidas
             foreach ($composicion as $comp) {
                 $idBase   = $comp['id_producto_base'];
                 $cantidad = $comp['porcion'] * $unidadesVendidas;
-
                 if ($cantidad > 0) {
                     $productosReales[$idBase] = ($productosReales[$idBase] ?? 0) + $cantidad;
                 }
@@ -452,7 +426,7 @@ class ReporteProductosBaseController extends Controller
     }
 
     /**
-     * 🔧 Consolidar detalles: agrupar por id_producto_venta + es_suelto
+     * 🔧 Consolidar detalles
      */
     private function consolidarDetalles($detalles)
     {
@@ -483,7 +457,6 @@ class ReporteProductosBaseController extends Controller
             }
         }
 
-        // Recalcular porción promedio
         foreach ($agrupados as &$ag) {
             if ($ag['unidades_vendidas'] > 0) {
                 $ag['porcion'] = round($ag['cantidad_base'] / $ag['unidades_vendidas'], 2);
@@ -493,7 +466,6 @@ class ReporteProductosBaseController extends Controller
         }
         unset($ag);
 
-        // Ordenar: combos primero, sueltos al final
         usort($agrupados, function ($a, $b) {
             if ($a['es_suelto'] !== $b['es_suelto']) {
                 return $a['es_suelto'] ? 1 : -1;

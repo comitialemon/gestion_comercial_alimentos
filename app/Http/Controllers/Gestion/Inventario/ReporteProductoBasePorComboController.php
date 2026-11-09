@@ -17,12 +17,6 @@ class ReporteProductoBasePorComboController extends Controller
 {
     /**
      * 📊 Matriz: productos base × combos (salidas REALES de inventario_propiamente)
-     *
-     * - Columnas: combos/packs vendidos en el período (categorías PACK y COMBOS)
-     * - Filas: productos base que tuvieron salidas por venta en el período
-     * - Celdas: unidades del producto base vendidas en ese combo (con sustitutos)
-     * - TOTAL REAL: suma de inventario_propiamente (D_H = 'H', tipo = Ventas)
-     * - Otras Salidas: TOTAL REAL - Σ(combos) → normalmente 0
      */
     public function index(Request $request)
     {
@@ -32,14 +26,15 @@ class ReporteProductoBasePorComboController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
 
-        $sucursalId        = $request->sucursal_id;
+        // 🔥 Usar la sucursal logueada si no viene en la URL
+        $sucursalId = $request->filled('sucursal_id')
+            ? $request->sucursal_id
+            : session('cliente_sucursal_id');
+
         $fechaInicial      = $request->fecha_inicial ?? date('Y-m-01');
         $fechaFinal        = $request->fecha_final   ?? date('Y-m-d');
         $search            = $request->search;
         $soloConMovimiento = $request->boolean('solo_con_movimiento', false);
-
-        $fechaInicialConHora = $fechaInicial . ' 00:00:00';
-        $fechaFinalConHora   = $fechaFinal   . ' 23:59:59';
 
         $data = $this->calcularMatriz(
             $clienteId,
@@ -50,17 +45,25 @@ class ReporteProductoBasePorComboController extends Controller
             $soloConMovimiento
         );
 
+        // 🔥 Buscar el nombre de la sucursal para enviarlo al front
+        $sucursalNombreInicial = '';
+        if ($sucursalId) {
+            $sucursalEncontrada = $sucursales->firstWhere('id', (int) $sucursalId);
+            $sucursalNombreInicial = $sucursalEncontrada?->nombre ?? '';
+        }
+
         return Inertia::render('Gestion/Inventario/ReporteProductoBasePorCombo/Index', [
-            'columnas'             => $data['columnas'],
-            'filas'                => $data['filas'],
-            'totalesPorColumna'    => (object) $data['totalesPorColumna'],
-            'totalGeneral'         => $data['totalGeneral'],
-            'sucursales'           => $sucursales,
-            'fechaInicial'         => $fechaInicial,
-            'fechaFinal'           => $fechaFinal,
-            'sucursalSeleccionada' => $sucursalId,
-            'search'               => $search,
-            'soloConMovimiento'    => $soloConMovimiento,
+            'columnas'              => $data['columnas'],
+            'filas'                 => $data['filas'],
+            'totalesPorColumna'     => (object) $data['totalesPorColumna'],
+            'totalGeneral'          => $data['totalGeneral'],
+            'sucursales'            => $sucursales,
+            'fechaInicial'          => $fechaInicial,
+            'fechaFinal'            => $fechaFinal,
+            'sucursalSeleccionada'  => $sucursalId,
+            'sucursalNombreInicial' => $sucursalNombreInicial,
+            'search'                => $search,
+            'soloConMovimiento'     => $soloConMovimiento,
         ]);
     }
 
@@ -71,7 +74,10 @@ class ReporteProductoBasePorComboController extends Controller
     {
         $clienteId = session('cliente_id');
 
-        $sucursalId        = $request->get('sucursal_id');
+        $sucursalId = $request->filled('sucursal_id')
+            ? $request->get('sucursal_id')
+            : session('cliente_sucursal_id');
+
         $fechaInicial      = $request->get('fecha_inicial') ?? date('Y-m-01');
         $fechaFinal        = $request->get('fecha_final')   ?? date('Y-m-d');
         $search            = $request->get('search');
@@ -108,7 +114,6 @@ class ReporteProductoBasePorComboController extends Controller
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Productos Base x Combo');
 
-        // Cabecera
         $sheet->setCellValue('A1', $empresa->Nombre ?? '');
         $sheet->setCellValue('A2', $sucursal->Nombre ?? '');
         $sheet->setCellValue('A3', 'NIT: ' . ($empresa->NIT ?? ''));
@@ -116,7 +121,6 @@ class ReporteProductoBasePorComboController extends Controller
         $sheet->setCellValue('A5', 'Período: ' . $this->formatearFecha($fechaInicial) . ' al ' . $this->formatearFecha($fechaFinal));
         $sheet->setCellValue('A6', '(Unidades reales según inventario_propiamente)');
 
-        // Total de columnas: Producto Base + combos + Otras Salidas + Total Real
         $totalColumnas  = count($columnas) + 3;
         $ultimaColLetra = $this->numeroAColumna($totalColumnas - 1);
 
@@ -140,7 +144,6 @@ class ReporteProductoBasePorComboController extends Controller
         $sheet->getStyle('A5')->getFont()->setSize(11);
         $sheet->getStyle('A6')->getFont()->setSize(9)->setItalic(true);
 
-        // Header de tabla
         $borderStyle = ['borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN]]];
         $filaHeader  = 8;
 
@@ -169,7 +172,6 @@ class ReporteProductoBasePorComboController extends Controller
 
         $sheet->getRowDimension($filaHeader)->setRowHeight(55);
 
-        // Anchos
         $sheet->getColumnDimension('A')->setWidth(14);
         $sheet->getColumnDimension('B')->setWidth(35);
         foreach ($columnas as $idx => $col) {
@@ -179,7 +181,6 @@ class ReporteProductoBasePorComboController extends Controller
         $sheet->getColumnDimension($colOtras)->setWidth(14);
         $sheet->getColumnDimension($colTotal)->setWidth(16);
 
-        // Filas
         $fila = $filaHeader + 1;
 
         foreach ($filas as $f) {
@@ -212,7 +213,6 @@ class ReporteProductoBasePorComboController extends Controller
             $fila++;
         }
 
-        // Footer: totales por columna
         $sheet->setCellValue('A' . $fila, 'TOTAL POR COLUMNA');
         $sheet->mergeCells('A' . $fila . ':B' . $fila);
         $sheet->getStyle('A' . $fila)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
@@ -241,7 +241,6 @@ class ReporteProductoBasePorComboController extends Controller
 
         $sheet->freezePane('C9');
 
-        // Descarga
         $nombreArchivo = 'ProductosBasePorCombo_' . date('Ymd_His') . '.xlsx';
 
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -254,8 +253,7 @@ class ReporteProductoBasePorComboController extends Controller
     }
 
     /**
-     * 🔧 Cálculo principal: salidas REALES de inventario_propiamente
-     *                    + desglose por combos
+     * 🔧 Cálculo principal
      */
     private function calcularMatriz(
         $clienteId,
@@ -274,9 +272,6 @@ class ReporteProductoBasePorComboController extends Controller
             return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
         }
 
-        // =============================================
-        // 1. ID TIPO OPERACIÓN "VENTAS"
-        // =============================================
         $idTipoOperacionVentas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_tipooperacion')
             ->where('IdCliente', $clienteId)
@@ -288,10 +283,6 @@ class ReporteProductoBasePorComboController extends Controller
             return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
         }
 
-        // =============================================
-        // 2. SALIDAS REALES DE inventario_propiamente (D_H = 'H', tipo = Ventas)
-        //    → total por producto base
-        // =============================================
         $salidasReales = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -305,16 +296,12 @@ class ReporteProductoBasePorComboController extends Controller
             ->get()
             ->keyBy('IdProducto');
 
-        // Si no hay salidas reales, retornar vacío
         if ($salidasReales->isEmpty()) {
             return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
         }
 
         $idsProductosConSalidas = $salidasReales->keys()->toArray();
 
-        // =============================================
-        // 3. CATEGORÍAS PACK Y COMBOS + SUBCATEGORÍAS
-        // =============================================
         $categoriasRaiz = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_menu_categoria')
             ->where('id_cliente', $clienteId)
@@ -345,9 +332,6 @@ class ReporteProductoBasePorComboController extends Controller
         }
         $idsCategoriasComboPack = array_keys($todasLasCategorias);
 
-        // =============================================
-        // 4. PRODUCTOS DE VENTA EN ESAS CATEGORÍAS
-        // =============================================
         $idsProductosVentaEnComboPack = [];
         if (!empty($idsCategoriasComboPack)) {
             $idsProductosVentaEnComboPack = DB::connection('mysql_gestion_comercial_alimentos')
@@ -359,9 +343,6 @@ class ReporteProductoBasePorComboController extends Controller
                 ->toArray();
         }
 
-        // =============================================
-        // 5. COMPOSICIÓN DE COMBOS/PACKS
-        // =============================================
         $composicionPorProductoVenta = [];
         if (!empty($idsProductosVentaEnComboPack)) {
             $composiciones = DB::connection('mysql_gestion_comercial_alimentos')
@@ -378,19 +359,12 @@ class ReporteProductoBasePorComboController extends Controller
             }
         }
 
-        // =============================================
-        // 6. INFO DE PRODUCTOS DE VENTA (nombre)
-        // =============================================
         $productosVentaInfo = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_relacion_ventainventario')
             ->where('IdCliente', $clienteId)
             ->get(['IdDetalleProducto', 'Codigo', 'Detalle'])
             ->keyBy('IdDetalleProducto');
 
-        // =============================================
-        // 7. VENTAS DEL PERÍODO (solo combos/packs)
-        //    Se busca por idventas que aparezcan en inventario_propiamente
-        // =============================================
         $idsFacturasVentas = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -459,9 +433,6 @@ class ReporteProductoBasePorComboController extends Controller
             }
         }
 
-        // =============================================
-        // 8. COLUMNAS (combos con movimiento en el período)
-        // =============================================
         $idsProductosVenta = [];
         foreach ($matriz as $valores) {
             foreach ($valores as $idVenta => $cantidad) {
@@ -481,9 +452,6 @@ class ReporteProductoBasePorComboController extends Controller
         usort($columnasTemp, fn($a, $b) => strcasecmp($a['nombre'], $b['nombre']));
         $columnas = $columnasTemp;
 
-        // =============================================
-        // 9. FILAS: solo productos con salidas reales
-        // =============================================
         $queryProductos = DB::connection('mysql_gestion_comercial_alimentos')
             ->table('inventario_productodetalle as p')
             ->where('p.IdCliente', $clienteId)
@@ -534,9 +502,6 @@ class ReporteProductoBasePorComboController extends Controller
         });
         $filas = $filasTemp;
 
-        // =============================================
-        // 10. TOTALES
-        // =============================================
         foreach ($columnas as $col) {
             $sumaCol = 0;
             foreach ($filas as $fila) {
@@ -550,9 +515,6 @@ class ReporteProductoBasePorComboController extends Controller
         return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
     }
 
-    /**
-     * Convierte número a letra de columna
-     */
     private function numeroAColumna($numero)
     {
         $letra = '';
@@ -563,9 +525,6 @@ class ReporteProductoBasePorComboController extends Controller
         return $letra;
     }
 
-    /**
-     * Formatea Y-m-d a d/m/Y
-     */
     private function formatearFecha($fecha)
     {
         if (!$fecha) return '-';
