@@ -140,6 +140,7 @@ use App\Http\Controllers\Gestion\Banco\BancoCredencialController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController;
+use App\Http\Controllers\Gestion\Inventario\ReporteProductoBasePorComboController;
 
 
 // ============================================
@@ -517,7 +518,16 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
             });
             // REPORTE INVENTARIO BASE - CON MODAL PARA REPORTE DE LAS VENTAS   
             Route::get('reporte-productos-base', [ReporteProductosBaseController::class, 'index'])->name('gestion.inventario.reporte-productos-base');
+             // REPORTE INVENTARIO BASE por combo
+            Route::prefix('reporte-productos-base-por-combo')
+                ->name('gestion.inventario.reporte-productos-base-por-combo.')
+                ->group(function () {
+                    Route::get('/', [ReporteProductoBasePorComboController::class, 'index'])
+                        ->name('index');
 
+                    Route::get('/exportar', [ReporteProductoBasePorComboController::class, 'exportarExcel'])
+                        ->name('exportar');
+                });
             // Ajustes de Inventario
             Route::prefix('ajustes')->group(function () {
                 // === LISTADO Y GESTIÓN ===
