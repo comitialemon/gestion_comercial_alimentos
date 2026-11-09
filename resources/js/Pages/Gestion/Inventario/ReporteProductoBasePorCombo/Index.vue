@@ -90,7 +90,6 @@ const formatNumber = (num) => {
 
 const getValor = (fila, colId) => fila.valores?.[colId] ?? 0
 
-// 🔥 EXPORTAR A EXCEL
 const exportarExcel = () => {
     if (!haySucursalSeleccionada.value) return
 
@@ -142,10 +141,9 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <h1 class="text-base lg:text-lg font-bold text-gray-800">Productos Base por Combo</h1>
-                            <p class="text-xs text-gray-500">Cantidad real vendida por combo / pack</p>
+                            <p class="text-xs text-gray-500">Salidas reales por venta según inventario</p>
                         </div>
                     </div>
-                    <!-- 🔥 BOTÓN EXPORTAR EXCEL -->
                     <button @click="exportarExcel" :disabled="!haySucursalSeleccionada"
                         class="px-3 py-1.5 bg-emerald-600 text-white rounded-md text-xs font-medium hover:bg-emerald-700 transition flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                         <i class="fas fa-file-excel text-[10px]"></i> Exportar Excel
@@ -155,7 +153,6 @@ onUnmounted(() => {
                 <!-- FILTROS -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-end gap-2">
-                        <!-- Sucursal -->
                         <div class="relative flex-1 min-w-[160px] max-w-[220px]">
                             <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Sucursal *</label>
                             <div class="relative">
@@ -214,7 +211,7 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="mt-1 text-[8px] text-gray-400">
-                        <i class="fas fa-info-circle"></i> Cada columna es un combo/pack. Las celdas muestran las unidades reales del producto base vendidas dentro de ese combo. Las ventas sueltas no se incluyen.
+                        <i class="fas fa-info-circle"></i> Salidas reales de inventario (tipo operación = Ventas). Cada columna es un combo/pack. TOTAL REAL = suma de inventario_propiamente. "Otras Salidas" = diferencia (ventas sin combo o diferencias).
                     </div>
                 </div>
 
@@ -224,7 +221,7 @@ onUnmounted(() => {
                     <p class="text-sm font-medium text-gray-600">Selecciona una sucursal para ver la matriz</p>
                 </div>
 
-                <!-- TABLA MATRIZ -->
+                <!-- TABLA -->
                 <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="px-3 py-2 border-b border-gray-100 flex items-center justify-between text-[10px] text-gray-500">
                         <span>
@@ -238,8 +235,6 @@ onUnmounted(() => {
 
                     <div class="overflow-x-auto overflow-y-auto" style="max-height: 70vh;">
                         <table class="min-w-full divide-y divide-gray-200 border-collapse">
-
-                            <!-- HEADER MULTICELDA (sin código) -->
                             <thead class="bg-primary-50">
                                 <tr class="sticky top-0 z-20">
                                     <th class="px-3 py-2 text-left text-[10px] font-bold text-primary-700 uppercase sticky left-0 z-30 bg-primary-50 border-r border-primary-200"
@@ -254,14 +249,17 @@ onUnmounted(() => {
                                             {{ col.nombre }}
                                         </div>
                                     </th>
-                                    <th class="px-3 py-2 text-center text-[10px] font-bold text-primary-800 uppercase bg-primary-200 sticky right-0 z-30 border-l border-primary-300"
+                                    <th class="px-2 py-2 text-center text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border-r border-amber-200 sticky"
                                         style="min-width: 100px;">
-                                        TOTAL
+                                        Otras Salidas
+                                    </th>
+                                    <th class="px-3 py-2 text-center text-[10px] font-bold text-primary-800 uppercase bg-primary-200 sticky right-0 z-30 border-l border-primary-300"
+                                        style="min-width: 110px;">
+                                        TOTAL REAL
                                     </th>
                                 </tr>
                             </thead>
 
-                            <!-- BODY -->
                             <tbody class="bg-white divide-y divide-gray-100">
                                 <tr v-for="fila in filas" :key="fila.id_producto" class="hover:bg-gray-50 transition">
                                     <td class="px-3 py-1.5 sticky left-0 z-10 bg-white border-r border-gray-200"
@@ -276,20 +274,23 @@ onUnmounted(() => {
                                         :class="getValor(fila, col.id) > 0 ? 'text-gray-800 font-semibold' : 'text-gray-300'">
                                         {{ formatNumber(getValor(fila, col.id)) }}
                                     </td>
+                                    <td class="px-2 py-1.5 text-center bg-amber-50 font-bold text-amber-700 border-r border-amber-200"
+                                        :class="fila.otras_salidas > 0 ? '' : 'text-gray-300'">
+                                        {{ formatNumber(fila.otras_salidas) }}
+                                    </td>
                                     <td class="px-3 py-1.5 text-center bg-primary-50 font-bold text-primary-700 text-xs sticky right-0 z-10 border-l border-primary-200">
                                         {{ formatNumber(fila.total) }}
                                     </td>
                                 </tr>
 
                                 <tr v-if="!filas || filas.length === 0">
-                                    <td :colspan="columnas.length + 2" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                    <td :colspan="columnas.length + 3" class="px-4 py-10 text-center text-gray-400 text-sm">
                                         <i class="fas fa-box-open text-2xl mb-1 block"></i>
                                         No hay datos para los filtros seleccionados
                                     </td>
                                 </tr>
                             </tbody>
 
-                            <!-- FOOTER -->
                             <tfoot class="bg-gray-100 sticky bottom-0 z-10">
                                 <tr>
                                     <td class="px-3 py-2 text-xs font-bold text-gray-800 sticky left-0 z-20 bg-gray-100 border-r border-gray-300">
@@ -298,6 +299,9 @@ onUnmounted(() => {
                                     <td v-for="col in columnas" :key="col.id"
                                         class="px-2 py-2 text-center text-xs font-bold border-r border-gray-200 text-blue-700 bg-blue-50">
                                         {{ formatNumber(totalesPorColumna?.[col.id]) }}
+                                    </td>
+                                    <td class="px-2 py-2 text-center text-xs font-bold text-amber-700 bg-amber-50 border-r border-amber-200">
+                                        {{ formatNumber(filas.reduce((acc, f) => acc + (f.otras_salidas || 0), 0)) }}
                                     </td>
                                     <td class="px-3 py-2 text-center bg-primary-200 text-primary-800 font-bold text-xs sticky right-0 z-20 border-l border-primary-300">
                                         {{ formatNumber(totalGeneral) }}
@@ -318,17 +322,6 @@ onUnmounted(() => {
 .overflow-y-auto::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 4px; }
 .overflow-y-auto::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 
-/* Fallback por si Tailwind no tiene line-clamp habilitado */
-.line-clamp-1 {
-    display: -webkit-box;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-.line-clamp-3 {
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
+.line-clamp-1 { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 </style>

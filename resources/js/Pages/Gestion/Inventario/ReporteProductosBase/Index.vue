@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, computed, onMounted, onUnmounted } from 'vue'
-import { router, Link } from '@inertiajs/vue3'
+import { router } from '@inertiajs/vue3'
 import AppLayout from '@/Layouts/AppLayout.vue'
 import ModalDetalleProductoBase from './components/ModalDetalleProductoBase.vue'
 
@@ -45,8 +45,8 @@ const haySucursalSeleccionada = computed(() => {
 const sucursalesFiltradas = computed(() => {
     if (!sucursalSearch.value) return props.sucursales || []
     const termino = sucursalSearch.value.toLowerCase()
-    return (props.sucursales || []).filter(s => 
-        s.nombre.toLowerCase().includes(termino) || 
+    return (props.sucursales || []).filter(s =>
+        s.nombre.toLowerCase().includes(termino) ||
         s.numero?.toString().includes(termino)
     )
 })
@@ -102,9 +102,12 @@ const cerrarModal = () => {
     productoSeleccionado.value = null
 }
 
+// 🔥 Formato adaptado (2 decimales si aplica, sin decimales si es entero)
 const formatNumber = (num) => {
-    if (num === undefined || num === null) return '0'
-    return Number(num).toFixed(0)
+    if (num === undefined || num === null || num === 0) return '0'
+    const n = Number(num)
+    // Si es entero, sin decimales; si tiene decimales, con 2
+    return Number.isInteger(n) ? n.toString() : n.toFixed(2)
 }
 
 // Debounce
@@ -133,18 +136,25 @@ onUnmounted(() => {
     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 pb-20">
         <div class="py-4 px-4 sm:py-5 sm:px-6 lg:py-6 lg:px-8">
             <div class="max-w-full mx-auto">
-                <!-- ==================== HEADER COMPACTO ==================== -->
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-cubes text-primary-600 text-base"></i>
+                <!-- ==================== HEADER ==================== -->
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-cubes text-primary-600 text-base"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Reporte de Productos Base</h1>
+                            <p class="text-xs text-gray-500">Salidas reales por producto base, con desglose suelto vs combo</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 class="text-base lg:text-lg font-bold text-gray-800">Reporte de Productos Base</h1>
-                        <p class="text-xs text-gray-500">Muestra en qué productos se vendió cada producto base</p>
-                    </div>
+                    <!-- 🔥 Botón para ir al reporte matriz -->
+                    <a href="/gestion/inventario/reporte-productos-base-por-combo"
+                       class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1">
+                        <i class="fas fa-table-cells text-[10px]"></i> Ver matriz por combo
+                    </a>
                 </div>
 
-                <!-- ==================== FILTROS COMPACTOS ==================== -->
+                <!-- ==================== FILTROS ==================== -->
                 <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
                     <div class="flex flex-wrap items-end gap-2">
                         <!-- Sucursal -->
@@ -167,7 +177,7 @@ onUnmounted(() => {
                             <span v-else class="text-[9px] text-gray-400">
                                 <i class="fas fa-store"></i> Ninguna
                             </span>
-                            <div v-if="mostrarListaSucursales && sucursalesFiltradas.length > 0" 
+                            <div v-if="mostrarListaSucursales && sucursalesFiltradas.length > 0"
                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-40 overflow-y-auto">
                                 <div v-for="suc in sucursalesFiltradas" :key="suc.id"
                                     @mousedown="seleccionarSucursal(suc)"
@@ -177,51 +187,47 @@ onUnmounted(() => {
                                     <div class="text-[9px] text-gray-400">N° {{ suc.numero }}</div>
                                 </div>
                             </div>
-                            <div v-if="mostrarListaSucursales && sucursalesFiltradas.length === 0 && sucursalSearch" 
+                            <div v-if="mostrarListaSucursales && sucursalesFiltradas.length === 0 && sucursalSearch"
                                 class="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg p-2 text-center text-gray-400 text-[10px]">
                                 No se encontraron sucursales
                             </div>
                         </div>
 
-                        <!-- Fecha Inicial -->
                         <div class="flex items-center gap-1">
                             <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Desde:</label>
-                            <input type="date" v-model="fechaInicial" @change="aplicarFiltros" 
+                            <input type="date" v-model="fechaInicial" @change="aplicarFiltros"
                                 class="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                         </div>
 
-                        <!-- Fecha Final -->
                         <div class="flex items-center gap-1">
                             <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Hasta:</label>
-                            <input type="date" v-model="fechaFinal" @change="aplicarFiltros" 
+                            <input type="date" v-model="fechaFinal" @change="aplicarFiltros"
                                 class="w-32 border border-gray-300 rounded-md px-2 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                         </div>
 
-                        <!-- Buscar -->
                         <div class="flex items-center gap-1 flex-1 min-w-[120px] max-w-[200px]">
                             <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">Producto:</label>
-                            <input type="text" v-model="search" placeholder="Código o descripción..." 
+                            <input type="text" v-model="search" placeholder="Código o descripción..."
                                 class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none">
                         </div>
 
-                        <!-- Botones -->
                         <div class="flex gap-1.5 ml-auto">
                             <button @click="aplicarFiltros" :disabled="!haySucursalSeleccionada"
                                 class="px-3 py-1.5 bg-primary-600 text-white rounded-md text-xs font-medium hover:bg-primary-700 transition flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed">
                                 <i class="fas fa-search text-[10px]"></i> Buscar
                             </button>
-                            <button @click="limpiarFiltros" 
+                            <button @click="limpiarFiltros"
                                 class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-md text-xs font-medium hover:bg-gray-300 transition flex items-center gap-1">
                                 <i class="fas fa-eraser text-[10px]"></i> Limpiar
                             </button>
                         </div>
                     </div>
                     <div class="mt-1 text-[8px] text-gray-400">
-                        <i class="fas fa-info-circle"></i> Muestra productos que se vendieron como sueltos o dentro de combos/packs
+                        <i class="fas fa-info-circle"></i> TOTAL = salidas reales de inventario (tipo = Ventas). Suelto = total − combos. Combo = suma de unidades en combos/packs.
                     </div>
                 </div>
 
-                <!-- ==================== MENSAJE SIN SUCURSAL ==================== -->
+                <!-- ==================== SIN SUCURSAL ==================== -->
                 <div v-if="!haySucursalSeleccionada" class="bg-white rounded-xl shadow-sm p-10 text-center">
                     <i class="fas fa-building text-4xl text-gray-300 mb-2 block"></i>
                     <p class="text-sm font-medium text-gray-600">Selecciona una sucursal para ver el reporte</p>
@@ -230,10 +236,10 @@ onUnmounted(() => {
                 <!-- ==================== TABLA ==================== -->
                 <div v-else class="bg-white rounded-xl shadow-sm overflow-hidden">
                     <div class="relative overflow-x-auto" style="max-height: 70vh; overflow-y: auto;">
-                        
+
                         <!-- VISTA MÓVIL -->
                         <div v-if="isMobile" class="p-2 space-y-2">
-                            <div v-for="item in productos" :key="item.IdProducto" 
+                            <div v-for="item in productos" :key="item.IdProducto"
                                 class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
                                 <div class="flex justify-between items-start mb-1.5">
                                     <div class="flex-1 min-w-0">
@@ -255,7 +261,7 @@ onUnmounted(() => {
                                     </div>
                                 </div>
                                 <div class="mt-1.5 flex justify-end">
-                                    <button @click="verDetalle(item)" 
+                                    <button @click="verDetalle(item)"
                                         class="text-[10px] text-primary-600 hover:text-primary-800 flex items-center gap-1">
                                         <i class="fas fa-list text-[9px]"></i> Desglose
                                     </button>
@@ -321,7 +327,7 @@ onUnmounted(() => {
                                         <td class="px-3 py-2 text-right text-xs text-blue-600 font-semibold">{{ formatNumber(item.venta_compuesta) }}</td>
                                         <td class="px-3 py-2 text-right text-xs font-bold text-primary-700">{{ formatNumber(item.total_vendido) }}</td>
                                         <td class="px-3 py-2 text-center">
-                                            <button @click="verDetalle(item)" 
+                                            <button @click="verDetalle(item)"
                                                 class="p-1 rounded hover:bg-primary-100 transition text-primary-600 text-xs" title="Ver desglose">
                                                 <i class="fas fa-list-ul"></i>
                                             </button>
