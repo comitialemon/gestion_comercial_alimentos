@@ -167,21 +167,43 @@ class BilleteraOperador extends Model
     // HELPERS ESTÁTICOS
     // ============================================================
 
-    public static function porOperador(int $idOperador): ?self
+    public static function porOperador(int $idOperador, ?int $clienteId = null, ?int $sucursalId = null): ?self
     {
-        return self::where('IdOperador', $idOperador)->first();
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+
+        if (!$clienteId || !$sucursalId) return null;
+
+        return self::where('IdOperador', $idOperador)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
+            ->first();
     }
 
-    public static function operadorTieneBilleteraActiva(int $idOperador): bool
+    public static function operadorTieneBilleteraActiva(int $idOperador, ?int $clienteId = null, ?int $sucursalId = null): bool
     {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+
+        if (!$clienteId || !$sucursalId) return false;
+
         return self::where('IdOperador', $idOperador)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->where('ActivoInactivo', 0)
             ->exists();
     }
 
-    public static function obtenerActivaDelOperador(int $idOperador): ?self
+    public static function obtenerActivaDelOperador(int $idOperador, ?int $clienteId = null, ?int $sucursalId = null): ?self
     {
+        $clienteId = $clienteId ?? session('cliente_id');
+        $sucursalId = $sucursalId ?? session('cliente_sucursal_id');
+
+        if (!$clienteId || !$sucursalId) return null;
+
         return self::where('IdOperador', $idOperador)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->where('ActivoInactivo', 0)
             ->first();
     }

@@ -10,18 +10,23 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class TesoreriaController extends Controller
 {
     public function index()
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id'); // ✅ NUEVO
 
-        // Traemos tanto los Aprobados como los Reembolsados
+        // ✅ FIX: Filtrar reclamos por contexto (cliente + sucursal del pedido)
         $reclamos = Reclamo::where('IdCliente', $clienteId)
             ->whereIn('Estado', ['Aprobado por Calidad', 'Reembolsado'])
+            ->whereHas('pedido', function ($q) use ($sucursalId) {
+                $q->where('IdSucursal', $sucursalId); // ✅ Filtro por sucursal
+            })
             ->with([
-                'pedido.cliente', 
+                'pedido.cliente',
                 'pedido.sucursal',
                 'detalles.producto'
             ])
@@ -31,7 +36,7 @@ class TesoreriaController extends Controller
         // Enriquecer los reclamos con el nombre del operador y el monto
         $reclamosProcesados = $reclamos->map(function ($reclamo) {
             $montoTotal = 0;
-            
+
             // Calcular monto (Sirve tanto para Aprobados como para Reembolsados)
             foreach ($reclamo->detalles as $detalle) {
                 $precioProducto = DB::connection('mysql_gestion_comercial_alimentos')
@@ -52,7 +57,7 @@ class TesoreriaController extends Controller
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
                 ->where('todos_operador.IdOperador', $reclamo->pedido->IdOperador)
                 ->first(['todos_identificador.Nombre as nombre']);
-            
+
             $reclamo->nombre_operador = $operadorData->nombre ?? 'Sin operador';
 
             return $reclamo;
@@ -66,14 +71,19 @@ class TesoreriaController extends Controller
     public function devolver(Request $request, $id)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id'); // ✅ NUEVO
         $operadorId = session('operador_id');
         $conexion = DB::connection('mysql_gestion_comercial_alimentos');
 
         try {
             $conexion->beginTransaction();
 
+            // ✅ FIX: Verificar que el reclamo pertenece al contexto
             $reclamo = Reclamo::where('IdCliente', $clienteId)
                 ->where('IdReclamo', $id)
+                ->whereHas('pedido', function ($q) use ($sucursalId) {
+                    $q->where('IdSucursal', $sucursalId); // ✅ Filtro por sucursal
+                })
                 ->lockForUpdate()
                 ->first();
 
@@ -93,7 +103,7 @@ class TesoreriaController extends Controller
                     ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
                     ->where('IdProducto', $detalle->IdProducto)
                     ->value('Precio');
-                
+
                 if ($detalle->CantidadAprobada > 0 && $precioProducto) {
                     $montoTotal += ($detalle->CantidadAprobada * $precioProducto);
                 }
@@ -104,20 +114,28 @@ class TesoreriaController extends Controller
                 return response()->json(['success' => false, 'message' => 'El monto a devolver es 0 o no hay cantidades aprobadas.'], 422);
             }
 
-            $pedido = PedidoCliente::find($reclamo->IdPedidoCliente);
+            // ✅ FIX: Verificar que el pedido pertenece al contexto
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
+                ->first();
+
             if (!$pedido) {
                 $conexion->rollBack();
                 return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
             }
 
+            // ✅ Billetera con contexto (ya estaba bien)
             $billetera = BilleteraOperador::where('IdOperador', $pedido->IdOperador)
+                ->where('IdCliente', $pedido->IdCliente)
+                ->where('IdSucursal', $pedido->IdSucursal)
                 ->where('ActivoInactivo', 0)
                 ->lockForUpdate()
                 ->first();
 
             if (!$billetera) {
                 $conexion->rollBack();
-                return response()->json(['success' => false, 'message' => 'El operador no tiene una billetera activa para recibir la devolución.'], 422);
+                return response()->json(['success' => false, 'message' => 'El operador no tiene una billetera activa para recibir la devolución en esta sucursal.'], 422);
             }
 
             $billetera->devolverPorReclamo(
@@ -134,6 +152,9 @@ class TesoreriaController extends Controller
             ]);
 
             $conexion->commit();
+
+            // ✅ Invalidar cache del navbar con contexto
+            Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
             return response()->json([
                 'success' => true,

@@ -52,8 +52,9 @@ class BilleteraClienteController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // Operadores PedidoClientes SIN billetera
+        // Operadores PedidoClientes SIN billetera (del mismo cliente + sucursal)
         $idsConBilletera = BilleteraOperador::where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->pluck('IdOperadorPedidoCliente')
             ->toArray();
 
@@ -95,11 +96,16 @@ class BilleteraClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        $existe = BilleteraOperador::where('IdOperadorPedidoCliente', $request->IdOperadorPedidoCliente)->exists();
+        // 🔥 Validar duplicado por CONTEXTO (operador + cliente + sucursal)
+        $existe = BilleteraOperador::where('IdOperadorPedidoCliente', $request->IdOperadorPedidoCliente)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
+            ->exists();
+
         if ($existe) {
             return response()->json([
                 'success' => false,
-                'message' => 'Este operador ya tiene una billetera creada.'
+                'message' => 'Este operador ya tiene una billetera creada en esta sucursal.'
             ], 422);
         }
 
@@ -124,14 +130,15 @@ class BilleteraClienteController extends Controller
                 'ActivoInactivo' => 0,
                 'MotivoInactivacion' => null,
                 'PermiteAutoRecarga' => 0,
-                'SaldoMinimoAlerta' => $saldoMinimo, // ✅ siempre número
+                'SaldoMinimoAlerta' => $saldoMinimo,
                 'IdOperadorInserta' => $operadorId,
                 'FechaCreacion' => now(),
             ]);
 
             DB::connection('mysql_gestion_comercial_alimentos')->commit();
 
-            Cache::forget("billetera_operador_{$billetera->IdOperador}");
+            // 🔥 Invalidar cache del navbar con contexto
+            Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
             return response()->json([
                 'success' => true,
@@ -218,7 +225,8 @@ class BilleteraClienteController extends Controller
                 $operadorId
             );
 
-            Cache::forget("billetera_operador_{$billetera->IdOperador}");
+            // 🔥 Invalidar cache con contexto
+            Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
             return response()->json([
                 'success' => true,
@@ -258,7 +266,8 @@ class BilleteraClienteController extends Controller
                 $operadorId
             );
 
-            Cache::forget("billetera_operador_{$billetera->IdOperador}");
+            // 🔥 Invalidar cache con contexto
+            Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
             return response()->json([
                 'success' => true,
@@ -288,7 +297,8 @@ class BilleteraClienteController extends Controller
 
         $billetera->activar($operadorId);
 
-        Cache::forget("billetera_operador_{$billetera->IdOperador}");
+        // 🔥 Invalidar cache con contexto
+        Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
         return response()->json([
             'success' => true,
@@ -322,7 +332,8 @@ class BilleteraClienteController extends Controller
 
         $billetera->inactivar($operadorId, $request->MotivoInactivacion);
 
-        Cache::forget("billetera_operador_{$billetera->IdOperador}");
+        // 🔥 Invalidar cache con contexto
+        Cache::forget("billetera_operador_{$billetera->IdOperador}_{$billetera->IdCliente}_{$billetera->IdSucursal}");
 
         return response()->json([
             'success' => true,
@@ -336,8 +347,13 @@ class BilleteraClienteController extends Controller
     public function miBilletera(Request $request)
     {
         $operadorId = session('operador_id');
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
 
+        // 🔥 Filtrar por CONTEXTO (operador + cliente + sucursal)
         $billetera = BilleteraOperador::where('IdOperador', $operadorId)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->with(['operador.identificador', 'sucursal'])
             ->first();
 
@@ -365,15 +381,24 @@ class BilleteraClienteController extends Controller
     public function apiMiSaldo()
     {
         $operadorId = session('operador_id');
-        if (!$operadorId) {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        if (!$operadorId || !$clienteId || !$sucursalId) {
             return response()->json(['tiene_billetera' => false]);
         }
 
+        // 🔥 Cache key con contexto
+        $cacheKey = "billetera_operador_{$operadorId}_{$clienteId}_{$sucursalId}";
+
         $data = Cache::remember(
-            "billetera_operador_{$operadorId}",
-            1, // ← 🔥 CAMBIO: de 5 a 1 segundo
-            function () use ($operadorId) {
+            $cacheKey,
+            1, // 1 segundo (para actualizaciones rápidas)
+            function () use ($operadorId, $clienteId, $sucursalId) {
+                // 🔥 Filtrar por CONTEXTO
                 $billetera = BilleteraOperador::where('IdOperador', $operadorId)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
                     ->select('IdBilletera', 'SaldoActual', 'ActivoInactivo', 'SaldoMinimoAlerta')
                     ->first();
 
@@ -405,8 +430,11 @@ class BilleteraClienteController extends Controller
     public function operadoresDisponibles(Request $request)
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
 
+        // 🔥 Filtrar por CONTEXTO
         $idsConBilletera = BilleteraOperador::where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->pluck('IdOperadorPedidoCliente')
             ->toArray();
 
@@ -425,7 +453,10 @@ class BilleteraClienteController extends Controller
 
         return response()->json($operadores);
     }
-    //IMPRIMIR MOVIMIENTOS POR PERSONA EN PDF
+
+    // ============================================================
+    // PDF: MOVIMIENTOS POR PERSONA
+    // ============================================================
     public function exportarPdfMovimientos(Request $request, $id)
     {
         $clienteId = session('cliente_id');
@@ -494,7 +525,7 @@ class BilleteraClienteController extends Controller
         $pdf->Cell(30, 5, 'Operador:', 0, 0);
         $pdf->SetFont('helvetica', '', 9);
         $pdf->Cell(70, 5, $billetera->operador->identificador->Nombre ?? 'Sin nombre', 0, 0);
-        
+
         $pdf->SetFont('helvetica', 'B', 9);
         $pdf->Cell(30, 5, 'Saldo Actual:', 0, 0);
         $pdf->SetFont('helvetica', 'B', 10);
@@ -524,7 +555,7 @@ class BilleteraClienteController extends Controller
             if ($request->filled('hasta')) $textoFiltros .= "Hasta: " . Carbon::parse($request->hasta)->format('d/m/Y');
             $textoFiltros .= ")";
         }
-        
+
         $pdf->SetTextColor(100, 100, 100);
         $pdf->SetFont('helvetica', 'I', 8);
         $pdf->SetXY(10, $y);
@@ -548,29 +579,26 @@ class BilleteraClienteController extends Controller
 
         // --- FILAS ---
         $pdf->SetFont('helvetica', '', 7);
-        
+
         foreach ($movimientos as $mov) {
             $monto = (float) $mov->Monto;
             $esPositivo = $monto >= 0;
             $ingreso = $esPositivo ? number_format($monto, 2) : '';
             $egreso = !$esPositivo ? number_format(abs($monto), 2) : '';
-            
+
             $fecha = Carbon::parse($mov->FechaMovimiento)->format('d/m/Y');
             $tipo = $mov->Tipo ?? 'MOV';
             $glosa = $mov->Glosa ?? '-';
             $saldo = number_format($mov->SaldoDespues, 2);
 
-            // Calcular la altura de la fila para que se ajuste al texto más largo
-            // MultiCell usa el ancho para calcular cuántas líneas ocupará
             $alturaFecha = $pdf->getStringHeight(20, $fecha);
             $alturaTipo = $pdf->getStringHeight(20, $tipo);
             $alturaGlosa = $pdf->getStringHeight(80, $glosa);
-            $alturaMax = max($alturaFecha, $alturaTipo, $alturaGlosa, 4.5); // mínimo 4.5mm
+            $alturaMax = max($alturaFecha, $alturaTipo, $alturaGlosa, 4.5);
 
             if ((270 - $y) < $alturaMax + 5) {
                 $pdf->AddPage();
                 $y = 15;
-                // Redibujar cabecera
                 $pdf->SetFont('helvetica', 'B', 7);
                 $pdf->SetFillColor(240, 240, 240);
                 $pdf->SetXY(10, $y);
@@ -625,12 +653,12 @@ class BilleteraClienteController extends Controller
         $pdf->SetFont('helvetica', 'B', 7);
         $pdf->SetFillColor(235, 245, 255);
         $pdf->SetXY(10, $y);
-        
+
         $pdf->Cell(120, 6, 'TOTALES DEL PERIODO', 'LRB', 0, 'R', 1);
-        
+
         $totalIngresos = $movimientos->where('Monto', '>', 0)->sum('Monto');
         $totalEgresos = abs($movimientos->where('Monto', '<', 0)->sum('Monto'));
-        
+
         $pdf->SetTextColor(0, 128, 0);
         $pdf->Cell(26, 6, number_format($totalIngresos, 2), 'LRB', 0, 'R', 1);
         $pdf->SetTextColor(200, 0, 0);
@@ -646,7 +674,7 @@ class BilleteraClienteController extends Controller
         $pdf->Cell(196, 4, 'Documento generado el ' . Carbon::now('America/La_Paz')->format('d/m/Y H:i') . ' por ' . session('operador_nombre', 'Sistema'), 0, 1, 'C');
 
         if (ob_get_length()) ob_end_clean();
-        
+
         $nombreArchivo = 'Estado_Cuenta_' . ($billetera->operador->identificador->CI_NIT ?? 'Billetera') . '.pdf';
         $pdf->Output($nombreArchivo, 'D');
         exit;

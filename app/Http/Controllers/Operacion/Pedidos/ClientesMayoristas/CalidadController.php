@@ -16,7 +16,10 @@ class CalidadController extends Controller
 {
     public function index()
     {
-        // 1. Traemos todos los reclamos con sus relaciones
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        // ✅ FIX: Filtrar reclamos por contexto (cliente + sucursal del pedido)
         $reclamos = Reclamo::with([
                 'pedido' => fn($q) => $q->select('IdPedidoCliente', 'IdCliente', 'IdOperador', 'IdSucursal', 'NumeroPedido'),
                 'pedido.cliente',
@@ -24,6 +27,10 @@ class CalidadController extends Controller
                 'detalles' => fn($q) => $q->select('IdReclamoDetalle', 'IdReclamo', 'IdProducto', 'CantidadReclamada', 'CantidadAprobada', 'Motivo'),
                 'detalles.producto',
             ])
+            ->whereHas('pedido', function ($q) use ($clienteId, $sucursalId) {
+                $q->where('IdCliente', $clienteId)
+                  ->where('IdSucursal', $sucursalId);  // ✅ Filtro por sucursal
+            })
             ->orderBy('FechaCreacion', 'desc')
             ->get();
 
@@ -37,13 +44,13 @@ class CalidadController extends Controller
 
         // 3. Agrupamos PRIMERO por Operador
         $operadores = $reclamos->groupBy(fn($r) => $r->pedido->IdOperador)->map(function ($grupoOperador, $idOperador) use ($nombresOperadores) {
-            
+
             $nombreOperador = $nombresOperadores[$idOperador] ?? 'Operador Desconocido';
 
             // 4. Dentro del Operador, agrupamos por Cliente
             $clientes = $grupoOperador->groupBy(fn($r) => $r->pedido->IdCliente)->map(function ($grupoCliente, $idCliente) use ($nombreOperador) {
                 $primero = $grupoCliente->first();
-                
+
                 // Inyectamos el nombre del operador a cada reclamo
                 $grupoCliente->each(function ($reclamo) use ($nombreOperador) {
                     $reclamo->nombre_operador = $nombreOperador;
@@ -70,23 +77,58 @@ class CalidadController extends Controller
     }
 
     // ============================================================
-    // Los métodos de acción se quedan EXACTAMENTE igual que antes
+    // RECIBIR EN FÁBRICA
     // ============================================================
     public function recibirEnFabrica(Request $request, $id)
     {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         $conexion = DB::connection('mysql_gestion_comercial_alimentos');
+
         try {
             $conexion->beginTransaction();
-            $reclamo = Reclamo::where('IdReclamo', $id)->lockForUpdate()->first();
-            if (!$reclamo) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Reclamo no encontrado.'], 404); }
-            if ($reclamo->esFaltante()) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Reclamo por faltante. No requiere recepción.'], 422); }
-            if ($reclamo->Estado !== 'Pendiente de Revisión') { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'El ticket no está pendiente de recepción.'], 422); }
-            $reclamo->update(['Estado' => 'En Revisión', 'FechaActualizacion' => now()]);
+
+            // ✅ FIX: Filtrar reclamo por contexto
+            $reclamo = Reclamo::where('IdReclamo', $id)
+                ->whereHas('pedido', function ($q) use ($clienteId, $sucursalId) {
+                    $q->where('IdCliente', $clienteId)
+                      ->where('IdSucursal', $sucursalId);
+                })
+                ->lockForUpdate()
+                ->first();
+
+            if (!$reclamo) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'Reclamo no encontrado.'], 404);
+            }
+
+            if ($reclamo->esFaltante()) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'Reclamo por faltante. No requiere recepción.'], 422);
+            }
+
+            if ($reclamo->Estado !== 'Pendiente de Revisión') {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'El ticket no está pendiente de recepción.'], 422);
+            }
+
+            $reclamo->update([
+                'Estado' => 'En Revisión',
+                'FechaActualizacion' => now()
+            ]);
+
             $conexion->commit();
             return response()->json(['success' => true, 'message' => 'Productos recibidos en fábrica.']);
-        } catch (\Exception $e) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => $e->getMessage()], 500); }
+
+        } catch (\Exception $e) {
+            $conexion->rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
+    // ============================================================
+    // APROBAR
+    // ============================================================
     public function aprobar(Request $request, $id)
     {
         $request->validate([
@@ -95,54 +137,155 @@ class CalidadController extends Controller
             'productos_aprobados.*.IdReclamoDetalle' => 'required|exists:pedidos_clientes_reclamos_detalle,IdReclamoDetalle',
             'productos_aprobados.*.CantidadAprobada' => 'required|integer|min:0',
         ]);
+
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         $conexion = DB::connection('mysql_gestion_comercial_alimentos');
+
         try {
             $conexion->beginTransaction();
-            $reclamo = Reclamo::where('IdReclamo', $id)->lockForUpdate()->first();
-            if (!$reclamo) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Reclamo no encontrado.'], 404); }
-            $estadosValidos = $reclamo->esFaltante() ? ['Pendiente de Revisión', 'En Revisión'] : ['En Revisión'];
-            if (!in_array($reclamo->Estado, $estadosValidos, true)) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Estado inválido.'], 422); }
+
+            // ✅ FIX: Filtrar reclamo por contexto
+            $reclamo = Reclamo::where('IdReclamo', $id)
+                ->whereHas('pedido', function ($q) use ($clienteId, $sucursalId) {
+                    $q->where('IdCliente', $clienteId)
+                      ->where('IdSucursal', $sucursalId);
+                })
+                ->lockForUpdate()
+                ->first();
+
+            if (!$reclamo) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'Reclamo no encontrado.'], 404);
+            }
+
+            $estadosValidos = $reclamo->esFaltante()
+                ? ['Pendiente de Revisión', 'En Revisión']
+                : ['En Revisión'];
+
+            if (!in_array($reclamo->Estado, $estadosValidos, true)) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'Estado inválido.'], 422);
+            }
+
             foreach ($request->productos_aprobados as $prod) {
-                $detalle = ReclamoDetalle::where('IdReclamoDetalle', $prod['IdReclamoDetalle'])->where('IdReclamo', $reclamo->IdReclamo)->lockForUpdate()->first();
+                $detalle = ReclamoDetalle::where('IdReclamoDetalle', $prod['IdReclamoDetalle'])
+                    ->where('IdReclamo', $reclamo->IdReclamo)
+                    ->lockForUpdate()
+                    ->first();
+
                 if (!$detalle || $prod['CantidadAprobada'] < 0 || $prod['CantidadAprobada'] > $detalle->CantidadReclamada) {
-                    $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Cantidad inválida.'], 422);
+                    $conexion->rollBack();
+                    return response()->json(['success' => false, 'message' => 'Cantidad inválida.'], 422);
                 }
+
                 $detalle->CantidadAprobada = $prod['CantidadAprobada'];
                 $detalle->save();
             }
-            $reclamo->update(['Estado' => 'Aprobado por Calidad', 'FechaActualizacion' => now(), 'RespuestaCalidad' => $request->observacion ?? 'Aprobado.']);
-            $pedido = PedidoCliente::find($reclamo->IdPedidoCliente);
+
+            $reclamo->update([
+                'Estado' => 'Aprobado por Calidad',
+                'FechaActualizacion' => now(),
+                'RespuestaCalidad' => $request->observacion ?? 'Aprobado.'
+            ]);
+
+            // ✅ FIX: Verificar que el pedido pertenezca al contexto
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
+                ->first();
+
             if ($pedido) {
                 HistorialPedido::create([
-                    'IdPedidoCliente' => $pedido->IdPedidoCliente, 'EstadoAnterior' => $pedido->EstadoPedido, 'EstadoNuevo' => $pedido->EstadoPedido,
-                    'IdOperador' => session('operador_id'), 'Observacion' => "[CALIDAD-APROBADO] Reclamo #{$reclamo->IdReclamo}. " . ($request->observacion ?? ''), 'FechaCambio' => now(),
+                    'IdPedidoCliente' => $pedido->IdPedidoCliente,
+                    'EstadoAnterior' => $pedido->EstadoPedido,
+                    'EstadoNuevo' => $pedido->EstadoPedido,
+                    'IdOperador' => session('operador_id'),
+                    'Observacion' => "[CALIDAD-APROBADO] Reclamo #{$reclamo->IdReclamo}. " . ($request->observacion ?? ''),
+                    'FechaCambio' => now(),
                 ]);
             }
+
             $conexion->commit();
             return response()->json(['success' => true, 'message' => 'Aprobado.']);
-        } catch (\Exception $e) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => $e->getMessage()], 500); }
+
+        } catch (\Exception $e) {
+            $conexion->rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 
+    // ============================================================
+    // RECHAZAR
+    // ============================================================
     public function rechazar(Request $request, $id)
     {
         $request->validate(['motivo_rechazo' => 'required|string|max:500']);
+
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
         $conexion = DB::connection('mysql_gestion_comercial_alimentos');
+
         try {
             $conexion->beginTransaction();
-            $reclamo = Reclamo::where('IdReclamo', $id)->lockForUpdate()->first();
-            if (!$reclamo) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'No encontrado.'], 404); }
-            $estadosValidos = $reclamo->esFaltante() ? ['Pendiente de Revisión', 'En Revisión'] : ['En Revisión'];
-            if (!in_array($reclamo->Estado, $estadosValidos, true)) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => 'Estado inválido.'], 422); }
-            $reclamo->update(['Estado' => 'Rechazado', 'FechaActualizacion' => now(), 'RespuestaCalidad' => $request->motivo_rechazo]);
-            $pedido = PedidoCliente::where('IdPedidoCliente', $reclamo->IdPedidoCliente)->lockForUpdate()->first();
+
+            // ✅ FIX: Filtrar reclamo por contexto
+            $reclamo = Reclamo::where('IdReclamo', $id)
+                ->whereHas('pedido', function ($q) use ($clienteId, $sucursalId) {
+                    $q->where('IdCliente', $clienteId)
+                      ->where('IdSucursal', $sucursalId);
+                })
+                ->lockForUpdate()
+                ->first();
+
+            if (!$reclamo) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'No encontrado.'], 404);
+            }
+
+            $estadosValidos = $reclamo->esFaltante()
+                ? ['Pendiente de Revisión', 'En Revisión']
+                : ['En Revisión'];
+
+            if (!in_array($reclamo->Estado, $estadosValidos, true)) {
+                $conexion->rollBack();
+                return response()->json(['success' => false, 'message' => 'Estado inválido.'], 422);
+            }
+
+            $reclamo->update([
+                'Estado' => 'Rechazado',
+                'FechaActualizacion' => now(),
+                'RespuestaCalidad' => $request->motivo_rechazo
+            ]);
+
+            // ✅ FIX: Verificar que el pedido pertenezca al contexto
+            $pedido = PedidoCliente::where('IdCliente', $clienteId)
+                ->where('IdSucursal', $sucursalId)
+                ->where('IdPedidoCliente', $reclamo->IdPedidoCliente)
+                ->lockForUpdate()
+                ->first();
+
             if ($pedido) {
-                $quedanAbiertos = Reclamo::where('IdPedidoCliente', $pedido->IdPedidoCliente)->where('IdReclamo', '!=', $reclamo->IdReclamo)->whereIn('Estado', ['Pendiente de Revisión', 'En Revisión', 'Aprobado por Calidad'])->exists();
+                $quedanAbiertos = Reclamo::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                    ->where('IdReclamo', '!=', $reclamo->IdReclamo)
+                    ->whereIn('Estado', ['Pendiente de Revisión', 'En Revisión', 'Aprobado por Calidad'])
+                    ->exists();
+
                 if (!$quedanAbiertos) {
-                    $pedido->update(['EstadoPedido' => 'Recibido', 'IdOperadorActualiza' => session('operador_id'), 'FechaActualiza' => now()]);
+                    $pedido->update([
+                        'EstadoPedido' => 'Recibido',
+                        'IdOperadorActualiza' => session('operador_id'),
+                        'FechaActualiza' => now()
+                    ]);
                 }
             }
+
             $conexion->commit();
             return response()->json(['success' => true, 'message' => 'Rechazado.']);
-        } catch (\Exception $e) { $conexion->rollBack(); return response()->json(['success' => false, 'message' => $e->getMessage()], 500); }
+
+        } catch (\Exception $e) {
+            $conexion->rollBack();
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
     }
 }

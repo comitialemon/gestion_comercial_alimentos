@@ -178,17 +178,22 @@ class HandleInertiaRequests extends Middleware
      */
     private function loadBilletera($operadorId): ?array
     {
-        if (!$operadorId) {
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        if (!$operadorId || !$clienteId || !$sucursalId) {
             return null;
         }
 
-        $cacheKey = "billetera_operador_{$operadorId}";
+        $cacheKey = "billetera_operador_{$operadorId}_{$clienteId}_{$sucursalId}";
 
-        return Cache::remember($cacheKey, 5, function () use ($operadorId) {
+        return Cache::remember($cacheKey, 5, function () use ($operadorId, $clienteId, $sucursalId) {
             try {
                 $billetera = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('operacion_pedidos_operadores_billeteras')
                     ->where('IdOperador', $operadorId)
+                    ->where('IdCliente', $clienteId)
+                    ->where('IdSucursal', $sucursalId)
                     ->select('IdBilletera', 'SaldoActual', 'ActivoInactivo', 'SaldoMinimoAlerta')
                     ->first();
 
@@ -198,7 +203,6 @@ class HandleInertiaRequests extends Middleware
 
                 $saldo = (float) $billetera->SaldoActual;
 
-                // ✅ CAMBIO: 0 = sin alerta, > 0 = con alerta
                 $saldoBajo = (float) $billetera->SaldoMinimoAlerta > 0
                     && $saldo <= (float) $billetera->SaldoMinimoAlerta;
 

@@ -7,20 +7,24 @@ use App\Models\Operacion\Pedidos\ClientesMayoristas\PedidoCliente;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Transportadora;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\Envio;
 use App\Models\Operacion\Pedidos\ClientesMayoristas\HistorialPedido;
+use App\Models\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraOperador;
 use App\Models\Gestion\Todos\Identificador;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 
 class DistribucionController extends Controller
 {
     public function index()
     {
         $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id'); // ✅ NUEVO
 
-        $queryPedidos = function ($estado) use ($clienteId) {
+        $queryPedidos = function ($estado) use ($clienteId, $sucursalId) {
             $pedidos = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+                ->where('pedidos_clientes.IdSucursal', $sucursalId) // ✅ NUEVO: filtrar por sucursal
                 ->where('EstadoPedido', $estado)
                 ->with(['cliente', 'sucursal'])
                 ->orderBy('pedidos_clientes.FechaPedido', 'asc')
@@ -33,27 +37,20 @@ class DistribucionController extends Controller
                     ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
                     ->where('todos_operador.IdOperador', $pedido->IdOperador)
                     ->first(['todos_identificador.Nombre']);
-                
+
                 $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
 
-                // 2. Ciudad o Provincia
+                // ✅ FIX: Ciudad/Provincia con JOIN para comparar IdSucursal real
                 $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('operacion_pedidos_operadores_clientes')
-                    ->where('IdOperador', $pedido->IdOperador)
-                    ->where('IdCliente', $clienteId) 
-                    ->where('IdSucursalDB', $pedido->IdSucursal) 
-                    ->first(['Ciudad', 'Provincia']);
+                    ->table('operacion_pedidos_operadores_clientes as opc')
+                    ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+                    ->where('opc.IdOperador', $pedido->IdOperador)
+                    ->where('opc.IdCliente', $clienteId)
+                    ->where('osdb.IdSucursal', $pedido->IdSucursal) // ✅ Ahora sí coincide
+                    ->first(['opc.Ciudad', 'opc.Provincia']);
 
-                if (!$asignacion) {
-                    $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                        ->table('operacion_pedidos_operadores_clientes')
-                        ->where('IdOperador', $pedido->IdOperador)
-                        ->where('IdCliente', $clienteId) 
-                        ->first(['Ciudad', 'Provincia']);
-                }
-
-                $pedido->Ciudad = $asignacion ? (bool)$asignacion->Ciudad : false;
-                $pedido->Provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+                $pedido->Ciudad = $asignacion ? (bool) $asignacion->Ciudad : false;
+                $pedido->Provincia = $asignacion ? (bool) $asignacion->Provincia : false;
 
                 return $pedido;
             });
@@ -64,6 +61,7 @@ class DistribucionController extends Controller
 
         // Hacemos lo mismo para los que están en transportadora
         $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+            ->where('pedidos_clientes.IdSucursal', $sucursalId) // ✅ NUEVO: filtrar por sucursal
             ->where('EstadoPedido', 'En Transportadora')
             ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
             ->orderBy('pedidos_clientes.FechaPedido', 'desc')
@@ -75,26 +73,20 @@ class DistribucionController extends Controller
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
                 ->where('todos_operador.IdOperador', $pedido->IdOperador)
                 ->first(['todos_identificador.Nombre']);
-            
+
             $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
 
+            // ✅ FIX: Ciudad/Provincia con JOIN
             $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_operadores_clientes')
-                ->where('IdOperador', $pedido->IdOperador)
-                ->where('IdCliente', $clienteId) 
-                ->where('IdSucursalDB', $pedido->IdSucursal)
-                ->first(['Ciudad', 'Provincia']);
+                ->table('operacion_pedidos_operadores_clientes as opc')
+                ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+                ->where('opc.IdOperador', $pedido->IdOperador)
+                ->where('opc.IdCliente', $clienteId)
+                ->where('osdb.IdSucursal', $pedido->IdSucursal) // ✅ Ahora sí coincide
+                ->first(['opc.Ciudad', 'opc.Provincia']);
 
-            if (!$asignacion) {
-                $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('operacion_pedidos_operadores_clientes')
-                    ->where('IdOperador', $pedido->IdOperador)
-                    ->where('IdCliente', $clienteId) 
-                    ->first(['Ciudad', 'Provincia']);
-            }
-
-            $pedido->Ciudad = $asignacion ? (bool)$asignacion->Ciudad : false;
-            $pedido->Provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+            $pedido->Ciudad = $asignacion ? (bool) $asignacion->Ciudad : false;
+            $pedido->Provincia = $asignacion ? (bool) $asignacion->Provincia : false;
 
             return $pedido;
         });
@@ -113,7 +105,6 @@ class DistribucionController extends Controller
 
     public function cambiarEstado(Request $request, $id)
     {
-        // 1. Quitamos el 'required_if' de la transportadora y el estado "En Cámara"
         $request->validate([
             'nuevo_estado' => 'required|in:En Distribución,En Transportadora,Recibido',
             'numero_guia' => 'nullable|string|max:100',
@@ -135,26 +126,33 @@ class DistribucionController extends Controller
 
             if (!$pedido) {
                 $conexion->rollBack();
-                return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado.'
+                ], 404);
             }
 
             $nuevoEstado = $request->input('nuevo_estado');
 
-            // 2. Si va a transportadora, verificamos si es ciudad o provincia
+            // ✅ FIX: Si va a transportadora, verificar si es ciudad o provincia con JOIN
             if ($nuevoEstado === 'En Transportadora') {
                 $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('operacion_pedidos_operadores_clientes')
-                    ->where('IdOperador', $pedido->IdOperador)
-                    ->where('IdCliente', $clienteId)
-                    ->where('IdSucursalDB', $pedido->IdSucursal)
-                    ->first(['Ciudad']);
+                    ->table('operacion_pedidos_operadores_clientes as opc')
+                    ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+                    ->where('opc.IdOperador', $pedido->IdOperador)
+                    ->where('opc.IdCliente', $clienteId)
+                    ->where('osdb.IdSucursal', $pedido->IdSucursal) // ✅ Ahora sí coincide
+                    ->first(['opc.Ciudad']);
 
-                $esCiudad = $asignacion ? (bool)$asignacion->Ciudad : false;
+                $esCiudad = $asignacion ? (bool) $asignacion->Ciudad : false;
 
                 // Si es PROVINCIA, sí o sí necesita transportadora
                 if (!$esCiudad && !$request->filled('id_transportadora')) {
                     $conexion->rollBack();
-                    return response()->json(['success' => false, 'message' => 'Debes seleccionar una transportadora para envíos a provincia.'], 422);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Debes seleccionar una transportadora para envíos a provincia.'
+                    ], 422);
                 }
             }
 
@@ -171,7 +169,7 @@ class DistribucionController extends Controller
 
                 Envio::create([
                     'IdPedidoCliente' => $pedido->IdPedidoCliente,
-                    'IdTransportadora' => $request->input('id_transportadora'), // Puede ser null si es ciudad
+                    'IdTransportadora' => $request->input('id_transportadora'),
                     'NumeroGuia' => $request->input('numero_guia'),
                     'CostoEnvio' => $costoEnvio,
                     'FechaEnvio' => now(),
@@ -180,22 +178,39 @@ class DistribucionController extends Controller
                 ]);
 
                 if ($costoEnvio > 0) {
-                    $billeteraCliente = \App\Models\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraOperador::where('IdOperador', $pedido->IdOperador)
+                    // ✅ FIX: Billetera con contexto (operador + cliente + sucursal del pedido)
+                    $billeteraCliente = BilleteraOperador::where('IdOperador', $pedido->IdOperador)
+                        ->where('IdCliente', $pedido->IdCliente)      // ✅ NUEVO
+                        ->where('IdSucursal', $pedido->IdSucursal)    // ✅ NUEVO
                         ->where('ActivoInactivo', 0)
                         ->lockForUpdate()
                         ->first();
 
-                    if ($billeteraCliente && (float)$billeteraCliente->SaldoActual >= $costoEnvio) {
+                    if ($billeteraCliente && (float) $billeteraCliente->SaldoActual >= $costoEnvio) {
                         $billeteraCliente->cobrarEnvio(
                             $costoEnvio,
                             $pedido->IdPedidoCliente,
                             "Cobro Envío - Pedido #{$pedido->NumeroPedido}",
                             $operadorId
                         );
-                        Log::info("✅ Costo de envío descontado", ['IdPedido' => $pedido->IdPedidoCliente, 'Monto' => $costoEnvio]);
+
+                        // ✅ Invalidar cache del navbar con contexto
+                        Cache::forget(
+                            "billetera_operador_{$billeteraCliente->IdOperador}_{$billeteraCliente->IdCliente}_{$billeteraCliente->IdSucursal}"
+                        );
+
+                        Log::info("✅ Costo de envío descontado", [
+                            'IdPedido' => $pedido->IdPedidoCliente,
+                            'Monto' => $costoEnvio,
+                            'IdBilletera' => $billeteraCliente->IdBilletera,
+                        ]);
                     } else {
                         Log::warning("Pedido despachado sin cobrar envío (falta de saldo/billetera)", [
-                            'IdPedido' => $pedido->IdPedidoCliente, 'Operador' => $pedido->IdOperador, 'Costo' => $costoEnvio
+                            'IdPedido' => $pedido->IdPedidoCliente,
+                            'Operador' => $pedido->IdOperador,
+                            'Cliente' => $pedido->IdCliente,
+                            'Sucursal' => $pedido->IdSucursal,
+                            'Costo' => $costoEnvio,
                         ]);
                     }
                 }
@@ -227,7 +242,10 @@ class DistribucionController extends Controller
         } catch (\Exception $e) {
             $conexion->rollBack();
             Log::error('Error en distribucion: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -241,7 +259,10 @@ class DistribucionController extends Controller
                 ->first();
 
             if (!$pedido) {
-                return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Pedido no encontrado.'
+                ], 404);
             }
 
             $historial = HistorialPedido::where('IdPedidoCliente', $id)
@@ -255,7 +276,10 @@ class DistribucionController extends Controller
                 'envio' => $pedido->envio,
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 
@@ -277,14 +301,14 @@ class DistribucionController extends Controller
             }
 
             if (!$identificador) {
-                $ciNit = $request->filled('CI_NIT') ? (int)$request->CI_NIT : mt_rand(1000000, 9999999);
+                $ciNit = $request->filled('CI_NIT') ? (int) $request->CI_NIT : mt_rand(1000000, 9999999);
                 $identificador = Identificador::create([
                     'Nombre' => $request->Nombre,
                     'CI_NIT' => $ciNit,
-                    'IdOperadorIngreso' => (int)($operadorId ?? 1),
-                    'FechaIngreso' => now(),        
-                    'IdOperadorEdita' => (int)($operadorId ?? 1),
-                    'FechaEdita' => now(),          
+                    'IdOperadorIngreso' => (int) ($operadorId ?? 1),
+                    'FechaIngreso' => now(),
+                    'IdOperadorEdita' => (int) ($operadorId ?? 1),
+                    'FechaEdita' => now(),
                 ]);
             }
 
@@ -296,10 +320,16 @@ class DistribucionController extends Controller
             $conexion->commit();
             $trans->load('identificador');
 
-            return response()->json(['success' => true, 'transportadora' => $trans]);
+            return response()->json([
+                'success' => true,
+                'transportadora' => $trans
+            ]);
         } catch (\Exception $e) {
             $conexion->rollBack();
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

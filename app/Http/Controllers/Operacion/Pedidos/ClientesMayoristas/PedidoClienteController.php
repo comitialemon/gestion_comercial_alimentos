@@ -104,9 +104,14 @@ class PedidoClienteController extends Controller
     private function getBilleteraActivaDelOperador(): ?BilleteraOperador
     {
         $operadorId = session('operador_id');
-        if (!$operadorId) return null;
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        if (!$operadorId || !$clienteId || !$sucursalId) return null;
 
         return BilleteraOperador::where('IdOperador', $operadorId)
+            ->where('IdCliente', $clienteId)
+            ->where('IdSucursal', $sucursalId)
             ->where('ActivoInactivo', 0)
             ->first();
     }
@@ -132,7 +137,9 @@ class PedidoClienteController extends Controller
 
     private function invalidarCacheBilletera(int $operadorId): void
     {
-        Cache::forget("billetera_operador_{$operadorId}");
+        $clienteId = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+        Cache::forget("billetera_operador_{$operadorId}_{$clienteId}_{$sucursalId}");
     }
 
     private function validarProductosDelPedidoTienenMinimo($pedido)
@@ -262,7 +269,7 @@ class PedidoClienteController extends Controller
         return $progreso;
     }
 
-// ============================================================
+    // ============================================================
     // LISTA DE PEDIDOS
     // ============================================================
     public function index()
@@ -284,16 +291,19 @@ class PedidoClienteController extends Controller
             ->paginate(20);
 
         // 🔥 INYECTAMOS SI ES CIUDAD O PROVINCIA A CADA PEDIDO
+        // ✅ FIX: ahora se hace JOIN con todos_operador_sucursaldb
+        //    para comparar IdSucursal real (no IdSucursalDB)
         $pedidos->getCollection()->transform(function ($pedido) use ($clienteId) {
             $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_operadores_clientes')
-                ->where('IdOperador', $pedido->IdOperador)
-                ->where('IdCliente', $clienteId)
-                ->where('IdSucursalDB', $pedido->IdSucursal)
-                ->first(['Provincia']);
+                ->table('operacion_pedidos_operadores_clientes as opc')
+                ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+                ->where('opc.IdOperador', $pedido->IdOperador)
+                ->where('opc.IdCliente', $clienteId)
+                ->where('osdb.IdSucursal', $pedido->IdSucursal)  // ✅ Ahora usa IdSucursal real
+                ->first(['opc.Provincia']);
 
             // Si la asignación existe y Provincia es 1, entonces es provincia
-            $pedido->es_provincia = $asignacion ? (bool)$asignacion->Provincia : false;
+            $pedido->es_provincia = $asignacion ? (bool) $asignacion->Provincia : false;
             return $pedido;
         });
 
