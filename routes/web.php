@@ -1339,7 +1339,9 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     
                     Route::get('/api/operadores-disponibles', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'operadoresDisponibles'])
                         ->name('operacion.pedidos.clientes-mayoristas.billeteras.api.operadores');
-                    
+                    // ✅ NUEVA RUTA: PDF del pedido
+                    Route::get('/pedido/{idPedido}/pdf-reporte', [BilleteraClienteController::class, 'exportarPdfPedido'])
+                        ->name('operacion.pedidos.clientes-mayoristas.billeteras.pedido-pdf');
                     Route::get('/{id}', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController::class, 'show'])
                         ->name('operacion.pedidos.clientes-mayoristas.billeteras.show');
                     
@@ -1713,12 +1715,19 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                 Route::prefix('distribucion')->group(function () {
                     Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'index'])
                         ->name('operacion.pedidos-clientes.distribucion.index');
+
                     Route::post('/transportadoras', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'guardarTransportadora'])
                         ->name('operacion.pedidos-clientes.distribucion.guardar-transportadora');
+
+                    // ✅ NUEVO: Búsqueda de identificadores (autocomplete)
+                    Route::get('/identificadores/buscar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'buscarIdentificadores'])
+                        ->name('operacion.pedidos-clientes.distribucion.buscar-identificadores');
+
                     Route::post('/{id}/cambiar-estado', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'cambiarEstado'])
                         ->name('operacion.pedidos-clientes.distribucion.cambiar-estado');
+
                     Route::get('/{id}/historial', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'getHistorial'])
-                        ->name('operacion.pedidos-clientes.distribucion.historial');                    
+                        ->name('operacion.pedidos-clientes.distribucion.historial');
                 });
 
                 // ============================================================

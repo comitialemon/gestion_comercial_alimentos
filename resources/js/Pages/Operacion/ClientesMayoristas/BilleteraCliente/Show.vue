@@ -102,6 +102,20 @@ const exportarPdf = () => {
     window.open(`/operacion/pedidos/clientes-mayoristas/billeteras/${props.billetera.IdBilletera}/pdf-movimientos?${params}`, '_blank');
 }
 
+// 🔥 NUEVO: Generar PDF del pedido de una fila
+const generarPdfPedido = (movimiento) => {
+    if (!movimiento.IdPedidoCliente) {
+        toast?.error('Error', 'Este movimiento no tiene un pedido asociado')
+        return
+    }
+    window.open(`/operacion/pedidos/clientes-mayoristas/billeteras/pedido/${movimiento.IdPedidoCliente}/pdf-reporte`, '_blank')
+}
+
+// ¿El movimiento es un pedido? (CARGO con IdPedidoCliente)
+const esPedido = (mov) => {
+    return mov.Tipo === 'CARGO' && mov.IdPedidoCliente !== null && mov.IdPedidoCliente !== undefined
+}
+
 const cargarSaldo = async () => {
     if (!formCargar.value.Monto || parseFloat(formCargar.value.Monto) <= 0) {
         toast?.warning('Ingresa un monto válido')
@@ -276,7 +290,6 @@ onUnmounted(() => {
                         ? 'bg-gradient-to-br from-primary-600 to-primary-800'
                         : 'bg-gradient-to-br from-gray-600 to-gray-800'"
                 >
-                    <!-- Fondo decorativo -->
                     <div class="absolute top-0 right-0 w-40 h-40 rounded-full bg-white/10 blur-2xl -mr-20 -mt-20 pointer-events-none"></div>
 
                     <div class="flex flex-wrap items-start justify-between gap-3 relative z-10">
@@ -306,7 +319,6 @@ onUnmounted(() => {
                             </div>
                         </div>
 
-                        <!-- Stats -->
                         <div class="grid grid-cols-2 gap-3 text-right">
                             <div>
                                 <p class="text-[9px] opacity-70 uppercase">Total cargado</p>
@@ -319,7 +331,6 @@ onUnmounted(() => {
                         </div>
                     </div>
 
-                    <!-- Motivo inactivación -->
                     <div v-if="!estaActiva && billetera.MotivoInactivacion" class="mt-3 p-2 bg-white/10 rounded-md text-[10px] relative z-10">
                         <i class="fas fa-info-circle mr-1 text-[10px]"></i>
                         <strong>Motivo:</strong> {{ billetera.MotivoInactivacion }}
@@ -404,7 +415,7 @@ onUnmounted(() => {
                             </button>
                         </div>
 
-                        <!-- 🔥 BOTÓN DE EXPORTAR PDF -->
+                        <!-- BOTÓN DE EXPORTAR PDF -->
                         <button 
                             @click="exportarPdf" 
                             class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md text-[10px] font-medium transition flex items-center gap-1 shadow-sm" 
@@ -454,16 +465,28 @@ onUnmounted(() => {
                                     </p>
                                 </div>
 
-                                <div class="text-right flex-shrink-0">
-                                    <p
-                                        class="text-sm font-bold"
-                                        :class="esPositivo(mov.Monto) ? 'text-emerald-600' : 'text-red-600'"
+                                <div class="text-right flex-shrink-0 flex items-center gap-2">
+                                    <div>
+                                        <p
+                                            class="text-sm font-bold"
+                                            :class="esPositivo(mov.Monto) ? 'text-emerald-600' : 'text-red-600'"
+                                        >
+                                            {{ formatearMonto(mov.Monto) }}
+                                        </p>
+                                        <p class="text-[9px] text-gray-400">
+                                            Bs. {{ parseFloat(mov.SaldoDespues || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
+                                        </p>
+                                    </div>
+
+                                    <!-- 🔥 NUEVO: Botón PDF por fila (solo para pedidos) -->
+                                    <button
+                                        v-if="esPedido(mov)"
+                                        @click="generarPdfPedido(mov)"
+                                        class="px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md text-[10px] font-medium transition flex items-center gap-1"
+                                        :title="`Generar PDF del pedido #${mov.IdPedidoCliente}`"
                                     >
-                                        {{ formatearMonto(mov.Monto) }}
-                                    </p>
-                                    <p class="text-[9px] text-gray-400">
-                                        Bs. {{ parseFloat(mov.SaldoDespues || 0).toLocaleString('es-BO', { minimumFractionDigits: 2 }) }}
-                                    </p>
+                                        <i class="fas fa-file-pdf text-[10px]"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>

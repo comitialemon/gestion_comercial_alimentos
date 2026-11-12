@@ -272,11 +272,17 @@ class PedidoClienteController extends Controller
     // ============================================================
     // LISTA DE PEDIDOS
     // ============================================================
-    public function index()
+    public function index(Request $request)
     {
-        $clienteId = session('cliente_id');
+        $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
+
+        // ✅ Paginación configurable (solo valores válidos)
+        $perPage = (int) $request->input('per_page', 20);
+        if (!in_array($perPage, [10, 20, 50])) {
+            $perPage = 20;
+        }
 
         $pedidos = PedidoCliente::porContexto()
             ->where('IdOperador', $operadorId)
@@ -287,29 +293,27 @@ class PedidoClienteController extends Controller
                 'pagoPendiente',
                 'pagoExitoso',
             ])
-            ->orderBy('IdPedidoCliente', 'desc')
-            ->paginate(20);
+            ->orderByDesc('IdPedidoCliente')       // ✅ último → primero
+            ->paginate($perPage)                    // ✅ 10 / 20 / 50
+            ->withQueryString();                    // ✅ conserva buscar/estado/per_page al paginar
 
-        // 🔥 INYECTAMOS SI ES CIUDAD O PROVINCIA A CADA PEDIDO
-        // ✅ FIX: ahora se hace JOIN con todos_operador_sucursaldb
-        //    para comparar IdSucursal real (no IdSucursalDB)
+        // 🔥 INYECTAR es_provincia
         $pedidos->getCollection()->transform(function ($pedido) use ($clienteId) {
             $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('operacion_pedidos_operadores_clientes as opc')
                 ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
                 ->where('opc.IdOperador', $pedido->IdOperador)
                 ->where('opc.IdCliente', $clienteId)
-                ->where('osdb.IdSucursal', $pedido->IdSucursal)  // ✅ Ahora usa IdSucursal real
+                ->where('osdb.IdSucursal', $pedido->IdSucursal)
                 ->first(['opc.Provincia']);
 
-            // Si la asignación existe y Provincia es 1, entonces es provincia
             $pedido->es_provincia = $asignacion ? (bool) $asignacion->Provincia : false;
             return $pedido;
         });
 
-        $grupoCliente = $this->getGrupoDelOperador();
-        $puedeHacerPedidos = true;
-        $razonNoPuedePedir = null;
+        $grupoCliente       = $this->getGrupoDelOperador();
+        $puedeHacerPedidos  = true;
+        $razonNoPuedePedir  = null;
 
         if (!$grupoCliente) {
             $puedeHacerPedidos = false;
@@ -339,28 +343,29 @@ class PedidoClienteController extends Controller
 
         $tienePedidoEsperandoPago = $pedidoEsperandoPago !== null;
 
-        $pedidoBorrador = PedidoCliente::obtenerBorradorActivo();
-        $tieneBorradorActivo = $pedidoBorrador !== null;
+        $pedidoBorrador       = PedidoCliente::obtenerBorradorActivo();
+        $tieneBorradorActivo  = $pedidoBorrador !== null;
 
         return Inertia::render('Operacion/ClientesMayoristas/PedidosClientes/Index', [
-            'pedidos' => $pedidos,
-            'puedeHacerPedidos' => $puedeHacerPedidos,
-            'razonNoPuedePedir' => $razonNoPuedePedir,
-            'tieneBorradorActivo' => $tieneBorradorActivo,
-            'tienePedidoEsperandoPago' => $tienePedidoEsperandoPago,
-            'pedidoEsperandoPago' => $pedidoEsperandoPago ? [
-                'IdPedidoCliente' => $pedidoEsperandoPago->IdPedidoCliente,
-                'NumeroPedido' => $pedidoEsperandoPago->NumeroPedido,
-                'TotalGeneral' => (float) $pedidoEsperandoPago->TotalGeneral,
-                'FechaPedido' => $pedidoEsperandoPago->FechaPedido?->format('Y-m-d H:i:s'),
-                'TienePagoPendiente' => $pedidoEsperandoPago->pagoPendiente !== null,
-                'MontoPagoPendiente' => $pedidoEsperandoPago->pagoPendiente
+            'pedidos'                    => $pedidos,
+            'puedeHacerPedidos'          => $puedeHacerPedidos,
+            'razonNoPuedePedir'          => $razonNoPuedePedir,
+            'tieneBorradorActivo'        => $tieneBorradorActivo,
+            'tienePedidoEsperandoPago'   => $tienePedidoEsperandoPago,
+            'pedidoEsperandoPago'        => $pedidoEsperandoPago ? [
+                'IdPedidoCliente'      => $pedidoEsperandoPago->IdPedidoCliente,
+                'NumeroPedido'         => $pedidoEsperandoPago->NumeroPedido,
+                'TotalGeneral'         => (float) $pedidoEsperandoPago->TotalGeneral,
+                'FechaPedido'          => $pedidoEsperandoPago->FechaPedido?->format('Y-m-d H:i:s'),
+                'TienePagoPendiente'   => $pedidoEsperandoPago->pagoPendiente !== null,
+                'MontoPagoPendiente'   => $pedidoEsperandoPago->pagoPendiente
                     ? (float) $pedidoEsperandoPago->pagoPendiente->Monto
                     : null,
-                'SegundosRestantes' => $pedidoEsperandoPago->pagoPendiente
+                'SegundosRestantes'    => $pedidoEsperandoPago->pagoPendiente
                     ? $pedidoEsperandoPago->pagoPendiente->segundosRestantes()
                     : null,
             ] : null,
+            'perPage'                    => $perPage,   // ✅ NUEVO
         ]);
     }
 

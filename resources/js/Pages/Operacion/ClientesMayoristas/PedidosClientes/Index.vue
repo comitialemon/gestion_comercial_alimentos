@@ -15,9 +15,9 @@ const props = defineProps({
     pedidos: { type: Object, default: () => ({ data: [] }) },
     puedeHacerPedidos: { type: Boolean, default: true },
     razonNoPuedePedir: { type: String, default: null },
-    // 🔥 NUEVOS PROPS para controlar el flujo de "Esperando Pago"
     tienePedidoEsperandoPago: { type: Boolean, default: false },
     pedidoEsperandoPago: { type: Object, default: null },
+    perPage: { type: Number, default: 20 },   // ✅ NUEVO
 })
 
 // ==================== DETECTAR DISPOSITIVO ====================
@@ -40,8 +40,25 @@ const alertaFlash = ref({ visible: false, tipo: 'error', mensaje: '' })
 const modalReclamoVisible = ref(false)
 const pedidoParaReclamo = ref(null)
 
-// 🔥 Modal para advertir sobre pedido pendiente de pago
 const modalPedidoPendienteVisible = ref(false)
+
+// ==================== PAGINACIÓN ====================
+const perPage = ref(props.perPage || 20)
+
+const cambiarPerPage = () => {
+    router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes', {
+        buscar:   buscador.value || undefined,
+        estado:   estadoFiltro.value || undefined,
+        per_page: perPage.value,
+    }, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        onSuccess: () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' })
+        },
+    })
+}
 
 // ==================== COMPUTED ====================
 const pedidosFiltrados = computed(() => {
@@ -121,7 +138,6 @@ const getEstadoIcono = (estado) => {
 }
 
 // ==================== PROGRESO INTELIGENTE ====================
-
 const getPasosProgreso = (pedido) => {
     const esProvincia = pedido.es_provincia === true || pedido.EstadoPedido === 'En Transportadora';
 
@@ -156,9 +172,6 @@ const abrirPdf = (id) => {
     window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${id}/pdf`, '_blank')
 }
 
-/**
- * 🔥 Redirige al review del pedido pendiente de pago
- */
 const irAPagarPedidoPendiente = () => {
     if (!props.pedidoEsperandoPago) return
     modalPedidoPendienteVisible.value = false
@@ -169,19 +182,14 @@ const irAPagarPedidoPendiente = () => {
 }
 
 const intentarNuevoPedido = () => {
-    // 1. Validar si puede hacer pedidos
     if (!props.puedeHacerPedidos) {
         modalNoPuedePedirVisible.value = true
         return
     }
-
-    // 2. 🔥 Si hay un pedido esperando pago, mostrar modal para ir a pagarlo
     if (props.tienePedidoEsperandoPago && props.pedidoEsperandoPago) {
         modalPedidoPendienteVisible.value = true
         return
     }
-
-    // 3. Flujo normal
     router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', { replace: true })
 }
 
@@ -217,8 +225,9 @@ const cerrarModal = () => {
 
 const aplicarFiltros = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes', {
-        buscar: buscador.value || undefined,
-        estado: estadoFiltro.value || undefined
+        buscar:   buscador.value || undefined,
+        estado:   estadoFiltro.value || undefined,
+        per_page: perPage.value,               // ✅ conserva el valor elegido
     }, { preserveState: true, replace: true })
 }
 
@@ -274,6 +283,10 @@ onMounted(() => {
     const urlParams = new URLSearchParams(window.location.search)
     if (urlParams.get('buscar')) buscador.value = urlParams.get('buscar')
     if (urlParams.get('estado')) estadoFiltro.value = urlParams.get('estado')
+    if (urlParams.get('per_page')) {
+        const pp = parseInt(urlParams.get('per_page'))
+        if ([10, 20, 50].includes(pp)) perPage.value = pp
+    }
 })
 
 onUnmounted(() => {
@@ -312,11 +325,13 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <h1 class="text-base lg:text-lg font-bold text-gray-800">Mis Pedidos</h1>
-                            <p class="text-xs text-gray-500">{{ totalPedidos }} pedido(s) realizados</p>
+                            <p class="text-xs text-gray-500">
+                                {{ totalPedidos }} pedido(s) realizados
+                                <span class="text-gray-400"> · más recientes primero</span>
+                            </p>
                         </div>
                     </div>
                     <div class="flex items-center gap-1.5 flex-wrap">
-                        <!-- 🔥 BOTÓN DINÁMICO: si hay pedido esperando pago, mostrar "Terminar Pago" -->
                         <button
                             v-if="tienePedidoEsperandoPago && pedidoEsperandoPago"
                             @click="irAPagarPedidoPendiente"
@@ -395,7 +410,7 @@ onUnmounted(() => {
                 <!-- LISTA DE PEDIDOS -->
                 <div v-if="pedidosFiltrados.length > 0" class="space-y-3">
                     <div v-for="pedido in pedidosFiltrados" :key="pedido.IdPedidoCliente" class="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow overflow-hidden border border-gray-200">
-                        
+
                         <div class="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                             <div class="flex-1 min-w-0">
                                 <div class="flex items-center gap-2 flex-wrap">
@@ -466,11 +481,50 @@ onUnmounted(() => {
                     </div>
 
                     <!-- PAGINACIÓN -->
-                    <div v-if="props.pedidos?.links && props.pedidos.links.length > 3" class="bg-white rounded-xl shadow-sm px-3 py-2 border border-gray-200 mt-3">
-                        <div class="flex flex-col sm:flex-row justify-between items-center gap-2">
-                            <div class="text-[10px] text-gray-500">Mostrando {{ props.pedidos.from || 0 }} a {{ props.pedidos.to || 0 }} de {{ props.pedidos.total || 0 }}</div>
+                    <div
+                        v-if="props.pedidos?.total > 0"
+                        class="bg-white rounded-xl shadow-sm px-3 py-2.5 border border-gray-200 mt-3"
+                    >
+                        <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+
+                            <!-- Info + selector por página -->
+                            <div class="flex items-center gap-3 text-[11px] text-gray-600 flex-wrap justify-center sm:justify-start">
+                                <span>
+                                    Mostrando
+                                    <b>{{ props.pedidos.from || 0 }}</b>–<b>{{ props.pedidos.to || 0 }}</b>
+                                    de <b>{{ props.pedidos.total || 0 }}</b>
+                                </span>
+
+                                <div class="flex items-center gap-1.5">
+                                    <label class="text-gray-500">Por página:</label>
+                                    <select
+                                        v-model.number="perPage"
+                                        @change="cambiarPerPage"
+                                        class="border border-gray-300 rounded-md px-2 py-1 text-[11px] focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                    >
+                                        <option :value="10">10</option>
+                                        <option :value="20">20</option>
+                                        <option :value="50">50</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Links de página -->
                             <div class="flex gap-1 flex-wrap justify-center">
-                                <Link v-for="link in props.pedidos.links" :key="link.label" :href="link.url || '#'" class="px-2.5 py-1 rounded-lg border text-[10px] transition" :class="{'bg-primary-600 text-white border-primary-600': link.active,'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url}" v-html="link.label" preserve-state />
+                                <Link
+                                    v-for="(link, i) in props.pedidos.links"
+                                    :key="i"
+                                    :href="link.url || '#'"
+                                    class="px-2.5 py-1 rounded-lg border text-[10px] transition"
+                                    :class="{
+                                        'bg-primary-600 text-white border-primary-600': link.active,
+                                        'bg-white text-gray-700 hover:bg-gray-50 border-gray-300': !link.active && link.url,
+                                        'opacity-50 cursor-not-allowed bg-gray-100 text-gray-400': !link.url,
+                                    }"
+                                    v-html="link.label"
+                                    preserve-state
+                                    preserve-scroll
+                                />
                             </div>
                         </div>
                     </div>
@@ -524,7 +578,7 @@ onUnmounted(() => {
             </div>
         </Teleport>
 
-        <!-- 🔥 MODAL PEDIDO PENDIENTE DE PAGO -->
+        <!-- MODAL PEDIDO PENDIENTE DE PAGO -->
         <Teleport to="body">
             <div v-if="modalPedidoPendienteVisible" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-fade-in" @click.self="cerrarModalPedidoPendiente">
                 <div class="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-scale-in">
