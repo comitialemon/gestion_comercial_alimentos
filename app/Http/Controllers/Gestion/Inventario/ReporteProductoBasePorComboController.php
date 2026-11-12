@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Gestion\Inventario;
 
 use App\Http\Controllers\Controller;
 use App\Models\Gestion\Todos\ClienteSucursal;
+use App\Services\Inventario\ProductoBaseComboCalculator;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,13 @@ use PhpOffice\PhpSpreadsheet\Style\Color;
 
 class ReporteProductoBasePorComboController extends Controller
 {
+    protected ProductoBaseComboCalculator $calculator;
+
+    public function __construct(ProductoBaseComboCalculator $calculator)
+    {
+        $this->calculator = $calculator;
+    }
+
     /**
      * 📊 Matriz: productos base × combos (salidas REALES de inventario_propiamente)
      */
@@ -26,18 +34,17 @@ class ReporteProductoBasePorComboController extends Controller
             ->orderBy('Nombre')
             ->get(['IdClienteSucursal as id', 'Nombre as nombre', 'NumeroSucursal as numero']);
 
-        // 🔥 Usar la sucursal logueada si no viene en la URL
         $sucursalId = $request->filled('sucursal_id')
-            ? $request->sucursal_id
-            : session('cliente_sucursal_id');
+            ? (int) $request->sucursal_id
+            : (int) session('cliente_sucursal_id');
 
         $fechaInicial      = $request->fecha_inicial ?? date('Y-m-01');
         $fechaFinal        = $request->fecha_final   ?? date('Y-m-d');
         $search            = $request->search;
         $soloConMovimiento = $request->boolean('solo_con_movimiento', false);
 
-        $data = $this->calcularMatriz(
-            $clienteId,
+        $data = $this->calculator->calcular(
+            (int) $clienteId,
             $sucursalId,
             $fechaInicial,
             $fechaFinal,
@@ -45,10 +52,9 @@ class ReporteProductoBasePorComboController extends Controller
             $soloConMovimiento
         );
 
-        // 🔥 Buscar el nombre de la sucursal para enviarlo al front
         $sucursalNombreInicial = '';
         if ($sucursalId) {
-            $sucursalEncontrada = $sucursales->firstWhere('id', (int) $sucursalId);
+            $sucursalEncontrada = $sucursales->firstWhere('id', $sucursalId);
             $sucursalNombreInicial = $sucursalEncontrada?->nombre ?? '';
         }
 
@@ -57,6 +63,7 @@ class ReporteProductoBasePorComboController extends Controller
             'filas'                 => $data['filas'],
             'totalesPorColumna'     => (object) $data['totalesPorColumna'],
             'totalGeneral'          => $data['totalGeneral'],
+            'totalOtrasSalidas'     => $data['totalOtrasSalidas'],
             'sucursales'            => $sucursales,
             'fechaInicial'          => $fechaInicial,
             'fechaFinal'            => $fechaFinal,
@@ -68,15 +75,15 @@ class ReporteProductoBasePorComboController extends Controller
     }
 
     /**
-     * 📥 Exportar a Excel (sin colores)
+     * 📥 Exportar a Excel
      */
     public function exportarExcel(Request $request)
     {
         $clienteId = session('cliente_id');
 
         $sucursalId = $request->filled('sucursal_id')
-            ? $request->get('sucursal_id')
-            : session('cliente_sucursal_id');
+            ? (int) $request->get('sucursal_id')
+            : (int) session('cliente_sucursal_id');
 
         $fechaInicial      = $request->get('fecha_inicial') ?? date('Y-m-01');
         $fechaFinal        = $request->get('fecha_final')   ?? date('Y-m-d');
@@ -93,8 +100,8 @@ class ReporteProductoBasePorComboController extends Controller
             ->where('IdClienteSucursal', $sucursalId)
             ->first(['Nombre']);
 
-        $data = $this->calcularMatriz(
-            $clienteId,
+        $data = $this->calculator->calcular(
+            (int) $clienteId,
             $sucursalId,
             $fechaInicial,
             $fechaFinal,
@@ -107,9 +114,6 @@ class ReporteProductoBasePorComboController extends Controller
         $totalesPorColumna = $data['totalesPorColumna'];
         $totalGeneral      = $data['totalGeneral'];
 
-        // =============================================
-        // EXCEL SIN COLORES
-        // =============================================
         $spreadsheet = new Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
         $sheet->setTitle('Productos Base x Combo');
@@ -124,12 +128,9 @@ class ReporteProductoBasePorComboController extends Controller
         $totalColumnas  = count($columnas) + 3;
         $ultimaColLetra = $this->numeroAColumna($totalColumnas - 1);
 
-        $sheet->mergeCells('A1:' . $ultimaColLetra . '1');
-        $sheet->mergeCells('A2:' . $ultimaColLetra . '2');
-        $sheet->mergeCells('A3:' . $ultimaColLetra . '3');
-        $sheet->mergeCells('A4:' . $ultimaColLetra . '4');
-        $sheet->mergeCells('A5:' . $ultimaColLetra . '5');
-        $sheet->mergeCells('A6:' . $ultimaColLetra . '6');
+        foreach (['1','2','3','4','5','6'] as $filaMerge) {
+            $sheet->mergeCells("A{$filaMerge}:{$ultimaColLetra}{$filaMerge}");
+        }
 
         $sheet->getStyle('A1:A6')->getAlignment()
             ->setHorizontal(Alignment::HORIZONTAL_CENTER)
@@ -189,7 +190,7 @@ class ReporteProductoBasePorComboController extends Controller
 
             foreach ($columnas as $idx => $col) {
                 $colLetra = $this->numeroAColumna(2 + $idx);
-                $valor    = $f['valores'][$col['id']] ?? 0;
+                $valor    = $f['valores'][(int) $col['id']] ?? 0;
                 if ($valor > 0) {
                     $sheet->setCellValue($colLetra . $fila, (float) $valor);
                 }
@@ -219,13 +220,10 @@ class ReporteProductoBasePorComboController extends Controller
 
         foreach ($columnas as $idx => $col) {
             $colLetra = $this->numeroAColumna(2 + $idx);
-            $sheet->setCellValue($colLetra . $fila, (float) ($totalesPorColumna[$col['id']] ?? 0));
+            $sheet->setCellValue($colLetra . $fila, (float) ($totalesPorColumna[(int) $col['id']] ?? 0));
         }
 
-        $totalOtras = 0;
-        foreach ($filas as $f) $totalOtras += ($f['otras_salidas'] ?? 0);
-
-        $sheet->setCellValue($colOtras . $fila, (float) $totalOtras);
+        $sheet->setCellValue($colOtras . $fila, (float) $data['totalOtrasSalidas']);
         $sheet->setCellValue($colTotal . $fila, (float) $totalGeneral);
 
         $sheet->getStyle('A' . $fila . ':' . $colTotal . $fila)->applyFromArray($borderStyle);
@@ -250,269 +248,6 @@ class ReporteProductoBasePorComboController extends Controller
         $writer = new Xlsx($spreadsheet);
         $writer->save('php://output');
         exit();
-    }
-
-    /**
-     * 🔧 Cálculo principal
-     */
-    private function calcularMatriz(
-        $clienteId,
-        $sucursalId,
-        $fechaInicial,
-        $fechaFinal,
-        $search,
-        $soloConMovimiento
-    ) {
-        $columnas          = [];
-        $filas             = [];
-        $totalesPorColumna = [];
-        $totalGeneral      = 0;
-
-        if (!$sucursalId || $sucursalId <= 0) {
-            return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
-        }
-
-        $idTipoOperacionVentas = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_tipooperacion')
-            ->where('IdCliente', $clienteId)
-            ->where('Detalle', 'Ventas')
-            ->where('ActivoInactivo', 0)
-            ->value('IdTipoOperacion');
-
-        if (!$idTipoOperacionVentas) {
-            return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
-        }
-
-        $salidasReales = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_propiamente as ip')
-            ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
-            ->where('ip.IdCliente', $clienteId)
-            ->where('ip.IdSucursal', $sucursalId)
-            ->where('ip.IdTipoDeOperacion', $idTipoOperacionVentas)
-            ->whereRaw("UPPER(TRIM(ip.D_H)) = 'H'")
-            ->whereBetween('tf.Fecha', [$fechaInicial, $fechaFinal])
-            ->groupBy('ip.IdProducto')
-            ->select('ip.IdProducto', DB::raw('SUM(ip.Unidades) as total_salidas'))
-            ->get()
-            ->keyBy('IdProducto');
-
-        if ($salidasReales->isEmpty()) {
-            return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
-        }
-
-        $idsProductosConSalidas = $salidasReales->keys()->toArray();
-
-        $categoriasRaiz = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_menu_categoria')
-            ->where('id_cliente', $clienteId)
-            ->whereIn(DB::raw('UPPER(nombre)'), ['PACK', 'COMBOS'])
-            ->pluck('id_categoria')
-            ->toArray();
-
-        $todasLasCategorias = [];
-        $porProcesar        = $categoriasRaiz;
-        $visitadas          = [];
-
-        while (!empty($porProcesar)) {
-            $idActual = array_shift($porProcesar);
-            if (isset($visitadas[$idActual])) continue;
-            $visitadas[$idActual]          = true;
-            $todasLasCategorias[$idActual] = true;
-
-            $hijas = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_menu_categoria')
-                ->where('id_cliente', $clienteId)
-                ->where('id_padre', $idActual)
-                ->pluck('id_categoria')
-                ->toArray();
-
-            foreach ($hijas as $h) {
-                if (!isset($visitadas[$h])) $porProcesar[] = $h;
-            }
-        }
-        $idsCategoriasComboPack = array_keys($todasLasCategorias);
-
-        $idsProductosVentaEnComboPack = [];
-        if (!empty($idsCategoriasComboPack)) {
-            $idsProductosVentaEnComboPack = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_producto_categoria')
-                ->whereIn('id_categoria', $idsCategoriasComboPack)
-                ->where('id_sucursal', $sucursalId)
-                ->distinct()
-                ->pluck('id_detalle_producto')
-                ->toArray();
-        }
-
-        $composicionPorProductoVenta = [];
-        if (!empty($idsProductosVentaEnComboPack)) {
-            $composiciones = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('inventario_relacion_ventainventario_detalle')
-                ->whereIn('IdDetalleProducto', $idsProductosVentaEnComboPack)
-                ->select('IdDetalleProducto', 'IdProducto', 'Porcion')
-                ->get();
-
-            foreach ($composiciones as $c) {
-                $composicionPorProductoVenta[$c->IdDetalleProducto][] = [
-                    'id_producto_base' => (int) $c->IdProducto,
-                    'porcion'          => (float) $c->Porcion,
-                ];
-            }
-        }
-
-        $productosVentaInfo = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_relacion_ventainventario')
-            ->where('IdCliente', $clienteId)
-            ->get(['IdDetalleProducto', 'Codigo', 'Detalle'])
-            ->keyBy('IdDetalleProducto');
-
-        $idsFacturasVentas = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_propiamente as ip')
-            ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
-            ->where('ip.IdCliente', $clienteId)
-            ->where('ip.IdSucursal', $sucursalId)
-            ->where('ip.IdTipoDeOperacion', $idTipoOperacionVentas)
-            ->whereRaw("UPPER(TRIM(ip.D_H)) = 'H'")
-            ->whereBetween('tf.Fecha', [$fechaInicial, $fechaFinal])
-            ->distinct()
-            ->pluck('ip.IdDocumento')
-            ->toArray();
-
-        $matriz = [];
-
-        if (!empty($idsFacturasVentas) && !empty($idsProductosVentaEnComboPack)) {
-            $ventas = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('impuestos_ventas_detalle as d')
-                ->whereIn('d.idventas', $idsFacturasVentas)
-                ->whereIn('d.idrelacionventainventario', $idsProductosVentaEnComboPack)
-                ->select(
-                    'd.idrelacionventainventario as id_producto_venta',
-                    'd.unidades',
-                    'd.personalizacion'
-                )
-                ->get();
-
-            foreach ($ventas as $venta) {
-                $idProductoVenta  = (int) $venta->id_producto_venta;
-                $unidadesVendidas = (float) $venta->unidades;
-                if ($unidadesVendidas <= 0) continue;
-
-                $personalizacion = null;
-                if ($venta->personalizacion
-                    && $venta->personalizacion !== 'null'
-                    && $venta->personalizacion !== '[]'
-                ) {
-                    $personalizacion = json_decode($venta->personalizacion, true);
-                }
-
-                $composicion = $composicionPorProductoVenta[$idProductoVenta] ?? [];
-
-                if ($personalizacion && is_array($personalizacion) && count($personalizacion) > 0) {
-                    foreach ($personalizacion as $comboData) {
-                        $sustitutos = $comboData['sustitutos'] ?? [];
-                        foreach ($sustitutos as $sust) {
-                            $idProductoReal = (int) ($sust['id_producto_sustituto'] ?? 0);
-                            $cantidad       = (float) ($sust['cantidad'] ?? 0);
-                            if ($idProductoReal > 0 && $cantidad > 0) {
-                                if (!isset($matriz[$idProductoReal])) $matriz[$idProductoReal] = [];
-                                if (!isset($matriz[$idProductoReal][$idProductoVenta])) $matriz[$idProductoReal][$idProductoVenta] = 0;
-                                $matriz[$idProductoReal][$idProductoVenta] += $cantidad;
-                            }
-                        }
-                    }
-                } else {
-                    foreach ($composicion as $comp) {
-                        $idProductoReal = $comp['id_producto_base'];
-                        $cantidad       = $comp['porcion'] * $unidadesVendidas;
-                        if ($cantidad > 0) {
-                            if (!isset($matriz[$idProductoReal])) $matriz[$idProductoReal] = [];
-                            if (!isset($matriz[$idProductoReal][$idProductoVenta])) $matriz[$idProductoReal][$idProductoVenta] = 0;
-                            $matriz[$idProductoReal][$idProductoVenta] += $cantidad;
-                        }
-                    }
-                }
-            }
-        }
-
-        $idsProductosVenta = [];
-        foreach ($matriz as $valores) {
-            foreach ($valores as $idVenta => $cantidad) {
-                if ($cantidad > 0) $idsProductosVenta[$idVenta] = true;
-            }
-        }
-
-        $columnasTemp = [];
-        foreach (array_keys($idsProductosVenta) as $idVenta) {
-            $info = $productosVentaInfo[$idVenta] ?? null;
-            $columnasTemp[] = [
-                'id'     => $idVenta,
-                'nombre' => $info->Detalle ?? "Producto #{$idVenta}",
-                'codigo' => $info->Codigo ?? '',
-            ];
-        }
-        usort($columnasTemp, fn($a, $b) => strcasecmp($a['nombre'], $b['nombre']));
-        $columnas = $columnasTemp;
-
-        $queryProductos = DB::connection('mysql_gestion_comercial_alimentos')
-            ->table('inventario_productodetalle as p')
-            ->where('p.IdCliente', $clienteId)
-            ->whereIn('p.IdProducto', $idsProductosConSalidas)
-            ->select('p.IdProducto', 'p.Codigo', 'p.Descripcion');
-
-        if ($search) {
-            $queryProductos->where(function ($q) use ($search) {
-                $q->where('p.Codigo', 'like', "%{$search}%")
-                  ->orWhere('p.Descripcion', 'like', "%{$search}%");
-            });
-        }
-
-        $productos = $queryProductos->orderBy('p.Descripcion')->get();
-
-        $filasTemp = [];
-        foreach ($productos as $producto) {
-            $idProducto   = $producto->IdProducto;
-            $totalReal    = (float) ($salidasReales[$idProducto]->total_salidas ?? 0);
-            $valoresCombo = $matriz[$idProducto] ?? [];
-
-            $valoresLimpios = [];
-            $sumaCombos     = 0;
-            foreach ($valoresCombo as $idVenta => $cantidad) {
-                if ($cantidad > 0) {
-                    $valoresLimpios[$idVenta] = round($cantidad, 2);
-                    $sumaCombos += $cantidad;
-                }
-            }
-
-            $otrasSalidas = round($totalReal - $sumaCombos, 2);
-
-            if ($soloConMovimiento && $totalReal <= 0) continue;
-
-            $filasTemp[] = [
-                'id_producto'    => $idProducto,
-                'codigo'         => $producto->Codigo,
-                'descripcion'    => $producto->Descripcion,
-                'valores'        => $valoresLimpios,
-                'otras_salidas'  => $otrasSalidas,
-                'total'          => round($totalReal, 2),
-            ];
-        }
-
-        usort($filasTemp, function ($a, $b) {
-            if ($b['total'] !== $a['total']) return $b['total'] <=> $a['total'];
-            return strcasecmp($a['descripcion'], $b['descripcion']);
-        });
-        $filas = $filasTemp;
-
-        foreach ($columnas as $col) {
-            $sumaCol = 0;
-            foreach ($filas as $fila) {
-                $sumaCol += $fila['valores'][$col['id']] ?? 0;
-            }
-            $totalesPorColumna[$col['id']] = round($sumaCol, 2);
-            $totalGeneral += $sumaCol;
-        }
-        $totalGeneral = round($totalGeneral, 2);
-
-        return compact('columnas', 'filas', 'totalesPorColumna', 'totalGeneral');
     }
 
     private function numeroAColumna($numero)
