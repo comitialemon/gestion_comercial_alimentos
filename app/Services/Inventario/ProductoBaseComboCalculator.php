@@ -4,64 +4,10 @@ namespace App\Services\Inventario;
 
 use Illuminate\Support\Facades\DB;
 
-/**
- * 🧮 Calculadora unificada de salidas por producto base,
- *    atribuidas a combos/packs o a ventas sueltas.
- *
- * FILOSOFÍA:
- *  - Fuente de verdad de CANTIDADES = inventario_propiamente (lo que realmente salió).
- *  - Fuente de ATRIBUCIÓN (¿combo o suelto?) = impuestos_ventas_detalle.
- *  - Se cruzan por IdDocumento (= IdVentas).
- *
- * GARANTÍA: para cada producto base,
- *    SUM(combo) + SUM(suelto) === SUM(inventario_propiamente)
- *    → siempre cuadra con ReporteInventarioController.
- *
- * TIPOS DE PRODUCTO:
- *  - DISCRETO: se vende en unidades enteras (salteñas, empanadas, gaseosas).
- *              Se redondea a entero usando "mayor residuo" para que la suma
- *              siga cuadrando exactamente con el total real.
- *  - FRACCIONADO: es ingrediente de combos (azúcar, agua de botellón, sal).
- *              Se deja con decimales tal cual.
- *
- *  La detección es AUTOMÁTICA: si el producto aparece en alguna composición
- *  de combo con Porcion decimal (< 1 o no entera), es fraccionado. Si no,
- *  es discreto.
- *
- * CASOS DE ATRIBUCIÓN:
- *  A) Factura con 1 sola línea de venta (caso POS típico):
- *     atribución DIRECTA y EXACTA.
- *  B) Factura con varias líneas (combo + suelto mezclados):
- *     reparto PROPORCIONAL por unidades vendidas, respetando el total real.
- */
 class ProductoBaseComboCalculator
 {
     protected $connection = 'mysql_gestion_comercial_alimentos';
 
-    /**
-     * Ejecuta todo el cálculo.
-     *
-     * @param int    $clienteId
-     * @param int    $sucursalId
-     * @param string $fechaInicial  Y-m-d
-     * @param string $fechaFinal    Y-m-d
-     * @param string|null $search
-     * @param bool   $soloConMovimiento
-     *
-     * @return array{
-     *   columnas: array<int, array{id:int, nombre:string, codigo:string}>,
-     *   filas: array<int, array{
-     *       id_producto:int, codigo:string, descripcion:string,
-     *       valores: array<int,float>,
-     *       otras_salidas: float,
-     *       total: float,
-     *       es_fraccionado: bool
-     *   }>,
-     *   totalesPorColumna: array<int,float>,
-     *   totalGeneral: float,
-     *   totalOtrasSalidas: float
-     * }
-     */
     public function calcular(
         int $clienteId,
         int $sucursalId,
@@ -71,20 +17,16 @@ class ProductoBaseComboCalculator
         bool $soloConMovimiento = false
     ): array {
         $vacio = [
-            'columnas'           => [],
-            'filas'              => [],
-            'totalesPorColumna'  => [],
-            'totalGeneral'       => 0,
-            'totalOtrasSalidas'  => 0,
+            'columnas'          => [],
+            'filas'             => [],
+            'totalesPorColumna' => [],
+            'totalGeneral'      => 0,
+            'totalOtrasSalidas' => 0,
         ];
 
-        if (!$sucursalId || $sucursalId <= 0) {
-            return $vacio;
-        }
+        if (!$sucursalId || $sucursalId <= 0) return $vacio;
 
-        // =====================================================
-        // 1. Tipo de operación "Ventas"
-        // =====================================================
+        // 1. Tipo de operación Ventas
         $idTipoOperacionVentas = DB::connection($this->connection)
             ->table('inventario_tipooperacion')
             ->where('IdCliente', $clienteId)
@@ -92,14 +34,9 @@ class ProductoBaseComboCalculator
             ->where('ActivoInactivo', 0)
             ->value('IdTipoOperacion');
 
-        if (!$idTipoOperacionVentas) {
-            return $vacio;
-        }
+        if (!$idTipoOperacionVentas) return $vacio;
 
-        // =====================================================
-        // 2. SALIDAS REALES detalladas desde inventario_propiamente
-        //    (fuente de verdad, incluye IdDocumento = IdVentas)
-        // =====================================================
+        // 2. Salidas reales (La verdad absoluta del inventario)
         $salidasDetalladas = DB::connection($this->connection)
             ->table('inventario_propiamente as ip')
             ->join('todos_fecha as tf', 'ip.IdFecha', '=', 'tf.IdFecha')
@@ -108,40 +45,54 @@ class ProductoBaseComboCalculator
             ->where('ip.IdTipoDeOperacion', $idTipoOperacionVentas)
             ->whereRaw("UPPER(TRIM(ip.D_H)) = 'H'")
             ->whereBetween('tf.Fecha', [$fechaInicial, $fechaFinal])
-            ->select(
-                'ip.IdProducto',
-                'ip.Unidades',
-                'ip.IdDocumento'
-            )
+            ->select('ip.IdProducto', 'ip.Unidades', 'ip.IdDocumento')
             ->get();
 
-        if ($salidasDetalladas->isEmpty()) {
-            return $vacio;
-        }
+        if ($salidasDetalladas->isEmpty()) return $vacio;
 
-        // =====================================================
-        // 3. Categorías PACK/COMBOS + descendientes (para clasificar)
-        // =====================================================
-        $idsCategoriasComboPack = $this->obtenerCategoriasComboPack($clienteId);
+        // 3. Identificar COMBOS por categoría
+        $categoriasComboPack = DB::connection($this->connection)
+            ->table('inventario_menu_categoria')
+            ->where('id_cliente', $clienteId)
+            ->where(function($q) {
+                $q->where('nombre', 'LIKE', '%COMBO%')
+                  ->orWhere('nombre', 'LIKE', '%PACK%');
+            })
+            ->pluck('id_categoria')
+            ->toArray();
 
-        $setProductosVentaEnComboPack = [];
-        if (!empty($idsCategoriasComboPack)) {
-            $idsProductosVentaCombo = DB::connection($this->connection)
+        $idsCombosPermitidos = [];
+        if (!empty($categoriasComboPack)) {
+            $productosEnCategorias = DB::connection($this->connection)
                 ->table('inventario_producto_categoria')
-                ->whereIn('id_categoria', $idsCategoriasComboPack)
+                ->whereIn('id_categoria', $categoriasComboPack)
                 ->where('id_sucursal', $sucursalId)
                 ->distinct()
                 ->pluck('id_detalle_producto')
                 ->toArray();
-
-            $setProductosVentaEnComboPack = array_flip($idsProductosVentaCombo);
+            
+            $idsCombosPermitidos = array_flip($productosEnCategorias);
         }
 
-        // =====================================================
-        // 4. Facturas involucradas + sus líneas de venta
-        // =====================================================
-        $idsFacturas = $salidasDetalladas->pluck('IdDocumento')->unique()->filter()->values()->toArray();
+        // 4. Composición exacta de los combos
+        $composicionPorProductoVenta = [];
+        if (!empty($idsCombosPermitidos)) {
+            $composiciones = DB::connection($this->connection)
+                ->table('inventario_relacion_ventainventario_detalle')
+                ->whereIn('IdDetalleProducto', array_keys($idsCombosPermitidos))
+                ->select('IdDetalleProducto', 'IdProducto', 'Porcion')
+                ->get();
 
+            foreach ($composiciones as $c) {
+                $composicionPorProductoVenta[$c->IdDetalleProducto][] = [
+                    'id_producto_base' => (int) $c->IdProducto,
+                    'porcion'          => (float) $c->Porcion,
+                ];
+            }
+        }
+
+        // 5. Facturas + líneas
+        $idsFacturas = $salidasDetalladas->pluck('IdDocumento')->unique()->filter()->values()->toArray();
         $detallesVenta = collect();
         if (!empty($idsFacturas)) {
             $detallesVenta = DB::connection($this->connection)
@@ -160,59 +111,50 @@ class ProductoBaseComboCalculator
                 ->get();
         }
 
-        // =====================================================
-        // 5. Agrupar por documento
-        // =====================================================
         $salidasPorDocumento = $salidasDetalladas->groupBy('IdDocumento');
         $ventasPorDocumento  = $detallesVenta->groupBy('idventas');
 
-        // matriz[id_base][id_producto_venta] = cantidad
-        $matriz = [];
-        // suelto[id_base] = cantidad (salidas no atribuidas a combo)
-        $suelto = [];
-        // total real por base (control de cuadre)
-        $totalRealPorBase = [];
-
-        // metadata por producto de venta para columnas
+        $matriz            = [];  
+        $totalRealPorBase  = [];
         $infoProductoVenta = [];
 
         foreach ($salidasPorDocumento as $idDocumento => $filasSalida) {
             $lineasVenta = $ventasPorDocumento[$idDocumento] ?? collect();
 
-            // Acumular total real SIEMPRE (fuente de verdad)
+            $inventarioDisponible = [];
             foreach ($filasSalida as $fila) {
                 $idBase = (int) $fila->IdProducto;
-                $totalRealPorBase[$idBase] =
-                    ($totalRealPorBase[$idBase] ?? 0) + (float) $fila->Unidades;
+                $inventarioDisponible[$idBase] = ($inventarioDisponible[$idBase] ?? 0) + (float) $fila->Unidades;
+                $totalRealPorBase[$idBase] = ($totalRealPorBase[$idBase] ?? 0) + (float) $fila->Unidades;
             }
 
-            // Sin líneas de venta → no se puede atribuir, va como "suelto" (raro)
             if ($lineasVenta->isEmpty()) {
-                foreach ($filasSalida as $fila) {
-                    $idBase = (int) $fila->IdProducto;
-                    $suelto[$idBase] = ($suelto[$idBase] ?? 0) + (float) $fila->Unidades;
-                }
                 continue;
             }
 
-            $cantidadLineas = $lineasVenta->count();
+            // Calcular requerimiento de COMBOS (Según la receta, sin adivinar)
+            $requeridoCombos = [];
 
-            // ---- CASO A: factura con 1 sola línea → atribución DIRECTA ----
-            if ($cantidadLineas === 1) {
-                $linea = $lineasVenta->first();
-                $idProductoVenta = (int) $linea->id_producto_venta;
-                $esCombo = isset($setProductosVentaEnComboPack[$idProductoVenta]);
+            foreach ($lineasVenta as $linea) {
+                $idProductoVenta  = (int) $linea->id_producto_venta;
+                $unidadesVendidas = (float) $linea->unidades;
+                if ($unidadesVendidas <= 0) continue;
 
-                foreach ($filasSalida as $fila) {
-                    $idBase   = (int) $fila->IdProducto;
-                    $cantidad = (float) $fila->Unidades;
-
-                    if ($esCombo) {
-                        if (!isset($matriz[$idBase])) $matriz[$idBase] = [];
-                        if (!isset($matriz[$idBase][$idProductoVenta])) {
-                            $matriz[$idBase][$idProductoVenta] = 0;
+                if (isset($idsCombosPermitidos[$idProductoVenta])) {
+                    $composicion = $composicionPorProductoVenta[$idProductoVenta] ?? [];
+                    
+                    if (!empty($composicion)) {
+                        $personalizacion = null;
+                        if ($linea->personalizacion && $linea->personalizacion !== 'null' && $linea->personalizacion !== '[]') {
+                            $personalizacion = json_decode($linea->personalizacion, true);
                         }
-                        $matriz[$idBase][$idProductoVenta] += $cantidad;
+
+                        $desglose = $this->desglosarCombo($composicion, $personalizacion, $unidadesVendidas);
+                        
+                        foreach ($desglose as $idBase => $cantidad) {
+                            if ($cantidad <= 0) continue;
+                            $requeridoCombos[$idBase][$idProductoVenta] = ($requeridoCombos[$idBase][$idProductoVenta] ?? 0) + $cantidad;
+                        }
 
                         if (!isset($infoProductoVenta[$idProductoVenta])) {
                             $infoProductoVenta[$idProductoVenta] = [
@@ -221,65 +163,27 @@ class ProductoBaseComboCalculator
                                 'codigo' => $linea->codigo_producto_venta ?? '',
                             ];
                         }
-                    } else {
-                        $suelto[$idBase] = ($suelto[$idBase] ?? 0) + $cantidad;
                     }
                 }
-                continue;
             }
 
-            // ---- CASO B: factura multi-línea → reparto proporcional ----
-            $totalUnidadesVenta = (float) $lineasVenta->sum('unidades');
-            if ($totalUnidadesVenta <= 0) {
-                // fallback: reparto equitativo
-                $totalUnidadesVenta = $cantidadLineas;
-                $pesos = array_fill(0, $cantidadLineas, 1 / $cantidadLineas);
-            } else {
-                $pesos = [];
-                foreach ($lineasVenta as $linea) {
-                    $pesos[] = (float) $linea->unidades / $totalUnidadesVenta;
-                }
-            }
+            // Asignar Combos al Inventario
+            foreach ($requeridoCombos as $idBase => $ventasCombo) {
+                foreach ($ventasCombo as $idProductoVenta => $cantCombo) {
+                    $disp = $inventarioDisponible[$idBase] ?? 0;
+                    if ($disp <= 0) continue;
 
-            $indexLinea = 0;
-            foreach ($lineasVenta as $linea) {
-                $peso = $pesos[$indexLinea] ?? 0;
-                $indexLinea++;
-
-                if ($peso <= 0) continue;
-
-                $idProductoVenta = (int) $linea->id_producto_venta;
-                $esCombo = isset($setProductosVentaEnComboPack[$idProductoVenta]);
-
-                foreach ($filasSalida as $fila) {
-                    $idBase     = (int) $fila->IdProducto;
-                    $cantidadRe = (float) $fila->Unidades * $peso;
-                    if ($cantidadRe <= 0) continue;
-
-                    if ($esCombo) {
+                    $asignar = min($cantCombo, $disp);
+                    if ($asignar > 0) {
                         if (!isset($matriz[$idBase])) $matriz[$idBase] = [];
-                        if (!isset($matriz[$idBase][$idProductoVenta])) {
-                            $matriz[$idBase][$idProductoVenta] = 0;
-                        }
-                        $matriz[$idBase][$idProductoVenta] += $cantidadRe;
-
-                        if (!isset($infoProductoVenta[$idProductoVenta])) {
-                            $infoProductoVenta[$idProductoVenta] = [
-                                'id'     => $idProductoVenta,
-                                'nombre' => $linea->nombre_producto_venta ?? "Producto #{$idProductoVenta}",
-                                'codigo' => $linea->codigo_producto_venta ?? '',
-                            ];
-                        }
-                    } else {
-                        $suelto[$idBase] = ($suelto[$idBase] ?? 0) + $cantidadRe;
+                        if (!isset($matriz[$idBase][$idProductoVenta])) $matriz[$idBase][$idProductoVenta] = 0;
+                        $matriz[$idBase][$idProductoVenta] += $asignar;
+                        $inventarioDisponible[$idBase] -= $asignar;
                     }
                 }
             }
         }
 
-        // =====================================================
-        // 6. Columnas (una por cada producto de venta combo/pack)
-        // =====================================================
         $columnasTemp = [];
         foreach ($matriz as $idBase => $valores) {
             foreach ($valores as $idVenta => $cantidad) {
@@ -296,14 +200,8 @@ class ProductoBaseComboCalculator
         usort($columnasTemp, fn($a, $b) => strcasecmp($a['nombre'], $b['nombre']));
         $columnas = array_values($columnasTemp);
 
-        // =====================================================
-        // 7. Filas (todos los productos base con movimiento)
-        // =====================================================
         $idsProductosBase = array_keys($totalRealPorBase);
-
-        if (empty($idsProductosBase)) {
-            return $vacio;
-        }
+        if (empty($idsProductosBase)) return $vacio;
 
         $queryProductos = DB::connection($this->connection)
             ->table('inventario_productodetalle as p')
@@ -319,8 +217,6 @@ class ProductoBaseComboCalculator
         }
 
         $productos = $queryProductos->orderBy('p.Descripcion')->get();
-
-        // columnas indexadas por id para buscar rápido
         $columnasIds = array_map(fn($c) => (int) $c['id'], $columnas);
         $columnasSet = array_flip($columnasIds);
 
@@ -330,7 +226,6 @@ class ProductoBaseComboCalculator
             $totalReal    = round($totalRealPorBase[$idBase] ?? 0, 4);
             $valoresCombo = $matriz[$idBase] ?? [];
 
-            // Normalizar valores a las columnas existentes
             $valores = [];
             $sumaCombos = 0;
             foreach ($valoresCombo as $idVenta => $cantidad) {
@@ -341,13 +236,11 @@ class ProductoBaseComboCalculator
                 $sumaCombos += $cantidad;
             }
 
-            // 🔥 Garantía de cuadre: lo que no se atribuyó a combo es suelto
+            // El sobrante real del inventario SIEMPRE va a Otras Salidas
             $otrasSalidas = round($totalReal - $sumaCombos, 4);
             if ($otrasSalidas < 0) $otrasSalidas = 0.0;
 
-            if ($soloConMovimiento && $totalReal <= 0) {
-                continue;
-            }
+            if ($soloConMovimiento && $totalReal <= 0) continue;
 
             $filas[] = [
                 'id_producto'   => $idBase,
@@ -359,30 +252,16 @@ class ProductoBaseComboCalculator
             ];
         }
 
-        // Orden: total desc, luego descripción
         usort($filas, function ($a, $b) {
             if ($b['total'] !== $a['total']) return $b['total'] <=> $a['total'];
             return strcasecmp($a['descripcion'], $b['descripcion']);
         });
 
-        // =====================================================
-        // 8. Detectar productos FRACCIONADOS vs DISCRETOS
-        // =====================================================
-        $idsProductosFraccionados = $this->detectarProductosFraccionados(
-            $idsProductosBase,
-            $clienteId
-        );
-
-        // =====================================================
-        // 9. Normalizar: discretos a enteros, fraccionados con decimales
-        // =====================================================
+        $idsProductosFraccionados = $this->detectarProductosFraccionados($idsProductosBase);
         $filas = $this->normalizarFilas($filas, $idsProductosFraccionados);
 
-        // =====================================================
-        // 10. Totales por columna y total general
-        // =====================================================
         $totalesPorColumna = [];
-        $totalGeneral      = 0;
+        $totalGeneral = 0;
         $totalOtrasSalidas = 0;
 
         foreach ($columnas as $col) {
@@ -408,61 +287,69 @@ class ProductoBaseComboCalculator
         ];
     }
 
-    /**
-     * Obtiene los IDs de categorías PACK/COMBOS + todos sus descendientes.
-     */
-    protected function obtenerCategoriasComboPack(int $clienteId): array
+    protected function desglosarCombo($composicion, $personalizacion, $unidadesVendidas): array
     {
-        $raices = DB::connection($this->connection)
-            ->table('inventario_menu_categoria')
-            ->where('id_cliente', $clienteId)
-            ->whereIn(DB::raw('UPPER(nombre)'), ['PACK', 'COMBOS'])
-            ->pluck('id_categoria')
-            ->toArray();
+        $resultado = [];
 
-        if (empty($raices)) return [];
+        if (empty($personalizacion) || !is_array($personalizacion)) {
+            foreach ($composicion as $comp) {
+                $idBase   = (int) $comp['id_producto_base'];
+                $cantidad = (float) $comp['porcion'] * $unidadesVendidas;
+                if ($cantidad > 0) {
+                    $resultado[$idBase] = ($resultado[$idBase] ?? 0) + $cantidad;
+                }
+            }
+            return $resultado;
+        }
 
-        $visitadas   = [];
-        $porProcesar = $raices;
+        foreach ($personalizacion as $comboData) {
+            $sustitutos = $comboData['sustitutos'] ?? [];
 
-        while (!empty($porProcesar)) {
-            $idActual = array_shift($porProcesar);
-            if (isset($visitadas[$idActual])) continue;
-            $visitadas[$idActual] = true;
+            $sustitutosPorOriginal = [];
+            foreach ($sustitutos as $sust) {
+                $idOriginal  = (int) ($sust['id_producto_original'] ?? 0);
+                $idSustituto = (int) ($sust['id_producto_sustituto'] ?? 0);
+                $cantidad    = (float) ($sust['cantidad'] ?? 0);
+                if ($idOriginal <= 0 || $cantidad <= 0) continue;
+                $sustitutosPorOriginal[$idOriginal][] = [
+                    'id_sustituto' => $idSustituto,
+                    'cantidad'     => $cantidad,
+                ];
+            }
 
-            $hijas = DB::connection($this->connection)
-                ->table('inventario_menu_categoria')
-                ->where('id_cliente', $clienteId)
-                ->where('id_padre', $idActual)
-                ->pluck('id_categoria')
-                ->toArray();
+            foreach ($composicion as $comp) {
+                $idOriginal      = (int) $comp['id_producto_base'];
+                $porcionOriginal = (float) $comp['porcion'];
 
-            foreach ($hijas as $h) {
-                if (!isset($visitadas[$h])) $porProcesar[] = $h;
+                if (!isset($sustitutosPorOriginal[$idOriginal])) {
+                    if ($porcionOriginal > 0) {
+                        $resultado[$idOriginal] = ($resultado[$idOriginal] ?? 0) + $porcionOriginal;
+                    }
+                    continue;
+                }
+
+                $totalSustituido = 0;
+                foreach ($sustitutosPorOriginal[$idOriginal] as $s) {
+                    if ($s['cantidad'] > 0) {
+                        $resultado[$s['id_sustituto']] = ($resultado[$s['id_sustituto']] ?? 0) + $s['cantidad'];
+                    }
+                    $totalSustituido += $s['cantidad'];
+                }
+
+                $remanente = $porcionOriginal - $totalSustituido;
+                if ($remanente > 0) {
+                    $resultado[$idOriginal] = ($resultado[$idOriginal] ?? 0) + $remanente;
+                }
             }
         }
 
-        return array_keys($visitadas);
+        return $resultado;
     }
 
-    /**
-     * Detecta qué productos base son "fraccionados".
-     *
-     * Un producto es FRACCIONADO si en ALGUNA composición de combo su
-     * Porcion tiene decimales. Si todas sus Porcion son enteras (o no
-     * aparece en ningún combo), es DISCRETO.
-     *
-     * @param array $idsProductosBase
-     * @param int   $clienteId
-     * @return array<int,bool>  [id_producto => true] solo los fraccionados
-     */
-    protected function detectarProductosFraccionados(array $idsProductosBase, int $clienteId): array
+    protected function detectarProductosFraccionados(array $idsProductosBase): array
     {
-        if (empty($idsProductosBase)) {
-            return [];
-        }
+        if (empty($idsProductosBase)) return [];
 
-        // Productos que en alguna composición tienen Porcion decimal → fraccionados
         $fraccionados = DB::connection($this->connection)
             ->table('inventario_relacion_ventainventario_detalle')
             ->whereIn('IdProducto', $idsProductosBase)
@@ -475,29 +362,22 @@ class ProductoBaseComboCalculator
         return array_flip($fraccionados);
     }
 
-    /**
-     * Normaliza las filas:
-     *  - Discretos: redondea a entero (mayor residuo para que la suma cuadre).
-     *  - Fraccionados: deja decimales tal cual.
-     */
     protected function normalizarFilas(array $filas, array $idsProductosFraccionados): array
     {
         foreach ($filas as &$fila) {
-            $idBase        = (int) $fila['id_producto'];
+            $idBase = (int) $fila['id_producto'];
             $esFraccionado = isset($idsProductosFraccionados[$idBase]);
 
             if ($esFraccionado) {
-                // Dejar tal cual (con 4 decimales máx para no arrastrar ruido)
                 foreach ($fila['valores'] as $idVenta => $valor) {
                     $fila['valores'][$idVenta] = round((float) $valor, 4);
                 }
-                $fila['otras_salidas']  = round((float) $fila['otras_salidas'], 4);
-                $fila['total']          = round((float) $fila['total'], 4);
+                $fila['otras_salidas'] = round((float) $fila['otras_salidas'], 4);
+                $fila['total'] = round((float) $fila['total'], 4);
                 $fila['es_fraccionado'] = true;
                 continue;
             }
 
-            // DISCRETO: redondear con mayor residuo para que SUM(valores) + suelto = total entero
             $fila = $this->redondearDiscreto($fila);
             $fila['es_fraccionado'] = false;
         }
@@ -506,19 +386,11 @@ class ProductoBaseComboCalculator
         return $filas;
     }
 
-    /**
-     * Redondea un producto discreto respetando el total.
-     *
-     * Ejemplo: valores = [combo1: 1.666, combo2: 3.334, suelto: 2.000], total = 7
-     * → suma redondeos = 2 + 3 + 2 = 7 → queda igual.
-     * Si la suma no cuadra, ajusta la columna con mayor parte fraccionaria.
-     */
     protected function redondearDiscreto(array $fila): array
     {
-        $totalReal   = (float) $fila['total'];
+        $totalReal = (float) $fila['total'];
         $totalEntero = (int) round($totalReal);
 
-        // 1. Redondear cada valor y guardar parte fraccionaria
         $partes = [];
         $sumaRedondeada = 0;
 
@@ -540,10 +412,7 @@ class ProductoBaseComboCalculator
         ];
         $sumaRedondeada += $pisoSuelto;
 
-        // 2. Asignar el residuo a las columnas con mayor fracción
         $residuo = $totalEntero - $sumaRedondeada;
-
-        // Ordenar por fracción descendente
         uasort($partes, fn($a, $b) => $b['fraccion'] <=> $a['fraccion']);
 
         foreach ($partes as &$p) {
@@ -553,10 +422,9 @@ class ProductoBaseComboCalculator
         }
         unset($p);
 
-        // 3. Reconstruir fila
         $valoresFinales = [];
-        $totalSuelto    = 0;
-        $totalColumnas  = 0;
+        $totalSuelto = 0;
+        $totalColumnas = 0;
 
         foreach ($partes as $key => $p) {
             if ($p['es_suelto']) {
@@ -570,9 +438,9 @@ class ProductoBaseComboCalculator
             }
         }
 
-        $fila['valores']       = $valoresFinales;
+        $fila['valores'] = $valoresFinales;
         $fila['otras_salidas'] = (float) $totalSuelto;
-        $fila['total']         = (float) ($totalColumnas + $totalSuelto);
+        $fila['total'] = (float) ($totalColumnas + $totalSuelto);
 
         return $fila;
     }

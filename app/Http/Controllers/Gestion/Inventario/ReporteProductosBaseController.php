@@ -17,9 +17,6 @@ class ReporteProductosBaseController extends Controller
         $this->calculator = $calculator;
     }
 
-    /**
-     * Reporte de productos base con desglose de ventas.
-     */
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -46,8 +43,6 @@ class ReporteProductosBaseController extends Controller
             $soloConMovimiento
         );
 
-        // Adaptar la salida del servicio al formato que espera el frontend:
-        // productos con total_vendido, venta_suelto, venta_compuesta, detalles_venta
         $productos = collect($data['filas'])->map(function ($fila) use ($data) {
             $valoresCombo   = $fila['valores'];
             $esFraccionado  = (bool) ($fila['es_fraccionado'] ?? false);
@@ -73,7 +68,6 @@ class ReporteProductosBaseController extends Controller
                 ];
             }
 
-            // Suelto (incluye productos base no asociados a combos)
             $ventaSuelto = $esFraccionado
                 ? round($fila['otras_salidas'], 4)
                 : (int) $fila['otras_salidas'];

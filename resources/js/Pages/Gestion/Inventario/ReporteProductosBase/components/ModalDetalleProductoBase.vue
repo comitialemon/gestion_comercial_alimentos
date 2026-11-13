@@ -146,7 +146,7 @@ onUnmounted(() => {
                     <div v-if="sueltos.length > 0 || mostrarSueltoVirtual" class="border border-emerald-200 rounded-lg overflow-hidden">
                         <div class="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
                             <span class="text-[10px] font-medium text-emerald-700">
-                                <i class="fas fa-box text-emerald-600 mr-1 text-[9px]"></i> Sueltos
+                                <i class="fas fa-box text-emerald-600 mr-1 text-[9px]"></i> Producto Suelto
                             </span>
                             <span class="text-xs font-bold text-emerald-600">{{ formatNumber(producto?.venta_suelto) }}</span>
                         </div>
@@ -162,7 +162,7 @@ onUnmounted(() => {
                     </div>
 
                     <!-- Compuestos -->
-                    <div v-if="compuestos.length > 0" class="border border-blue-200 rounded-lg overflow-hidden">
+                    <div v-if="compuestos.length > 0" class="border border-blue-200 rounded-lg overflow-hidden mt-2">
                         <div class="bg-blue-50 px-3 py-1.5 border-b border-blue-200 flex justify-between items-center">
                             <span class="text-[10px] font-medium text-blue-700">
                                 <i class="fas fa-layer-group text-blue-600 mr-1 text-[9px]"></i> Combos
@@ -174,9 +174,6 @@ onUnmounted(() => {
                                 <span class="text-xs text-gray-800 truncate max-w-[100px]" :title="item.nombre">{{ item.nombre }}</span>
                                 <span class="text-xs font-bold text-blue-600">{{ formatNumber(item.cantidad_base) }}</span>
                             </div>
-                            <div class="text-[8px] text-gray-400 mt-0.5">
-                                <span>Unidades vendidas: {{ formatNumber(item.unidades_vendidas) }}</span>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -187,14 +184,14 @@ onUnmounted(() => {
                     <div v-if="sueltos.length > 0 || mostrarSueltoVirtual" class="border border-emerald-200 rounded-lg overflow-hidden">
                         <div class="bg-emerald-50 px-3 py-1.5 border-b border-emerald-200 flex justify-between items-center">
                             <span class="text-xs font-medium text-emerald-700">
-                                <i class="fas fa-box text-emerald-600 mr-1.5 text-[10px]"></i> Venta Suelta
+                                <i class="fas fa-box text-emerald-600 mr-1.5 text-[10px]"></i> Producto Suelto
                             </span>
                             <span class="text-xs font-bold text-emerald-600">{{ formatNumber(producto?.venta_suelto) }} unidades</span>
                         </div>
                         <div v-for="item in sueltos" :key="item.id_producto_venta" class="px-3 py-1.5 border-b border-gray-100 last:border-b-0 flex justify-between items-center">
                             <div class="flex-1 min-w-0">
                                 <span class="text-xs font-medium text-gray-800">{{ item.nombre }}</span>
-                                <span class="text-[9px] text-gray-400 ml-2">(Código: {{ item.codigo || '-' }})</span>
+                                <span class="text-[9px] text-gray-400 ml-2">(Código: {{ item.codigo || producto?.Codigo || '-' }})</span>
                             </div>
                             <span class="text-xs font-bold text-emerald-600 flex-shrink-0 ml-2">{{ formatNumber(item.cantidad_base) }} unid.</span>
                         </div>
@@ -202,14 +199,14 @@ onUnmounted(() => {
                         <div v-if="mostrarSueltoVirtual" class="px-3 py-1.5 flex justify-between items-center bg-emerald-50/50">
                             <div class="flex-1 min-w-0">
                                 <span class="text-xs font-medium text-gray-800">{{ producto?.Descripcion }}</span>
-                                <span class="text-[9px] text-gray-400 ml-2">(Venta directa sin combo)</span>
+                                <span class="text-[9px] text-gray-400 ml-2">(Código: {{ producto?.Codigo || '-' }})</span>
                             </div>
                             <span class="text-xs font-bold text-emerald-600 flex-shrink-0 ml-2">{{ formatNumber(diferenciaSuelto) }} unid.</span>
                         </div>
                     </div>
 
                     <!-- Compuestos -->
-                    <div v-if="compuestos.length > 0" class="border border-blue-200 rounded-lg overflow-hidden">
+                    <div v-if="compuestos.length > 0" class="border border-blue-200 rounded-lg overflow-hidden mt-2">
                         <div class="bg-blue-50 px-3 py-1.5 border-b border-blue-200 flex justify-between items-center">
                             <span class="text-xs font-medium text-blue-700">
                                 <i class="fas fa-layer-group text-blue-600 mr-1.5 text-[10px]"></i> En Combo/Pack
@@ -223,9 +220,6 @@ onUnmounted(() => {
                                     <span class="text-[9px] text-gray-400 ml-2">(Código: {{ item.codigo || '-' }})</span>
                                 </div>
                                 <span class="text-xs font-bold text-blue-600 flex-shrink-0 ml-2">{{ formatNumber(item.cantidad_base) }} unid.</span>
-                            </div>
-                            <div class="mt-0.5 text-[9px] text-gray-500">
-                                <span>Unidades vendidas: {{ formatNumber(item.unidades_vendidas) }}</span>
                             </div>
                         </div>
                     </div>

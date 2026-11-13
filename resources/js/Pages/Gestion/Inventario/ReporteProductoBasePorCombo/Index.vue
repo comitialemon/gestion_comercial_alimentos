@@ -234,7 +234,7 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="mt-1 text-[8px] text-gray-400">
-                        <i class="fas fa-info-circle"></i> Salidas reales de inventario (tipo operación = Ventas). Cada columna es un combo/pack. TOTAL REAL = suma de inventario_propiamente. "Otras Salidas" = diferencia (ventas sin combo o diferencias).
+                        <i class="fas fa-info-circle"></i> Salidas reales de inventario (tipo operación = Ventas). Cada columna es un combo/pack. TOTAL REAL = suma de inventario_propiamente. "Producto Suelto" = diferencia (ventas sin combo).
                     </div>
                 </div>
 
@@ -273,8 +273,8 @@ onUnmounted(() => {
                                         </div>
                                     </th>
                                     <th class="px-2 py-2 text-center text-[10px] font-bold uppercase bg-amber-100 text-amber-800 border-r border-amber-200 sticky"
-                                        style="min-width: 100px;">
-                                        Otras Salidas
+                                        style="min-width: 120px;">
+                                        Producto Suelto
                                     </th>
                                     <th class="px-3 py-2 text-center text-[10px] font-bold text-primary-800 uppercase bg-primary-200 sticky right-0 z-30 border-l border-primary-300"
                                         style="min-width: 110px;">

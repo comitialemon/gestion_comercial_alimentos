@@ -23,9 +23,6 @@ class ReporteProductoBasePorComboController extends Controller
         $this->calculator = $calculator;
     }
 
-    /**
-     * 📊 Matriz: productos base × combos (salidas REALES de inventario_propiamente)
-     */
     public function index(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -74,9 +71,6 @@ class ReporteProductoBasePorComboController extends Controller
         ]);
     }
 
-    /**
-     * 📥 Exportar a Excel
-     */
     public function exportarExcel(Request $request)
     {
         $clienteId = session('cliente_id');

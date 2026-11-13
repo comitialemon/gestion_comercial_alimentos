@@ -256,7 +256,7 @@ onUnmounted(() => {
                                 </div>
                                 <div class="grid grid-cols-2 gap-1.5 pt-1.5 border-t border-gray-200">
                                     <div class="bg-emerald-50 rounded p-1.5 text-center">
-                                        <p class="text-[8px] text-gray-500">Suelto</p>
+                                        <p class="text-[8px] text-gray-500">Producto Suelto</p>
                                         <p class="text-xs font-bold text-emerald-600">{{ formatNumber(item.venta_suelto) }}</p>
                                     </div>
                                     <div class="bg-blue-50 rounded p-1.5 text-center">
@@ -284,7 +284,7 @@ onUnmounted(() => {
                                     <tr>
                                         <th class="px-2 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Código</th>
                                         <th class="px-2 py-1.5 text-left text-[9px] font-medium text-primary-700 uppercase">Producto Base</th>
-                                        <th class="px-2 py-1.5 text-right text-[9px] font-medium text-emerald-600 uppercase">Suelto</th>
+                                        <th class="px-2 py-1.5 text-right text-[9px] font-medium text-emerald-600 uppercase">Producto Suelto</th>
                                         <th class="px-2 py-1.5 text-right text-[9px] font-medium text-blue-600 uppercase">Combo</th>
                                         <th class="px-2 py-1.5 text-right text-[9px] font-medium text-primary-700 uppercase">Total</th>
                                         <th class="px-2 py-1.5 text-center text-[9px] font-medium text-primary-700 uppercase w-8">Det.</th>
@@ -317,7 +317,7 @@ onUnmounted(() => {
                                     <tr>
                                         <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Código</th>
                                         <th class="px-3 py-2 text-left text-[10px] font-medium text-primary-700 uppercase">Producto Base</th>
-                                        <th class="px-3 py-2 text-right text-[10px] font-medium text-emerald-600 uppercase w-20">Suelto</th>
+                                        <th class="px-3 py-2 text-right text-[10px] font-medium text-emerald-600 uppercase w-20">Producto Suelto</th>
                                         <th class="px-3 py-2 text-right text-[10px] font-medium text-blue-600 uppercase w-20">Combo</th>
                                         <th class="px-3 py-2 text-right text-[10px] font-medium text-primary-700 uppercase w-20">Total</th>
                                         <th class="px-3 py-2 text-center text-[10px] font-medium text-primary-700 uppercase w-10">Det.</th>
