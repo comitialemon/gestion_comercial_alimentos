@@ -17,54 +17,54 @@ use Illuminate\Support\Facades\Cache;
 
 class DistribucionController extends Controller
 {
-    public function index()
+    // ============================================================
+    // VISTA 1: CÁMARA / REPARTO (Pendiente → En Distribución)
+    // ============================================================
+    public function indexReparto()
     {
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        $queryPedidos = function ($estado) use ($clienteId, $sucursalId) {
-            $pedidos = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
-                ->where('pedidos_clientes.IdSucursal', $sucursalId)
-                ->where('EstadoPedido', $estado)
-                ->with(['cliente', 'sucursal'])
-                ->orderBy('pedidos_clientes.FechaPedido', 'asc')
-                ->get();
+        $pedidosPendientes = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
 
-            return $pedidos->map(function ($pedido) use ($clienteId) {
-                $operador = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('todos_operador')
-                    ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
-                    ->where('todos_operador.IdOperador', $pedido->IdOperador)
-                    ->first(['todos_identificador.Nombre']);
+        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Reparto', [
+            'pedidosPendientes' => $pedidosPendientes,
+        ]);
+    }
 
-                $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
+    // ============================================================
+    // VISTA 2: DESPACHO (En Distribución → En Transportadora)
+    // ============================================================
+    public function indexDespacho()
+    {
+        $clienteId  = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
 
-                $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
-                    ->table('operacion_pedidos_operadores_clientes as opc')
-                    ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
-                    ->where('opc.IdOperador', $pedido->IdOperador)
-                    ->where('opc.IdCliente', $clienteId)
-                    ->where('osdb.IdSucursal', $pedido->IdSucursal)
-                    ->first(['opc.Ciudad', 'opc.Provincia']);
+        $pedidosEnDistribucion = $this->pedidosConOperadorYZona('En Distribución', $clienteId, $sucursalId);
 
-                $pedido->Ciudad    = $asignacion ? (bool) $asignacion->Ciudad : false;
-                $pedido->Provincia = $asignacion ? (bool) $asignacion->Provincia : false;
-
-                return $pedido;
-            });
-        };
-
-        $pedidosPendientes     = $queryPedidos('Pendiente');
-        $pedidosEnDistribucion = $queryPedidos('En Distribución');
-
-        $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
-            ->where('pedidos_clientes.IdSucursal', $sucursalId)
-            ->where('EstadoPedido', 'En Transportadora')
-            ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
-            ->orderBy('pedidos_clientes.FechaPedido', 'desc')
+        $transportadoras = Transportadora::with('identificador')
+            ->where('ActivoInactivo', 1)
             ->get();
 
-        $pedidosEnTransportadora = $pedidosTransportadoraRaw->map(function ($pedido) use ($clienteId) {
+        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Despacho', [
+            'pedidosEnDistribucion' => $pedidosEnDistribucion,
+            'transportadoras'       => $transportadoras,
+        ]);
+    }
+
+    // ============================================================
+    // HELPER COMPARTIDO
+    // ============================================================
+    private function pedidosConOperadorYZona(string $estado, $clienteId, $sucursalId)
+    {
+        $pedidos = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+            ->where('pedidos_clientes.IdSucursal', $sucursalId)
+            ->where('EstadoPedido', $estado)
+            ->with(['cliente', 'sucursal'])
+            ->orderBy('pedidos_clientes.FechaPedido', 'asc')
+            ->get();
+
+        return $pedidos->map(function ($pedido) use ($clienteId) {
             $operador = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('todos_operador')
                 ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
@@ -86,27 +86,36 @@ class DistribucionController extends Controller
 
             return $pedido;
         });
-
-        $transportadoras = Transportadora::with('identificador')
-            ->where('ActivoInactivo', 1)
-            ->get();
-
-        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Index', [
-            'pedidosPendientes'      => $pedidosPendientes,
-            'pedidosEnDistribucion'  => $pedidosEnDistribucion,
-            'pedidosEnTransportadora'=> $pedidosEnTransportadora,
-            'transportadoras'        => $transportadoras,
-        ]);
     }
 
+    // ============================================================
+    // CAMBIAR ESTADO (valida transición por modo)
+    // ============================================================
     public function cambiarEstado(Request $request, $id)
     {
         $request->validate([
+            'modo'           => 'nullable|in:reparto,despacho',
             'nuevo_estado'   => 'required|in:En Distribución,En Transportadora,Recibido',
             'numero_guia'    => 'nullable|string|max:100',
             'costo_envio'    => 'nullable|numeric|min:0',
             'observacion'    => 'nullable|string|max:255',
         ]);
+
+        $modo        = $request->input('modo', 'despacho');
+        $nuevoEstado = $request->input('nuevo_estado');
+
+        $permitidas = match ($modo) {
+            'reparto'  => ['En Distribución'],
+            'despacho' => ['En Transportadora', 'Recibido'],
+            default    => [],
+        };
+
+        if (!in_array($nuevoEstado, $permitidas, true)) {
+            return response()->json([
+                'success' => false,
+                'message' => "Transición '{$nuevoEstado}' no permitida en el módulo '{$modo}'.",
+            ], 422);
+        }
 
         $operadorId = session('operador_id');
         $clienteId  = session('cliente_id');
@@ -127,8 +136,6 @@ class DistribucionController extends Controller
                     'message' => 'Pedido no encontrado.'
                 ], 404);
             }
-
-            $nuevoEstado = $request->input('nuevo_estado');
 
             if ($nuevoEstado === 'En Transportadora') {
                 $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
@@ -241,6 +248,9 @@ class DistribucionController extends Controller
         }
     }
 
+    // ============================================================
+    // HISTORIAL
+    // ============================================================
     public function getHistorial($id)
     {
         try {
@@ -251,10 +261,7 @@ class DistribucionController extends Controller
                 ->first();
 
             if (!$pedido) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado.'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
             }
 
             $historial = HistorialPedido::where('IdPedidoCliente', $id)
@@ -268,17 +275,13 @@ class DistribucionController extends Controller
                 'envio'         => $pedido->envio,
             ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * ✅ NUEVO: Búsqueda de identificadores (autocomplete de transportadoras)
-     * Busca en todos_identificador por Nombre o CI_NIT
-     */
+    // ============================================================
+    // BUSCAR IDENTIFICADORES
+    // ============================================================
     public function buscarIdentificadores(Request $request)
     {
         $q = trim($request->input('q', ''));
@@ -294,7 +297,6 @@ class DistribucionController extends Controller
                 ->limit(15)
                 ->get(['IdIdentificador', 'Nombre', 'CI_NIT']);
 
-            // Detectar cuáles ya son transportadora
             $idsYaTransportadora = Transportadora::whereIn(
                 'IdIdentificador',
                 $identificadores->pluck('IdIdentificador')
@@ -310,16 +312,13 @@ class DistribucionController extends Controller
             );
         } catch (\Exception $e) {
             Log::error('Error buscando identificadores: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
-    /**
-     * ✅ MODIFICADO: Crea transportadora desde identificador existente O crea uno nuevo
-     */
+    // ============================================================
+    // GUARDAR TRANSPORTADORA
+    // ============================================================
     public function guardarTransportadora(Request $request)
     {
         $request->validate([
@@ -334,29 +333,20 @@ class DistribucionController extends Controller
         try {
             $conexion->beginTransaction();
 
-            // ✅ MODO A: Usar identificador existente
             if ($request->filled('IdIdentificador')) {
                 $identificador = Identificador::find($request->IdIdentificador);
 
                 if (!$identificador) {
                     $conexion->rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Identificador no encontrado.'
-                    ], 404);
+                    return response()->json(['success' => false, 'message' => 'Identificador no encontrado.'], 404);
                 }
 
-                // Evitar duplicar transportadora para el mismo identificador
                 $yaExiste = Transportadora::where('IdIdentificador', $identificador->IdIdentificador)->exists();
                 if ($yaExiste) {
                     $conexion->rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Ese identificador ya está registrado como transportadora.'
-                    ], 422);
+                    return response()->json(['success' => false, 'message' => 'Ese identificador ya está registrado como transportadora.'], 422);
                 }
             } else {
-                // ✅ MODO B: Crear identificador nuevo (lógica actual)
                 $identificador = null;
                 if ($request->filled('CI_NIT')) {
                     $identificador = Identificador::where('CI_NIT', $request->CI_NIT)->first();
@@ -391,10 +381,7 @@ class DistribucionController extends Controller
         } catch (\Exception $e) {
             $conexion->rollBack();
             Log::error('Error creando transportadora: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 }

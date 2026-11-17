@@ -1710,16 +1710,27 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     });
                 });
                 // ============================================================
-                // DISTRIBUCIÓN (Logística)
+                // ============================================================
+                // DISTRIBUCIÓN (Logística) — 2 vistas por rol
                 // ============================================================
                 Route::prefix('distribucion')->group(function () {
-                    Route::get('/', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'index'])
-                        ->name('operacion.pedidos-clientes.distribucion.index');
+
+                    // Redirección legacy
+                    Route::get('/', function () {
+                        return redirect()->route('operacion.pedidos-clientes.distribucion.despacho');
+                    })->name('operacion.pedidos-clientes.distribucion.index');
+
+                    // ✅ Vista REPARTO (rol cámara) — solo tab Pendientes
+                    Route::get('/reparto', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexReparto'])
+                        ->name('operacion.pedidos-clientes.distribucion.reparto');
+
+                    // ✅ Vista DESPACHO (rol despacho) — tabs Distribución + Transportadora
+                    Route::get('/despacho', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexDespacho'])
+                        ->name('operacion.pedidos-clientes.distribucion.despacho');
 
                     Route::post('/transportadoras', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'guardarTransportadora'])
                         ->name('operacion.pedidos-clientes.distribucion.guardar-transportadora');
 
-                    // ✅ NUEVO: Búsqueda de identificadores (autocomplete)
                     Route::get('/identificadores/buscar', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'buscarIdentificadores'])
                         ->name('operacion.pedidos-clientes.distribucion.buscar-identificadores');
 
@@ -1729,7 +1740,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::get('/{id}/historial', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'getHistorial'])
                         ->name('operacion.pedidos-clientes.distribucion.historial');
                 });
-
                 // ============================================================
                 // RECLAMOS (Calidad)
                 // ============================================================
