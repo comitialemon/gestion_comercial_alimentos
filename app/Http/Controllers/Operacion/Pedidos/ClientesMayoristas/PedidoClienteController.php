@@ -2490,7 +2490,6 @@ class PedidoClienteController extends Controller
 
             // ============================================================
             // ✅ REJILLAS: agrupar por IdContenedor + IdProducto + SubCliente
-            //    → 20 rejillas del mismo producto se ven como 1 solo bloque
             // ============================================================
             $detallesAgrupadosRejillas = $detallesRejillas
                 ->groupBy(function ($item) {
@@ -2670,6 +2669,7 @@ class PedidoClienteController extends Controller
             $pdf->Cell(60, $altoFila, $sucursal->Nombre ?? 'Sin sucursal', 0, 0, 'L');
             $yInfo += $altoFila;
 
+            // ============ CABECERA DERECHA ============
             $yInfoDer = $y;
 
             $pdf->SetFont('helvetica', 'B', 8);
@@ -2680,24 +2680,18 @@ class PedidoClienteController extends Controller
             $pdf->Cell(58, $altoFila, $pedido->EstadoPedido ?? 'Pendiente', 0, 0, 'L');
             $yInfoDer += $altoFila;
 
+            // ✅ TIPO PRECIO (CF / SF EN NEGRILLA Y MAYÚSCULA)
+            $tipoPrecioLabel = ($pedido->TipoPrecio === 'con_factura') ? 'CF' : 'SF';
+
             $pdf->SetFont('helvetica', 'B', 8);
             $pdf->SetXY($colDer_label, $yInfoDer);
-            $pdf->Cell(30, $altoFila, 'Tipo Precio:', 0, 0, 'L');
-            $pdf->SetFont('helvetica', '', 8);
+            $pdf->Cell(30, $altoFila, 'Documento:', 0, 0, 'L');
+            $pdf->SetFont('helvetica', 'B', 8); // ✅ Fuente en Negrita
             $pdf->SetXY($colDer_valor, $yInfoDer);
-            $pdf->Cell(58, $altoFila, $pedido->TipoPrecioTexto, 0, 0, 'L');
+            $pdf->Cell(58, $altoFila, $tipoPrecioLabel, 0, 0, 'L'); // ✅ Muestra CF o SF
             $yInfoDer += $altoFila;
 
-            if (!empty($tipoUbicacion)) {
-                $pdf->SetFont('helvetica', 'B', 8);
-                $pdf->SetXY($colDer_label, $yInfoDer);
-                $pdf->Cell(30, $altoFila, 'Tipo:', 0, 0, 'L');
-                $pdf->SetFont('helvetica', '', 8);
-                $pdf->SetXY($colDer_valor, $yInfoDer);
-                $pdf->Cell(58, $altoFila, $tipoUbicacion, 0, 0, 'L');
-                $yInfoDer += $altoFila;
-            }
-
+            // ✅ DESTINO AHORA SUBE DE POSICIÓN
             if (!empty($destino)) {
                 $pdf->SetFont('helvetica', 'B', 8);
                 $pdf->SetXY($colDer_label, $yInfoDer);
@@ -2705,6 +2699,17 @@ class PedidoClienteController extends Controller
                 $pdf->SetFont('helvetica', '', 8);
                 $pdf->SetXY($colDer_valor, $yInfoDer);
                 $pdf->Cell(68, $altoFila, $destino, 0, 0, 'L');
+                $yInfoDer += $altoFila;
+            }
+
+            // ✅ TIPO (CIUDAD/PROVINCIA) QUEDA AL FINAL
+            if (!empty($tipoUbicacion)) {
+                $pdf->SetFont('helvetica', 'B', 8);
+                $pdf->SetXY($colDer_label, $yInfoDer);
+                $pdf->Cell(30, $altoFila, 'Tipo:', 0, 0, 'L');
+                $pdf->SetFont('helvetica', '', 8);
+                $pdf->SetXY($colDer_valor, $yInfoDer);
+                $pdf->Cell(58, $altoFila, $tipoUbicacion, 0, 0, 'L');
                 $yInfoDer += $altoFila;
             }
 
@@ -2741,7 +2746,6 @@ class PedidoClienteController extends Controller
             // ============================================================
             // ✅ CABECERA TABLA CON VERIFICACIÓN DE SALTO
             // ============================================================
-            // Si no hay espacio para: cabecera (5) + 1 header contenedor (6) + 1 fila (4) + total (4.5) ≈ 20mm
             if ((270 - $y) < 20) {
                 $pdf->AddPage();
                 $y = 15;
@@ -2767,14 +2771,12 @@ class PedidoClienteController extends Controller
             foreach ($detallesAgrupados as $index => $grupo) {
                 $esRejilla = !empty($grupo['EsProductoUnico']);
 
-                // ✅ Espacio necesario para el bloque mínimo: header (6) + 1 fila (4) + total (4.5) = 14.5mm
                 $espacioNecesario = 6 + 4 + 4.5;
 
                 if ((270 - $y) < $espacioNecesario) {
                     $pdf->AddPage();
                     $y = 15;
 
-                    // Redibujar cabecera
                     $pdf->SetFont('helvetica', 'B', 7);
                     $pdf->SetFillColor(240, 240, 240);
                     $pdf->SetTextColor(0, 0, 0);
@@ -2836,12 +2838,10 @@ class PedidoClienteController extends Controller
                 $fill = false;
 
                 foreach ($grupo['productos'] as $producto) {
-                    // ✅ Verificar espacio antes de cada fila (4mm + margen)
                     if ((270 - $y) < 8) {
                         $pdf->AddPage();
                         $y = 15;
 
-                        // Redibujar cabecera
                         $pdf->SetFont('helvetica', 'B', 7);
                         $pdf->SetFillColor(240, 240, 240);
                         $pdf->SetTextColor(0, 0, 0);
@@ -2880,7 +2880,6 @@ class PedidoClienteController extends Controller
                 }
 
                 // ============ TOTAL DEL CONTENEDOR ============
-                // ✅ Verificar espacio para el total (4.5mm + margen)
                 if ((270 - $y) < 8) {
                     $pdf->AddPage();
                     $y = 15;
@@ -2910,7 +2909,6 @@ class PedidoClienteController extends Controller
             $y += 5;
 
             // ============ TOTALES ============
-            // ✅ Verificar espacio para los totales (≈ 20mm)
             if ((270 - $y) < 20) {
                 $pdf->AddPage();
                 $y = 15;
@@ -2964,7 +2962,6 @@ class PedidoClienteController extends Controller
             $fill = false;
 
             foreach ($resumenPorTipo as $item) {
-                // ✅ Verificar espacio antes de cada fila (5mm + margen)
                 if ((270 - $y) < 10) {
                     $pdf->AddPage();
                     $y = 15;
@@ -2993,7 +2990,6 @@ class PedidoClienteController extends Controller
                 $fill = !$fill;
             }
 
-            // ✅ Verificar espacio para el TOTAL GENERAL del resumen
             if ((270 - $y) < 10) {
                 $pdf->AddPage();
                 $y = 15;
@@ -3073,7 +3069,6 @@ class PedidoClienteController extends Controller
                 $alturaFila = 5;
 
                 foreach ($productosPedido as $prod) {
-                    // ✅ Verificar espacio antes de cada fila
                     if ((270 - $y) < ($alturaFila + 8)) {
                         $pdf->AddPage();
                         $y = 15;

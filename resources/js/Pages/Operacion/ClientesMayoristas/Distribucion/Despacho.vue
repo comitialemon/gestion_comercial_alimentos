@@ -536,6 +536,8 @@ onUnmounted(() => {
                                         class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition border border-rose-200">
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
+
+                                    <!-- ✅ SOLO en tab DISTRIBUCION -->
                                     <template v-if="tabActiva === 'distribucion'">
                                         <button v-if="p.Provincia === true" @click="abrirModalEstado(p)"
                                             class="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
@@ -545,6 +547,8 @@ onUnmounted(() => {
                                             <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
                                         </span>
                                     </template>
+
+                                    <!-- ✅ En tab TRANSPORTADORA: solo lectura -->
                                     <span v-else class="text-[10px] text-gray-400 italic font-medium">
                                         <i class="fas fa-info-circle mr-1"></i> En tránsito
                                     </span>
@@ -606,6 +610,8 @@ onUnmounted(() => {
                                                 class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 border border-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                 <i class="fas fa-file-pdf"></i> PDF
                                             </button>
+
+                                            <!-- ✅ SOLO en tab DISTRIBUCION -->
                                             <template v-if="tabActiva === 'distribucion'">
                                                 <button v-if="p.Provincia === true" @click="abrirModalEstado(p)"
                                                     class="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
@@ -615,6 +621,8 @@ onUnmounted(() => {
                                                     <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
                                                 </span>
                                             </template>
+
+                                            <!-- ✅ En tab TRANSPORTADORA: solo lectura -->
                                             <span v-else class="text-[10px] text-gray-400 italic font-medium px-2">
                                                 <i class="fas fa-info-circle mr-1"></i> En tránsito
                                             </span>

@@ -40,15 +40,29 @@ class DistribucionController extends Controller
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
+        // Pedidos en Distribución
         $pedidosEnDistribucion = $this->pedidosConOperadorYZona('En Distribución', $clienteId, $sucursalId);
+
+        // ✅ FALTA ESTO: pedidos En Transportadora (con envio)
+        $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+            ->where('pedidos_clientes.IdSucursal', $sucursalId)
+            ->whereRaw('TRIM(EstadoPedido) = ?', ['En Transportadora'])   // tolerante a espacios
+            ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
+            ->orderBy('pedidos_clientes.FechaPedido', 'desc')
+            ->get();
+
+        $pedidosEnTransportadora = $pedidosTransportadoraRaw->map(function ($pedido) use ($clienteId) {
+            return $this->decorarPedido($pedido, $clienteId);
+        });
 
         $transportadoras = Transportadora::with('identificador')
             ->where('ActivoInactivo', 1)
             ->get();
 
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Despacho', [
-            'pedidosEnDistribucion' => $pedidosEnDistribucion,
-            'transportadoras'       => $transportadoras,
+            'pedidosEnDistribucion'   => $pedidosEnDistribucion,
+            'pedidosEnTransportadora' => $pedidosEnTransportadora,   // ✅ NUEVO
+            'transportadoras'         => $transportadoras,
         ]);
     }
 
@@ -87,7 +101,30 @@ class DistribucionController extends Controller
             return $pedido;
         });
     }
+    
+    private function decorarPedido($pedido, $clienteId)
+    {
+        $operador = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('todos_operador')
+            ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+            ->where('todos_operador.IdOperador', $pedido->IdOperador)
+            ->first(['todos_identificador.Nombre']);
 
+        $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
+
+        $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('operacion_pedidos_operadores_clientes as opc')
+            ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+            ->where('opc.IdOperador', $pedido->IdOperador)
+            ->where('opc.IdCliente', $clienteId)
+            ->where('osdb.IdSucursal', $pedido->IdSucursal)
+            ->first(['opc.Ciudad', 'opc.Provincia']);
+
+        $pedido->Ciudad    = $asignacion ? (bool) $asignacion->Ciudad : false;
+        $pedido->Provincia = $asignacion ? (bool) $asignacion->Provincia : false;
+
+        return $pedido;
+    }
     // ============================================================
     // CAMBIAR ESTADO (valida transición por modo)
     // ============================================================
