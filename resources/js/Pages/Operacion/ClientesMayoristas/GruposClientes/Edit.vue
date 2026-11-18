@@ -33,6 +33,7 @@ const minimos = ref([])
 const datosGrupo = ref({
     Nombre: props.grupo?.Nombre || '',
     Descripcion: props.grupo?.Descripcion || '',
+    MaxPedidosPendientes: props.grupo?.MaxPedidosPendientes ?? 3,
     ActivoInactivo: props.grupo?.ActivoInactivo ?? 1,
 })
 
@@ -355,6 +356,7 @@ const guardarDatos = async () => {
             {
                 Nombre: datosGrupo.value.Nombre.trim(),
                 Descripcion: datosGrupo.value.Descripcion?.trim() || null,
+                MaxPedidosPendientes: Number(datosGrupo.value.MaxPedidosPendientes) || 0,
                 ActivoInactivo: datosGrupo.value.ActivoInactivo,
             }
         )
@@ -1158,6 +1160,24 @@ onUnmounted(() => {
                                     class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none resize-none"
                                     maxlength="500"
                                 ></textarea>
+                            </div>
+
+                            <!-- 🔥 Max Pedidos Pendientes -->
+                            <div>
+                                <label class="text-[10px] text-gray-500 font-medium block mb-0.5">
+                                    Máximo de pedidos pendientes
+                                </label>
+                                <input
+                                    type="number"
+                                    v-model.number="datosGrupo.MaxPedidosPendientes"
+                                    min="0"
+                                    step="1"
+                                    placeholder="Ej: 3"
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1 text-sm focus:ring-primary-500 focus:border-primary-500 outline-none"
+                                />
+                                <p class="text-[9px] text-gray-400 mt-0.5">
+                                    Máximo de pedidos en estado <strong>Pendiente</strong> simultáneos por operador. Usa <strong>0</strong> para no aplicar límite.
+                                </p>
                             </div>
 
                             <div>

@@ -78,6 +78,15 @@ const irANuevaVenta = () => {
     router.get('/venta-tactil/nueva')
 }
 
+// 🏠 Ir a la vista principal (Oficial/Index)
+const irAInicio = () => {
+    if (!ctxReady.value) {
+        toast?.warning('Contexto requerido', 'Primero selecciona empresa y sucursal')
+        return
+    }
+    router.get('/oficial')
+}
+
 const navbarBgStyle = computed(() => {
     if (theme.value.hasCustomTheme) {
         return { backgroundColor: 'var(--color-primary-800)' }
@@ -164,15 +173,29 @@ const navbarBgStyle = computed(() => {
                 </button>
             </div>
 
-            <!-- 🔹 SECCIÓN DERECHA: Billetera + Notificaciones + Operador + Logout -->
+            <!-- 🔹 SECCIÓN DERECHA: Inicio + Billetera + Notificaciones + Operador + Logout -->
             <div class="flex items-center gap-2 flex-shrink-0">
-                
+
+                <!-- 🏠 BOTÓN INICIO -->
+                <button
+                    v-if="ctxReady"
+                    @click="irAInicio"
+                    class="px-2.5 sm:px-3 py-2 rounded-lg transition text-white flex items-center gap-1.5"
+                    :style="{ backgroundColor: 'rgba(255,255,255,0.15)' }"
+                    @mouseenter="e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.25)'"
+                    @mouseleave="e => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.15)'"
+                    title="Ir al inicio"
+                >
+                    <i class="fas fa-home text-sm sm:text-base"></i>
+                    <span class="font-medium text-[11px] sm:text-xs hidden sm:inline">Inicio</span>
+                </button>
+
                 <!-- 💰 BILLETERA (solo si el operador tiene) -->
                 <BilleteraNavbar v-if="ctxReady" />
 
                 <Notificaciones v-if="ctxReady" />
 
-                <!-- 🔥 OPERADOR - TEXTO MÁS PEQUEÑO Y MÁS ANCHO -->
+                <!-- 🔥 OPERADOR -->
                 <div 
                     class="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full text-white"
                     :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
@@ -196,8 +219,8 @@ const navbarBgStyle = computed(() => {
                     @click="logout"
                     class="p-2 rounded-lg transition text-white"
                     :style="{ backgroundColor: 'rgba(0,0,0,0.2)' }"
-                    @mouseenter="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.35)'"
-                    @mouseleave="e => e.target.style.backgroundColor = 'rgba(0,0,0,0.2)'"
+                    @mouseenter="e => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)'"
+                    @mouseleave="e => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.2)'"
                     title="Cerrar sesión"
                 >
                     <i class="fas fa-sign-out-alt text-sm sm:text-base"></i>
