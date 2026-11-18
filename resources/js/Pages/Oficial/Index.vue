@@ -12,10 +12,9 @@ const props = defineProps({
     diaActual: Object,
     fechasPendientes: Array,
     flash: Object,
-    notificacionesInicio: { type: Array, default: () => [] } 
+    notificacionesInicio: { type: Array, default: () => [] }
 })
 
-// 🔥 RESTO DEL SCRIPT
 const windowWidth = ref(window.innerWidth)
 const isMobile = computed(() => windowWidth.value < 640)
 const handleResize = () => (windowWidth.value = window.innerWidth)
@@ -84,7 +83,7 @@ const irANotificacion = (url) => {
     <!-- 🔥 SI NO ES VENTAMOSTRADOR → DASHBOARD DE NOTIFICACIONES -->
     <div v-if="!esVentaMostrador" class="min-h-screen bg-gradient-to-br from-slate-50 to-gray-100 p-4 sm:p-6">
         <div class="max-w-5xl mx-auto pt-6">
-            
+
             <!-- HEADER -->
             <div class="mb-6 text-center sm:text-left">
                 <h1 class="text-2xl font-bold text-gray-800 flex items-center justify-center sm:justify-start gap-2">
@@ -93,16 +92,15 @@ const irANotificacion = (url) => {
                 <p class="text-sm text-gray-500 mt-1">Panel de control rápido para tu jornada</p>
             </div>
 
-            <!-- 🔥 TARJETAS DE NOTIFICACIÓN (DASHBOARD LLAMATIVO) -->
+            <!-- 🔥 TARJETAS DE NOTIFICACIÓN -->
             <div v-if="notificacionesInicio.length > 0" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                <div 
-                    v-for="notif in notificacionesInicio" 
+                <div
+                    v-for="notif in notificacionesInicio"
                     :key="notif.tipo"
                     @click="irANotificacion(notif.url)"
                     class="relative overflow-hidden rounded-2xl border-2 cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-xl group"
                     :class="[notif.color_bg, notif.color_border]"
                 >
-                    <!-- Icono de fondo gigante (decorativo) -->
                     <i :class="['fas', notif.icono, 'absolute -right-4 -bottom-4 text-8xl opacity-10 group-hover:scale-110 transition-transform duration-500']"></i>
 
                     <div class="p-5 relative z-10">
@@ -115,13 +113,13 @@ const irANotificacion = (url) => {
                               <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                             </span>
                         </div>
-                        
+
                         <h3 class="text-sm font-semibold text-gray-600 mb-1">{{ notif.titulo }}</h3>
                         <div class="flex items-baseline gap-2">
                             <span class="text-4xl font-extrabold" :class="notif.color_text">{{ notif.cantidad }}</span>
                             <span class="text-sm font-medium text-gray-500">pendientes</span>
                         </div>
-                        
+
                         <div class="mt-4 flex items-center text-xs font-bold gap-1 group-hover:gap-2 transition-all" :class="notif.color_text">
                             Revisar ahora <i class="fas fa-arrow-right"></i>
                         </div>
@@ -176,8 +174,8 @@ const irANotificacion = (url) => {
                     <p class="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
                         <i class="fas fa-bell mr-1"></i> Tienes tareas pendientes
                     </p>
-                    <div 
-                        v-for="notif in notificacionesInicio" 
+                    <div
+                        v-for="notif in notificacionesInicio"
                         :key="notif.tipo"
                         @click="irANotificacion(notif.url)"
                         class="bg-white rounded-xl border border-gray-200 p-3 flex items-center justify-between cursor-pointer hover:shadow-md transition group"

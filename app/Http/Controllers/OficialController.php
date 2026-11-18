@@ -28,7 +28,6 @@ class OficialController extends Controller
                 ->where('IdOperador', $operadorId)
                 ->value('IdOperadorTipo');
 
-            // 🔥 SOLO VentaMostrador (ID 6)
             $esVentaMostrador = ($tipoOperadorId == 6);
         }
 
@@ -44,9 +43,14 @@ class OficialController extends Controller
                 ->where('on.IdCliente', $clienteId)
                 ->where('on.ActivoInactivo', 1)
                 ->pluck('nt.Nombre')
+                ->map(fn ($n) => trim((string) $n))
+                ->filter()
                 ->toArray();
 
-            if (in_array('CALIDAD', $roles)) {
+            // =============================================
+            // CALIDAD → Reclamos pendientes / en revisión
+            // =============================================
+            if (in_array('CALIDAD', $roles, true)) {
                 $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('pedidos_clientes_reclamos')
                     ->where('IdCliente', $clienteId)
@@ -54,20 +58,23 @@ class OficialController extends Controller
                     ->count();
                 if ($cantidad > 0) {
                     $notificacionesInicio[] = [
-                        'tipo' => 'CALIDAD',
-                        'titulo' => 'Reclamos en Calidad',
-                        'cantidad' => $cantidad,
-                        'url' => '/operacion/pedidos/clientes-mayoristas/calidad',
-                        'icono' => 'fa-clipboard-check',
-                        'color_bg' => 'bg-rose-50',
+                        'tipo'         => 'CALIDAD',
+                        'titulo'       => 'Reclamos en Calidad',
+                        'cantidad'     => $cantidad,
+                        'url'          => '/operacion/pedidos/clientes-mayoristas/calidad',
+                        'icono'        => 'fa-clipboard-check',
+                        'color_bg'     => 'bg-rose-50',
                         'color_border' => 'border-rose-200',
-                        'color_text' => 'text-rose-600',
-                        'color_icon' => 'text-rose-500 bg-rose-100'
+                        'color_text'   => 'text-rose-600',
+                        'color_icon'   => 'text-rose-500 bg-rose-100',
                     ];
                 }
             }
 
-            if (in_array('TESORERIA', $roles)) {
+            // =============================================
+            // TESORERIA → Devoluciones por reembolsar
+            // =============================================
+            if (in_array('TESORERIA', $roles, true)) {
                 $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('pedidos_clientes_reclamos')
                     ->where('IdCliente', $clienteId)
@@ -75,36 +82,63 @@ class OficialController extends Controller
                     ->count();
                 if ($cantidad > 0) {
                     $notificacionesInicio[] = [
-                        'tipo' => 'TESORERIA',
-                        'titulo' => 'Devoluciones por Reembolsar',
-                        'cantidad' => $cantidad,
-                        'url' => '/operacion/pedidos/clientes-mayoristas/tesoreria',
-                        'icono' => 'fa-wallet',
-                        'color_bg' => 'bg-emerald-50',
+                        'tipo'         => 'TESORERIA',
+                        'titulo'       => 'Devoluciones por Reembolsar',
+                        'cantidad'     => $cantidad,
+                        'url'          => '/operacion/pedidos/clientes-mayoristas/tesoreria',
+                        'icono'        => 'fa-wallet',
+                        'color_bg'     => 'bg-emerald-50',
                         'color_border' => 'border-emerald-200',
-                        'color_text' => 'text-emerald-600',
-                        'color_icon' => 'text-emerald-500 bg-emerald-100'
+                        'color_text'   => 'text-emerald-600',
+                        'color_icon'   => 'text-emerald-500 bg-emerald-100',
                     ];
                 }
             }
 
-            if (in_array('DISTRIBUCION', $roles)) {
+            // =============================================
+            // CAMARA → Pedidos Pendientes (por armar)
+            // =============================================
+            if (in_array('CAMARA', $roles, true)) {
                 $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
                     ->table('pedidos_clientes')
                     ->where('IdCliente', $clienteId)
-                    ->where('EstadoPedido', 'Pendiente')
+                    ->whereRaw('TRIM(EstadoPedido) = ?', ['Pendiente'])
                     ->count();
                 if ($cantidad > 0) {
                     $notificacionesInicio[] = [
-                        'tipo' => 'DISTRIBUCION',
-                        'titulo' => 'Pedidos por Armar',
-                        'cantidad' => $cantidad,
-                        'url' => '/operacion/pedidos/clientes-mayoristas/distribucion',
-                        'icono' => 'fa-truck',
-                        'color_bg' => 'bg-orange-50',
+                        'tipo'         => 'CAMARA',
+                        'titulo'       => 'Pedidos por Armar (Cámara)',
+                        'cantidad'     => $cantidad,
+                        'url'          => '/operacion/pedidos/clientes-mayoristas/distribucion/reparto',
+                        'icono'        => 'fa-boxes-stacked',
+                        'color_bg'     => 'bg-orange-50',
                         'color_border' => 'border-orange-200',
-                        'color_text' => 'text-orange-600',
-                        'color_icon' => 'text-orange-500 bg-orange-100'
+                        'color_text'   => 'text-orange-600',
+                        'color_icon'   => 'text-orange-500 bg-orange-100',
+                    ];
+                }
+            }
+
+            // =============================================
+            // DISTRIBUCION → Pedidos En Distribución (por despachar)
+            // =============================================
+            if (in_array('DISTRIBUCION', $roles, true)) {
+                $cantidad = DB::connection('mysql_gestion_comercial_alimentos')
+                    ->table('pedidos_clientes')
+                    ->where('IdCliente', $clienteId)
+                    ->whereRaw('TRIM(EstadoPedido) = ?', ['En Distribución'])
+                    ->count();
+                if ($cantidad > 0) {
+                    $notificacionesInicio[] = [
+                        'tipo'         => 'DISTRIBUCION',
+                        'titulo'       => 'Pedidos por Despachar',
+                        'cantidad'     => $cantidad,
+                        'url'          => '/operacion/pedidos/clientes-mayoristas/distribucion/despacho',
+                        'icono'        => 'fa-truck-fast',
+                        'color_bg'     => 'bg-sky-50',
+                        'color_border' => 'border-sky-200',
+                        'color_text'   => 'text-sky-600',
+                        'color_icon'   => 'text-sky-500 bg-sky-100',
                     ];
                 }
             }
@@ -125,10 +159,10 @@ class OficialController extends Controller
                     'sucursal_id' => session('sucursal_id'),
                     'completo'    => $hasFact,
                 ],
-                'esVentaMostrador' => false,
-                'diaActual'        => null,
-                'fechasPendientes' => [],
-                'notificacionesInicio' => $notificacionesInicio, 
+                'esVentaMostrador'     => false,
+                'diaActual'            => null,
+                'fechasPendientes'     => [],
+                'notificacionesInicio' => $notificacionesInicio,
                 'flash' => [
                     'ok'   => session('ok'),
                     'warn' => session('warn'),
@@ -252,10 +286,10 @@ class OficialController extends Controller
                 'sucursal_id' => session('sucursal_id'),
                 'completo'    => $hasFact,
             ],
-            'esVentaMostrador' => true,
-            'diaActual'        => $diaActual,
-            'fechasPendientes' => $otrasFechas,
-            'notificacionesInicio' => $notificacionesInicio, 
+            'esVentaMostrador'     => true,
+            'diaActual'            => $diaActual,
+            'fechasPendientes'     => $otrasFechas,
+            'notificacionesInicio' => $notificacionesInicio,
             'flash' => [
                 'ok'   => session('ok'),
                 'warn' => session('warn'),
@@ -274,4 +308,4 @@ class OficialController extends Controller
             'tiene_facturacion'       => session('tiene_facturacion'),
         ]);
     }
-}   
+}

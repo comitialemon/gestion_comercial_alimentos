@@ -42,10 +42,10 @@ const cargarNotificaciones = async () => {
     cargando.value = true
     try {
         const [resSistema, resProductos] = await Promise.allSettled([
-            axios.get('/api/mis-notificaciones'), 
+            axios.get('/api/mis-notificaciones'),
             axios.get('/api/notificaciones/pendientes')
         ])
-        
+
         notificaciones.value = (resSistema.status === 'fulfilled' && resSistema.value.data) ? resSistema.value.data : { total: 0, modulos: [] }
         productosPendientes.value = (resProductos.status === 'fulfilled' && resProductos.value.data) ? resProductos.value.data : []
         inicializarTab()
@@ -117,7 +117,7 @@ onUnmounted(() => {
 
 <template>
     <div class="relative notificaciones-dropdown">
-        <button 
+        <button
             @click="toggleDropdown"
             class="relative p-1.5 sm:p-2 rounded-lg transition flex-shrink-0"
             :class="{ 'animate-pulse ring-2 ring-yellow-400 ring-opacity-75': hayNotificaciones, 'hover:bg-white/10': true }"
@@ -130,7 +130,7 @@ onUnmounted(() => {
             </span>
         </button>
 
-        <div 
+        <div
             v-if="abierto"
             class="fixed sm:absolute top-16 sm:top-auto sm:right-0 sm:mt-2 w-[calc(100vw-2rem)] sm:w-[420px] bg-white rounded-lg shadow-xl z-50 overflow-hidden border border-gray-200"
             :class="isMobile ? 'left-1/2 -translate-x-1/2' : 'absolute right-0 mt-2'"
@@ -140,7 +140,7 @@ onUnmounted(() => {
                     <h3 class="text-xs sm:text-sm font-semibold" :style="headerTextStyle"><i class="fas fa-bell mr-1 sm:mr-2 text-xs sm:text-sm"></i> Notificaciones</h3>
                     <span v-if="totalGlobal > 0" class="text-[10px] sm:text-xs text-white px-1.5 sm:px-2 py-0.5 rounded-full" :style="badgeStyle">{{ totalGlobal }}</span>
                 </div>
-                
+
                 <div class="flex gap-1 px-2 mt-1">
                     <button v-if="tieneNotificacionesSistema || (!tieneNotificacionesProductos && notificaciones.total >= 0)" @click="tabActiva = 'sistema'" class="px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors" :class="tabActiva === 'sistema' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-600 hover:bg-white/50'">
                         Sistema
@@ -169,10 +169,10 @@ onUnmounted(() => {
                                 <span class="text-[9px] bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded-full font-bold">{{ mod.cantidad }} en total</span>
                             </div>
 
-                            <div 
-                                v-for="item in mod.items" 
+                            <div
+                                v-for="item in mod.items"
                                 :key="item.id"
-                                @click="irANotificacion(item.url || mod.url)" 
+                                @click="irANotificacion(item.url || mod.url)"
                                 class="flex items-start gap-2.5 px-3 py-2.5 border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition"
                             >
                                 <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" :class="mod.color"><i :class="['fas', mod.icono, 'text-[10px]']"></i></div>
@@ -211,9 +211,16 @@ onUnmounted(() => {
                 </div>
             </div>
 
-            <div class="px-3 py-2 border-t bg-gray-50 text-center">
-                <Link v-if="tabActiva === 'sistema'" href="/operacion/pedidos/clientes-mayoristas/tesoreria" class="text-[10px] sm:text-xs font-medium transition hover:underline" :style="{ color: 'var(--color-primary)' }">Ir a Tesorería <i class="fas fa-arrow-right ml-1 text-[8px]"></i></Link>
-                <Link v-else href="/gestion/inventario/productos-aprobacion/pendientes" class="text-[10px] sm:text-xs font-medium transition hover:underline" :style="{ color: 'var(--color-primary)' }">Ver todos los productos <i class="fas fa-arrow-right ml-1 text-[8px]"></i></Link>
+            <!-- FOOTER: solo en tab Productos (listado general, no depende de rol) -->
+            <div v-if="tabActiva === 'productos'" class="px-3 py-2 border-t bg-gray-50 text-center">
+                <Link
+                    href="/gestion/inventario/productos-aprobacion/pendientes"
+                    class="text-[10px] sm:text-xs font-medium transition hover:underline"
+                    :style="{ color: 'var(--color-primary)' }"
+                >
+                    Ver todos los productos
+                    <i class="fas fa-arrow-right ml-1 text-[8px]"></i>
+                </Link>
             </div>
         </div>
     </div>
