@@ -278,7 +278,6 @@ class PedidoClienteController extends Controller
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // ✅ Paginación configurable (solo valores válidos)
         $perPage = (int) $request->input('per_page', 20);
         if (!in_array($perPage, [10, 20, 50])) {
             $perPage = 20;
@@ -293,11 +292,10 @@ class PedidoClienteController extends Controller
                 'pagoPendiente',
                 'pagoExitoso',
             ])
-            ->orderByDesc('IdPedidoCliente')       // ✅ último → primero
-            ->paginate($perPage)                    // ✅ 10 / 20 / 50
-            ->withQueryString();                    // ✅ conserva buscar/estado/per_page al paginar
+            ->orderByDesc('IdPedidoCliente')
+            ->paginate($perPage)
+            ->withQueryString();
 
-        // 🔥 INYECTAR es_provincia
         $pedidos->getCollection()->transform(function ($pedido) use ($clienteId) {
             $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
                 ->table('operacion_pedidos_operadores_clientes as opc')
@@ -315,7 +313,14 @@ class PedidoClienteController extends Controller
         $puedeHacerPedidos  = true;
         $razonNoPuedePedir  = null;
 
-        if (!$grupoCliente) {
+        $cantidadPendientes = $this->contarPedidosPendientesDelOperador();
+        $limitePendientes   = $this->obtenerLimitePendientesDelGrupo($grupoCliente);
+        $alcanzoLimite      = $limitePendientes > 0 && $cantidadPendientes >= $limitePendientes;
+
+        if ($alcanzoLimite) {
+            $puedeHacerPedidos = false;
+            $razonNoPuedePedir = $this->mensajeLimitePendientes($cantidadPendientes, $limitePendientes);
+        } elseif (!$grupoCliente) {
             $puedeHacerPedidos = false;
             $razonNoPuedePedir = "Tu usuario no tiene un Grupo de Clientes asignado.\n\nContacta al administrador del sistema para que te asigne un grupo.";
         } else {
@@ -365,14 +370,19 @@ class PedidoClienteController extends Controller
                     ? $pedidoEsperandoPago->pagoPendiente->segundosRestantes()
                     : null,
             ] : null,
-            'perPage'                    => $perPage,   // ✅ NUEVO
+            'perPage'                    => $perPage,
+            'cantidadPendientes'         => $cantidadPendientes,
+            'maxPedidosPendientes'       => $limitePendientes,
+            'alcanzoLimitePendientes'    => $alcanzoLimite,
+            'mensajeLimitePendientes'    => $alcanzoLimite
+                ? $this->mensajeLimitePendientes($cantidadPendientes, $limitePendientes)
+                : null,
         ]);
     }
 
     // ============================================================
     // NUEVO PEDIDO - MENÚ DE CONTENEDORES
     // ============================================================
-
     public function create(Request $request)
     {
         $clienteId = session('cliente_id');
@@ -395,7 +405,6 @@ class PedidoClienteController extends Controller
         if ($pedidoEsperandoPago) {
             $pagoPendiente = $pedidoEsperandoPago->pagoPendiente;
 
-            // Solo bloqueamos si el QR sigue vigente
             $pagoVigente = $pagoPendiente
                 && $pagoPendiente->Estado === 'PENDIENTE'
                 && !$pagoPendiente->haExpirado();
@@ -405,7 +414,6 @@ class PedidoClienteController extends Controller
                     ->with('info', 'Tienes un pedido pendiente de pago. Termínalo o cancélalo antes de crear uno nuevo.');
             }
 
-            // Si el pago expiró, regresamos el pedido a Borrador
             $pedidoEsperandoPago->update([
                 'EstadoPedido' => 'Borrador',
                 'IdOperadorActualiza' => $operadorId,
@@ -436,6 +444,14 @@ class PedidoClienteController extends Controller
         if (!$grupoCliente) {
             return redirect()->route('operacion.pedidos-clientes.pedidos.index')
                 ->with('error', "Tu usuario no tiene un Grupo de Clientes asignado. Contacte al administrador.");
+        }
+
+        // 🔥 LÍMITE DE PEDIDOS PENDIENTES
+        if ($this->operadorAlcanzoLimitePendientes($grupoCliente)) {
+            $cantidad = $this->contarPedidosPendientesDelOperador();
+            $limite   = $this->obtenerLimitePendientesDelGrupo($grupoCliente);
+            return redirect()->route('operacion.pedidos-clientes.pedidos.index')
+                ->with('error', $this->mensajeLimitePendientes($cantidad, $limite));
         }
 
         // ✅ Traer también EsProductoUnico
@@ -540,7 +556,6 @@ class PedidoClienteController extends Controller
             })->values();
         }
 
-        // MAPA DE GRUPOS CON NOMBRE
         $mapaGruposRaw = GrupoClienteMinimo::obtenerMapaPorGrupoCliente($grupoCliente->IdGrupoCliente, $clienteId, $sucursalId);
         $minimosGrupos = [];
 
@@ -560,7 +575,6 @@ class PedidoClienteController extends Controller
             }
         }
 
-        // MAPA DE PRODUCTOS CON INFO
         $minimosProductos = ProductoMinimo::obtenerMapa($clienteId, $sucursalId);
         $infoProductos = [];
 
@@ -1550,13 +1564,11 @@ class PedidoClienteController extends Controller
             ], 422);
         }
 
-        // Determinar el tipo de operación
         $billetera = $this->getBilleteraActivaDelOperador();
         $operationType = $billetera
             ? 'finalizar_pedido_billetera'
             : 'finalizar_pedido_qr';
 
-        // 🔥 PASO 0.1: Verificar idempotencia
         $operacionExistente = $conexion
             ->table('pedidos_clientes_operaciones_idempotentes')
             ->where('IdempotencyKey', $idempotencyKey)
@@ -1574,7 +1586,6 @@ class PedidoClienteController extends Controller
             );
         }
 
-        // Conflicto de key con otro tipo de operación
         $conflicto = $conexion
             ->table('pedidos_clientes_operaciones_idempotentes')
             ->where('IdempotencyKey', $idempotencyKey)
@@ -1588,11 +1599,9 @@ class PedidoClienteController extends Controller
         }
 
         try {
-            // 🔥 PASO 1: Abrir transacción
             $conexion->beginTransaction();
 
             try {
-                // 🔥 PASO 2: Leer pedido CON LOCK
                 $pedido = PedidoCliente::where('IdCliente', $clienteId)
                     ->where('IdSucursal', $sucursalId)
                     ->where('IdOperador', $operadorId)
@@ -1608,13 +1617,35 @@ class PedidoClienteController extends Controller
                     ], 404);
                 }
 
-                // 🔥 PASO 3: Validar estado DENTRO del lock
                 if (!in_array($pedido->EstadoPedido, ['Borrador', 'Esperando Pago'])) {
                     $conexion->rollBack();
                     return response()->json([
                         'success' => false,
                         'message' => 'El pedido no puede finalizarse en su estado actual (' . $pedido->EstadoPedido . ').'
                     ], 422);
+                }
+
+                // 🔥 Validar límite de pedidos pendientes (dentro del lock)
+                $grupoParaLimite = $this->getGrupoDelOperador();
+                if ($grupoParaLimite) {
+                    $limite = $this->obtenerLimitePendientesDelGrupo($grupoParaLimite);
+                    if ($limite > 0) {
+                        $cantidadPendientes = PedidoCliente::porContexto()
+                            ->where('IdSucursal', $sucursalId)
+                            ->where('IdOperador', $operadorId)
+                            ->whereRaw('TRIM(EstadoPedido) = ?', ['Pendiente'])
+                            ->lockForUpdate()
+                            ->count();
+
+                        if ($cantidadPendientes >= $limite) {
+                            $conexion->rollBack();
+                            return response()->json([
+                                'success' => false,
+                                'message' => $this->mensajeLimitePendientes($cantidadPendientes, $limite),
+                                'codigo'  => 'LIMITE_PENDIENTES',
+                            ], 422);
+                        }
+                    }
                 }
 
                 $grupoCliente = $this->getGrupoDelOperador();
@@ -1666,14 +1697,13 @@ class PedidoClienteController extends Controller
                     ], 422);
                 }
 
-                // 🔥 PASO 4: Actualizar pedido
                 $pedido->update([
                     'FechaEntrega' => $request->input('FechaEntrega'),
                     'Observaciones' => $request->input('Observaciones'),
                     'TipoPrecio' => $request->input('TipoPrecio', $pedido->TipoPrecio),
                 ]);
 
-                // 🔥 PASO 5: Flujo con billetera
+                // 🔥 Flujo con billetera
                 if ($billetera) {
                     $billeteraConLock = BilleteraOperador::where('IdBilletera', $billetera->IdBilletera)
                         ->lockForUpdate()
@@ -1704,7 +1734,6 @@ class PedidoClienteController extends Controller
                         $operadorId
                     );
 
-                    // 🔥 Usar el servicio de secuencias
                     $numeroFormateado = $this->numeroPedidoService->obtenerSiguiente(
                         $pedido->IdCliente,
                         $pedido->IdSucursal
@@ -1731,7 +1760,6 @@ class PedidoClienteController extends Controller
                         'monto_descontado' => $totalGeneral,
                     ];
 
-                    // 🔥 Guardar operación idempotente
                     $conexion->table('pedidos_clientes_operaciones_idempotentes')->insert([
                         'IdempotencyKey' => $idempotencyKey,
                         'IdPedidoCliente' => $pedido->IdPedidoCliente,
@@ -1754,7 +1782,7 @@ class PedidoClienteController extends Controller
                     return response()->json($responseData);
                 }
 
-                // 🔥 PASO 6: Flujo sin billetera (QR)
+                // 🔥 Flujo sin billetera (QR)
                 $pagoAnterior = PedidoClientePago::where('IdPedidoCliente', $pedido->IdPedidoCliente)
                     ->where('Estado', 'PENDIENTE')
                     ->first();
@@ -1872,7 +1900,6 @@ class PedidoClienteController extends Controller
                     'pedido_id' => $pedido->IdPedidoCliente,
                 ];
 
-                // 🔥 Guardar operación idempotente
                 $conexion->table('pedidos_clientes_operaciones_idempotentes')->insert([
                     'IdempotencyKey' => $idempotencyKey,
                     'IdPedidoCliente' => $pedido->IdPedidoCliente,
@@ -3363,6 +3390,57 @@ class PedidoClienteController extends Controller
                 ? null
                 : "Hora máxima para finalizar pedido es {$horaLimite->Hora}:00!",
         ]);
+    }
+    // ============================================================
+    // HELPERS DE LÍMITE DE PEDIDOS PENDIENTES
+    // ============================================================
+
+    /**
+     * Cuenta los pedidos en estado "Pendiente" del operador actual,
+     * en el contexto cliente/sucursal de la sesión.
+     */
+    private function contarPedidosPendientesDelOperador(): int
+    {
+        return PedidoCliente::porContexto()
+            ->where('IdSucursal', session('cliente_sucursal_id'))
+            ->where('IdOperador', session('operador_id'))
+            ->whereRaw('TRIM(EstadoPedido) = ?', ['Pendiente'])
+            ->count();
+    }
+
+    /**
+     * Límite de pedidos pendientes del grupo del operador.
+     * 0 = sin límite.
+     */
+    private function obtenerLimitePendientesDelGrupo(?GrupoCliente $grupo = null): int
+    {
+        $grupo = $grupo ?? $this->getGrupoDelOperador();
+        if (!$grupo) {
+            return 0;
+        }
+        return (int) ($grupo->MaxPedidosPendientes ?? 0);
+    }
+
+    /**
+     * True si el operador ya alcanzó el límite de pedidos pendientes.
+     */
+    private function operadorAlcanzoLimitePendientes(?GrupoCliente $grupo = null): bool
+    {
+        $limite = $this->obtenerLimitePendientesDelGrupo($grupo);
+        if ($limite <= 0) {
+            return false;
+        }
+        return $this->contarPedidosPendientesDelOperador() >= $limite;
+    }
+
+    /**
+     * Mensaje estándar de alerta para el operador.
+     */
+    private function mensajeLimitePendientes(int $cantidadActual, int $limite): string
+    {
+        return "Ya tienes {$cantidadActual} pedidos en estado Pendiente (el máximo permitido para tu grupo es {$limite}).\n\n"
+            . "Para poder realizar un nuevo pedido, primero deben ser procesados en Cámara/Distribución.\n\n"
+            . "Si necesitas generar más pedidos, comunícate con administración.";
     }
 
 }

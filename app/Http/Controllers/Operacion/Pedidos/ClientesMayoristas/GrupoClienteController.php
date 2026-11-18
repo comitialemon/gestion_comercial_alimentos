@@ -96,13 +96,13 @@ class GrupoClienteController extends Controller
         $request->validate([
             'Nombre' => 'required|string|max:150',
             'Descripcion' => 'nullable|string',
+            'MaxPedidosPendientes' => 'nullable|integer|min:0|max:999',
         ]);
 
         $clienteId = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
         $operadorId = session('operador_id');
 
-        // Verificar que no exista otro con el mismo nombre
         $existe = GrupoCliente::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->where('Nombre', $request->Nombre)
@@ -121,6 +121,7 @@ class GrupoClienteController extends Controller
             $grupo = GrupoCliente::create([
                 'Nombre' => $request->Nombre,
                 'Descripcion' => $request->Descripcion,
+                'MaxPedidosPendientes' => (int) ($request->MaxPedidosPendientes ?? 3),
                 'IdCliente' => $clienteId,
                 'IdSucursal' => $sucursalId,
                 'ActivoInactivo' => 1,
@@ -167,6 +168,7 @@ class GrupoClienteController extends Controller
                 'IdGrupoCliente' => $grupo->IdGrupoCliente,
                 'Nombre' => $grupo->Nombre,
                 'Descripcion' => $grupo->Descripcion,
+                'MaxPedidosPendientes' => (int) $grupo->MaxPedidosPendientes,
                 'ActivoInactivo' => $grupo->ActivoInactivo,
             ],
         ]);
@@ -180,6 +182,7 @@ class GrupoClienteController extends Controller
         $request->validate([
             'Nombre' => 'required|string|max:150',
             'Descripcion' => 'nullable|string',
+            'MaxPedidosPendientes' => 'nullable|integer|min:0|max:999',
             'ActivoInactivo' => 'nullable|integer|in:0,1',
         ]);
 
@@ -192,7 +195,6 @@ class GrupoClienteController extends Controller
             ->where('IdGrupoCliente', $id)
             ->firstOrFail();
 
-        // Verificar que no exista otro con el mismo nombre
         $existe = GrupoCliente::where('IdCliente', $clienteId)
             ->where('IdSucursal', $sucursalId)
             ->where('Nombre', $request->Nombre)
@@ -210,10 +212,14 @@ class GrupoClienteController extends Controller
             $grupo->update([
                 'Nombre' => $request->Nombre,
                 'Descripcion' => $request->Descripcion,
+                'MaxPedidosPendientes' => (int) ($request->MaxPedidosPendientes ?? $grupo->MaxPedidosPendientes),
                 'ActivoInactivo' => $request->ActivoInactivo ?? $grupo->ActivoInactivo,
                 'IdOperadorActualiza' => $operadorId,
                 'FechaActualiza' => Carbon::now('America/La_Paz'),
             ]);
+
+            // Invalidar cache del grupo para que el nuevo límite tome efecto
+            cache()->forget('grupo_operador_' . $grupo->IdGrupoCliente);
 
             return response()->json([
                 'success' => true,

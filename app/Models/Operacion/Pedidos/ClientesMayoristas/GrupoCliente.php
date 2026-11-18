@@ -9,13 +9,14 @@ use App\Models\Gestion\Todos\ClienteSucursal;
 class GrupoCliente extends Model
 {
     protected $connection = 'mysql_gestion_comercial_alimentos';
-    protected $table = 'operacion_pedidos_clientes_grupo_cliente';  // ✅ CORREGIDO
+    protected $table = 'operacion_pedidos_clientes_grupo_cliente';
     protected $primaryKey = 'IdGrupoCliente';
     public $timestamps = false;
 
     protected $fillable = [
         'Nombre',
         'Descripcion',
+        'MaxPedidosPendientes',
         'IdCliente',
         'IdSucursal',
         'ActivoInactivo',
@@ -26,12 +27,13 @@ class GrupoCliente extends Model
     ];
 
     protected $casts = [
-        'IdGrupoCliente' => 'integer',
-        'IdCliente' => 'integer',
-        'IdSucursal' => 'integer',
-        'ActivoInactivo' => 'integer',
-        'FechaInserta' => 'datetime',
-        'FechaActualiza' => 'datetime',
+        'IdGrupoCliente'         => 'integer',
+        'IdCliente'              => 'integer',
+        'IdSucursal'             => 'integer',
+        'ActivoInactivo'         => 'integer',
+        'MaxPedidosPendientes'   => 'integer',
+        'FechaInserta'           => 'datetime',
+        'FechaActualiza'         => 'datetime',
     ];
 
     // ==================== RELACIONES ====================
@@ -106,8 +108,8 @@ class GrupoCliente extends Model
 
     public function getFechaInsertaFormateadaAttribute()
     {
-        return $this->FechaInserta 
-            ? \Carbon\Carbon::parse($this->FechaInserta)->format('d/m/Y H:i') 
+        return $this->FechaInserta
+            ? \Carbon\Carbon::parse($this->FechaInserta)->format('d/m/Y H:i')
             : '-';
     }
 
@@ -119,6 +121,11 @@ class GrupoCliente extends Model
     public function getTotalProductosAttribute()
     {
         return $this->productosActivos()->count();
+    }
+
+    public function getSinLimitePendientesAttribute(): bool
+    {
+        return (int) $this->MaxPedidosPendientes === 0;
     }
 
     // ==================== MÉTODOS HELPER ====================

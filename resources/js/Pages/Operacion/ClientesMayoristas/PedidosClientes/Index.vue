@@ -17,7 +17,12 @@ const props = defineProps({
     razonNoPuedePedir: { type: String, default: null },
     tienePedidoEsperandoPago: { type: Boolean, default: false },
     pedidoEsperandoPago: { type: Object, default: null },
-    perPage: { type: Number, default: 20 },   // ✅ NUEVO
+    perPage: { type: Number, default: 20 },
+    // 🔥 NUEVAS
+    cantidadPendientes: { type: Number, default: 0 },
+    maxPedidosPendientes: { type: Number, default: 0 },
+    alcanzoLimitePendientes: { type: Boolean, default: false },
+    mensajeLimitePendientes: { type: String, default: null },
 })
 
 // ==================== DETECTAR DISPOSITIVO ====================
@@ -41,6 +46,9 @@ const modalReclamoVisible = ref(false)
 const pedidoParaReclamo = ref(null)
 
 const modalPedidoPendienteVisible = ref(false)
+
+// 🔥 NUEVO
+const modalLimitePendientesVisible = ref(false)
 
 // ==================== PAGINACIÓN ====================
 const perPage = ref(props.perPage || 20)
@@ -182,19 +190,28 @@ const irAPagarPedidoPendiente = () => {
 }
 
 const intentarNuevoPedido = () => {
+    // 🔥 PRIORIDAD 1: límite de pedidos pendientes
+    if (props.alcanzoLimitePendientes) {
+        modalLimitePendientesVisible.value = true
+        return
+    }
+
     if (!props.puedeHacerPedidos) {
         modalNoPuedePedirVisible.value = true
         return
     }
+
     if (props.tienePedidoEsperandoPago && props.pedidoEsperandoPago) {
         modalPedidoPendienteVisible.value = true
         return
     }
+
     router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/create', { replace: true })
 }
 
 const cerrarModalNoPuedePedir = () => { modalNoPuedePedirVisible.value = false }
 const cerrarModalPedidoPendiente = () => { modalPedidoPendienteVisible.value = false }
+const cerrarModalLimitePendientes = () => { modalLimitePendientesVisible.value = false }
 
 const verDetalle = async (pedido) => {
     pedidoSeleccionado.value = pedido
@@ -227,7 +244,7 @@ const aplicarFiltros = () => {
     router.get('/operacion/pedidos/clientes-mayoristas/pedidos-clientes', {
         buscar:   buscador.value || undefined,
         estado:   estadoFiltro.value || undefined,
-        per_page: perPage.value,               // ✅ conserva el valor elegido
+        per_page: perPage.value,
     }, { preserveState: true, replace: true })
 }
 
@@ -342,9 +359,13 @@ onUnmounted(() => {
                         <button
                             v-else
                             @click="intentarNuevoPedido"
-                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
+                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 shadow-sm"
+                            :class="alcanzoLimitePendientes
+                                ? 'bg-rose-100 text-rose-700 border border-rose-300 hover:bg-rose-200'
+                                : 'bg-primary-600 hover:bg-primary-700 text-white'"
                         >
-                            <i class="fas fa-plus text-[10px]"></i> Nuevo Pedido
+                            <i :class="alcanzoLimitePendientes ? 'fas fa-lock text-[10px]' : 'fas fa-plus text-[10px]'"></i>
+                            {{ alcanzoLimitePendientes ? 'Límite alcanzado' : 'Nuevo Pedido' }}
                         </button>
                         <button @click="router.visit('/operacion/pedidos/clientes-mayoristas/pedidos-clientes/mis-reclamos')" class="bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5">
                             <i class="fas fa-exclamation-circle text-[10px]"></i> Mis Reclamos
@@ -374,6 +395,24 @@ onUnmounted(() => {
                     >
                         <i class="fas fa-arrow-right text-[9px]"></i> Ir a pagar
                     </button>
+                </div>
+
+                <!-- 🔥 BANNER LÍMITE DE PEDIDOS PENDIENTES -->
+                <div
+                    v-if="alcanzoLimitePendientes"
+                    class="mb-4 bg-rose-50 border border-rose-300 rounded-xl p-3 flex items-start gap-3 shadow-sm"
+                >
+                    <div class="w-9 h-9 bg-rose-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-triangle-exclamation text-rose-600"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs font-bold text-rose-900">
+                            Límite de pedidos pendientes alcanzado ({{ cantidadPendientes }}/{{ maxPedidosPendientes }})
+                        </p>
+                        <p class="text-[11px] text-rose-700 mt-0.5 whitespace-pre-line">
+                            {{ mensajeLimitePendientes }}
+                        </p>
+                    </div>
                 </div>
 
                 <!-- FILTROS -->
@@ -487,7 +526,6 @@ onUnmounted(() => {
                     >
                         <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
 
-                            <!-- Info + selector por página -->
                             <div class="flex items-center gap-3 text-[11px] text-gray-600 flex-wrap justify-center sm:justify-start">
                                 <span>
                                     Mostrando
@@ -509,7 +547,6 @@ onUnmounted(() => {
                                 </div>
                             </div>
 
-                            <!-- Links de página -->
                             <div class="flex gap-1 flex-wrap justify-center">
                                 <Link
                                     v-for="(link, i) in props.pedidos.links"
@@ -611,6 +648,58 @@ onUnmounted(() => {
                         </button>
                         <button @click="irAPagarPedidoPendiente" class="px-3 py-1.5 text-xs bg-purple-600 hover:bg-purple-700 text-white rounded-md transition flex items-center gap-1.5 font-medium">
                             <i class="fas fa-arrow-right text-[10px]"></i> Ir a pagar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
+
+        <!-- 🔥 MODAL LÍMITE DE PEDIDOS PENDIENTES -->
+        <Teleport to="body">
+            <div
+                v-if="modalLimitePendientesVisible"
+                class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 animate-fade-in"
+                @click.self="cerrarModalLimitePendientes"
+            >
+                <div class="bg-white rounded-xl w-full max-w-md shadow-2xl overflow-hidden animate-scale-in">
+                    <div class="bg-rose-600 px-4 py-3 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-9 h-9 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                                <i class="fas fa-triangle-exclamation text-white text-base"></i>
+                            </div>
+                            <div>
+                                <h3 class="font-bold text-sm text-white">Límite de pedidos alcanzado</h3>
+                            </div>
+                        </div>
+                        <button
+                            @click="cerrarModalLimitePendientes"
+                            class="text-white/80 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition"
+                        >
+                            <i class="fas fa-times text-sm"></i>
+                        </button>
+                    </div>
+
+                    <div class="p-4 space-y-3">
+                        <div class="flex items-center justify-center">
+                            <div class="bg-rose-50 border border-rose-200 rounded-lg px-4 py-2 text-center">
+                                <p class="text-[10px] text-rose-600 font-medium uppercase tracking-wide">Pedidos pendientes</p>
+                                <p class="text-2xl font-bold text-rose-700">
+                                    {{ cantidadPendientes }} <span class="text-base text-rose-400">/ {{ maxPedidosPendientes }}</span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <p class="text-sm text-gray-700 text-center leading-relaxed whitespace-pre-line">
+                            {{ mensajeLimitePendientes || 'Ya alcanzaste el límite de pedidos pendientes permitidos. Comunícate con administración.' }}
+                        </p>
+                    </div>
+
+                    <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end">
+                        <button
+                            @click="cerrarModalLimitePendientes"
+                            class="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md text-xs font-medium transition flex items-center gap-1.5"
+                        >
+                            <i class="fas fa-check text-[10px]"></i> Entendido
                         </button>
                     </div>
                 </div>
