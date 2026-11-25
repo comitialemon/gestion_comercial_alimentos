@@ -141,6 +141,7 @@ use App\Http\Controllers\Gestion\Banco\HistorialPagosQRController;
 use App\Http\Controllers\Gestion\Banco\HistorialPagosQRDetalleController;
 use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\BilleteraCliente\BilleteraClienteController;
 use App\Http\Controllers\Gestion\Inventario\ReporteProductoBasePorComboController;
+use App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\EnvioGratisController;
 
 
 // ============================================
@@ -1473,7 +1474,19 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     });
                     Route::post('/{id}/asignar-producto-unico',[ContenedorController::class, 'asignarProductoUnico'])->name('operacion.pedidos.clientes-mayoristas.contenedores.asignar-producto-unico');
                 });
-                
+                // ============================================================
+                // ENVÍOS GRATIS POR CLIENTE
+                // ============================================================
+                Route::prefix('envios-gratis')->group(function () {
+                    Route::get('/', [EnvioGratisController::class, 'index'])
+                        ->name('operacion.pedidos.clientes-mayoristas.envios-gratis.index');
+
+                    Route::get('/clientes', [EnvioGratisController::class, 'getClientes'])
+                        ->name('operacion.pedidos.clientes-mayoristas.envios-gratis.clientes');
+
+                    Route::post('/guardar', [EnvioGratisController::class, 'guardar'])
+                        ->name('operacion.pedidos.clientes-mayoristas.envios-gratis.guardar');
+                });
                 // ============================================================
                 // SUB CLIENTES PEDIDOS CLIENTES
                 // ============================================================
@@ -1780,6 +1793,7 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     Route::post('/{id}/devolver', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\TesoreriaController::class, 'devolver'])
                         ->name('operacion.pedidos-clientes.tesoreria.devolver');
                 });
+                
             });
 
             // ============================================================
