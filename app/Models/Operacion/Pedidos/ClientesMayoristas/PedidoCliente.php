@@ -103,9 +103,16 @@ class PedidoCliente extends Model
     }
 
     // 🔥 RELACIONES LOGÍSTICAS
+    // Un pedido puede tener N envíos (varias guías)
+    public function envios()
+    {
+        return $this->hasMany(Envio::class, 'IdPedidoCliente', 'IdPedidoCliente');
+    }
+
+    // Compatibilidad: el "primer" envío (legacy)
     public function envio()
     {
-        return $this->hasOne(Envio::class, 'IdPedidoCliente', 'IdPedidoCliente');
+        return $this->hasOne(Envio::class, 'IdPedidoCliente', 'IdPedidoCliente')->latest('IdEnvio');
     }
 
     public function historial()

@@ -18,62 +18,107 @@ use Illuminate\Support\Facades\Cache;
 class DistribucionController extends Controller
 {
     // ============================================================
-    // VISTA 1: CÁMARA / REPARTO (Pendiente → En Distribución)
-    // ============================================================
-    // ============================================================
-    // VISTA 1A: REPARTO CIUDAD (Pendiente + Ciudad=true)
+    // VISTA 1A: REPARTO CIUDAD (3 tabs: Pendientes / En Tránsito / Finalizados)
     // ============================================================
     public function indexRepartoCiudad()
     {
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        $pedidos = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
+        $pendientes = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId)
+            ->filter(fn ($p) => $p->Ciudad === true)->values();
 
-        // Solo los que tienen zona Ciudad
-        $pedidosPendientes = $pedidos->filter(fn ($p) => $p->Ciudad === true)->values();
+        $enTransito = $this->pedidosConOperadorYZonaMultiple(
+            ['En Distribución', 'En Transportadora'],
+            $clienteId, $sucursalId
+        )->filter(fn ($p) => $p->Ciudad === true)->values();
 
-        // indexRepartoCiudad
+        $finalizados = $this->pedidosConOperadorYZona('Recibido', $clienteId, $sucursalId)
+            ->filter(fn ($p) => $p->Ciudad === true)->values();
+
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/RepartoCiudad', [
-            'pedidosPendientes' => $pedidosPendientes,
+            'pedidosPendientes'  => $pendientes,
+            'pedidosEnTransito'  => $enTransito,
+            'pedidosFinalizados' => $finalizados,
         ]);
     }
 
     // ============================================================
-    // VISTA 1B: REPARTO PROVINCIA (Pendiente + Provincia=true)
+    // VISTA 1B: REPARTO PROVINCIA (3 tabs)
     // ============================================================
     public function indexRepartoProvincia()
     {
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        $pedidos = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
+        $pendientes = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId)
+            ->filter(fn ($p) => $p->Provincia === true)->values();
 
-        // Solo los que tienen zona Provincia
-        $pedidosPendientes = $pedidos->filter(fn ($p) => $p->Provincia === true)->values();
+        $enTransito = $this->pedidosConOperadorYZonaMultiple(
+            ['En Distribución', 'En Transportadora'],
+            $clienteId, $sucursalId
+        )->filter(fn ($p) => $p->Provincia === true)->values();
 
-        // indexRepartoProvincia
+        $finalizados = $this->pedidosConOperadorYZona('Recibido', $clienteId, $sucursalId)
+            ->filter(fn ($p) => $p->Provincia === true)->values();
+
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/RepartoProvincia', [
-            'pedidosPendientes' => $pedidosPendientes,
+            'pedidosPendientes'  => $pendientes,
+            'pedidosEnTransito'  => $enTransito,
+            'pedidosFinalizados' => $finalizados,
         ]);
     }
 
     // ============================================================
-    // VISTA 2: DESPACHO (En Distribución → En Transportadora)
+    // HELPER: múltiples estados a la vez (con operador y zona)
+    // ============================================================
+    private function pedidosConOperadorYZonaMultiple(array $estados, $clienteId, $sucursalId)
+    {
+        $pedidos = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+            ->where('pedidos_clientes.IdSucursal', $sucursalId)
+            ->whereIn('EstadoPedido', $estados)
+            ->with(['cliente', 'sucursal', 'envios.transportadora.identificador'])
+            ->orderBy('pedidos_clientes.FechaPedido', 'desc')
+            ->get();
+
+        return $pedidos->map(function ($pedido) use ($clienteId) {
+            $operador = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('todos_operador')
+                ->join('todos_identificador', 'todos_operador.IdIdentificador', '=', 'todos_identificador.IdIdentificador')
+                ->where('todos_operador.IdOperador', $pedido->IdOperador)
+                ->first(['todos_identificador.Nombre']);
+
+            $pedido->OperadorNombre = $operador->Nombre ?? 'Sin operador';
+
+            $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
+                ->table('operacion_pedidos_operadores_clientes as opc')
+                ->join('todos_operador_sucursaldb as osdb', 'osdb.IdSucursalDB', '=', 'opc.IdSucursalDB')
+                ->where('opc.IdOperador', $pedido->IdOperador)
+                ->where('opc.IdCliente', $clienteId)
+                ->where('osdb.IdSucursal', $pedido->IdSucursal)
+                ->first(['opc.Ciudad', 'opc.Provincia']);
+
+            $pedido->Ciudad    = $asignacion ? (bool) $asignacion->Ciudad : false;
+            $pedido->Provincia = $asignacion ? (bool) $asignacion->Provincia : false;
+
+            return $pedido;
+        });
+    }
+
+    // ============================================================
+    // VISTA 2: DESPACHO
     // ============================================================
     public function indexDespacho()
     {
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        // Pedidos En Distribución
         $pedidosEnDistribucion = $this->pedidosConOperadorYZona('En Distribución', $clienteId, $sucursalId);
 
-        // Pedidos En Transportadora
         $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
             ->where('pedidos_clientes.IdSucursal', $sucursalId)
             ->whereRaw('TRIM(EstadoPedido) = ?', ['En Transportadora'])
-            ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
+            ->with(['cliente', 'sucursal', 'envios.transportadora.identificador'])
             ->orderBy('pedidos_clientes.FechaPedido', 'desc')
             ->get();
 
@@ -81,13 +126,12 @@ class DistribucionController extends Controller
             return $this->decorarPedido($pedido, $clienteId);
         });
 
-        // ✅ NUEVO: Pedidos Recibidos (finalizados)
         $pedidosRecibidosRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
             ->where('pedidos_clientes.IdSucursal', $sucursalId)
             ->whereRaw('TRIM(EstadoPedido) = ?', ['Recibido'])
-            ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
-            ->orderBy('pedidos_clientes.FechaActualiza', 'desc')  // los más recientes primero
-            ->limit(100)  // opcional: no cargar toda la historia
+            ->with(['cliente', 'sucursal', 'envios.transportadora.identificador'])
+            ->orderBy('pedidos_clientes.FechaActualiza', 'desc')
+            ->limit(100)
             ->get();
 
         $pedidosRecibidos = $pedidosRecibidosRaw->map(function ($pedido) use ($clienteId) {
@@ -101,7 +145,7 @@ class DistribucionController extends Controller
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Despacho', [
             'pedidosEnDistribucion'   => $pedidosEnDistribucion,
             'pedidosEnTransportadora' => $pedidosEnTransportadora,
-            'pedidosRecibidos'        => $pedidosRecibidos,   // ✅ NUEVO
+            'pedidosRecibidos'        => $pedidosRecibidos,
             'transportadoras'         => $transportadoras,
         ]);
     }
@@ -141,7 +185,7 @@ class DistribucionController extends Controller
             return $pedido;
         });
     }
-    
+
     private function decorarPedido($pedido, $clienteId)
     {
         $operador = DB::connection('mysql_gestion_comercial_alimentos')
@@ -165,17 +209,21 @@ class DistribucionController extends Controller
 
         return $pedido;
     }
+
     // ============================================================
-    // CAMBIAR ESTADO (valida transición por modo)
+    // CAMBIAR ESTADO (N guías + 1 solo cobro por pedido)
     // ============================================================
     public function cambiarEstado(Request $request, $id)
     {
         $request->validate([
-            'modo'           => 'nullable|in:reparto,despacho',
-            'nuevo_estado'   => 'required|in:En Distribución,En Transportadora,Recibido',
-            'numero_guia'    => 'nullable|string|max:100',
-            'costo_envio'    => 'nullable|numeric|min:0',
-            'observacion'    => 'nullable|string|max:255',
+            'modo'                      => 'nullable|in:reparto,despacho',
+            'nuevo_estado'              => 'required|in:En Distribución,En Transportadora,Recibido',
+            'observacion'               => 'nullable|string|max:255',
+            'guias'                     => 'nullable|array|min:1',
+            'guias.*.id_transportadora' => 'required|integer|exists:pedidos_clientes_transportadoras,IdTransportadora',
+            'guias.*.numero_guia'       => 'nullable|string|max:100',
+            'guias.*.costo_envio'       => 'nullable|numeric|min:0',
+            'guias.*.observacion'       => 'nullable|string|max:255',
         ]);
 
         $modo        = $request->input('modo', 'despacho');
@@ -208,11 +256,12 @@ class DistribucionController extends Controller
 
             if (!$pedido) {
                 $conexion->rollBack();
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Pedido no encontrado.'
-                ], 404);
+                return response()->json(['success' => false, 'message' => 'Pedido no encontrado.'], 404);
             }
+
+            $guias = collect($request->input('guias', []))
+                ->filter(fn ($g) => !empty($g['id_transportadora']))
+                ->values();
 
             if ($nuevoEstado === 'En Transportadora') {
                 $asignacion = DB::connection('mysql_gestion_comercial_alimentos')
@@ -225,11 +274,11 @@ class DistribucionController extends Controller
 
                 $esCiudad = $asignacion ? (bool) $asignacion->Ciudad : false;
 
-                if (!$esCiudad && !$request->filled('id_transportadora')) {
+                if (!$esCiudad && $guias->isEmpty()) {
                     $conexion->rollBack();
                     return response()->json([
                         'success' => false,
-                        'message' => 'Debes seleccionar una transportadora para envíos a provincia.'
+                        'message' => 'Debes agregar al menos una guía con transportadora para envíos a provincia.'
                     ], 422);
                 }
             }
@@ -242,20 +291,28 @@ class DistribucionController extends Controller
                 'FechaActualiza'      => now(),
             ]);
 
-            if ($nuevoEstado === 'En Transportadora') {
-                $costoEnvio = (float) $request->input('costo_envio', 0);
+            // ============================================================
+            // Crear N envíos (cada uno con su guía, costo y observación)
+            // ============================================================
+            if ($nuevoEstado === 'En Transportadora' && $guias->isNotEmpty()) {
+                foreach ($guias as $guia) {
+                    Envio::create([
+                        'IdPedidoCliente'    => $pedido->IdPedidoCliente,
+                        'IdTransportadora'   => $guia['id_transportadora'],
+                        'NumeroGuia'         => $guia['numero_guia'] ?? null,
+                        'CostoEnvio'         => (float) ($guia['costo_envio'] ?? 0),
+                        'FechaEnvio'         => now(),
+                        'IdOperadorDespacha' => $operadorId,
+                        'Observaciones'      => $guia['observacion'] ?? null,
+                    ]);
+                }
 
-                Envio::create([
-                    'IdPedidoCliente'     => $pedido->IdPedidoCliente,
-                    'IdTransportadora'    => $request->input('id_transportadora'),
-                    'NumeroGuia'          => $request->input('numero_guia'),
-                    'CostoEnvio'          => $costoEnvio,
-                    'FechaEnvio'          => now(),
-                    'IdOperadorDespacha'  => $operadorId,
-                    'Observaciones'       => $request->input('observacion'),
-                ]);
+                // ============================================================
+                // ✅ UN SOLO cobro a la billetera por el TOTAL de todas las guías
+                // ============================================================
+                $totalCosto = $guias->sum(fn ($g) => (float) ($g['costo_envio'] ?? 0));
 
-                if ($costoEnvio > 0) {
+                if ($totalCosto > 0) {
                     $billeteraCliente = BilleteraOperador::where('IdOperador', $pedido->IdOperador)
                         ->where('IdCliente', $pedido->IdCliente)
                         ->where('IdSucursal', $pedido->IdSucursal)
@@ -263,11 +320,11 @@ class DistribucionController extends Controller
                         ->lockForUpdate()
                         ->first();
 
-                    if ($billeteraCliente && (float) $billeteraCliente->SaldoActual >= $costoEnvio) {
+                    if ($billeteraCliente && (float) $billeteraCliente->SaldoActual >= $totalCosto) {
                         $billeteraCliente->cobrarEnvio(
-                            $costoEnvio,
+                            $totalCosto,
                             $pedido->IdPedidoCliente,
-                            "Cobro Envío - Pedido #{$pedido->NumeroPedido}",
+                            "Cobro Envío - Pedido #{$pedido->NumeroPedido} - {$guias->count()} guía(s)",
                             $operadorId
                         );
 
@@ -275,28 +332,32 @@ class DistribucionController extends Controller
                             "billetera_operador_{$billeteraCliente->IdOperador}_{$billeteraCliente->IdCliente}_{$billeteraCliente->IdSucursal}"
                         );
 
-                        Log::info("✅ Costo de envío descontado", [
+                        Log::info("✅ Costo de envío descontado (agrupado)", [
                             'IdPedido'    => $pedido->IdPedidoCliente,
-                            'Monto'       => $costoEnvio,
+                            'Total'       => $totalCosto,
+                            'Guias'       => $guias->count(),
                             'IdBilletera' => $billeteraCliente->IdBilletera,
                         ]);
                     } else {
                         Log::warning("Pedido despachado sin cobrar envío (falta de saldo/billetera)", [
                             'IdPedido' => $pedido->IdPedidoCliente,
+                            'Total'    => $totalCosto,
+                            'Guias'    => $guias->count(),
                             'Operador' => $pedido->IdOperador,
                             'Cliente'  => $pedido->IdCliente,
                             'Sucursal' => $pedido->IdSucursal,
-                            'Costo'    => $costoEnvio,
                         ]);
                     }
                 }
             }
 
+            // ============================================================
+            // Recibido: marcar TODAS las guías con FechaEntregaReal
+            // ============================================================
             if ($nuevoEstado === 'Recibido') {
-                $envio = Envio::where('IdPedidoCliente', $pedido->IdPedidoCliente)->first();
-                if ($envio) {
-                    $envio->update(['FechaEntregaReal' => now()]);
-                }
+                Envio::where('IdPedidoCliente', $pedido->IdPedidoCliente)
+                    ->whereNull('FechaEntregaReal')
+                    ->update(['FechaEntregaReal' => now()]);
             }
 
             HistorialPedido::create([
@@ -318,10 +379,7 @@ class DistribucionController extends Controller
         } catch (\Exception $e) {
             $conexion->rollBack();
             Log::error('Error en distribucion: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -334,7 +392,7 @@ class DistribucionController extends Controller
             $clienteId = session('cliente_id');
             $pedido = PedidoCliente::where('IdCliente', $clienteId)
                 ->where('IdPedidoCliente', $id)
-                ->with(['envio.transportadora.identificador'])
+                ->with(['envios.transportadora.identificador'])
                 ->first();
 
             if (!$pedido) {
@@ -349,7 +407,7 @@ class DistribucionController extends Controller
                 'success'       => true,
                 'estado_actual' => $pedido->EstadoPedido,
                 'historial'     => $historial,
-                'envio'         => $pedido->envio,
+                'envios'        => $pedido->envios,
             ]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);

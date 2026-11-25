@@ -15,40 +15,50 @@ const props = defineProps({
 
 const toast = inject('toast')
 
-// ==================== DETECTAR DISPOSITIVO ====================
+// ==================== DISPOSITIVO ====================
 const isMobile = ref(false)
 const handleResize = () => { isMobile.value = window.innerWidth < 640 }
 
-const actualizando = ref(false)
-// ==================== TABS PRINCIPALES ====================
-const tabActiva = ref('distribucion') // 'distribucion' | 'transportadora' | 'recibidos'
-
-// ==================== SUB-TABS: CIUDAD / PROVINCIA ====================
-const subTab = ref('ciudad') // 'ciudad' | 'provincia'
+// ==================== TABS ====================
+const tabActiva = ref('distribucion')
+const subTab = ref('ciudad')
 
 // ==================== FILTROS ====================
 const filtros = reactive({ q: '', fechaEntrega: '' })
 
-// ==================== MODAL CAMBIO ESTADO ====================
-const modalEstadoVisible         = ref(false)
-const pedidoSeleccionado         = ref(null)
-const numeroGuia                 = ref('')
-const costoEnvio                 = ref(0)
-const transportadoraSeleccionada = ref('')
+// ==================== ACTUALIZAR ====================
+const actualizando = ref(false)
+const actualizar = () => {
+    if (actualizando.value) return
+    router.reload({
+        only: ['pedidosEnDistribucion', 'pedidosEnTransportadora', 'pedidosRecibidos', 'transportadoras'],
+        onStart: () => { actualizando.value = true },
+        onFinish: () => { actualizando.value = false },
+        onSuccess: () => toast?.success('Actualizado', 'Datos refrescados correctamente'),
+        onError: () => toast?.error('Error', 'No se pudieron actualizar los datos'),
+    })
+}
 
-// Autocomplete transportadoras
-const inputTransportadoraRef        = ref(null)
-const busquedaTransportadora        = ref('')
-const resultadosTransportadoras     = ref([])
-const transportadoraSeleccionadaObj = ref(null)
-const indiceActivoTransportadora    = ref(-1)
-const dropdownTransportadoraStyle   = ref({})
+// ==================== MODAL DESPACHO ====================
+const modalEstadoVisible = ref(false)
+const pedidoSeleccionado = ref(null)
 
-// Modal nueva transportadora
+const crearGuiaVacia = () => ({
+    busqueda: '',
+    transportadoraObj: null,
+    numero_guia: '',
+    costo_envio: 0,
+    observacion: '',
+})
+
+const guias = ref([])
+const guiasAutocomplete = ref([])
+const guiaInputRefs = ref([])
+
+// ==================== MODAL NUEVA TRANSPORTADORA ====================
 const modalTransportadoraVisible = ref(false)
 const nuevaTransportadora        = ref({ Nombre: '', CI_NIT: '' })
 
-// Autocomplete identificadores
 const inputIdentificadorRef     = ref(null)
 const busquedaIdentificador     = ref('')
 const resultadosIdentificadores = ref([])
@@ -77,7 +87,7 @@ const diasHasta = (fecha) => {
     return Math.round((target - now) / (1000 * 60 * 60 * 24))
 }
 
-// ==================== LISTA BASE (tab + subtab) ====================
+// ==================== LISTA BASE ====================
 const pedidosBase = computed(() => {
     let porTab = []
     if (tabActiva.value === 'distribucion')        porTab = props.pedidosEnDistribucion
@@ -92,28 +102,16 @@ const pedidosBase = computed(() => {
 })
 
 // ==================== CONTADORES ====================
-const countDistribucionCiudad    = computed(() => props.pedidosEnDistribucion.filter(p => p.Ciudad === true).length)
-const countDistribucionProvincia = computed(() => props.pedidosEnDistribucion.filter(p => p.Provincia === true).length)
+const countDistribucionCiudad      = computed(() => props.pedidosEnDistribucion.filter(p => p.Ciudad === true).length)
+const countDistribucionProvincia   = computed(() => props.pedidosEnDistribucion.filter(p => p.Provincia === true).length)
 const countTransportadoraCiudad    = computed(() => props.pedidosEnTransportadora.filter(p => p.Ciudad === true).length)
 const countTransportadoraProvincia = computed(() => props.pedidosEnTransportadora.filter(p => p.Provincia === true).length)
-const countRecibidosCiudad    = computed(() => props.pedidosRecibidos.filter(p => p.Ciudad === true).length)
-const countRecibidosProvincia = computed(() => props.pedidosRecibidos.filter(p => p.Provincia === true).length)
-
-const countSubTabActual = computed(() => {
-    if (subTab.value === 'ciudad') {
-        if (tabActiva.value === 'distribucion')   return countDistribucionCiudad.value
-        if (tabActiva.value === 'transportadora') return countTransportadoraCiudad.value
-        return countRecibidosCiudad.value
-    }
-    if (tabActiva.value === 'distribucion')   return countDistribucionProvincia.value
-    if (tabActiva.value === 'transportadora') return countTransportadoraProvincia.value
-    return countRecibidosProvincia.value
-})
+const countRecibidosCiudad         = computed(() => props.pedidosRecibidos.filter(p => p.Ciudad === true).length)
+const countRecibidosProvincia      = computed(() => props.pedidosRecibidos.filter(p => p.Provincia === true).length)
 
 // ==================== LISTA FILTRADA ====================
 const pedidosFiltrados = computed(() => {
     let lista = [...pedidosBase.value]
-
     const q = filtros.q.trim().toLowerCase()
     if (q) {
         lista = lista.filter(p => {
@@ -122,17 +120,14 @@ const pedidosFiltrados = computed(() => {
             return operador.includes(q) || numero.includes(q)
         })
     }
-
     if (filtros.fechaEntrega) {
         lista = lista.filter(p => toYMD(p.FechaEntrega) === filtros.fechaEntrega)
     }
-
     const cmpPedido = (a, b) => {
         const da = new Date(a.FechaPedido || 0).getTime() || 0
         const db = new Date(b.FechaPedido || 0).getTime() || 0
         return da - db
     }
-
     lista.sort((a, b) => {
         const ya = toYMD(a.FechaEntrega)
         const yb = toYMD(b.FechaEntrega)
@@ -142,10 +137,7 @@ const pedidosFiltrados = computed(() => {
         if (ya !== yb) return ya < yb ? -1 : 1
         return cmpPedido(a, b)
     })
-
-    // Transportadora y Recibidos: los más recientes primero (ya vienen así del backend)
     if (tabActiva.value === 'transportadora' || tabActiva.value === 'recibidos') lista.reverse()
-
     return lista
 })
 
@@ -153,50 +145,47 @@ const pedidosActuales = pedidosFiltrados
 const totalFiltrados = computed(() => pedidosFiltrados.value.length)
 const totalBase = computed(() => pedidosBase.value.length)
 const hayFiltrosActivos = computed(() => !!filtros.q || !!filtros.fechaEntrega)
-const limpiarFiltros = () => {
-    filtros.q = ''
-    filtros.fechaEntrega = ''
-}
+const limpiarFiltros = () => { filtros.q = ''; filtros.fechaEntrega = '' }
 
-// ==================== ACCIONES ====================
+// ==================== MODAL DESPACHO: ABRIR/CERRAR ====================
 const abrirModalEstado = (pedido) => {
-    pedidoSeleccionado.value         = pedido
-    numeroGuia.value                 = ''
-    costoEnvio.value                 = 0
-    transportadoraSeleccionada.value    = ''
-    transportadoraSeleccionadaObj.value = null
-    busquedaTransportadora.value        = ''
-    resultadosTransportadoras.value     = []
-    indiceActivoTransportadora.value    = -1
-    modalEstadoVisible.value            = true
+    pedidoSeleccionado.value = pedido
+    guias.value = [crearGuiaVacia()]
+    guiasAutocomplete.value = [{ resultados: [], indiceActivo: -1, dropdownStyle: {} }]
+    guiaInputRefs.value = []
+    modalEstadoVisible.value = true
+    nextTick(() => guiaInputRefs.value[0]?.focus())
 }
 
-const confirmarCambioEstado = async () => {
-    try {
-        const response = await axios.post(
-            `/operacion/pedidos/clientes-mayoristas/distribucion/${pedidoSeleccionado.value.IdPedidoCliente}/cambiar-estado`,
-            {
-                modo:              'despacho',
-                nuevo_estado:      'En Transportadora',
-                id_transportadora: transportadoraSeleccionada.value || null,
-                numero_guia:       numeroGuia.value || null,
-                costo_envio:       costoEnvio.value || 0,
-            }
-        )
-        if (response.data.success) {
-            toast?.success('Éxito', response.data.message)
-            modalEstadoVisible.value = false
-            router.reload()
-        }
-    } catch (error) {
-        toast?.error('Error', error.response?.data?.message || 'Error al cambiar estado')
-    }
+const cerrarModalEstado = () => {
+    modalEstadoVisible.value = false
+    pedidoSeleccionado.value = null
 }
 
-// ==================== POSICIÓN DROPDOWNS ====================
-const calcularPosicion = (elRef, alturaMax = 240) => {
-    if (!elRef?.value) return {}
-    const rect = elRef.value.getBoundingClientRect()
+const agregarFilaGuia = () => {
+    guias.value.push(crearGuiaVacia())
+    guiasAutocomplete.value.push({ resultados: [], indiceActivo: -1, dropdownStyle: {} })
+    nextTick(() => {
+        const idx = guias.value.length - 1
+        guiaInputRefs.value[idx]?.focus()
+    })
+}
+
+const eliminarFilaGuia = (idx) => {
+    if (guias.value.length <= 1) return
+    guias.value.splice(idx, 1)
+    guiasAutocomplete.value.splice(idx, 1)
+    guiaInputRefs.value.splice(idx, 1)
+}
+
+// ==================== AUTOCOMPLETE POR FILA ====================
+const setGuiaInputRef = (el, idx) => {
+    if (el) guiaInputRefs.value[idx] = el
+}
+
+const calcularPosicion = (el, alturaMax = 240) => {
+    if (!el) return {}
+    const rect = el.getBoundingClientRect()
     const espacioAbajo = window.innerHeight - rect.bottom
     if (espacioAbajo < alturaMax && rect.top > alturaMax) {
         return {
@@ -214,15 +203,97 @@ const calcularPosicion = (elRef, alturaMax = 240) => {
     }
 }
 
-const actualizarPosicionDropdown = () => { dropdownStyle.value = calcularPosicion(inputIdentificadorRef) }
-const actualizarPosicionDropdownTransportadora = () => { dropdownTransportadoraStyle.value = calcularPosicion(inputTransportadoraRef) }
-
-const onScrollOrResize = () => {
-    if (resultadosIdentificadores.value.length)   actualizarPosicionDropdown()
-    if (resultadosTransportadoras.value.length)   actualizarPosicionDropdownTransportadora()
+const filtrarGuias = (idx) => {
+    const g = guias.value[idx]
+    const q = (g.busqueda || '').trim().toLowerCase()
+    if (q.length < 1) {
+        guiasAutocomplete.value[idx].resultados = []
+        guiasAutocomplete.value[idx].indiceActivo = -1
+        return
+    }
+    guiasAutocomplete.value[idx].resultados = props.transportadoras
+        .filter(t => {
+            const nombre = (t.identificador?.Nombre || '').toLowerCase()
+            const ciNit  = String(t.identificador?.CI_NIT || '').toLowerCase()
+            return nombre.includes(q) || ciNit.includes(q)
+        })
+        .slice(0, 15)
+    guiasAutocomplete.value[idx].indiceActivo = -1
+    nextTick(() => {
+        const el = guiaInputRefs.value[idx]
+        if (el) guiasAutocomplete.value[idx].dropdownStyle = calcularPosicion(el)
+    })
 }
 
-// ==================== AUTOCOMPLETE IDENTIFICADORES ====================
+const seleccionarGuiaTransportadora = (idx, t) => {
+    guias.value[idx].transportadoraObj = t
+    guias.value[idx].busqueda = `${t.identificador?.Nombre || 'Sin nombre'} (${t.identificador?.CI_NIT || '-'})`
+    guiasAutocomplete.value[idx].resultados = []
+    guiasAutocomplete.value[idx].indiceActivo = -1
+}
+
+const limpiarGuiaTransportadora = (idx) => {
+    guias.value[idx].transportadoraObj = null
+    guias.value[idx].busqueda = ''
+    guiasAutocomplete.value[idx].resultados = []
+    nextTick(() => guiaInputRefs.value[idx]?.focus())
+}
+
+const onKeydownGuia = (e, idx) => {
+    const ac = guiasAutocomplete.value[idx]
+    const total = ac.resultados.length
+    if (!total) return
+    if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        ac.indiceActivo = (ac.indiceActivo + 1) % total
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        ac.indiceActivo = (ac.indiceActivo - 1 + total) % total
+    } else if (e.key === 'Enter') {
+        e.preventDefault()
+        const item = ac.resultados[ac.indiceActivo]
+        if (item) seleccionarGuiaTransportadora(idx, item)
+    } else if (e.key === 'Escape') {
+        ac.resultados = []
+        ac.indiceActivo = -1
+    }
+}
+
+// ==================== CONFIRMAR DESPACHO ====================
+const confirmarCambioEstado = async () => {
+    const guiasValidas = guias.value.filter(g => g.transportadoraObj)
+    if (guiasValidas.length === 0) {
+        toast?.warning('Atención', 'Agrega al menos una guía con transportadora.')
+        return
+    }
+
+    const payload = {
+        modo: 'despacho',
+        nuevo_estado: 'En Transportadora',
+        guias: guiasValidas.map(g => ({
+            id_transportadora: g.transportadoraObj.IdTransportadora,
+            numero_guia: g.numero_guia || null,
+            costo_envio: Number(g.costo_envio) || 0,
+            observacion: g.observacion || null,
+        })),
+    }
+
+    try {
+        const response = await axios.post(
+            `/operacion/pedidos/clientes-mayoristas/distribucion/${pedidoSeleccionado.value.IdPedidoCliente}/cambiar-estado`,
+            payload
+        )
+        if (response.data.success) {
+            toast?.success('Éxito', response.data.message)
+            cerrarModalEstado()
+            router.reload()
+        }
+    } catch (error) {
+        toast?.error('Error', error.response?.data?.message || 'Error al cambiar estado')
+    }
+}
+
+// ==================== AUTOCOMPLETE IDENTIFICADORES (NUEVA TRANSPORTADORA) ====================
 const buscarIdentificadores = () => {
     clearTimeout(debounceTimer)
     const q = busquedaIdentificador.value.trim()
@@ -263,20 +334,7 @@ const limpiarSeleccionIdentificador = () => {
     resultadosIdentificadores.value = []
     nextTick(() => inputIdentificadorRef.value?.focus())
 }
-const actualizar = () => {
-    if (actualizando.value) return
-    router.reload({
-        only: ['pedidosEnDistribucion', 'pedidosEnTransportadora', 'pedidosRecibidos', 'transportadoras'],
-        onStart: () => { actualizando.value = true },
-        onFinish: () => { actualizando.value = false },
-        onSuccess: () => {
-            toast?.success('Actualizado', 'Datos refrescados correctamente')
-        },
-        onError: () => {
-            toast?.error('Error', 'No se pudieron actualizar los datos')
-        },
-    })
-}
+
 const abrirCrearIdentificador = () => {
     mostrarCrearIdentificador.value = true
     nuevaTransportadora.value = { Nombre: busquedaIdentificador.value.trim(), CI_NIT: '' }
@@ -308,59 +366,6 @@ const onKeydownIdentificador = (e) => {
     } else if (e.key === 'Escape') {
         resultadosIdentificadores.value = []
         indiceActivo.value = -1
-    }
-}
-
-// ==================== AUTOCOMPLETE TRANSPORTADORAS ====================
-const filtrarTransportadoras = () => {
-    const q = busquedaTransportadora.value.trim().toLowerCase()
-    if (q.length < 1) {
-        resultadosTransportadoras.value = []
-        indiceActivoTransportadora.value = -1
-        return
-    }
-    resultadosTransportadoras.value = props.transportadoras
-        .filter(t => {
-            const nombre = (t.identificador?.Nombre || '').toLowerCase()
-            const ciNit  = String(t.identificador?.CI_NIT || '').toLowerCase()
-            return nombre.includes(q) || ciNit.includes(q)
-        })
-        .slice(0, 15)
-    indiceActivoTransportadora.value = -1
-}
-
-const seleccionarTransportadora = (t) => {
-    transportadoraSeleccionadaObj.value = t
-    transportadoraSeleccionada.value    = t.IdTransportadora
-    busquedaTransportadora.value        = `${t.identificador?.Nombre || 'Sin nombre'} (${t.identificador?.CI_NIT || '-'})`
-    resultadosTransportadoras.value     = []
-    indiceActivoTransportadora.value    = -1
-}
-
-const limpiarSeleccionTransportadora = () => {
-    transportadoraSeleccionadaObj.value = null
-    transportadoraSeleccionada.value    = ''
-    busquedaTransportadora.value        = ''
-    resultadosTransportadoras.value     = []
-    nextTick(() => inputTransportadoraRef.value?.focus())
-}
-
-const onKeydownTransportadora = (e) => {
-    const total = resultadosTransportadoras.value.length
-    if (!total) return
-    if (e.key === 'ArrowDown') {
-        e.preventDefault()
-        indiceActivoTransportadora.value = (indiceActivoTransportadora.value + 1) % total
-    } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        indiceActivoTransportadora.value = (indiceActivoTransportadora.value - 1 + total) % total
-    } else if (e.key === 'Enter') {
-        e.preventDefault()
-        const item = resultadosTransportadoras.value[indiceActivoTransportadora.value]
-        if (item) seleccionarTransportadora(item)
-    } else if (e.key === 'Escape') {
-        resultadosTransportadoras.value = []
-        indiceActivoTransportadora.value = -1
     }
 }
 
@@ -415,6 +420,30 @@ const cerrarModalTransportadora = () => {
     indiceActivo.value               = -1
 }
 
+// ==================== POSICIÓN DROPDOWN GLOBAL ====================
+const actualizarPosicionDropdown = () => { dropdownStyle.value = calcularPosicion(inputIdentificadorRef.value) }
+
+const onScrollOrResize = () => {
+    if (resultadosIdentificadores.value.length) actualizarPosicionDropdown()
+    guias.value.forEach((_, idx) => {
+        const ac = guiasAutocomplete.value[idx]
+        if (ac?.resultados?.length && guiaInputRefs.value[idx]) {
+            ac.dropdownStyle = calcularPosicion(guiaInputRefs.value[idx])
+        }
+    })
+}
+
+// ==================== WATCHERS ====================
+watch(busquedaIdentificador, (val) => {
+    if (identificadorSeleccionado.value && val !== `${identificadorSeleccionado.value.Nombre} (${identificadorSeleccionado.value.CI_NIT})`) {
+        identificadorSeleccionado.value = null
+    }
+})
+
+watch(resultadosIdentificadores, async (val) => {
+    if (val?.length) { await nextTick(); actualizarPosicionDropdown() }
+})
+
 // ==================== UTILIDADES ====================
 const formatoFecha = (fecha) => {
     if (!fecha) return '-'
@@ -444,21 +473,6 @@ const verPdf = (idPedido) => {
     window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${idPedido}/pdf`, '_blank')
 }
 
-// ==================== WATCHERS ====================
-watch(busquedaIdentificador, (val) => {
-    if (identificadorSeleccionado.value && val !== `${identificadorSeleccionado.value.Nombre} (${identificadorSeleccionado.value.CI_NIT})`) {
-        identificadorSeleccionado.value = null
-    }
-})
-
-watch(resultadosIdentificadores, async (val) => {
-    if (val?.length) { await nextTick(); actualizarPosicionDropdown() }
-})
-
-watch(resultadosTransportadoras, async (val) => {
-    if (val?.length) { await nextTick(); actualizarPosicionDropdownTransportadora() }
-})
-
 // ==================== LIFECYCLE ====================
 onMounted(() => {
     handleResize()
@@ -483,8 +497,8 @@ onUnmounted(() => {
                 <!-- HEADER -->
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
-                        <div class="w-9 h-9 bg-cyan-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-truck text-cyan-600 text-base"></i>
+                        <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-truck text-primary-600 text-base"></i>
                         </div>
                         <div>
                             <h1 class="text-base lg:text-lg font-bold text-gray-800">Distribución · Despacho</h1>
@@ -492,14 +506,11 @@ onUnmounted(() => {
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <!-- ✅ NUEVO: Botón actualizar -->
                         <button @click="actualizar" :disabled="actualizando"
                             class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
                             <i class="fas fa-sync-alt text-[10px]" :class="{ 'fa-spin': actualizando }"></i>
                             {{ actualizando ? 'Actualizando...' : 'Actualizar' }}
                         </button>
-
-                        <!-- Botón existente -->
                         <button @click="modalTransportadoraVisible = true"
                             class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm">
                             <i class="fas fa-plus text-[10px]"></i> Nueva Transportadora
@@ -512,7 +523,7 @@ onUnmounted(() => {
                     <div class="flex gap-1 min-w-max">
                         <button @click="tabActiva = 'distribucion'"
                             class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'distribucion' ? 'bg-indigo-500 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            :class="tabActiva === 'distribucion' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
                             <i class="fas fa-shipping-fast text-[10px]"></i> En Distribución
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                 :class="tabActiva === 'distribucion' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
@@ -521,7 +532,7 @@ onUnmounted(() => {
                         </button>
                         <button @click="tabActiva = 'transportadora'"
                             class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'transportadora' ? 'bg-cyan-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            :class="tabActiva === 'transportadora' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
                             <i class="fas fa-truck text-[10px]"></i> En Transportadora
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                 :class="tabActiva === 'transportadora' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
@@ -530,7 +541,7 @@ onUnmounted(() => {
                         </button>
                         <button @click="tabActiva = 'recibidos'"
                             class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="tabActiva === 'recibidos' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            :class="tabActiva === 'recibidos' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
                             <i class="fas fa-check-double text-[10px]"></i> Finalizados
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                 :class="tabActiva === 'recibidos' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
@@ -540,24 +551,24 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- SUB-TABS: CIUDAD / PROVINCIA -->
+                <!-- SUB-TABS -->
                 <div class="bg-white rounded-xl shadow-sm p-1 mb-3 overflow-x-auto border border-gray-100">
                     <div class="flex gap-1 min-w-max">
                         <button @click="subTab = 'ciudad'"
                             class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="subTab === 'ciudad' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'text-gray-500 hover:bg-gray-100'">
+                            :class="subTab === 'ciudad' ? 'bg-primary-100 text-primary-700 ring-1 ring-primary-300' : 'text-gray-500 hover:bg-gray-100'">
                             <i class="fas fa-city text-[10px]"></i> Ciudad
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
-                                :class="subTab === 'ciudad' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'">
+                                :class="subTab === 'ciudad' ? 'bg-primary-200 text-primary-800' : 'bg-gray-200 text-gray-600'">
                                 {{ tabActiva === 'distribucion' ? countDistribucionCiudad : (tabActiva === 'transportadora' ? countTransportadoraCiudad : countRecibidosCiudad) }}
                             </span>
                         </button>
                         <button @click="subTab = 'provincia'"
                             class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"
-                            :class="subTab === 'provincia' ? 'bg-purple-100 text-purple-700 ring-1 ring-purple-300' : 'text-gray-500 hover:bg-gray-100'">
+                            :class="subTab === 'provincia' ? 'bg-primary-100 text-primary-700 ring-1 ring-primary-300' : 'text-gray-500 hover:bg-gray-100'">
                             <i class="fas fa-truck-moving text-[10px]"></i> Provincia
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
-                                :class="subTab === 'provincia' ? 'bg-purple-200 text-purple-800' : 'bg-gray-200 text-gray-600'">
+                                :class="subTab === 'provincia' ? 'bg-primary-200 text-primary-800' : 'bg-gray-200 text-gray-600'">
                                 {{ tabActiva === 'distribucion' ? countDistribucionProvincia : (tabActiva === 'transportadora' ? countTransportadoraProvincia : countRecibidosProvincia) }}
                             </span>
                         </button>
@@ -612,18 +623,22 @@ onUnmounted(() => {
                                 <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Operador:</p>
                                 <p class="text-xs font-bold text-gray-800 truncate mb-1">{{ p.OperadorNombre || 'Sin operador' }}</p>
                                 <div class="flex items-center gap-1 mb-2">
-                                    <span v-if="subTab === 'ciudad'" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                    <span v-else class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                    <span v-if="subTab === 'ciudad'" class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">CIUDAD</span>
+                                    <span v-else class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">PROVINCIA</span>
                                 </div>
 
-                                <!-- Info transportadora (transportadora o recibidos) -->
-                                <div v-if="tabActiva !== 'distribucion'" class="mt-1.5 pt-1.5 border-t border-gray-200">
-                                    <p class="text-[10px] font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</p>
-                                    <p class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</p>
-                                    <p v-if="tabActiva === 'recibidos' && p.envio?.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold mt-0.5">
-                                        <i class="fas fa-check-circle mr-0.5"></i>
-                                        Recibido: {{ formatoFechaHora(p.envio.FechaEntregaReal) }}
-                                    </p>
+                                <div v-if="tabActiva !== 'distribucion'" class="mt-1.5 pt-1.5 border-t border-gray-200 space-y-1">
+                                    <div v-if="p.envios && p.envios.length > 0">
+                                        <div v-for="e in p.envios" :key="e.IdEnvio" class="border-l-2 border-primary-300 pl-2">
+                                            <p class="text-[10px] font-bold text-primary-700">{{ e.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</p>
+                                            <p class="text-[9px] text-gray-500">Guía: {{ e.NumeroGuia || '-' }} | Bs. {{ e.CostoEnvio || '0.00' }}</p>
+                                            <p v-if="e.Observaciones" class="text-[9px] text-gray-400 italic">Obs: {{ e.Observaciones }}</p>
+                                            <p v-if="tabActiva === 'recibidos' && e.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold">
+                                                <i class="fas fa-check-circle mr-0.5"></i> {{ formatoFechaHora(e.FechaEntregaReal) }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span v-else class="text-gray-400 italic text-[10px]">Sin guías</span>
                                 </div>
 
                                 <div class="flex justify-end items-center mt-2 pt-2 border-t border-gray-200 gap-2">
@@ -632,23 +647,20 @@ onUnmounted(() => {
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
 
-                                    <!-- Distribución + Provincia: despachar -->
                                     <template v-if="tabActiva === 'distribucion'">
                                         <button v-if="subTab === 'provincia'" @click="abrirModalEstado(p)"
-                                            class="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                                             <i class="fas fa-truck text-[8px]"></i> Despachar
                                         </button>
                                         <span v-else class="text-[10px] text-gray-400 italic font-medium">
-                                            <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
+                                            <i class="fas fa-store text-gray-400 mr-1"></i> Reparto
                                         </span>
                                     </template>
 
-                                    <!-- Transportadora: en tránsito -->
-                                    <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-cyan-600 italic font-medium">
+                                    <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-primary-600 italic font-medium">
                                         <i class="fas fa-truck-moving mr-1"></i> En tránsito
                                     </span>
 
-                                    <!-- Recibidos: finalizado -->
                                     <span v-else class="text-[10px] text-emerald-600 italic font-bold">
                                         <i class="fas fa-check-double mr-1"></i> Recibido
                                     </span>
@@ -668,9 +680,9 @@ onUnmounted(() => {
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Operador</th>
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-32">Fecha Pedido</th>
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-32">Fecha Entrega</th>
-                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-24">Cont.</th>
-                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Detalle / Guía</th>
-                                    <th class="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase w-56">Acciones</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-16">Cont.</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Guías</th>
+                                    <th class="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase w-48">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
@@ -679,8 +691,8 @@ onUnmounted(() => {
                                     <td class="px-4 py-3">
                                         <div class="text-xs text-gray-800 mb-1"><b>{{ p.OperadorNombre || 'Sin operador' }}</b></div>
                                         <div class="flex items-center gap-1">
-                                            <span v-if="subTab === 'ciudad'" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                            <span v-else class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                            <span v-if="subTab === 'ciudad'" class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">CIUDAD</span>
+                                            <span v-else class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">PROVINCIA</span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-[11px] text-gray-600 whitespace-nowrap">{{ formatoFechaHora(p.FechaPedido) }}</td>
@@ -693,21 +705,27 @@ onUnmounted(() => {
                                         </div>
                                         <span v-else class="text-gray-400">—</span>
                                     </td>
-                                    <td class="px-4 py-3 text-xs text-gray-600 font-medium">{{ p.TotalContenedores }} cont.</td>
+                                    <td class="px-4 py-3 text-xs text-gray-600 font-medium">{{ p.TotalContenedores }}</td>
                                     <td class="px-4 py-3 text-xs">
                                         <template v-if="tabActiva !== 'distribucion'">
-                                            <div class="font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</div>
-                                            <div class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</div>
-                                            <div v-if="tabActiva === 'recibidos' && p.envio?.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold mt-0.5">
-                                                <i class="fas fa-check-circle mr-0.5"></i> Recibido: {{ formatoFechaHora(p.envio.FechaEntregaReal) }}
+                                            <div v-if="p.envios && p.envios.length > 0" class="space-y-1">
+                                                <div v-for="e in p.envios" :key="e.IdEnvio" class="border-l-2 border-primary-300 pl-2">
+                                                    <div class="font-bold text-primary-700 text-[11px]">{{ e.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</div>
+                                                    <div class="text-[9px] text-gray-500">Guía: {{ e.NumeroGuia || '-' }} | Bs. {{ e.CostoEnvio || '0.00' }}</div>
+                                                    <div v-if="e.Observaciones" class="text-[9px] text-gray-400 italic">Obs: {{ e.Observaciones }}</div>
+                                                    <div v-if="tabActiva === 'recibidos' && e.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold">
+                                                        <i class="fas fa-check-circle mr-0.5"></i> {{ formatoFechaHora(e.FechaEntregaReal) }}
+                                                    </div>
+                                                </div>
                                             </div>
+                                            <span v-else class="text-gray-400 italic text-[10px]">Sin guías</span>
                                         </template>
                                         <template v-else>
                                             <span class="text-gray-500">{{ p.TotalContenedores }} contenedores</span>
                                         </template>
                                     </td>
                                     <td class="px-4 py-3 text-right">
-                                        <div class="flex items-center justify-end gap-2">
+                                        <div class="flex items-center justify-end gap-2 flex-wrap">
                                             <button @click="verPdf(p.IdPedidoCliente)"
                                                 class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 border border-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                 <i class="fas fa-file-pdf"></i> PDF
@@ -715,15 +733,15 @@ onUnmounted(() => {
 
                                             <template v-if="tabActiva === 'distribucion'">
                                                 <button v-if="subTab === 'provincia'" @click="abrirModalEstado(p)"
-                                                    class="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                                    class="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                     <i class="fas fa-truck text-[9px]"></i> A Transportadora
                                                 </button>
                                                 <span v-else class="text-[10px] text-gray-400 italic font-medium px-2">
-                                                    <i class="fas fa-store text-gray-400 mr-1"></i> Reparto Local
+                                                    <i class="fas fa-store text-gray-400 mr-1"></i> Reparto 
                                                 </span>
                                             </template>
 
-                                            <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-cyan-600 italic font-medium px-2">
+                                            <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-primary-600 italic font-medium px-2">
                                                 <i class="fas fa-truck-moving mr-1"></i> En tránsito
                                             </span>
 
@@ -747,65 +765,95 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- MODAL CAMBIO DE ESTADO -->
+        <!-- MODAL DESPACHO (N GUÍAS) -->
         <div v-if="modalEstadoVisible" class="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-3"
-            @click.self="modalEstadoVisible = false">
+            @click.self="cerrarModalEstado">
             <div class="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-                <div class="px-4 py-2.5 bg-cyan-600 flex items-center justify-between flex-shrink-0">
+                <div class="px-4 py-2.5 bg-primary-600 flex items-center justify-between flex-shrink-0">
                     <div class="min-w-0">
                         <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
                             <i class="fas fa-truck text-xs"></i> Despachar a Transportadora
                         </h3>
-                        <p class="text-[9px] text-white/80 truncate">Pedido #{{ pedidoSeleccionado?.NumeroPedido }}</p>
+                        <p class="text-[9px] text-white/80 truncate">
+                            Pedido #{{ pedidoSeleccionado?.NumeroPedido }}
+                            <span v-if="guias.length > 1"> · {{ guias.length }} guías</span>
+                        </p>
                     </div>
-                    <button @click="modalEstadoVisible = false" class="text-white/80 hover:text-white p-1">
+                    <button @click="cerrarModalEstado" class="text-white/80 hover:text-white p-1">
                         <i class="fas fa-times text-sm"></i>
                     </button>
                 </div>
 
                 <div class="p-4 space-y-3 overflow-y-auto flex-1">
-                    <div>
-                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Transportadora</label>
-                        <div class="flex gap-1">
-                            <input ref="inputTransportadoraRef" v-model="busquedaTransportadora"
-                                @input="filtrarTransportadoras" @focus="filtrarTransportadoras" @keydown="onKeydownTransportadora"
-                                type="text" placeholder="Busca por nombre o CI/NIT..." autocomplete="off"
-                                class="flex-1 min-w-0 border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500" />
-                            <button v-if="transportadoraSeleccionadaObj" @click="limpiarSeleccionTransportadora"
-                                class="px-2.5 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 bg-gray-200 hover:bg-gray-300 rounded-md text-xs flex items-center justify-center">
-                                <i class="fas fa-times"></i>
+
+                    <div v-for="(g, idx) in guias" :key="idx"
+                        :class="idx > 0 ? 'pt-3 border-t border-dashed border-gray-200' : ''">
+
+                        <div v-if="idx > 0" class="flex items-center justify-between mb-2">
+                            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">
+                                <i class="fas fa-tag text-primary-600 mr-1"></i> Guía #{{ idx + 1 }}
+                            </p>
+                            <button @click="eliminarFilaGuia(idx)"
+                                class="text-rose-500 hover:text-rose-700 text-[10px] font-medium flex items-center gap-0.5">
+                                <i class="fas fa-trash-alt text-[9px]"></i> Quitar
                             </button>
                         </div>
-                        <p v-if="!resultadosTransportadoras.length && busquedaTransportadora.trim().length >= 1 && !transportadoraSeleccionadaObj && props.transportadoras.length === 0"
-                            class="text-[10px] text-amber-600 mt-0.5">
-                            No hay transportadoras registradas. Crea una primero con el botón "Nueva Transportadora".
-                        </p>
+
+                        <div>
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Transportadora *</label>
+                            <div class="flex gap-1">
+                                <input :ref="el => setGuiaInputRef(el, idx)" v-model="g.busqueda"
+                                    @input="filtrarGuias(idx)" @focus="filtrarGuias(idx)" @keydown="onKeydownGuia($event, idx)"
+                                    type="text" placeholder="Busca por nombre o CI/NIT..." autocomplete="off"
+                                    class="flex-1 min-w-0 border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500" />
+                                <button v-if="g.transportadoraObj" @click="limpiarGuiaTransportadora(idx)"
+                                    class="px-2.5 min-w-[40px] min-h-[40px] sm:min-w-0 sm:min-h-0 bg-gray-200 hover:bg-gray-300 rounded-md text-xs flex items-center justify-center">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 mt-2">
+                            <div>
+                                <label class="text-[10px] text-gray-500 font-medium block mb-0.5">N° Guía</label>
+                                <input v-model="g.numero_guia" type="text"
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500"
+                                    placeholder="Ej: ABC-123" />
+                            </div>
+                            <div>
+                                <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Costo (Bs.)</label>
+                                <input v-model.number="g.costo_envio" type="number" inputmode="decimal" min="0" step="0.01"
+                                    class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500"
+                                    placeholder="0.00" />
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Observaciones de esta guía</label>
+                            <input v-model="g.observacion" type="text"
+                                class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500"
+                                placeholder="Opcional..." />
+                        </div>
+
+                        <div v-if="g.transportadoraObj" class="mt-2 bg-green-50 border border-green-200 rounded-md p-2 text-[11px] text-green-800 break-words">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            <b>{{ g.transportadoraObj.identificador?.Nombre || 'Sin nombre' }}</b>
+                            <span class="text-green-600">— CI/NIT: {{ g.transportadoraObj.identificador?.CI_NIT || '-' }}</span>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-2">
-                        <div>
-                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">N° Guía</label>
-                            <input v-model="numeroGuia" type="text" class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500" placeholder="Ej: ABC-123">
-                        </div>
-                        <div>
-                            <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Costo (Bs.)</label>
-                            <input v-model.number="costoEnvio" type="number" inputmode="decimal" min="0" step="0.01" class="w-full border border-gray-300 rounded-md px-2.5 py-1.5 text-base sm:text-sm outline-none focus:border-primary-500" placeholder="0.00">
-                        </div>
-                    </div>
-
-                    <div v-if="transportadoraSeleccionadaObj" class="bg-green-50 border border-green-200 rounded-md p-2 text-[11px] text-green-800 break-words">
-                        <i class="fas fa-check-circle mr-1"></i>
-                        <b>{{ transportadoraSeleccionadaObj.identificador?.Nombre || 'Sin nombre' }}</b>
-                        <span class="text-green-600">— CI/NIT: {{ transportadoraSeleccionadaObj.identificador?.CI_NIT || '-' }}</span>
-                    </div>
+                    <button @click="agregarFilaGuia"
+                        class="w-full border-2 border-dashed border-primary-300 text-primary-700 hover:bg-primary-50 rounded-md py-2 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+                        <i class="fas fa-plus text-[10px]"></i> Agregar otra guía
+                    </button>
                 </div>
 
                 <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
-                    <button @click="modalEstadoVisible = false" class="px-3 py-2 sm:py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition min-h-[40px] sm:min-h-0">
+                    <button @click="cerrarModalEstado" class="px-3 py-2 sm:py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition min-h-[40px] sm:min-h-0">
                         Cancelar
                     </button>
-                    <button @click="confirmarCambioEstado" class="px-3 py-2 sm:py-1.5 text-xs bg-cyan-500 hover:bg-cyan-600 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
-                        <i class="fas fa-check text-[10px]"></i> Despachar
+                    <button @click="confirmarCambioEstado" class="px-3 py-2 sm:py-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
+                        <i class="fas fa-check text-[10px]"></i> Despachar ({{ guias.length }})
                     </button>
                 </div>
             </div>
@@ -829,9 +877,7 @@ onUnmounted(() => {
 
                 <div class="p-4 space-y-3 overflow-y-auto flex-1">
                     <div>
-                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">
-                            Buscar identificador por nombre o CI/NIT
-                        </label>
+                        <label class="text-[10px] text-gray-500 font-medium block mb-0.5">Buscar identificador por nombre o CI/NIT</label>
                         <div class="flex gap-1">
                             <input ref="inputIdentificadorRef" v-model="busquedaIdentificador"
                                 @input="buscarIdentificadores" @focus="buscarIdentificadores" @keydown="onKeydownIdentificador"
@@ -890,7 +936,27 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- DROPDOWN IDENTIFICADORES -->
+        <!-- DROPDOWNS: GUÍAS DEL MODAL DESPACHO -->
+        <Teleport to="body">
+            <template v-for="(g, idx) in guias" :key="'dd-' + idx">
+                <div v-if="guiasAutocomplete[idx]?.resultados?.length && !g.transportadoraObj && modalEstadoVisible"
+                    :style="guiasAutocomplete[idx].dropdownStyle"
+                    class="bg-white border border-gray-200 rounded-md shadow-xl overflow-y-auto">
+                    <button v-for="(t, i) in guiasAutocomplete[idx].resultados" :key="t.IdTransportadora"
+                        @click="seleccionarGuiaTransportadora(idx, t)"
+                        @mouseenter="guiasAutocomplete[idx].indiceActivo = i"
+                        class="w-full text-left px-3 py-2.5 text-xs flex justify-between items-center gap-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition"
+                        :class="guiasAutocomplete[idx].indiceActivo === i ? 'bg-primary-50' : ''">
+                        <span class="truncate min-w-0 flex-1">
+                            <b>{{ t.identificador?.Nombre || 'Sin nombre' }}</b>
+                            <span class="text-gray-400 ml-1">— {{ t.identificador?.CI_NIT || '-' }}</span>
+                        </span>
+                    </button>
+                </div>
+            </template>
+        </Teleport>
+
+        <!-- DROPDOWN: IDENTIFICADORES -->
         <Teleport to="body">
             <div v-if="resultadosIdentificadores.length && !identificadorSeleccionado && modalTransportadoraVisible"
                 :style="dropdownStyle"
@@ -906,23 +972,6 @@ onUnmounted(() => {
                     </span>
                     <span v-if="id.YaEsTransportadora" class="text-[9px] text-amber-600 font-bold whitespace-nowrap flex-shrink-0">
                         Ya es transportadora
-                    </span>
-                </button>
-            </div>
-        </Teleport>
-
-        <!-- DROPDOWN TRANSPORTADORAS -->
-        <Teleport to="body">
-            <div v-if="resultadosTransportadoras.length && !transportadoraSeleccionadaObj && modalEstadoVisible"
-                :style="dropdownTransportadoraStyle"
-                class="bg-white border border-gray-200 rounded-md shadow-xl overflow-y-auto">
-                <button v-for="(t, idx) in resultadosTransportadoras" :key="t.IdTransportadora"
-                    @click="seleccionarTransportadora(t)" @mouseenter="indiceActivoTransportadora = idx"
-                    class="w-full text-left px-3 py-2.5 text-xs flex justify-between items-center gap-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 active:bg-gray-100 cursor-pointer transition"
-                    :class="indiceActivoTransportadora === idx ? 'bg-primary-50' : ''">
-                    <span class="truncate min-w-0 flex-1">
-                        <b>{{ t.identificador?.Nombre || 'Sin nombre' }}</b>
-                        <span class="text-gray-400 ml-1">— {{ t.identificador?.CI_NIT || '-' }}</span>
                     </span>
                 </button>
             </div>

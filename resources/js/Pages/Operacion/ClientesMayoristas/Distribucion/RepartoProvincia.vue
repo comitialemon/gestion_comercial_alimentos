@@ -7,36 +7,33 @@ import axios from 'axios'
 defineOptions({ layout: AppLayout })
 
 const props = defineProps({
-    pedidosPendientes: { type: Array, default: () => [] },
+    pedidosPendientes:  { type: Array, default: () => [] },
+    pedidosEnTransito:  { type: Array, default: () => [] },
+    pedidosFinalizados: { type: Array, default: () => [] },
 })
 
 const toast = inject('toast')
 
-// ==================== DETECTAR DISPOSITIVO ====================
+// ==================== DISPOSITIVO ====================
 const isMobile = ref(false)
 const handleResize = () => { isMobile.value = window.innerWidth < 640 }
+
+// ==================== TABS ====================
+const tabActiva = ref('pendientes')
 
 // ==================== FILTROS ====================
 const filtros = reactive({ q: '', fechaEntrega: '' })
 
-// ==================== MODAL ====================
-const modalEstadoVisible = ref(false)
-const pedidoSeleccionado = ref(null)
-
+// ==================== ACTUALIZAR ====================
 const actualizando = ref(false)
-
 const actualizar = () => {
     if (actualizando.value) return
     router.reload({
-        only: ['pedidosPendientes'],
+        only: ['pedidosPendientes', 'pedidosEnTransito', 'pedidosFinalizados'],
         onStart: () => { actualizando.value = true },
         onFinish: () => { actualizando.value = false },
-        onSuccess: () => {
-            toast?.success('Actualizado', 'Datos refrescados correctamente')
-        },
-        onError: () => {
-            toast?.error('Error', 'No se pudieron actualizar los datos')
-        },
+        onSuccess: () => toast?.success('Actualizado', 'Datos refrescados correctamente'),
+        onError: () => toast?.error('Error', 'No se pudieron actualizar los datos'),
     })
 }
 
@@ -58,9 +55,16 @@ const diasHasta = (fecha) => {
     return Math.round((target - now) / (1000 * 60 * 60 * 24))
 }
 
-// ==================== LISTA FILTRADA ====================
+// ==================== LISTA BASE ====================
+const pedidosBase = computed(() => {
+    if (tabActiva.value === 'pendientes')  return props.pedidosPendientes
+    if (tabActiva.value === 'transito')    return props.pedidosEnTransito
+    if (tabActiva.value === 'finalizados') return props.pedidosFinalizados
+    return []
+})
+
 const pedidosFiltrados = computed(() => {
-    let lista = [...props.pedidosPendientes]
+    let lista = [...pedidosBase.value]
 
     const q = filtros.q.trim().toLowerCase()
     if (q) {
@@ -91,20 +95,21 @@ const pedidosFiltrados = computed(() => {
         return cmpPedido(a, b)
     })
 
+    if (tabActiva.value === 'transito' || tabActiva.value === 'finalizados') lista.reverse()
+
     return lista
 })
 
 const pedidosActuales = pedidosFiltrados
 const totalFiltrados = computed(() => pedidosFiltrados.value.length)
-const totalBase = computed(() => props.pedidosPendientes.length)
+const totalBase = computed(() => pedidosBase.value.length)
 const hayFiltrosActivos = computed(() => !!filtros.q || !!filtros.fechaEntrega)
+const limpiarFiltros = () => { filtros.q = ''; filtros.fechaEntrega = '' }
 
-const limpiarFiltros = () => {
-    filtros.q = ''
-    filtros.fechaEntrega = ''
-}
+// ==================== ACCIÓN (solo Pendientes) ====================
+const modalEstadoVisible = ref(false)
+const pedidoSeleccionado = ref(null)
 
-// ==================== ACCIÓN ====================
 const abrirModal = (pedido) => {
     pedidoSeleccionado.value = pedido
     modalEstadoVisible.value = true
@@ -151,6 +156,13 @@ const badgeEntrega = (fecha) => {
     return null
 }
 
+const badgeEstado = (estado) => {
+    const e = (estado || '').trim()
+    if (e === 'En Distribución')    return 'bg-blue-100 text-blue-700 border-blue-200'
+    if (e === 'En Transportadora')  return 'bg-cyan-100 text-cyan-700 border-cyan-200'
+    return 'bg-gray-100 text-gray-700 border-gray-200'
+}
+
 const verPdf = (idPedido) => {
     window.open(`/operacion/pedidos/clientes-mayoristas/pedidos-clientes/${idPedido}/pdf`, '_blank')
 }
@@ -174,22 +186,19 @@ onUnmounted(() => {
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-city text-primary-600 text-base"></i>
+                            <i class="fas fa-truck-moving text-primary-600 text-base"></i>
                         </div>
                         <div>
-                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Cámara · Reparto Ciudad</h1>
-                            <p class="text-xs text-gray-500">Toma pedidos pendientes de ciudad y mándalos a distribución</p>
+                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Cámara · Reparto Provincia</h1>
+                            <p class="text-xs text-gray-500">Supervisa tus pedidos: pendientes, en tránsito y finalizados</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <!-- ✅ Botón actualizar -->
                         <button @click="actualizar" :disabled="actualizando"
                             class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
                             <i class="fas fa-sync-alt text-[10px]" :class="{ 'fa-spin': actualizando }"></i>
                             {{ actualizando ? 'Actualizando...' : 'Actualizar' }}
                         </button>
-
-                        <!-- Badge existente (pendientes) -->
                         <span class="text-xs text-gray-500 bg-white border border-gray-200 px-2.5 py-1 rounded-md shadow-sm">
                             <i class="fas fa-clock text-primary-500 mr-1"></i>
                             <b>{{ pedidosPendientes.length }}</b> pendiente(s)
@@ -197,14 +206,36 @@ onUnmounted(() => {
                     </div>
                 </div>
 
-                <!-- TAB ÚNICA: PENDIENTES -->
-                <div class="bg-white rounded-xl shadow-sm p-1.5 mb-3">
-                    <div class="inline-flex items-center gap-1.5 bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-sm">
-                        <i class="fas fa-clock text-[10px]"></i>
-                        Pendientes Provincia
-                        <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-white/20">
-                            {{ pedidosPendientes.length }}
-                        </span>
+                <!-- TABS -->
+                <div class="bg-white rounded-xl shadow-sm p-1.5 mb-3 overflow-x-auto">
+                    <div class="flex gap-1 min-w-max">
+                        <button @click="tabActiva = 'pendientes'"
+                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'pendientes' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            <i class="fas fa-clock text-[10px]"></i> Pendientes
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="tabActiva === 'pendientes' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
+                                {{ pedidosPendientes.length }}
+                            </span>
+                        </button>
+                        <button @click="tabActiva = 'transito'"
+                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'transito' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            <i class="fas fa-truck-moving text-[10px]"></i> En Tránsito
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="tabActiva === 'transito' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
+                                {{ pedidosEnTransito.length }}
+                            </span>
+                        </button>
+                        <button @click="tabActiva = 'finalizados'"
+                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'finalizados' ? 'bg-primary-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            <i class="fas fa-check-double text-[10px]"></i> Finalizados
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="tabActiva === 'finalizados' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
+                                {{ pedidosFinalizados.length }}
+                            </span>
+                        </button>
                     </div>
                 </div>
 
@@ -218,7 +249,7 @@ onUnmounted(() => {
                         </div>
                         <div class="flex items-center gap-1.5">
                             <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">
-                                <i class="fas fa-calendar-check text-purple-500 mr-0.5"></i> Entrega:
+                                <i class="fas fa-calendar-check text-primary-500 mr-0.5"></i> Entrega:
                             </label>
                             <input v-model="filtros.fechaEntrega" type="date"
                                 class="border border-gray-300 rounded-md px-2 py-1.5 text-sm sm:text-xs outline-none focus:border-primary-500" />
@@ -241,11 +272,11 @@ onUnmounted(() => {
                         <div v-if="isMobile" class="p-2 space-y-2">
                             <div v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
                                 <div class="flex justify-between items-start mb-1.5 gap-2">
-                                    <span class="text-xs font-bold text-purple-700 font-mono">#{{ p.NumeroPedido }}</span>
+                                    <span class="text-xs font-bold text-primary-700 font-mono">#{{ p.NumeroPedido }}</span>
                                     <div class="flex flex-col items-end gap-1">
                                         <span class="text-[9px] text-gray-400">{{ formatoFechaHora(p.FechaPedido) }}</span>
                                         <span v-if="p.FechaEntrega" class="text-[9px] text-gray-600 font-medium">
-                                            <i class="fas fa-calendar-check mr-0.5 text-purple-500"></i>
+                                            <i class="fas fa-calendar-check mr-0.5 text-primary-500"></i>
                                             {{ formatoFecha(p.FechaEntrega) }}
                                         </span>
                                         <span v-if="badgeEntrega(p.FechaEntrega)" class="text-[8px] px-1.5 py-0.5 rounded font-bold border" :class="badgeEntrega(p.FechaEntrega).clase">
@@ -256,22 +287,39 @@ onUnmounted(() => {
                                 <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Operador:</p>
                                 <p class="text-xs font-bold text-gray-800 truncate mb-1">{{ p.OperadorNombre || 'Sin operador' }}</p>
                                 <div class="flex items-center gap-1 mb-2">
-                                    <span class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                    <span class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">PROVINCIA</span>
+                                    <span v-if="tabActiva !== 'pendientes'" class="text-[8px] px-1.5 py-0.5 rounded font-bold border" :class="badgeEstado(p.EstadoPedido)">
+                                        {{ p.EstadoPedido }}
+                                    </span>
                                 </div>
+
+                                <div v-if="tabActiva !== 'pendientes' && p.envios?.length" class="mt-1.5 pt-1.5 border-t border-gray-200 space-y-1">
+                                    <div v-for="e in p.envios" :key="e.IdEnvio" class="border-l-2 border-primary-300 pl-2">
+                                        <p class="text-[10px] font-bold text-primary-700">{{ e.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</p>
+                                        <p class="text-[9px] text-gray-500">Guía: {{ e.NumeroGuia || '-' }} | Bs. {{ e.CostoEnvio || '0.00' }}</p>
+                                        <p v-if="e.Observaciones" class="text-[9px] text-gray-400 italic">Obs: {{ e.Observaciones }}</p>
+                                    </div>
+                                </div>
+
+                                <div v-if="tabActiva === 'finalizados'" class="mt-1.5 text-[9px] text-emerald-700 font-bold">
+                                    <i class="fas fa-check-circle mr-0.5"></i>
+                                    Entregado: {{ p.envios?.[0]?.FechaEntregaReal ? formatoFechaHora(p.envios[0].FechaEntregaReal) : formatoFechaHora(p.FechaActualiza) }}
+                                </div>
+
                                 <div class="flex justify-end items-center mt-2 pt-2 border-t border-gray-200 gap-2">
                                     <button @click="verPdf(p.IdPedidoCliente)"
                                         class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition border border-rose-200">
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
-                                    <button @click="abrirModal(p)"
-                                        class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                    <button v-if="tabActiva === 'pendientes'" @click="abrirModal(p)"
+                                        class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                                         <i class="fas fa-play text-[8px]"></i> Comenzar
                                     </button>
                                 </div>
                             </div>
                             <div v-if="pedidosActuales.length === 0" class="text-center text-gray-400 py-8">
                                 <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                <span class="text-xs">No hay pedidos pendientes de provincia</span>
+                                <span class="text-xs">No hay pedidos en esta tab</span>
                             </div>
                         </div>
 
@@ -283,17 +331,21 @@ onUnmounted(() => {
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Operador</th>
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-32">Fecha Pedido</th>
                                     <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-32">Fecha Entrega</th>
-                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-24">Cont.</th>
-                                    <th class="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase w-56">Acciones</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase w-16">Cont.</th>
+                                    <th class="px-4 py-3 text-left text-[10px] font-bold text-gray-500 uppercase">Detalle</th>
+                                    <th class="px-4 py-3 text-right text-[10px] font-bold text-gray-500 uppercase w-48">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="hover:bg-gray-50 transition">
-                                    <td class="px-4 py-3 text-xs font-mono font-bold text-purple-700">#{{ p.NumeroPedido }}</td>
+                                    <td class="px-4 py-3 text-xs font-mono font-bold text-primary-700">#{{ p.NumeroPedido }}</td>
                                     <td class="px-4 py-3">
                                         <div class="text-xs text-gray-800 mb-1"><b>{{ p.OperadorNombre || 'Sin operador' }}</b></div>
                                         <div class="flex items-center gap-1">
-                                            <span class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
+                                            <span class="text-[8px] bg-primary-100 text-primary-700 px-1.5 py-0.5 rounded font-bold border border-primary-200">PROVINCIA</span>
+                                            <span v-if="tabActiva !== 'pendientes'" class="text-[8px] px-1.5 py-0.5 rounded font-bold border" :class="badgeEstado(p.EstadoPedido)">
+                                                {{ p.EstadoPedido }}
+                                            </span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-[11px] text-gray-600 whitespace-nowrap">{{ formatoFechaHora(p.FechaPedido) }}</td>
@@ -307,23 +359,35 @@ onUnmounted(() => {
                                         <span v-else class="text-gray-400">—</span>
                                     </td>
                                     <td class="px-4 py-3 text-xs text-gray-600 font-medium">{{ p.TotalContenedores }} cont.</td>
+                                    <td class="px-4 py-3 text-xs">
+                                        <template v-if="tabActiva === 'pendientes'">
+                                            <span class="text-gray-500">{{ p.TotalContenedores }} contenedores</span>
+                                        </template>
+                                        <template v-else>
+                
+                                            <div v-if="tabActiva === 'finalizados'" class="mt-1 text-[10px] text-emerald-700 font-bold">
+                                                <i class="fas fa-check-circle mr-0.5"></i>
+                                                Entregado: {{ p.envios?.[0]?.FechaEntregaReal ? formatoFechaHora(p.envios[0].FechaEntregaReal) : formatoFechaHora(p.FechaActualiza) }}
+                                            </div>
+                                        </template>
+                                    </td>
                                     <td class="px-4 py-3 text-right">
                                         <div class="flex items-center justify-end gap-2">
                                             <button @click="verPdf(p.IdPedidoCliente)"
                                                 class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 border border-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                 <i class="fas fa-file-pdf"></i> PDF
                                             </button>
-                                            <button @click="abrirModal(p)"
-                                                class="inline-flex items-center gap-1.5 bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                            <button v-if="tabActiva === 'pendientes'" @click="abrirModal(p)"
+                                                class="inline-flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                 <i class="fas fa-play text-[9px]"></i> Comenzar Distribución
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
                                 <tr v-if="pedidosActuales.length === 0">
-                                    <td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">
+                                    <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
                                         <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                        No hay pedidos pendientes de provincia
+                                        No hay pedidos en esta tab
                                     </td>
                                 </tr>
                             </tbody>
@@ -334,11 +398,11 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <!-- MODAL CONFIRMAR -->
+        <!-- MODAL CONFIRMAR (solo Pendientes) -->
         <div v-if="modalEstadoVisible" class="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-3"
             @click.self="modalEstadoVisible = false">
             <div class="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-                <div class="px-4 py-2.5 bg-purple-600 flex items-center justify-between flex-shrink-0">
+                <div class="px-4 py-2.5 bg-primary-600 flex items-center justify-between flex-shrink-0">
                     <div class="min-w-0">
                         <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
                             <i class="fas fa-play text-xs"></i> Comenzar Distribución · Provincia
@@ -351,14 +415,14 @@ onUnmounted(() => {
                 </div>
                 <div class="p-4">
                     <p class="text-xs text-gray-600">
-                        El pedido pasará a <strong class="text-purple-600">En Distribución</strong>. ¿Confirmas?
+                        El pedido pasará a <strong class="text-primary-600">En Distribución</strong>. ¿Confirmas?
                     </p>
                 </div>
                 <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
                     <button @click="modalEstadoVisible = false" class="px-3 py-2 sm:py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition min-h-[40px] sm:min-h-0">
                         Cancelar
                     </button>
-                    <button @click="confirmar" class="px-3 py-2 sm:py-1.5 text-xs bg-purple-500 hover:bg-purple-600 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
+                    <button @click="confirmar" class="px-3 py-2 sm:py-1.5 text-xs bg-primary-600 hover:bg-primary-700 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
                         <i class="fas fa-check text-[10px]"></i> Confirmar
                     </button>
                 </div>
