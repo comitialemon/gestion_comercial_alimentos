@@ -9,6 +9,7 @@ defineOptions({ layout: AppLayout })
 const props = defineProps({
     pedidosEnDistribucion:   { type: Array, default: () => [] },
     pedidosEnTransportadora: { type: Array, default: () => [] },
+    pedidosRecibidos:        { type: Array, default: () => [] },
     transportadoras:         { type: Array, default: () => [] },
 })
 
@@ -18,8 +19,12 @@ const toast = inject('toast')
 const isMobile = ref(false)
 const handleResize = () => { isMobile.value = window.innerWidth < 640 }
 
-// ==================== TABS ====================
-const tabActiva = ref('distribucion') // 'distribucion' | 'transportadora'
+const actualizando = ref(false)
+// ==================== TABS PRINCIPALES ====================
+const tabActiva = ref('distribucion') // 'distribucion' | 'transportadora' | 'recibidos'
+
+// ==================== SUB-TABS: CIUDAD / PROVINCIA ====================
+const subTab = ref('ciudad') // 'ciudad' | 'provincia'
 
 // ==================== FILTROS ====================
 const filtros = reactive({ q: '', fechaEntrega: '' })
@@ -72,13 +77,40 @@ const diasHasta = (fecha) => {
     return Math.round((target - now) / (1000 * 60 * 60 * 24))
 }
 
-// ==================== LISTA ====================
+// ==================== LISTA BASE (tab + subtab) ====================
 const pedidosBase = computed(() => {
-    return tabActiva.value === 'distribucion'
-        ? props.pedidosEnDistribucion
-        : props.pedidosEnTransportadora
+    let porTab = []
+    if (tabActiva.value === 'distribucion')        porTab = props.pedidosEnDistribucion
+    else if (tabActiva.value === 'transportadora') porTab = props.pedidosEnTransportadora
+    else if (tabActiva.value === 'recibidos')      porTab = props.pedidosRecibidos
+
+    return porTab.filter(p => {
+        if (subTab.value === 'ciudad')    return p.Ciudad === true
+        if (subTab.value === 'provincia') return p.Provincia === true
+        return false
+    })
 })
 
+// ==================== CONTADORES ====================
+const countDistribucionCiudad    = computed(() => props.pedidosEnDistribucion.filter(p => p.Ciudad === true).length)
+const countDistribucionProvincia = computed(() => props.pedidosEnDistribucion.filter(p => p.Provincia === true).length)
+const countTransportadoraCiudad    = computed(() => props.pedidosEnTransportadora.filter(p => p.Ciudad === true).length)
+const countTransportadoraProvincia = computed(() => props.pedidosEnTransportadora.filter(p => p.Provincia === true).length)
+const countRecibidosCiudad    = computed(() => props.pedidosRecibidos.filter(p => p.Ciudad === true).length)
+const countRecibidosProvincia = computed(() => props.pedidosRecibidos.filter(p => p.Provincia === true).length)
+
+const countSubTabActual = computed(() => {
+    if (subTab.value === 'ciudad') {
+        if (tabActiva.value === 'distribucion')   return countDistribucionCiudad.value
+        if (tabActiva.value === 'transportadora') return countTransportadoraCiudad.value
+        return countRecibidosCiudad.value
+    }
+    if (tabActiva.value === 'distribucion')   return countDistribucionProvincia.value
+    if (tabActiva.value === 'transportadora') return countTransportadoraProvincia.value
+    return countRecibidosProvincia.value
+})
+
+// ==================== LISTA FILTRADA ====================
 const pedidosFiltrados = computed(() => {
     let lista = [...pedidosBase.value]
 
@@ -111,7 +143,8 @@ const pedidosFiltrados = computed(() => {
         return cmpPedido(a, b)
     })
 
-    if (tabActiva.value === 'transportadora') lista.reverse()
+    // Transportadora y Recibidos: los más recientes primero (ya vienen así del backend)
+    if (tabActiva.value === 'transportadora' || tabActiva.value === 'recibidos') lista.reverse()
 
     return lista
 })
@@ -230,7 +263,20 @@ const limpiarSeleccionIdentificador = () => {
     resultadosIdentificadores.value = []
     nextTick(() => inputIdentificadorRef.value?.focus())
 }
-
+const actualizar = () => {
+    if (actualizando.value) return
+    router.reload({
+        only: ['pedidosEnDistribucion', 'pedidosEnTransportadora', 'pedidosRecibidos', 'transportadoras'],
+        onStart: () => { actualizando.value = true },
+        onFinish: () => { actualizando.value = false },
+        onSuccess: () => {
+            toast?.success('Actualizado', 'Datos refrescados correctamente')
+        },
+        onError: () => {
+            toast?.error('Error', 'No se pudieron actualizar los datos')
+        },
+    })
+}
 const abrirCrearIdentificador = () => {
     mostrarCrearIdentificador.value = true
     nuevaTransportadora.value = { Nombre: busquedaIdentificador.value.trim(), CI_NIT: '' }
@@ -442,17 +488,27 @@ onUnmounted(() => {
                         </div>
                         <div>
                             <h1 class="text-base lg:text-lg font-bold text-gray-800">Distribución · Despacho</h1>
-                            <p class="text-xs text-gray-500">Despacha pedidos en distribución y consulta los que están en transportadora</p>
+                            <p class="text-xs text-gray-500">Despacha pedidos y consulta los que ya fueron recibidos</p>
                         </div>
                     </div>
-                    <button @click="modalTransportadoraVisible = true"
-                        class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm">
-                        <i class="fas fa-plus text-[10px]"></i> Nueva Transportadora
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <!-- ✅ NUEVO: Botón actualizar -->
+                        <button @click="actualizar" :disabled="actualizando"
+                            class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                            <i class="fas fa-sync-alt text-[10px]" :class="{ 'fa-spin': actualizando }"></i>
+                            {{ actualizando ? 'Actualizando...' : 'Actualizar' }}
+                        </button>
+
+                        <!-- Botón existente -->
+                        <button @click="modalTransportadoraVisible = true"
+                            class="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm">
+                            <i class="fas fa-plus text-[10px]"></i> Nueva Transportadora
+                        </button>
+                    </div>
                 </div>
 
-                <!-- TABS: solo 2 -->
-                <div class="bg-white rounded-xl shadow-sm p-1.5 mb-3 overflow-x-auto">
+                <!-- TABS PRINCIPALES -->
+                <div class="bg-white rounded-xl shadow-sm p-1.5 mb-2 overflow-x-auto">
                     <div class="flex gap-1 min-w-max">
                         <button @click="tabActiva = 'distribucion'"
                             class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
@@ -470,6 +526,39 @@ onUnmounted(() => {
                             <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
                                 :class="tabActiva === 'transportadora' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
                                 {{ pedidosEnTransportadora.length }}
+                            </span>
+                        </button>
+                        <button @click="tabActiva = 'recibidos'"
+                            class="px-3 py-1.5 rounded-md text-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="tabActiva === 'recibidos' ? 'bg-emerald-600 text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100'">
+                            <i class="fas fa-check-double text-[10px]"></i> Finalizados
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="tabActiva === 'recibidos' ? 'bg-white/20' : 'bg-gray-200 text-gray-700'">
+                                {{ pedidosRecibidos.length }}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- SUB-TABS: CIUDAD / PROVINCIA -->
+                <div class="bg-white rounded-xl shadow-sm p-1 mb-3 overflow-x-auto border border-gray-100">
+                    <div class="flex gap-1 min-w-max">
+                        <button @click="subTab = 'ciudad'"
+                            class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="subTab === 'ciudad' ? 'bg-blue-100 text-blue-700 ring-1 ring-blue-300' : 'text-gray-500 hover:bg-gray-100'">
+                            <i class="fas fa-city text-[10px]"></i> Ciudad
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="subTab === 'ciudad' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'">
+                                {{ tabActiva === 'distribucion' ? countDistribucionCiudad : (tabActiva === 'transportadora' ? countTransportadoraCiudad : countRecibidosCiudad) }}
+                            </span>
+                        </button>
+                        <button @click="subTab = 'provincia'"
+                            class="px-3 py-1 rounded-md text-[11px] font-medium transition flex items-center gap-1.5 whitespace-nowrap"
+                            :class="subTab === 'provincia' ? 'bg-purple-100 text-purple-700 ring-1 ring-purple-300' : 'text-gray-500 hover:bg-gray-100'">
+                            <i class="fas fa-truck-moving text-[10px]"></i> Provincia
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold"
+                                :class="subTab === 'provincia' ? 'bg-purple-200 text-purple-800' : 'bg-gray-200 text-gray-600'">
+                                {{ tabActiva === 'distribucion' ? countDistribucionProvincia : (tabActiva === 'transportadora' ? countTransportadoraProvincia : countRecibidosProvincia) }}
                             </span>
                         </button>
                     </div>
@@ -523,23 +612,29 @@ onUnmounted(() => {
                                 <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Operador:</p>
                                 <p class="text-xs font-bold text-gray-800 truncate mb-1">{{ p.OperadorNombre || 'Sin operador' }}</p>
                                 <div class="flex items-center gap-1 mb-2">
-                                    <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                    <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
-                                    <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                    <span v-if="subTab === 'ciudad'" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
+                                    <span v-else class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
                                 </div>
-                                <div v-if="tabActiva === 'transportadora'" class="mt-1.5 pt-1.5 border-t border-gray-200">
+
+                                <!-- Info transportadora (transportadora o recibidos) -->
+                                <div v-if="tabActiva !== 'distribucion'" class="mt-1.5 pt-1.5 border-t border-gray-200">
                                     <p class="text-[10px] font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</p>
                                     <p class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</p>
+                                    <p v-if="tabActiva === 'recibidos' && p.envio?.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold mt-0.5">
+                                        <i class="fas fa-check-circle mr-0.5"></i>
+                                        Recibido: {{ formatoFechaHora(p.envio.FechaEntregaReal) }}
+                                    </p>
                                 </div>
+
                                 <div class="flex justify-end items-center mt-2 pt-2 border-t border-gray-200 gap-2">
                                     <button @click="verPdf(p.IdPedidoCliente)"
                                         class="flex items-center gap-1 bg-rose-100 text-rose-700 hover:bg-rose-200 px-2.5 py-1.5 rounded-md text-[10px] font-bold transition border border-rose-200">
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
 
-                                    <!-- ✅ SOLO en tab DISTRIBUCION -->
+                                    <!-- Distribución + Provincia: despachar -->
                                     <template v-if="tabActiva === 'distribucion'">
-                                        <button v-if="p.Provincia === true" @click="abrirModalEstado(p)"
+                                        <button v-if="subTab === 'provincia'" @click="abrirModalEstado(p)"
                                             class="bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                                             <i class="fas fa-truck text-[8px]"></i> Despachar
                                         </button>
@@ -548,15 +643,20 @@ onUnmounted(() => {
                                         </span>
                                     </template>
 
-                                    <!-- ✅ En tab TRANSPORTADORA: solo lectura -->
-                                    <span v-else class="text-[10px] text-gray-400 italic font-medium">
-                                        <i class="fas fa-info-circle mr-1"></i> En tránsito
+                                    <!-- Transportadora: en tránsito -->
+                                    <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-cyan-600 italic font-medium">
+                                        <i class="fas fa-truck-moving mr-1"></i> En tránsito
+                                    </span>
+
+                                    <!-- Recibidos: finalizado -->
+                                    <span v-else class="text-[10px] text-emerald-600 italic font-bold">
+                                        <i class="fas fa-check-double mr-1"></i> Recibido
                                     </span>
                                 </div>
                             </div>
                             <div v-if="pedidosActuales.length === 0" class="text-center text-gray-400 py-8">
                                 <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                <span class="text-xs">No hay pedidos</span>
+                                <span class="text-xs">No hay pedidos en {{ subTab }}</span>
                             </div>
                         </div>
 
@@ -579,9 +679,8 @@ onUnmounted(() => {
                                     <td class="px-4 py-3">
                                         <div class="text-xs text-gray-800 mb-1"><b>{{ p.OperadorNombre || 'Sin operador' }}</b></div>
                                         <div class="flex items-center gap-1">
-                                            <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                            <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
-                                            <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                            <span v-if="subTab === 'ciudad'" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
+                                            <span v-else class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-[11px] text-gray-600 whitespace-nowrap">{{ formatoFechaHora(p.FechaPedido) }}</td>
@@ -596,9 +695,12 @@ onUnmounted(() => {
                                     </td>
                                     <td class="px-4 py-3 text-xs text-gray-600 font-medium">{{ p.TotalContenedores }} cont.</td>
                                     <td class="px-4 py-3 text-xs">
-                                        <template v-if="tabActiva === 'transportadora'">
+                                        <template v-if="tabActiva !== 'distribucion'">
                                             <div class="font-bold text-cyan-700">{{ p.envio?.transportadora?.identificador?.Nombre || 'Sin transportadora' }}</div>
                                             <div class="text-[9px] text-gray-500">Guía: {{ p.envio?.NumeroGuia || '-' }} | Costo: Bs. {{ p.envio?.CostoEnvio || '0.00' }}</div>
+                                            <div v-if="tabActiva === 'recibidos' && p.envio?.FechaEntregaReal" class="text-[9px] text-emerald-600 font-bold mt-0.5">
+                                                <i class="fas fa-check-circle mr-0.5"></i> Recibido: {{ formatoFechaHora(p.envio.FechaEntregaReal) }}
+                                            </div>
                                         </template>
                                         <template v-else>
                                             <span class="text-gray-500">{{ p.TotalContenedores }} contenedores</span>
@@ -611,9 +713,8 @@ onUnmounted(() => {
                                                 <i class="fas fa-file-pdf"></i> PDF
                                             </button>
 
-                                            <!-- ✅ SOLO en tab DISTRIBUCION -->
                                             <template v-if="tabActiva === 'distribucion'">
-                                                <button v-if="p.Provincia === true" @click="abrirModalEstado(p)"
+                                                <button v-if="subTab === 'provincia'" @click="abrirModalEstado(p)"
                                                     class="inline-flex items-center gap-1.5 bg-cyan-500 hover:bg-cyan-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                     <i class="fas fa-truck text-[9px]"></i> A Transportadora
                                                 </button>
@@ -622,9 +723,12 @@ onUnmounted(() => {
                                                 </span>
                                             </template>
 
-                                            <!-- ✅ En tab TRANSPORTADORA: solo lectura -->
-                                            <span v-else class="text-[10px] text-gray-400 italic font-medium px-2">
-                                                <i class="fas fa-info-circle mr-1"></i> En tránsito
+                                            <span v-else-if="tabActiva === 'transportadora'" class="text-[10px] text-cyan-600 italic font-medium px-2">
+                                                <i class="fas fa-truck-moving mr-1"></i> En tránsito
+                                            </span>
+
+                                            <span v-else class="text-[10px] text-emerald-600 italic font-bold px-2">
+                                                <i class="fas fa-check-double mr-1"></i> Recibido
                                             </span>
                                         </div>
                                     </td>
@@ -632,7 +736,7 @@ onUnmounted(() => {
                                 <tr v-if="pedidosActuales.length === 0">
                                     <td colspan="7" class="px-4 py-10 text-center text-gray-400 text-sm">
                                         <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                        No hay pedidos
+                                        No hay pedidos en {{ subTab }}
                                     </td>
                                 </tr>
                             </tbody>

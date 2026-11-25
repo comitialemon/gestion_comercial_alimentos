@@ -23,6 +23,23 @@ const filtros = reactive({ q: '', fechaEntrega: '' })
 const modalEstadoVisible = ref(false)
 const pedidoSeleccionado = ref(null)
 
+const actualizando = ref(false)
+
+const actualizar = () => {
+    if (actualizando.value) return
+    router.reload({
+        only: ['pedidosPendientes'],
+        onStart: () => { actualizando.value = true },
+        onFinish: () => { actualizando.value = false },
+        onSuccess: () => {
+            toast?.success('Actualizado', 'Datos refrescados correctamente')
+        },
+        onError: () => {
+            toast?.error('Error', 'No se pudieron actualizar los datos')
+        },
+    })
+}
+
 // ==================== HELPERS FECHA ====================
 const toYMD = (fecha) => {
     if (!fecha) return null
@@ -157,24 +174,34 @@ onUnmounted(() => {
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 bg-primary-100 rounded-xl flex items-center justify-center">
-                            <i class="fas fa-people-carry text-primary-600 text-base"></i>
+                            <i class="fas fa-city text-primary-600 text-base"></i>
                         </div>
                         <div>
-                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Cámara · Reparto</h1>
-                            <p class="text-xs text-gray-500">Toma pedidos pendientes y mándalos a distribución</p>
+                            <h1 class="text-base lg:text-lg font-bold text-gray-800">Cámara · Reparto Ciudad</h1>
+                            <p class="text-xs text-gray-500">Toma pedidos pendientes de ciudad y mándalos a distribución</p>
                         </div>
                     </div>
-                    <span class="text-xs text-gray-500 bg-white border border-gray-200 px-2.5 py-1 rounded-md shadow-sm">
-                        <i class="fas fa-clock text-primary-500 mr-1"></i>
-                        <b>{{ pedidosPendientes.length }}</b> pendiente(s)
-                    </span>
+                    <div class="flex items-center gap-2">
+                        <!-- ✅ Botón actualizar -->
+                        <button @click="actualizar" :disabled="actualizando"
+                            class="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition shadow-sm disabled:opacity-60 disabled:cursor-not-allowed">
+                            <i class="fas fa-sync-alt text-[10px]" :class="{ 'fa-spin': actualizando }"></i>
+                            {{ actualizando ? 'Actualizando...' : 'Actualizar' }}
+                        </button>
+
+                        <!-- Badge existente (pendientes) -->
+                        <span class="text-xs text-gray-500 bg-white border border-gray-200 px-2.5 py-1 rounded-md shadow-sm">
+                            <i class="fas fa-clock text-primary-500 mr-1"></i>
+                            <b>{{ pedidosPendientes.length }}</b> pendiente(s)
+                        </span>
+                    </div>
                 </div>
 
                 <!-- TAB ÚNICA: PENDIENTES -->
                 <div class="bg-white rounded-xl shadow-sm p-1.5 mb-3">
-                    <div class="inline-flex items-center gap-1.5 bg-primary-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-sm">
+                    <div class="inline-flex items-center gap-1.5 bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-medium shadow-sm">
                         <i class="fas fa-clock text-[10px]"></i>
-                        Pendientes
+                        Pendientes Provincia
                         <span class="px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-white/20">
                             {{ pedidosPendientes.length }}
                         </span>
@@ -191,7 +218,7 @@ onUnmounted(() => {
                         </div>
                         <div class="flex items-center gap-1.5">
                             <label class="text-[10px] text-gray-500 font-medium whitespace-nowrap">
-                                <i class="fas fa-calendar-check text-primary-500 mr-0.5"></i> Entrega:
+                                <i class="fas fa-calendar-check text-purple-500 mr-0.5"></i> Entrega:
                             </label>
                             <input v-model="filtros.fechaEntrega" type="date"
                                 class="border border-gray-300 rounded-md px-2 py-1.5 text-sm sm:text-xs outline-none focus:border-primary-500" />
@@ -214,11 +241,11 @@ onUnmounted(() => {
                         <div v-if="isMobile" class="p-2 space-y-2">
                             <div v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="bg-gray-50 rounded-lg p-2.5 border border-gray-100">
                                 <div class="flex justify-between items-start mb-1.5 gap-2">
-                                    <span class="text-xs font-bold text-primary-700 font-mono">#{{ p.NumeroPedido }}</span>
+                                    <span class="text-xs font-bold text-purple-700 font-mono">#{{ p.NumeroPedido }}</span>
                                     <div class="flex flex-col items-end gap-1">
                                         <span class="text-[9px] text-gray-400">{{ formatoFechaHora(p.FechaPedido) }}</span>
                                         <span v-if="p.FechaEntrega" class="text-[9px] text-gray-600 font-medium">
-                                            <i class="fas fa-calendar-check mr-0.5 text-primary-500"></i>
+                                            <i class="fas fa-calendar-check mr-0.5 text-purple-500"></i>
                                             {{ formatoFecha(p.FechaEntrega) }}
                                         </span>
                                         <span v-if="badgeEntrega(p.FechaEntrega)" class="text-[8px] px-1.5 py-0.5 rounded font-bold border" :class="badgeEntrega(p.FechaEntrega).clase">
@@ -229,9 +256,7 @@ onUnmounted(() => {
                                 <p class="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Operador:</p>
                                 <p class="text-xs font-bold text-gray-800 truncate mb-1">{{ p.OperadorNombre || 'Sin operador' }}</p>
                                 <div class="flex items-center gap-1 mb-2">
-                                    <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                    <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
-                                    <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                    <span class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
                                 </div>
                                 <div class="flex justify-end items-center mt-2 pt-2 border-t border-gray-200 gap-2">
                                     <button @click="verPdf(p.IdPedidoCliente)"
@@ -239,14 +264,14 @@ onUnmounted(() => {
                                         <i class="fas fa-file-pdf"></i> PDF
                                     </button>
                                     <button @click="abrirModal(p)"
-                                        class="bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
+                                        class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition flex items-center gap-1 shadow-sm">
                                         <i class="fas fa-play text-[8px]"></i> Comenzar
                                     </button>
                                 </div>
                             </div>
                             <div v-if="pedidosActuales.length === 0" class="text-center text-gray-400 py-8">
                                 <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                <span class="text-xs">No hay pedidos pendientes</span>
+                                <span class="text-xs">No hay pedidos pendientes de provincia</span>
                             </div>
                         </div>
 
@@ -264,13 +289,11 @@ onUnmounted(() => {
                             </thead>
                             <tbody class="bg-white divide-y divide-gray-200">
                                 <tr v-for="p in pedidosActuales" :key="p.IdPedidoCliente" class="hover:bg-gray-50 transition">
-                                    <td class="px-4 py-3 text-xs font-mono font-bold text-primary-700">#{{ p.NumeroPedido }}</td>
+                                    <td class="px-4 py-3 text-xs font-mono font-bold text-purple-700">#{{ p.NumeroPedido }}</td>
                                     <td class="px-4 py-3">
                                         <div class="text-xs text-gray-800 mb-1"><b>{{ p.OperadorNombre || 'Sin operador' }}</b></div>
                                         <div class="flex items-center gap-1">
-                                            <span v-if="p.Ciudad === true" class="text-[8px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold border border-blue-200">CIUDAD</span>
-                                            <span v-else-if="p.Provincia === true" class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
-                                            <span v-else class="text-[8px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded font-bold border border-gray-200">SIN ZONA</span>
+                                            <span class="text-[8px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-bold border border-purple-200">PROVINCIA</span>
                                         </div>
                                     </td>
                                     <td class="px-4 py-3 text-[11px] text-gray-600 whitespace-nowrap">{{ formatoFechaHora(p.FechaPedido) }}</td>
@@ -291,7 +314,7 @@ onUnmounted(() => {
                                                 <i class="fas fa-file-pdf"></i> PDF
                                             </button>
                                             <button @click="abrirModal(p)"
-                                                class="inline-flex items-center gap-1.5 bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
+                                                class="inline-flex items-center gap-1.5 bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded-md text-[10px] font-bold transition shadow-sm">
                                                 <i class="fas fa-play text-[9px]"></i> Comenzar Distribución
                                             </button>
                                         </div>
@@ -300,7 +323,7 @@ onUnmounted(() => {
                                 <tr v-if="pedidosActuales.length === 0">
                                     <td colspan="6" class="px-4 py-10 text-center text-gray-400 text-sm">
                                         <i class="fas fa-inbox text-2xl mb-1 block"></i>
-                                        No hay pedidos pendientes
+                                        No hay pedidos pendientes de provincia
                                     </td>
                                 </tr>
                             </tbody>
@@ -315,10 +338,10 @@ onUnmounted(() => {
         <div v-if="modalEstadoVisible" class="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-3"
             @click.self="modalEstadoVisible = false">
             <div class="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl shadow-xl overflow-hidden max-h-[92vh] flex flex-col">
-                <div class="px-4 py-2.5 bg-indigo-600 flex items-center justify-between flex-shrink-0">
+                <div class="px-4 py-2.5 bg-purple-600 flex items-center justify-between flex-shrink-0">
                     <div class="min-w-0">
                         <h3 class="text-sm font-bold text-white flex items-center gap-1.5">
-                            <i class="fas fa-play text-xs"></i> Comenzar Distribución
+                            <i class="fas fa-play text-xs"></i> Comenzar Distribución · Provincia
                         </h3>
                         <p class="text-[9px] text-white/80 truncate">Pedido #{{ pedidoSeleccionado?.NumeroPedido }}</p>
                     </div>
@@ -328,14 +351,14 @@ onUnmounted(() => {
                 </div>
                 <div class="p-4">
                     <p class="text-xs text-gray-600">
-                        El pedido pasará a <strong class="text-indigo-600">En Distribución</strong>. ¿Confirmas?
+                        El pedido pasará a <strong class="text-purple-600">En Distribución</strong>. ¿Confirmas?
                     </p>
                 </div>
                 <div class="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex justify-end gap-2 flex-shrink-0">
                     <button @click="modalEstadoVisible = false" class="px-3 py-2 sm:py-1.5 text-xs text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md transition min-h-[40px] sm:min-h-0">
                         Cancelar
                     </button>
-                    <button @click="confirmar" class="px-3 py-2 sm:py-1.5 text-xs bg-indigo-500 hover:bg-indigo-600 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
+                    <button @click="confirmar" class="px-3 py-2 sm:py-1.5 text-xs bg-purple-500 hover:bg-purple-600 text-white rounded-md transition flex items-center gap-1.5 font-medium min-h-[40px] sm:min-h-0">
                         <i class="fas fa-check text-[10px]"></i> Confirmar
                     </button>
                 </div>

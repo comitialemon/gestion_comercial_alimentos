@@ -1710,7 +1710,6 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                     });
                 });
                 // ============================================================
-                // ============================================================
                 // DISTRIBUCIÓN (Logística) — 2 vistas por rol
                 // ============================================================
                 Route::prefix('distribucion')->group(function () {
@@ -1720,9 +1719,13 @@ Route::middleware(['auth.operador','verificar.fecha'])->group(function () {
                         return redirect()->route('operacion.pedidos-clientes.distribucion.despacho');
                     })->name('operacion.pedidos-clientes.distribucion.index');
 
-                    // ✅ Vista REPARTO (rol cámara) — solo tab Pendientes
-                    Route::get('/reparto', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexReparto'])
-                        ->name('operacion.pedidos-clientes.distribucion.reparto');
+                    // ✅ Vista REPARTO CIUDAD (encargado ciudad)
+                    Route::get('/reparto-ciudad', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexRepartoCiudad'])
+                        ->name('operacion.pedidos-clientes.distribucion.reparto-ciudad');
+
+                    // ✅ Vista REPARTO PROVINCIA (encargado provincia)
+                    Route::get('/reparto-provincia', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexRepartoProvincia'])
+                        ->name('operacion.pedidos-clientes.distribucion.reparto-provincia');
 
                     // ✅ Vista DESPACHO (rol despacho) — tabs Distribución + Transportadora
                     Route::get('/despacho', [\App\Http\Controllers\Operacion\Pedidos\ClientesMayoristas\DistribucionController::class, 'indexDespacho'])

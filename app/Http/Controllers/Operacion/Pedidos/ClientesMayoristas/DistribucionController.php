@@ -20,14 +20,40 @@ class DistribucionController extends Controller
     // ============================================================
     // VISTA 1: CÁMARA / REPARTO (Pendiente → En Distribución)
     // ============================================================
-    public function indexReparto()
+    // ============================================================
+    // VISTA 1A: REPARTO CIUDAD (Pendiente + Ciudad=true)
+    // ============================================================
+    public function indexRepartoCiudad()
     {
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        $pedidosPendientes = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
+        $pedidos = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
 
-        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Reparto', [
+        // Solo los que tienen zona Ciudad
+        $pedidosPendientes = $pedidos->filter(fn ($p) => $p->Ciudad === true)->values();
+
+        // indexRepartoCiudad
+        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/RepartoCiudad', [
+            'pedidosPendientes' => $pedidosPendientes,
+        ]);
+    }
+
+    // ============================================================
+    // VISTA 1B: REPARTO PROVINCIA (Pendiente + Provincia=true)
+    // ============================================================
+    public function indexRepartoProvincia()
+    {
+        $clienteId  = session('cliente_id');
+        $sucursalId = session('cliente_sucursal_id');
+
+        $pedidos = $this->pedidosConOperadorYZona('Pendiente', $clienteId, $sucursalId);
+
+        // Solo los que tienen zona Provincia
+        $pedidosPendientes = $pedidos->filter(fn ($p) => $p->Provincia === true)->values();
+
+        // indexRepartoProvincia
+        return Inertia::render('Operacion/ClientesMayoristas/Distribucion/RepartoProvincia', [
             'pedidosPendientes' => $pedidosPendientes,
         ]);
     }
@@ -40,18 +66,31 @@ class DistribucionController extends Controller
         $clienteId  = session('cliente_id');
         $sucursalId = session('cliente_sucursal_id');
 
-        // Pedidos en Distribución
+        // Pedidos En Distribución
         $pedidosEnDistribucion = $this->pedidosConOperadorYZona('En Distribución', $clienteId, $sucursalId);
 
-        // ✅ FALTA ESTO: pedidos En Transportadora (con envio)
+        // Pedidos En Transportadora
         $pedidosTransportadoraRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
             ->where('pedidos_clientes.IdSucursal', $sucursalId)
-            ->whereRaw('TRIM(EstadoPedido) = ?', ['En Transportadora'])   // tolerante a espacios
+            ->whereRaw('TRIM(EstadoPedido) = ?', ['En Transportadora'])
             ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
             ->orderBy('pedidos_clientes.FechaPedido', 'desc')
             ->get();
 
         $pedidosEnTransportadora = $pedidosTransportadoraRaw->map(function ($pedido) use ($clienteId) {
+            return $this->decorarPedido($pedido, $clienteId);
+        });
+
+        // ✅ NUEVO: Pedidos Recibidos (finalizados)
+        $pedidosRecibidosRaw = PedidoCliente::where('pedidos_clientes.IdCliente', $clienteId)
+            ->where('pedidos_clientes.IdSucursal', $sucursalId)
+            ->whereRaw('TRIM(EstadoPedido) = ?', ['Recibido'])
+            ->with(['cliente', 'sucursal', 'envio.transportadora.identificador'])
+            ->orderBy('pedidos_clientes.FechaActualiza', 'desc')  // los más recientes primero
+            ->limit(100)  // opcional: no cargar toda la historia
+            ->get();
+
+        $pedidosRecibidos = $pedidosRecibidosRaw->map(function ($pedido) use ($clienteId) {
             return $this->decorarPedido($pedido, $clienteId);
         });
 
@@ -61,7 +100,8 @@ class DistribucionController extends Controller
 
         return Inertia::render('Operacion/ClientesMayoristas/Distribucion/Despacho', [
             'pedidosEnDistribucion'   => $pedidosEnDistribucion,
-            'pedidosEnTransportadora' => $pedidosEnTransportadora,   // ✅ NUEVO
+            'pedidosEnTransportadora' => $pedidosEnTransportadora,
+            'pedidosRecibidos'        => $pedidosRecibidos,   // ✅ NUEVO
             'transportadoras'         => $transportadoras,
         ]);
     }
