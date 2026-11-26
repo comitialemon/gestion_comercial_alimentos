@@ -645,7 +645,7 @@ class PedidoClienteController extends Controller
 
     // ============================================================
     // PRODUCTOS DEL CONTENEDOR CON PRECIOS DEL GRUPO
-    // ✅ MODIFICADO: soporta rejilla (producto único)
+    // ✅ Producto único: solo productos cuyo mínimo == capacidad del contenedor
     // ============================================================
     public function getProductosContenedorConPrecios(Request $request, $id)
     {
@@ -690,13 +690,46 @@ class PedidoClienteController extends Controller
 
         // ============================================================
         // ✅ CASO A: CONTENEDOR DE PRODUCTO ÚNICO (REJILLA)
-        //    Devuelve TODOS los productos con precio en el grupo.
-        //    El frontend mostrará un modal para elegir 1 + cantidad de rejillas.
+        //    Solo muestra productos cuyo mínimo == capacidad del contenedor.
         // ============================================================
         if ($contenedor->EsProductoUnico) {
-            // Todos los productos del cliente que tengan precio en el grupo
+            $capacidadContenedor = (float) $contenedor->CapacidadTotal;
+
+            if ($capacidadContenedor <= 0) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Este contenedor de producto único no tiene capacidad configurada. Contacta al administrador.'
+                ], 400);
+            }
+
+            // ✅ Solo productos cuyo mínimo coincida EXACTAMENTE con la capacidad del contenedor
+            $idsProductosConMinimoCoincidente = ProductoMinimo::porContexto($clienteId, $sucursalId)
+                ->where('ActivoInactivo', 1)
+                ->where('CantidadMinimaProducto', $capacidadContenedor)
+                ->pluck('IdProducto')
+                ->toArray();
+
+            if (empty($idsProductosConMinimoCoincidente)) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'IdContenedor' => $contenedor->IdContenedor,
+                        'Codigo' => $contenedor->Codigo,
+                        'EsProductoUnico' => true,
+                        'CapacidadTotal' => $capacidadContenedor,
+                        'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
+                        'productos_agrupados' => [],
+                        'total_productos' => 0,
+                        'tipoPrecio' => $tipoPrecio,
+                        'grupoCliente' => $grupoCliente->Nombre,
+                        'mensaje' => "No hay productos con mínimo configurado en {$capacidadContenedor} und para este contenedor.",
+                    ]
+                ]);
+            }
+
             $productos = ProductoDetalle::where('IdCliente', $clienteId)
                 ->whereIn('IdProducto', $productosConPrecio->keys())
+                ->whereIn('IdProducto', $idsProductosConMinimoCoincidente) // ✅ filtro nuevo
                 ->where('ActivoInactivo', 0)
                 ->orderBy('IdGrupoAnalisis')
                 ->orderBy('Descripcion')
@@ -747,7 +780,7 @@ class PedidoClienteController extends Controller
                     'IdContenedor' => $contenedor->IdContenedor,
                     'Codigo' => $contenedor->Codigo,
                     'EsProductoUnico' => true,   // ✅ FLAG para el frontend
-                    'CapacidadTotal' => 0,
+                    'CapacidadTotal' => $capacidadContenedor,
                     'TipoContenedor' => $contenedor->tipoContenedor ? $contenedor->tipoContenedor->Nombre : '-',
                     'productos_agrupados' => $productosAgrupados,
                     'total_productos' => $totalConPrecio,
@@ -966,7 +999,8 @@ class PedidoClienteController extends Controller
     }
 
     // ============================================================
-    // ✅ NUEVO: AGREGAR N REJILLAS (mismo producto)
+    // ✅ AGREGAR N REJILLAS (mismo producto)
+    //    Valida que el mínimo del producto == capacidad del contenedor
     // ============================================================
     public function agregarRejillas(Request $request)
     {
@@ -991,6 +1025,15 @@ class PedidoClienteController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Este contenedor no es de producto único.'
+            ], 400);
+        }
+
+        // ✅ Validar capacidad del contenedor
+        $capacidadContenedor = (float) $contenedor->CapacidadTotal;
+        if ($capacidadContenedor <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Este contenedor de producto único no tiene capacidad configurada.'
             ], 400);
         }
 
@@ -1032,20 +1075,27 @@ class PedidoClienteController extends Controller
             ], 400);
         }
 
-        // 4. Mínimo del producto → cantidad fija por rejilla
+        // 4. Mínimo del producto DEBE coincidir con la capacidad del contenedor
         $minimo = ProductoMinimo::porContexto($clienteId, $sucursalId)
             ->where('IdProducto', $request->IdProducto)
             ->where('ActivoInactivo', 1)
             ->first();
 
-        if (!$minimo || $minimo->CantidadMinimaProducto <= 0) {
+        if (!$minimo || (float) $minimo->CantidadMinimaProducto <= 0) {
             return response()->json([
                 'success' => false,
                 'message' => 'Este producto no tiene mínimo configurado.'
             ], 400);
         }
 
-        $cantidadPorRejilla = (float) $minimo->CantidadMinimaProducto;
+        if ((float) $minimo->CantidadMinimaProducto !== $capacidadContenedor) {
+            return response()->json([
+                'success' => false,
+                'message' => "Este producto tiene mínimo {$minimo->CantidadMinimaProducto} und y el contenedor requiere {$capacidadContenedor} und. No coinciden."
+            ], 400);
+        }
+
+        $cantidadPorRejilla = $capacidadContenedor; // ✅ Usamos la capacidad del contenedor como fuente de verdad
 
         DB::beginTransaction();
 

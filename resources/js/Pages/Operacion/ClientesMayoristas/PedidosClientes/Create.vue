@@ -425,45 +425,7 @@ onMounted(() => {
                 </div>
 
                 <!-- ==================== TIPO DE PRECIO ==================== -->
-                <div class="bg-white rounded-xl shadow-sm p-3 mb-4">
-                    <div class="flex flex-wrap items-center justify-between gap-2">
-                        <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                                <i class="fas fa-file-invoice-dollar text-primary-600 text-[10px]"></i>
-                            </div>
-                            <div>
-                                <h2 class="text-xs font-bold text-gray-800">Tipo de Precio</h2>
-                                <p class="text-[9px] text-gray-500">Selecciona cómo se cotizará el pedido</p>
-                            </div>
-                        </div>
-                        <div class="flex bg-gray-100 rounded-md p-0.5">
-                            <button
-                                @click="abrirModalCambiarTipo('sin_factura')"
-                                :disabled="cambiandoTipo"
-                                class="px-3 py-1.5 rounded text-[10px] font-medium transition flex items-center justify-center gap-1"
-                                :class="tipoPrecioActual === 'sin_factura' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
-                            >
-                                <i class="fas fa-receipt text-[8px]"></i>
-                                Sin Factura
-                                <i v-if="tipoPrecioActual === 'sin_factura'" class="fas fa-check-circle text-emerald-500 text-[8px]"></i>
-                            </button>
-                            <button
-                                @click="abrirModalCambiarTipo('con_factura')"
-                                :disabled="cambiandoTipo"
-                                class="px-3 py-1.5 rounded text-[10px] font-medium transition flex items-center justify-center gap-1"
-                                :class="tipoPrecioActual === 'con_factura' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'"
-                            >
-                                <i class="fas fa-file-invoice text-[8px]"></i>
-                                Con Factura
-                                <i v-if="tipoPrecioActual === 'con_factura'" class="fas fa-check-circle text-emerald-500 text-[8px]"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <div class="mt-1.5 flex items-center gap-1.5 text-[9px] px-2 py-1 rounded border" :class="tipoPrecioColor">
-                        <i :class="tipoPrecioActual === 'con_factura' ? 'fas fa-file-invoice' : 'fas fa-receipt'" class="text-[8px]"></i>
-                        <span>Los productos se cotizarán con <strong>{{ tipoPrecioLabel }}</strong></span>
-                    </div>
-                </div>
+
 
                 <!-- ==================== CONTENEDORES ==================== -->
                 <div class="mb-4">

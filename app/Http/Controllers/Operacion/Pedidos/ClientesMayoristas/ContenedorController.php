@@ -233,7 +233,7 @@ class ContenedorController extends Controller
      *
      * ✅ Reglas:
      *   - Contenedor NORMAL → requiere capacidad > 0
-     *   - Contenedor PRODUCTO ÚNICO → capacidad = 0, requiere Codigo
+     *   - Contenedor PRODUCTO ÚNICO → requiere capacidad > 0 (se autogenera el código)
      *   - ✅ Bloqueo semántico: no permite códigos similares (ej: REJILLA-45 vs REJILLA 45)
      */
     public function store(Request $request)
@@ -251,29 +251,17 @@ class ContenedorController extends Controller
         $request->validate([
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
             'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
+            'CapacidadTotal' => 'required|numeric|min:0.01',
         ]);
 
-        // Validación condicional
-        if ($esProductoUnico) {
-            $request->validate([
-                'Codigo' => 'required|string|max:200',
-            ]);
+        // ✅ Código autogenerado igual para ambos tipos
+        $tipo = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('operacion_pedidos_clientes_contenedor_tipo')
+            ->where('IdTipoContenedor', $request->IdTipoContenedor)
+            ->value('Nombre');
 
-            $codigo = strtoupper(trim($request->input('Codigo', '')));
-            $capacidad = 0;
-        } else {
-            $request->validate([
-                'CapacidadTotal' => 'required|numeric|min:0.01',
-            ]);
-
-            $tipo = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_clientes_contenedor_tipo')
-                ->where('IdTipoContenedor', $request->IdTipoContenedor)
-                ->value('Nombre');
-
-            $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
-            $capacidad = $request->CapacidadTotal;
-        }
+        $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+        $capacidad = $request->CapacidadTotal;
 
         // ✅ Bloqueo semántico: detecta "REJILLA-45" vs "REJILLA 45" vs "REJILLA_45"
         $codigoNormalizado = $this->normalizarCodigo($codigo);
@@ -386,6 +374,7 @@ class ContenedorController extends Controller
      * Actualizar cabecera del contenedor
      * 
      * ✅ Bloqueo semántico aplicado (excluyendo el actual)
+     * ✅ Producto único: capacidad > 0 y código autogenerado
      */
     public function update(Request $request, $id)
     {
@@ -409,28 +398,17 @@ class ContenedorController extends Controller
         $request->validate([
             'IdSucursal' => 'required|exists:todos_cliente_sucursal,IdClienteSucursal',
             'IdTipoContenedor' => 'required|exists:operacion_pedidos_clientes_contenedor_tipo,IdTipoContenedor',
+            'CapacidadTotal' => 'required|numeric|min:0.01',
         ]);
 
-        if ($esProductoUnico) {
-            $request->validate([
-                'Codigo' => 'required|string|max:200',
-            ]);
+        // ✅ Código autogenerado igual para ambos tipos
+        $tipo = DB::connection('mysql_gestion_comercial_alimentos')
+            ->table('operacion_pedidos_clientes_contenedor_tipo')
+            ->where('IdTipoContenedor', $request->IdTipoContenedor)
+            ->value('Nombre');
 
-            $codigo = strtoupper(trim($request->input('Codigo', $contenedor->Codigo)));
-            $capacidad = 0;
-        } else {
-            $request->validate([
-                'CapacidadTotal' => 'required|numeric|min:0.01',
-            ]);
-
-            $tipo = DB::connection('mysql_gestion_comercial_alimentos')
-                ->table('operacion_pedidos_clientes_contenedor_tipo')
-                ->where('IdTipoContenedor', $request->IdTipoContenedor)
-                ->value('Nombre');
-
-            $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
-            $capacidad = $request->CapacidadTotal;
-        }
+        $codigo = strtoupper($tipo) . '-' . intval($request->CapacidadTotal);
+        $capacidad = $request->CapacidadTotal;
 
         // ✅ Bloqueo semántico (excluyendo el actual)
         $codigoNormalizado = $this->normalizarCodigo($codigo);

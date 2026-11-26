@@ -45,7 +45,6 @@ const form = ref({
     IdTipoContenedor: props.contenedor?.IdTipoContenedor || '',
     CapacidadTotal: props.contenedor?.CapacidadTotal || '',
     EsProductoUnico: props.contenedor?.EsProductoUnico === 1 || props.contenedor?.EsProductoUnico === true,
-    Codigo: props.contenedor?.EsProductoUnico ? (props.contenedor?.Codigo || '') : '',
 })
 
 // ==================== TIPOS DE CONTENEDOR (LOCAL) ====================
@@ -73,12 +72,9 @@ const errors = ref({})
 const processing = ref(false)
 
 // ==================== COMPUTADOS ====================
-const codigoGenerado = computed(() => {
-    // Si es producto único, el código lo define el usuario
-    if (form.value.EsProductoUnico) {
-        return form.value.Codigo || ''
-    }
 
+// ✅ Código autogenerado para AMBOS tipos: {TIPO}-{capacidad}
+const codigoGenerado = computed(() => {
     if (!form.value.IdTipoContenedor || !form.value.CapacidadTotal) return ''
 
     const tipo = tiposContenedorLocal.value.find(t => t.id === form.value.IdTipoContenedor)
@@ -107,18 +103,10 @@ const sucursalActualNumero = computed(() => {
     return suc?.numero || null
 })
 
-// ✅ ¿Puede guardar?
+// ✅ ¿Puede guardar? — ahora AMBOS tipos requieren capacidad > 0
 const puedeGuardar = computed(() => {
     if (!form.value.IdSucursal) return false
     if (!form.value.IdTipoContenedor) return false
-
-    if (form.value.EsProductoUnico) {
-        // Producto único: solo necesita el código
-        if (!form.value.Codigo || form.value.Codigo.trim() === '') return false
-        return true
-    }
-
-    // Normal: necesita capacidad
     if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) return false
     return true
 })
@@ -135,33 +123,20 @@ const guardar = async () => {
         toast?.error('Validación', 'Seleccione un tipo de contenedor')
         return
     }
-
-    if (form.value.EsProductoUnico) {
-        if (!form.value.Codigo || form.value.Codigo.trim() === '') {
-            toast?.error('Validación', 'Ingrese un nombre/código para el contenedor')
-            return
-        }
-    } else {
-        if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) {
-            toast?.error('Validación', 'Ingrese la capacidad máxima')
-            return
-        }
+    if (!form.value.CapacidadTotal || parseFloat(form.value.CapacidadTotal) <= 0) {
+        toast?.error('Validación', 'Ingrese la capacidad máxima')
+        return
     }
 
     processing.value = true
 
     try {
+        // ✅ Payload unificado: siempre envía CapacidadTotal (el backend genera el código)
         const payload = {
             IdSucursal: form.value.IdSucursal,
             IdTipoContenedor: form.value.IdTipoContenedor,
             EsProductoUnico: form.value.EsProductoUnico ? 1 : 0,
-        }
-
-        if (form.value.EsProductoUnico) {
-            payload.Codigo = form.value.Codigo.trim().toUpperCase()
-            payload.CapacidadTotal = 0
-        } else {
-            payload.CapacidadTotal = form.value.CapacidadTotal
+            CapacidadTotal: form.value.CapacidadTotal,
         }
 
         let response
@@ -206,7 +181,7 @@ const guardar = async () => {
 
 // ==================== CANCELAR ====================
 const cancelar = () => {
-    if (form.value.IdTipoContenedor || form.value.CapacidadTotal || form.value.Codigo) {
+    if (form.value.IdTipoContenedor || form.value.CapacidadTotal) {
         if (!confirm('¿Estás seguro de salir? Los cambios no guardados se perderán.')) {
             return
         }
@@ -227,28 +202,16 @@ watch(
                 IdTipoContenedor: nuevoContenedor.IdTipoContenedor || '',
                 CapacidadTotal: nuevoContenedor.CapacidadTotal || '',
                 EsProductoUnico: nuevoContenedor.EsProductoUnico === 1 || nuevoContenedor.EsProductoUnico === true,
-                Codigo: nuevoContenedor.EsProductoUnico ? (nuevoContenedor.Codigo || '') : '',
             }
         }
     },
     { immediate: true, deep: true }
 )
 
-// ✅ Cuando cambia EsProductoUnico, resetear el campo correspondiente
-watch(() => form.value.EsProductoUnico, (esUnico) => {
-    if (esUnico) {
-        // Cambió a producto único: limpiar capacidad
-        form.value.CapacidadTotal = ''
-        // Si estamos editando y ya era producto único, mantener código
-        if (contenedorId.value && props.contenedor?.EsProductoUnico) {
-            form.value.Codigo = props.contenedor.Codigo || ''
-        } else {
-            form.value.Codigo = ''
-        }
-    } else {
-        // Cambió a normal: limpiar código
-        form.value.Codigo = ''
-    }
+// ✅ Ya NO se limpia CapacidadTotal al cambiar de modalidad
+// (ambos tipos usan capacidad; solo cambia el comportamiento al hacer pedidos)
+watch(() => form.value.EsProductoUnico, () => {
+    // No-op: se mantiene la capacidad ingresada
 })
 
 // ==================== LIFECYCLE ====================
@@ -387,68 +350,57 @@ onUnmounted(() => {
                             </button>
                             <p class="text-[10px] text-gray-400 mt-0.5">
                                 {{ form.EsProductoUnico
-                                    ? 'Se elige 1 producto al hacer el pedido (cantidad = mínimo)'
+                                    ? 'Solo se muestran productos cuyo mínimo coincida con la capacidad'
                                     : 'Se llenan varios productos hasta la capacidad' }}
                             </p>
                         </div>
                     </div>
 
                     <!-- ============================================================ -->
-                    <!-- MODO PRODUCTO ÚNICO: solo pide nombre -->
+                    <!-- CAPACIDAD (común para ambos tipos) -->
                     <!-- ============================================================ -->
-                    <div v-if="form.EsProductoUnico" class="mt-4 border-t border-purple-200 pt-4">
-                        <div class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
+                    <div class="mt-4 border-t pt-4" :class="form.EsProductoUnico ? 'border-purple-200' : 'border-gray-200'">
+                        <div v-if="form.EsProductoUnico" class="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-3">
                             <div class="flex items-start gap-2">
                                 <i class="fas fa-info-circle text-purple-500 text-sm flex-shrink-0 mt-0.5"></i>
                                 <div class="text-[11px] text-purple-800">
                                     <p class="font-bold">Contenedor de producto único</p>
-                                    <p>Al hacer el pedido, el operador elegirá <strong>1 producto</strong> y la cantidad será automáticamente <strong>el mínimo configurado</strong> en Inventario. Podrá agregar varias "rejillas" del mismo producto.</p>
+                                    <p>Al hacer el pedido, el operador solo verá <strong>productos cuyo mínimo configurado coincida exactamente con la capacidad</strong> de este contenedor. Elegirá 1 producto y podrá agregar varias "rejillas".</p>
                                 </div>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                            <!-- Nombre / Código -->
-                            <div>
-                                <label class="block text-gray-600 mb-0.5">Nombre / Código *</label>
-                                <input
-                                    type="text"
-                                    v-model="form.Codigo"
-                                    placeholder="Ej: REJILLA"
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs uppercase focus:ring-1 focus:ring-purple-400 focus:outline-none"
-                                />
-                                <p class="text-[10px] text-gray-400 mt-0.5">Nombre libre (ej: REJILLA, TABLA, BANDEJA)</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- ============================================================ -->
-                    <!-- MODO NORMAL: pide capacidad -->
-                    <!-- ============================================================ -->
-                    <div v-else class="mt-4 border-t border-gray-200 pt-4">
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                             <!-- Capacidad Máxima -->
                             <div>
-                                <label class="block text-gray-600 mb-0.5">Capacidad Máxima *</label>
+                                <label class="block text-gray-600 mb-0.5">
+                                    Capacidad Máxima *
+                                    <span v-if="form.EsProductoUnico" class="text-purple-600 text-[10px]">(mínimo del producto)</span>
+                                </label>
                                 <input
                                     type="number"
                                     v-model="form.CapacidadTotal"
                                     step="0.01"
                                     placeholder="0.00"
-                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:ring-indigo-400 focus:outline-none"
-                                    :class="{'border-red-500': errors.CapacidadTotal}"
+                                    class="w-full border rounded-md px-2 py-1.5 text-xs focus:ring-1 focus:outline-none"
+                                    :class="[
+                                        errors.CapacidadTotal ? 'border-red-500' : '',
+                                        form.EsProductoUnico ? 'focus:ring-purple-400' : 'focus:ring-indigo-400'
+                                    ]"
                                 />
                                 <p v-if="errors.CapacidadTotal" class="text-red-500 text-[10px] mt-0.5">{{ errors.CapacidadTotal }}</p>
-                                <p class="text-[10px] text-gray-400 mt-0.5">Límite máximo de unidades</p>
+                                <p class="text-[10px] text-gray-400 mt-0.5">
+                                    {{ form.EsProductoUnico
+                                        ? 'Los productos con este mínimo serán los únicos disponibles'
+                                        : 'Límite máximo de unidades' }}
+                                </p>
                             </div>
                         </div>
                     </div>
 
                     <!-- Código generado / Vista previa -->
                     <div v-if="codigoGenerado" class="mt-3 bg-gray-50 rounded-lg p-2 border border-gray-200">
-                        <p class="text-[10px] text-gray-500">
-                            {{ form.EsProductoUnico ? 'Código del contenedor' : 'Código generado automáticamente' }}
-                        </p>
+                        <p class="text-[10px] text-gray-500">Código generado automáticamente</p>
                         <p class="text-sm font-mono font-bold" :class="form.EsProductoUnico ? 'text-purple-600' : 'text-indigo-600'">
                             {{ codigoGenerado }}
                         </p>
